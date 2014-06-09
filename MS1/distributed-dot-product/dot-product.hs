@@ -72,8 +72,6 @@ foldWorker (logCh,pid)
         Total k | n >= k    -> send pid (Result x)
                 | otherwise -> loop (Just k) n x
 
-
-
 data FoldTypes
   = Val   Double
   | Total Int
@@ -240,6 +238,7 @@ mainLoop logCh (nid:nodes) = do
       msg <- receiveWait matchSched
       res <- schedStep logCh msg sched
       case res of
+        -- FIXME: terminate remaining processes
         Failure   e -> error "TERMINATE"
         Completed a -> return a
         Step s      -> loop s
