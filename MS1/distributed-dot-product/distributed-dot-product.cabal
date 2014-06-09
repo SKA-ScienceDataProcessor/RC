@@ -26,3 +26,4 @@ Executable dot-product
   Main-is:
     dot-product.hs
   Other-modules:
+    Chan

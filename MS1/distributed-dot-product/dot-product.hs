@@ -31,18 +31,13 @@ import Text.Printf
 import GHC.Generics (Generic)
 
 
+import Chan
+
+
+
 ----------------------------------------------------------------
 -- Workers
 ----------------------------------------------------------------
-newtype Result   a = Result   a deriving (Show,Typeable,Binary)
-newtype BoundedV a = BoundedV a
-newtype Count    a = Count    a deriving (Show,Typeable,Binary)
-data X
-
-newtype Idle = Idle ProcessId
-             deriving (Show,Typeable,Generic)
-instance Binary Idle
-
 
 dotProductWorker :: (ProcessId,ProcessId) -> Process ()
 dotProductWorker (pidMaster,pidUpstream) = do
@@ -92,26 +87,6 @@ remotable [ 'dotProductWorker
 ----------------------------------------------------------------
 -- Data types
 ----------------------------------------------------------------
-
-data BoundedProtocol a = BoundedProtocol ProcessId
-
-
-data Chan a b where
-  Noop :: Chan a b
-  -- Sum bounded number of values
-  FoldSum    :: ProcessId -> Chan (BoundedV a) (Result b)
-  -- Primitive for calculation of dot product
-  DotProduct
-    :: Set ProcessId        -- Set of running processes
-    -> BoundedProtocol a    -- Protocol for communication with downstream
-    -> !Int                 -- Number of completed work
-    -> [(Int,Int)]          -- Set of work
-    -> Chan X (BoundedV a)
-  -- Reified Category
-  Id      :: Chan a a
-  Compose :: Chan a x -> Chan x b -> Chan a b
-
-
 
 
 -- | Process completed its execution normally
