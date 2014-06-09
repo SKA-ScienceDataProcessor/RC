@@ -1,0 +1,28 @@
+Name:           distributed-dot-product
+Version:        0.1
+Synopsis:       Distributed dot product
+Description:
+  Distributed dot product implemented using cloud haskell
+
+Cabal-Version:  >= 1.10
+License:        Apache-2.0
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Category:       Data
+Build-Type:     Simple
+
+Executable dot-product
+  Ghc-options:          -Wall -threaded
+  Default-language:	Haskell2010
+  Build-Depends:
+    base         >=3 && <5,
+    transformers >= 0.4.1,
+    binary       >= 0.7.2,
+    containers, 
+    time,
+    distributed-process                >= 0.4.2,
+    distributed-process-simplelocalnet >= 0.2.0.9
+  Main-is:
+    dot-product.hs
+  Other-modules:
