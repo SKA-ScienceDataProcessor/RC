@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE BangPatterns    #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Worker where
@@ -25,18 +26,22 @@ import Types
 -- | Worker for dot product
 dotProductWorker :: (MasterProtocol, BoundedProtocol Double) -> Process ()
 dotProductWorker (master,upstream)
-  = idle master >> loop
+  = workerLoop master $ \(i::Int,j::Int) -> do
+      me <- getSelfPid
+      logMsg master $ printf "[%s]: Fold received work %s" (show me) (show (i,j))
+      liftIO $ threadDelay (1000*1000)
+      sendBoundedStream upstream (1 :: Double)
+
+workerLoop :: (Serializable a) => MasterProtocol -> (a -> Process ()) -> Process ()
+workerLoop master action
+  = loop
   where
     loop = do
-      msg <- expect :: Process (Maybe (Int,Int))
+      idle master
+      msg <- expect
       case msg of
-        Nothing    -> return ()
-        Just (i,j) -> do me <- getSelfPid
-                         logMsg master $ printf "[%s]: Fold received work %s" (show me) (show (i,j))
-                         liftIO $ threadDelay (1000*1000)
-                         sendBoundedStream upstream (1 :: Double)
-                         idle master
-                         loop
+        Nothing -> return ()
+        Just a  -> action a >> loop
 
 
 
