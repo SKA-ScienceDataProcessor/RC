@@ -124,22 +124,22 @@ instance Binary a => Binary (SchedMessage a)
 
 
 -- | Single step of scheduler
-schedStep :: SendPort String -> SchedMessage a -> Scheduler a -> Process (Outcome a (Scheduler a))
+schedStep :: MasterProtocol -> SchedMessage a -> Scheduler a -> Process (Outcome a (Scheduler a))
 -- Monitored node crashed. We simply remove node from list of known
 -- ones. Processes running on that nodes will be handled separately.
-schedStep logCh (NodeDown (NodeMonitorNotification _ nid e)) sched = do
-  sendChan logCh $ printf "MASTER: Node %s down: %s" (show nid) (show e)
+schedStep masterP (NodeDown (NodeMonitorNotification _ nid e)) sched = do
+  logMsg masterP $ printf "MASTER: Node %s down: %s" (show nid) (show e)
   return $ Step $ sched { schedNodes = Map.delete nid (schedNodes sched) }
 -- Monitored process terminated normally
-schedStep logCh (ProcDown (ProcessMonitorNotification _ pid DiedNormal)) sched = do
-  sendChan logCh $ printf "MASTER: process %s completed" (show pid)
+schedStep masterP (ProcDown (ProcessMonitorNotification _ pid DiedNormal)) sched = do
+  logMsg masterP $ printf "MASTER: process %s completed" (show pid)
   let nid   = processNodeId pid
       nodes = Map.adjust (filter (/= pid)) nid (schedNodes sched)
   chan <- processDone pid (process sched)
   return $ Step $ Scheduler nodes chan
 -- Monitored process crashed either by itself or because node crashed.
-schedStep logCh (ProcDown (ProcessMonitorNotification _ pid e)) sched = do
-  sendChan logCh $ printf "MASTER: Process %s down: %s" (show pid) (show e)
+schedStep masterP (ProcDown (ProcessMonitorNotification _ pid e)) sched = do
+  logMsg masterP $ printf "MASTER: Process %s down: %s" (show pid) (show e)
   let nid   = processNodeId pid
       nodes = Map.adjust (filter (/= pid)) nid (schedNodes sched)
   mchan <- runExceptT $ processDown pid (process sched)
@@ -147,8 +147,8 @@ schedStep logCh (ProcDown (ProcessMonitorNotification _ pid e)) sched = do
     Left  err  -> return $ Failure err
     Right chan -> return $ Step $ Scheduler nodes chan
 -- Process asks for more work
-schedStep logCh (ProcIdle (Idle pid)) sched = do
-  sendChan logCh $ printf "MASTER: more work for %s" (show pid)
+schedStep masterP (ProcIdle (Idle pid)) sched = do
+  logMsg masterP $ printf "MASTER: more work for %s" (show pid)
   ch <- moreWork pid (process sched)
   return $ Step $ sched { process = ch }
 schedStep _ (SchedResult a) _
@@ -165,12 +165,10 @@ matchSched =
   , match $ return . SchedResult . (\(Result x) -> x)
   ]
 
-mainLoop :: SendPort String -> [NodeId] -> Process Double
+mainLoop :: MasterProtocol -> [NodeId] -> Process Double
 mainLoop _     []  = error "Not enough nodes"
 mainLoop _     [_] = error "Not enough nodes"
-mainLoop logCh nodes = do
-  me <- getSelfPid
-  let masterP = MasterProtocol logCh me
+mainLoop masterP nodes = do
   let program = FoldSum    (ActorFoldWaiting $ \rP -> $(mkClosure 'foldWorker) (masterP,rP))
               . DotProduct (ActorDotProductWaiting (0,1000))
   chan <- startChan masterP nodes program
@@ -178,7 +176,7 @@ mainLoop logCh nodes = do
   where
     loop sched = do
       msg <- receiveWait matchSched
-      res <- schedStep logCh msg sched
+      res <- schedStep masterP msg sched
       case res of
         -- FIXME: terminate remaining processes
         Failure   e -> error "TERMINATE"
@@ -189,7 +187,8 @@ mainLoop logCh nodes = do
 master :: Backend -> [NodeId] -> Process ()
 master backend nodes = do
   logCh <- spawnChannelLocal logger
-  x     <- mainLoop logCh nodes
+  me    <- getSelfPid
+  x     <- mainLoop (MasterProtocol logCh me) nodes
   sendChan logCh $ "RESULT: " ++ show x
   terminateAllSlaves backend
 
