@@ -9,11 +9,11 @@ import Control.Monad.Trans.Except
 import Control.Distributed.Process
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Serializable (Serializable)
-  
+
 import GHC.Generics (Generic)
 
 
-import Chan
+import Types
 
 
 
@@ -58,4 +58,3 @@ data FoldTypes
 remotable [ 'dotProductWorker
           , 'foldWorker
           ]
-

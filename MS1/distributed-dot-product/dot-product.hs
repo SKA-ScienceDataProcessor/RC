@@ -10,6 +10,7 @@ module Main where
 import System.Environment (getArgs)
 import Control.Applicative
 import Control.Monad
+import Control.Category
 import Control.Monad.Trans.Except
 import Control.Distributed.Process
 import Control.Distributed.Process.Closure
@@ -24,10 +25,12 @@ import qualified Data.Map as Map
 import           Data.Map (Map)
 import Text.Printf
 import GHC.Generics (Generic)
-
+import Prelude hiding  ((.),id)
 
 import Chan
 import Worker
+import Types
+
 
 ----------------------------------------------------------------
 -- Data types
@@ -35,34 +38,35 @@ import Worker
 
 
 -- | Process completed its execution normally
-processDone :: ProcessId -> Chan a b -> Process (Chan a b)
+processDone :: ProcessId -> Chan Running a b -> Process (Chan Running a b)
 processDone _    Id           = return Id
 processDone _    Noop         = return Noop
 processDone pid (Compose a b) = Compose <$> processDone pid a <*> processDone pid b
-processDone pid p@(FoldSum pidF)
+processDone pid p@(FoldSum (ActorFoldRunning pidF _))
   | pid == pidF = return Noop
   | otherwise   = return p
-processDone pid p@(DotProduct pids prot@(BoundedProtocol upstream) n work)
+processDone pid p@(DotProduct (ActorDotProductRunning pids upstream n work))
     -- Check for invalid state
   | Set.null pids' && not (null work) =
+      -- FIXME: it could happen if all workers die and we still have work.
+      ---       In this case no progress is possible and we need to terminate.
       error "Internal error: we still have work and doesn't have workers!"
     -- All work is done
   | Set.null pids' && null work =
-      case prot of BoundedProtocol pid -> send upstream (Count n) >> return Noop
-    -- Or we drop pid
+      sendBoundedCount upstream n >> return Noop
   | otherwise =
-      return $ DotProduct pids' prot n work
+      return $ DotProduct (ActorDotProductRunning pids' upstream n work)
   where
     pids' = Set.delete pid pids
 
 
 -- | Process crashed
-processDown :: ProcessId -> Chan a b -> ExceptT String Process (Chan a b)
+processDown :: ProcessId -> Chan Running a b -> ExceptT String Process (Chan Running a b)
 processDown _    Id           = return Id
 processDown _    Noop         = return Noop
 processDown pid (Compose a b) = Compose <$> processDown pid a <*> processDown pid b
 -- Crash of fold process is fatal.
-processDown pid p@(FoldSum pidF)
+processDown pid p@(FoldSum (ActorFoldRunning pidF _))
   | pid == pidF = throwE $ "Fold process (" ++ show pidF ++ ") crashed"
   | otherwise   = return p
 -- We simply discard failed processes and continue.
@@ -70,24 +74,26 @@ processDown pid p@(FoldSum pidF)
 -- RACE: Process may crash between sending result to folder and
 --       receiving additional work but we assume that we lose work in
 --       any case.
-processDown pid (DotProduct pids prot n work) =
-  return $ DotProduct (Set.delete pid pids) prot (n - 1) work
+processDown pid p@(DotProduct (ActorDotProductRunning pids upstream n work))
+  | pid `Set.member` pids
+      = return $ DotProduct $ ActorDotProductRunning (Set.delete pid pids) upstream (n - 1) work
+  | otherwise = return p
 
 -- | Process asking for more work
-moreWork :: ProcessId -> Chan a b -> Process (Chan a b)
+moreWork :: ProcessId -> Chan Running a b -> Process (Chan Running a b)
 moreWork _    Id           = return Id
 moreWork _    Noop         = return Noop
 moreWork pid (Compose a b) = Compose <$> moreWork pid a <*> moreWork pid b
-moreWork pid p@(FoldSum pidF)
+moreWork pid p@(FoldSum (ActorFoldRunning pidF _))
   | pid == pidF = error $ "Fold cannot ask for more work. PID: " ++ show pidF
   | otherwise   = return p
-moreWork pid p@(DotProduct pids prot n work)
+moreWork pid p@(DotProduct (ActorDotProductRunning pids prot n work))
   | pid `Set.member` pids = do
       case work of
         []   -> do send pid (Nothing :: Maybe (Int,Int))
-                   return $ DotProduct pids prot n work
+                   return $ DotProduct $ ActorDotProductRunning pids prot n work
         w:ws -> do send pid $ Just w
-                   return $ DotProduct pids prot (n+1) ws
+                   return $ DotProduct $ ActorDotProductRunning pids prot (n+1) ws
   | otherwise = return p
 
 
@@ -99,7 +105,7 @@ moreWork pid p@(DotProduct pids prot n work)
 -- | Scheduler which is performing
 data Scheduler a = Scheduler
   { schedNodes :: Map NodeId [ProcessId]
-  , process    :: Chan X (Result a)
+  , process    :: Chan Running X (Result a)
   }
 
 -- | Result of one scheduler step
@@ -145,7 +151,6 @@ schedStep logCh (ProcIdle (Idle pid)) sched = do
   sendChan logCh $ printf "more work for %s" (show pid)
   ch <- moreWork pid (process sched)
   return $ Step $ sched { process = ch }
--- Undefined
 schedStep _ (SchedResult a) _
   = return (Completed a)
 
@@ -163,24 +168,11 @@ matchSched =
 mainLoop :: SendPort String -> [NodeId] -> Process Double
 mainLoop _     []  = error "Not enough nodes"
 mainLoop _     [_] = error "Not enough nodes"
-mainLoop logCh (nid:nodes) = do
-  -- Spawn fold thread
-  myPid       <- getSelfPid
-  (pidFold,_) <- spawnSupervised nid $ $(mkClosure 'foldWorker) (logCh,myPid)
-  -- Build workers
-  let work = [(n*100,n+99) | n <- [0..10]]
-  dotPids <- forM nodes $ \n -> do
-    (pid,_) <- spawnSupervised n $ $(mkClosure 'dotProductWorker) (myPid,pidFold)
-    return pid
-  -- Assemble Chan
-  let chan = (DotProduct (Set.fromList dotPids)
-                         (BoundedProtocol pidFold)
-                         0 work
-             )
-           `Compose`
-             (FoldSum pidFold)
-  -- Enter main loop
-  loop $ Scheduler undefined chan
+mainLoop logCh nodes = do
+  let program = FoldSum    (ActorFoldWaiting $ \(ResultProtocol pid) -> $(mkClosure 'foldWorker) (logCh,pid))
+              . DotProduct (ActorDotProductWaiting (0,1000))
+  chan <- startChan nodes program
+  loop $ Scheduler (Map.fromList [(n,[]) | n <- nodes]) chan
   where
     loop sched = do
       msg <- receiveWait matchSched
@@ -190,6 +182,7 @@ mainLoop logCh (nid:nodes) = do
         Failure   e -> error "TERMINATE"
         Completed a -> return a
         Step s      -> loop s
+
 
 master :: Backend -> [NodeId] -> Process ()
 master backend nodes = do

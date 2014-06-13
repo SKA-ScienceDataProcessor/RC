@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable #-}
@@ -27,58 +28,54 @@ import Text.Printf
 import GHC.Generics (Generic)
 import Prelude hiding (id,(.))
 
+import Types
+import Worker
 
-
-----------------------------------------------------------------
--- Types
-----------------------------------------------------------------
-
--- | Final result of computation
-newtype Result   a = Result   a deriving (Show,Typeable,Binary)
-
--- | Finite stream of values
-newtype BoundedV a = BoundedV a deriving (Show,Typeable,Binary)
-
--- | Number of values
-newtype Count    a = Count    a deriving (Show,Typeable,Binary)
-
--- | Message from worker process saying that it's idle and request
---   more work
-newtype Idle = Idle ProcessId
-             deriving (Show,Typeable,Generic,Binary)
-
--- | Uninhabited data type
-data X
 
 ----------------------------------------------------------------
 -- Chan
 ----------------------------------------------------------------
 
+data Waiting
+data Running
+
+
+data ActorFold tag a b where
+  ActorFoldWaiting
+    :: (ResultProtocol b -> Closure (Process ()))
+    -> ActorFold Waiting a b
+  ActorFoldRunning
+    :: ProcessId                -- PID of running fold process
+    -> BoundedProtocol a
+    -> ActorFold Running a b
+
+data ActorDotProduct tag a where
+  ActorDotProductWaiting
+    :: (Int,Int)                -- Full range of indices
+    -> ActorDotProduct Waiting a
+  ActorDotProductRunning
+    :: Set ProcessId            -- Set of running processes
+    -> BoundedProtocol a
+    -> !Int                     -- Number of completed jobs
+    -> [(Int,Int)]              -- Remaining work
+    -> ActorDotProduct Running a
+
 -- | Description of distributed program
-data Chan a b where
+data Chan tag a b where
   -- | Execution completed
-  Noop :: Chan a b
+  Noop :: Chan Running a b
   -- | Identity
-  Id      :: Chan a a
+  Id   :: Chan tag a a
   -- | Category composition
-  Compose :: Chan a x -> Chan x b -> Chan a b
-
+  Compose :: Chan tag a x -> Chan tag x b -> Chan tag a b
   -- | Sum bounded number of values
-  FoldSum :: ProcessId          -- ^ Worker process ID
-          -> Chan (BoundedV a) (Result b)
+  FoldSum :: ActorFold tag a b
+          -> Chan tag (BoundedV a) (Result b)
   -- | Primitive for calculation of dot product
-  DotProduct
-    :: Set ProcessId        -- Set of running processes
-    -> BoundedProtocol a    -- Protocol for communication with downstream
-    -> !Int                 -- Number of completed work
-    -> [(Int,Int)]          -- Set of work
-    -> Chan X (BoundedV a)
+  DotProduct :: ActorDotProduct tag a
+             -> Chan tag X (BoundedV a)
 
-
--- | Protocol for working with bounded streams
-data BoundedProtocol a = BoundedProtocol ProcessId
-
-instance Category Chan where
+instance Category (Chan tag) where
   id = Id
   Id   . a    = a
   a    . Id   = a
@@ -86,3 +83,39 @@ instance Category Chan where
   a    . b    = Compose b a
 
 
+
+----------------------------------------------------------------
+-- Starting of processes
+----------------------------------------------------------------
+
+-- | Start execution of program
+startChan :: [NodeId] -> Chan Waiting X (Result b) -> Process (Chan Running X (Result b))
+-- Composition is probably hardest part. I need to factor out
+-- communication protocols.
+startChan nodes (Compose Id x) = startChan nodes x
+startChan nodes (Compose x Id) = startChan nodes x
+startChan nodes (Compose (DotProduct dot) (FoldSum fold)) = do
+  let ActorFoldWaiting foldActor     = fold
+      ActorDotProductWaiting (i1,i2) = dot
+  -- Create actor for fold
+  case nodes of
+    []  -> error "Not enough nodes"
+    [_] -> error "Not enough nodes"
+    (nid:nids) -> do
+      me   <- getSelfPid
+      -- Start fold process
+      (pidF,_) <- spawnSupervised nid $ foldActor (ResultProtocol me)
+      let boundP = BoundedProtocol pidF
+      -- Split workload into equal pieces
+      let n = length nids
+          l = (i2 - i1 + 1) `div` n
+          work = [ (i1 + i*n, if i == n-2 then i2 else i1 + i*(n+1) - 1)
+                 | i <- [0 .. n-1] ]
+      -- Spawn dot product workers
+      pids <- forM nids $ \n -> do
+        (p,_) <- spawnSupervised n $ $(mkClosure 'dotProductWorker) (me,pidF)
+        return p
+      -- Return reassembled pipeline
+      return $ Compose
+        (DotProduct $ ActorDotProductRunning (Set.fromList pids) boundP 0 work)
+        (FoldSum    $ ActorFoldRunning pidF boundP)
