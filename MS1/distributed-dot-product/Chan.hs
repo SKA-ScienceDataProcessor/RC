@@ -89,12 +89,12 @@ instance Category (Chan tag) where
 ----------------------------------------------------------------
 
 -- | Start execution of program
-startChan :: [NodeId] -> Chan Waiting X (Result b) -> Process (Chan Running X (Result b))
+startChan :: MasterProtocol -> [NodeId] -> Chan Waiting X (Result b) -> Process (Chan Running X (Result b))
 -- Composition is probably hardest part. I need to factor out
 -- communication protocols.
-startChan nodes (Compose Id x) = startChan nodes x
-startChan nodes (Compose x Id) = startChan nodes x
-startChan nodes (Compose (DotProduct dot) (FoldSum fold)) = do
+startChan mP nodes (Compose Id x) = startChan mP nodes x
+startChan mP nodes (Compose x Id) = startChan mP nodes x
+startChan mP nodes (Compose (DotProduct dot) (FoldSum fold)) = do
   let ActorFoldWaiting foldActor     = fold
       ActorDotProductWaiting (i1,i2) = dot
   -- Create actor for fold
@@ -113,7 +113,7 @@ startChan nodes (Compose (DotProduct dot) (FoldSum fold)) = do
                  | i <- [0 .. n-1] ]
       -- Spawn dot product workers
       pids <- forM nids $ \n -> do
-        (p,_) <- spawnSupervised n $ $(mkClosure 'dotProductWorker) (me,pidF)
+        (p,_) <- spawnSupervised n $ $(mkClosure 'dotProductWorker) (mP,boundP)
         return p
       -- Return reassembled pipeline
       return $ Compose

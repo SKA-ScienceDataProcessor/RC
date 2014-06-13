@@ -40,13 +40,19 @@ data X
 
 -- | Communications with master process
 data MasterProtocol = MasterProtocol (SendPort String) ProcessId
+                    deriving (Show,Typeable,Generic)
+instance Binary MasterProtocol
 
 logMsg :: MasterProtocol -> String -> Process ()
 logMsg (MasterProtocol ch _) = sendChan ch
 
+idle :: MasterProtocol -> Process ()
+idle (MasterProtocol _ pid) = send pid . Idle =<< getSelfPid
+
 
 -- | Protocol for bounded streams
 newtype BoundedProtocol a = BoundedProtocol ProcessId
+                          deriving (Show,Typeable,Binary)
 
 sendBoundedStream :: (Serializable a) => BoundedProtocol a -> a -> Process ()
 sendBoundedStream (BoundedProtocol pid) a
@@ -59,8 +65,8 @@ sendBoundedCount (BoundedProtocol pid) n
 
 -- | Protocol for sending result of computation
 newtype ResultProtocol a = ResultProtocol ProcessId
+                         deriving (Show,Typeable,Binary)
 
 sendResult :: (Serializable a) => ResultProtocol a -> a -> Process ()
 sendResult (ResultProtocol pid) a
   = send pid (Result a)
-

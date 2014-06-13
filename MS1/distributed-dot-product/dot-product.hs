@@ -128,18 +128,18 @@ schedStep :: SendPort String -> SchedMessage a -> Scheduler a -> Process (Outcom
 -- Monitored node crashed. We simply remove node from list of known
 -- ones. Processes running on that nodes will be handled separately.
 schedStep logCh (NodeDown (NodeMonitorNotification _ nid e)) sched = do
-  sendChan logCh $ printf "* Node %s down: %s" (show nid) (show e)
+  sendChan logCh $ printf "MASTER: Node %s down: %s" (show nid) (show e)
   return $ Step $ sched { schedNodes = Map.delete nid (schedNodes sched) }
 -- Monitored process terminated normally
 schedStep logCh (ProcDown (ProcessMonitorNotification _ pid DiedNormal)) sched = do
-  sendChan logCh $ printf "process %s completed" (show pid)
+  sendChan logCh $ printf "MASTER: process %s completed" (show pid)
   let nid   = processNodeId pid
       nodes = Map.adjust (filter (/= pid)) nid (schedNodes sched)
   chan <- processDone pid (process sched)
   return $ Step $ Scheduler nodes chan
 -- Monitored process crashed either by itself or because node crashed.
 schedStep logCh (ProcDown (ProcessMonitorNotification _ pid e)) sched = do
-  sendChan logCh $ printf "* Process %s down: %s" (show pid) (show e)
+  sendChan logCh $ printf "MASTER: Process %s down: %s" (show pid) (show e)
   let nid   = processNodeId pid
       nodes = Map.adjust (filter (/= pid)) nid (schedNodes sched)
   mchan <- runExceptT $ processDown pid (process sched)
@@ -148,7 +148,7 @@ schedStep logCh (ProcDown (ProcessMonitorNotification _ pid e)) sched = do
     Right chan -> return $ Step $ Scheduler nodes chan
 -- Process asks for more work
 schedStep logCh (ProcIdle (Idle pid)) sched = do
-  sendChan logCh $ printf "more work for %s" (show pid)
+  sendChan logCh $ printf "MASTER: more work for %s" (show pid)
   ch <- moreWork pid (process sched)
   return $ Step $ sched { process = ch }
 schedStep _ (SchedResult a) _
@@ -169,9 +169,11 @@ mainLoop :: SendPort String -> [NodeId] -> Process Double
 mainLoop _     []  = error "Not enough nodes"
 mainLoop _     [_] = error "Not enough nodes"
 mainLoop logCh nodes = do
-  let program = FoldSum    (ActorFoldWaiting $ \(ResultProtocol pid) -> $(mkClosure 'foldWorker) (logCh,pid))
+  me <- getSelfPid
+  let masterP = MasterProtocol logCh me
+  let program = FoldSum    (ActorFoldWaiting $ \rP -> $(mkClosure 'foldWorker) (masterP,rP))
               . DotProduct (ActorDotProductWaiting (0,1000))
-  chan <- startChan nodes program
+  chan <- startChan masterP nodes program
   loop $ Scheduler (Map.fromList [(n,[]) | n <- nodes]) chan
   where
     loop sched = do
