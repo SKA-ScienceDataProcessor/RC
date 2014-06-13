@@ -56,7 +56,8 @@ foldWorker (master,result)
       msg <- receiveWait [ match $ return . Val   . (\(BoundedV x) -> x)
                          , match $ return . Total . (\(Count x) -> x)
                          ]
-      logMsg master $ show ("FOLD",msg,tot,n,x)
+      me <- getSelfPid
+      logMsg master $ printf "[%s] fold received: %s" (show me) (show msg)
       case msg of
         Val   y -> loop tot (n+1) (x+y)
         Total k | n >= k    -> sendResult result x
