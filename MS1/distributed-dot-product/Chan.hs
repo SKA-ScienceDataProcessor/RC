@@ -119,3 +119,14 @@ startChan mP nodes (Compose (DotProduct dot) (FoldSum fold)) = do
       return $ Compose
         (DotProduct $ ActorDotProductRunning (Set.fromList pids) boundP 0 work)
         (FoldSum    $ ActorFoldRunning pidF boundP)
+
+
+-- | Terminate all processes that keep running
+terminateAll :: Chan Running a b -> Process ()
+terminateAll Id = return ()
+terminateAll Noop = return ()
+terminateAll (Compose a b) = terminateAll a >> terminateAll b
+terminateAll (FoldSum    (ActorFoldRunning pidF _))
+  = exit pidF "TERMINATED"
+terminateAll (DotProduct (ActorDotProductRunning pids _ _ _))
+  = T.forM_ pids $ \p -> exit p "TERMINATED"

@@ -165,7 +165,7 @@ matchSched =
   , match $ return . SchedResult . (\(Result x) -> x)
   ]
 
-mainLoop :: MasterProtocol -> [NodeId] -> Process Double
+mainLoop :: MasterProtocol -> [NodeId] -> Process (Maybe Double)
 mainLoop _     []  = error "Not enough nodes"
 mainLoop _     [_] = error "Not enough nodes"
 mainLoop masterP nodes = do
@@ -179,8 +179,8 @@ mainLoop masterP nodes = do
       res <- schedStep masterP msg sched
       case res of
         -- FIXME: terminate remaining processes
-        Failure   e -> error "TERMINATE"
-        Completed a -> return a
+        Failure   e -> terminateAll (process sched) >> return Nothing
+        Completed a -> terminateAll (process sched) >> return (Just a)
         Step s      -> loop s
 
 
