@@ -8,7 +8,6 @@
 module Main where
 
 import System.Environment (getArgs)
-import Control.Concurrent (threadDelay)
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Except
@@ -18,12 +17,9 @@ import Control.Distributed.Process.Node (initRemoteTable)
 import Control.Distributed.Process.Backend.SimpleLocalnet
 import Control.Distributed.Process.Serializable (Serializable)
 
-import qualified Data.Foldable as T
 import Data.Binary
 import Data.Typeable
-import Data.Time.Clock
 import qualified Data.Set as Set
-import           Data.Set (Set)
 import qualified Data.Map as Map
 import           Data.Map (Map)
 import Text.Printf
@@ -63,6 +59,7 @@ processDone pid p@(DotProduct pids prot@(BoundedProtocol upstream) n work)
 -- | Process crashed
 processDown :: ProcessId -> Chan a b -> ExceptT String Process (Chan a b)
 processDown _    Id           = return Id
+processDown _    Noop         = return Noop
 processDown pid (Compose a b) = Compose <$> processDown pid a <*> processDown pid b
 -- Crash of fold process is fatal.
 processDown pid p@(FoldSum pidF)
@@ -216,6 +213,7 @@ main = do
     ["slave", host, port] -> do
       backend <- initializeBackend host port rtable
       startSlave backend
+    _ -> error "Unknown command"
   where
     rtable :: RemoteTable
     rtable = __remoteTable initRemoteTable
