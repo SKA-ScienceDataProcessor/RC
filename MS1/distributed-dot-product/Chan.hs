@@ -109,7 +109,7 @@ startChan mP nodes (Compose (DotProduct dot) (FoldSum fold)) = do
       -- Split workload into equal pieces
       let n = length nids
           l = (i2 - i1 + 1) `div` n
-          work = [ (i1 + i*n, if i == n-2 then i2 else i1 + i*(n+1) - 1)
+          work = [ (i1 + i*l, if i == n-1 then i2 else i1 + (i+1)*l - 1)
                  | i <- [0 .. n-1] ]
       -- Spawn dot product workers
       pids <- forM nids $ \n -> do
