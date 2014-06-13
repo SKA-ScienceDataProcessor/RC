@@ -27,3 +27,4 @@ Executable dot-product
     dot-product.hs
   Other-modules:
     Chan
+    Worker

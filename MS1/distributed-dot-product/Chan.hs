@@ -5,7 +5,6 @@
 -- | Description of distributed program
 module Chan where
 
-
 import Control.Applicative
 import Control.Category
 import Control.Monad
