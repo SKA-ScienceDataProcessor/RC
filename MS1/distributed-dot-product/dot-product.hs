@@ -23,6 +23,7 @@ import Data.Typeable
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import           Data.Map (Map)
+import           Data.Set (Set)
 import Text.Printf
 import GHC.Generics (Generic)
 import Prelude hiding  ((.),id)
@@ -104,7 +105,7 @@ moreWork pid p@(DotProduct (ActorDotProductRunning pids prot n work))
 
 -- | Scheduler which is performing
 data Scheduler a = Scheduler
-  { schedNodes :: Map NodeId [ProcessId]
+  { schedNodes :: Set NodeId
   , process    :: Chan Running X (Result a)
   }
 
@@ -129,23 +130,19 @@ schedStep :: MasterProtocol -> SchedMessage a -> Scheduler a -> Process (Outcome
 -- ones. Processes running on that nodes will be handled separately.
 schedStep masterP (NodeDown (NodeMonitorNotification _ nid e)) sched = do
   logMsg masterP $ printf "MASTER: Node %s down: %s" (show nid) (show e)
-  return $ Step $ sched { schedNodes = Map.delete nid (schedNodes sched) }
+  return $ Step $ sched { schedNodes = Set.delete nid (schedNodes sched) }
 -- Monitored process terminated normally
 schedStep masterP (ProcDown (ProcessMonitorNotification _ pid DiedNormal)) sched = do
   logMsg masterP $ printf "MASTER: process %s completed" (show pid)
-  let nid   = processNodeId pid
-      nodes = Map.adjust (filter (/= pid)) nid (schedNodes sched)
   chan <- processDone pid (process sched)
-  return $ Step $ Scheduler nodes chan
+  return $ Step $ sched { process = chan }
 -- Monitored process crashed either by itself or because node crashed.
 schedStep masterP (ProcDown (ProcessMonitorNotification _ pid e)) sched = do
   logMsg masterP $ printf "MASTER: Process %s down: %s" (show pid) (show e)
-  let nid   = processNodeId pid
-      nodes = Map.adjust (filter (/= pid)) nid (schedNodes sched)
   mchan <- runExceptT $ processDown pid (process sched)
   case mchan of
     Left  err  -> return $ Failure err
-    Right chan -> return $ Step $ Scheduler nodes chan
+    Right chan -> return $ Step $ sched { process = chan }
 -- Process asks for more work
 schedStep masterP (ProcIdle (Idle pid)) sched = do
   logMsg masterP $ printf "MASTER: more work for %s" (show pid)
@@ -172,7 +169,7 @@ mainLoop masterP nodes = do
   let program = FoldSum    (ActorFoldWaiting $ \rP -> $(mkClosure 'foldWorker) (masterP,rP))
               . DotProduct (ActorDotProductWaiting (0,1000))
   chan <- startChan masterP nodes program
-  loop $ Scheduler (Map.fromList [(n,[]) | n <- nodes]) chan
+  loop $ Scheduler (Set.fromList nodes) chan
   where
     loop sched = do
       msg <- receiveWait matchSched
