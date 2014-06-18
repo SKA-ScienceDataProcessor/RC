@@ -21,7 +21,7 @@ Executable dot-product
     binary       >= 0.7.2,
     containers, 
     time,
-    distributed-process                >= 0.4.2,
+    distributed-process                >= 0.5.0,
     distributed-process-simplelocalnet >= 0.2.0.9
   Main-is:
     dot-product.hs
