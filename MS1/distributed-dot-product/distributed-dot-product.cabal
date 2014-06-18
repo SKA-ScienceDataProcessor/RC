@@ -29,4 +29,6 @@ Executable dot-product
     Chan
     Worker
     Types
+    RC.Actors
     RC.Combinators
+    RC.Types

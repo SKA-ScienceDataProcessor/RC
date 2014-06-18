@@ -75,4 +75,3 @@ maybeLoop f = loop
       ma <- expect
       case ma of Just a  -> f a >> loop
                  Nothing -> return ()
-
