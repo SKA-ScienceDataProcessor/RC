@@ -28,4 +28,5 @@ Executable dot-product
   Other-modules:
     Chan
     Worker
+    Types
     RC.Combinators
