@@ -8,6 +8,7 @@ module RC.Combinators (
   , finiFoldMessagesMatch
   , finiFoldMatch
   , maybeLoop
+  , match2
   ) where
 
 import Control.Distributed.Process
@@ -75,3 +76,7 @@ maybeLoop f = loop
       ma <- expect
       case ma of Just a  -> f a >> loop
                  Nothing -> return ()
+
+
+match2 :: (Serializable b) => (a -> b -> Process c) -> a -> Match c
+match2 f a = match (f a)

@@ -20,7 +20,7 @@ worker pid closureF = do
   me  <- getSelfPid
   fun <- unClosure closureF
   send pid (Idle me)
-  maybeLoop $ \a -> do
-    send pid (fun a)
+  maybeLoop $ \(Batch wid a) -> do
+    send pid (WorkResult wid $ fun a)
     send pid (Idle me)
 
