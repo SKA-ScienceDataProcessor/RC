@@ -1,26 +1,55 @@
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- | Generic actors
 module RC.Actors (
     worker
+  , workerClosure
+  , __remoteTable
   ) where
 
 import Control.Distributed.Process
-import Control.Distributed.Process.Serializable (Serializable)
+import Control.Distributed.Process.Closure
+import Control.Distributed.Static
+import Data.Binary  (encode)
+import Data.Typeable (Typeable)
+import Data.ByteString.Lazy (ByteString)
 
 import RC.Types
 import RC.Combinators
 
+
+
 -- | Worker process. It performs pure computation and request work
 --   from master process by sending 'Idle' messages
 worker
-  :: (Serializable a, Serializable b)
-  => ProcessId                  -- ^ Master process
-  -> Closure (a -> b)           -- ^ Pure calculation to perform
+  :: SerializableDict a
+  -> SerializableDict b
+  -> ProcessId                  -- ^ Master process
+  -> (a -> b)                   -- ^ Pure calculation to perform
   -> Process ()
-worker pid closureF = do
+worker SerializableDict SerializableDict pid fun = do
   me  <- getSelfPid
-  fun <- unClosure closureF
   send pid (Idle me)
   maybeLoop $ \(Batch wid a) -> do
     send pid (WorkResult wid $ fun a)
     send pid (Idle me)
 
+remotable [ 'worker
+          ]
+
+workerClosure
+  :: forall a b. (Typeable a, Typeable b)
+  => Static (SerializableDict a)
+  -> Static (SerializableDict b)
+  -> ProcessId
+  -> Closure (a -> b)
+  -> Closure (Process ())
+workerClosure sdictA sdictB pid closF
+  = closure decoder (encode pid) `closureApply` closF
+  where
+    decoder :: Static (ByteString -> (a -> b) -> Process ())
+    decoder
+      = ($(mkStatic 'worker) `staticApply` sdictA `staticApply` sdictB)
+      `staticCompose`
+        (staticDecode sdictProcessId)
+-- FIXME: horrible boilerplate
