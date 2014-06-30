@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- | Generic actors
-module RC.Actors (
+module RC.Actors.Worker (
     worker
   , workerClosure
   , __remoteTable
@@ -10,6 +10,7 @@ module RC.Actors (
 import Control.Distributed.Process
 import Control.Distributed.Process.Closure
 import Control.Distributed.Static
+import Control.Distributed.Process.Serializable (Serializable)
 import Data.Binary  (encode)
 import Data.Typeable (Typeable)
 import Data.ByteString.Lazy (ByteString)
@@ -17,6 +18,22 @@ import Data.ByteString.Lazy (ByteString)
 import RC.Types
 import RC.Combinators
 
+-- | Description of worker which evaluate pure function
+data PureWorker a b = PureWorker
+  (Static (SerializableDict a))
+  (Static (SerializableDict b))
+  (Closure (a -> b))
+
+makeOneShotWorker :: Serializable a => PureWorker a b -> a -> Closure ()
+makeOneShotWorker (PureWorker sdictA sdictB closF) a = do
+  undefined
+
+doOneShot :: SerializableDict a
+          -> a
+          -> Process ()
+doOneShot SerializableDict a = do
+  return ()
+              
 
 
 -- | Worker process. It performs pure computation and request work

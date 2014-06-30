@@ -31,6 +31,7 @@ Executable dot-product
     Chan
     Worker
     Types
-    RC.Actors
+    RC.Actors.Worker
+    RC.Actors.Fold
     RC.Combinators
     RC.Types
