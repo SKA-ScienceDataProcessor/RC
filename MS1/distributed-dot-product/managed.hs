@@ -81,8 +81,8 @@ controller = defaultProcess
 interpret :: DNA a -> Process a
 interpret (DotProduct a b) = do
   -- We create 
-  asyncA <- asyncLinked $ interpret a
-  asyncB <- asyncLinked $ interpret b
+  asyncA <- asyncLinkedSTM $ task $ interpret a
+  asyncB <- asyncLinkedSTM $ task $ interpret b
   ra <- wait asyncA
   rb <- wait asyncB
   case (ra,rb) of
