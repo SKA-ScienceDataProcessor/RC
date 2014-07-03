@@ -31,6 +31,7 @@ import Prelude hiding  ((.),id)
 import Chan
 import Worker
 import Types
+import RC.Combinators
 
 
 ----------------------------------------------------------------
@@ -115,52 +116,35 @@ data Outcome a b
   | Completed a                 -- ^ Task is completed
   | Step      b                 -- ^ Message is processed
 
-data SchedMessage a
-  = NodeDown    NodeMonitorNotification
-  | ProcDown    ProcessMonitorNotification
-  | ProcIdle    Idle
-  | SchedResult a
-  deriving (Show,Typeable,Generic)
-instance Binary a => Binary (SchedMessage a)
 
-
--- | Single step of scheduler
-schedStep :: MasterProtocol -> SchedMessage a -> Scheduler a -> Process (Outcome a (Scheduler a))
 -- Monitored node crashed. We simply remove node from list of known
 -- ones. Processes running on that nodes will be handled separately.
-schedStep masterP (NodeDown (NodeMonitorNotification _ nid e)) sched = do
+schedNodeStep :: MasterProtocol -> Scheduler a -> NodeMonitorNotification -> Process (Outcome b (Scheduler a))
+schedNodeStep masterP sched (NodeMonitorNotification _ nid e) = do
   logMsg masterP $ printf "MASTER: Node %s down: %s" (show nid) (show e)
   return $ Step $ sched { schedNodes = Set.delete nid (schedNodes sched) }
--- Monitored process terminated normally
-schedStep masterP (ProcDown (ProcessMonitorNotification _ pid DiedNormal)) sched = do
+
+
+-- Monitored process terminated. It could either die normally or due
+-- to node crash/exception
+schedProcStep masterP sched (ProcessMonitorNotification _ pid DiedNormal) = do
   logMsg masterP $ printf "MASTER: process %s completed" (show pid)
   chan <- processDone pid (process sched)
   return $ Step $ sched { process = chan }
--- Monitored process crashed either by itself or because node crashed.
-schedStep masterP (ProcDown (ProcessMonitorNotification _ pid e)) sched = do
+schedProcStep masterP sched (ProcessMonitorNotification _ pid e) = do
   logMsg masterP $ printf "MASTER: Process %s down: %s" (show pid) (show e)
   mchan <- runExceptT $ processDown pid (process sched)
   case mchan of
     Left  err  -> return $ Failure err
     Right chan -> return $ Step $ sched { process = chan }
+
 -- Process asks for more work
-schedStep masterP (ProcIdle (Idle pid)) sched = do
+schedIdle :: MasterProtocol -> Scheduler a -> Idle -> Process (Outcome b (Scheduler a))
+schedIdle masterP sched (Idle pid) = do
   logMsg masterP $ printf "MASTER: more work for %s" (show pid)
   ch <- moreWork pid (process sched)
   return $ Step $ sched { process = ch }
-schedStep _ (SchedResult a) _
-  = return (Completed a)
 
-
-
-matchSched :: (Serializable a) => [Match (SchedMessage a)]
-matchSched =
-  [ match $ return
-  , match $ return . NodeDown
-  , match $ return . ProcDown
-  , match $ return . ProcIdle
-  , match $ return . SchedResult . (\(Result x) -> x)
-  ]
 
 mainLoop :: MasterProtocol -> [NodeId] -> Process (Maybe Double)
 mainLoop _     []  = error "Not enough nodes"
@@ -172,8 +156,12 @@ mainLoop masterP nodes = do
   loop $ Scheduler (Set.fromList nodes) chan
   where
     loop sched = do
-      msg <- receiveWait matchSched
-      res <- schedStep masterP msg sched
+      res <- receiveWait [ match (schedIdle masterP sched)
+                         , match (return . Completed . (\(Result x) -> x))
+                         , match (schedNodeStep masterP sched)
+                         , match (schedProcStep  masterP sched)
+                         ]
+      -- res <- schedStep masterP msg sched
       case res of
         -- FIXME: terminate remaining processes
         Failure   e -> terminateAll (process sched) >> return Nothing
