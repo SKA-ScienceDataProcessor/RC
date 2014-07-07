@@ -62,4 +62,4 @@ Executable single-threaded
   Other-modules:
     DNA.AST
     DNA.SingleThreaded
-    DNA.Utils
+    DNA.Util

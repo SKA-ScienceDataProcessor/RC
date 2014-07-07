@@ -18,7 +18,9 @@ import qualified Data.Vector.Storable as S
 data DNA a where
   DotProduct :: DNA (DVector Double) -> DNA (DVector Double) -> DNA Double
   ReadFile   :: FilePath -> DNA (DVector Double)
-  Generate   :: Int      -> DNA (DVector Double)
+  FileLength :: FilePath -> DNA Int
+  Generate   :: DNA Int  -> DNA (DVector Double)
+  Literal    :: a -> DNA a
   deriving Typeable
 
 -- | Distributed vector

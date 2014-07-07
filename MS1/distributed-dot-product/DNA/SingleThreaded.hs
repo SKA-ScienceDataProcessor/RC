@@ -17,6 +17,9 @@ interpret (DotProduct a b) = do
   return $ S.sum $ S.zipWith (*) va vb
 interpret (ReadFile fname) = do
   DVector <$> readPackedFile fname
-interpret (Generate n) = do
+interpret (FileLength fname) = do
+  packedFileSize fname
+interpret (Generate exprN) = do
+  n <- interpret exprN
   return $ DVector $ S.generate n (const 1)
-
+interpret (Literal a) = return a
