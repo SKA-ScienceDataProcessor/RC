@@ -1,0 +1,37 @@
+Name:           actor-graph
+Version:        0.1
+Synopsis:       Graph of actors
+Description:
+  Graph of actors
+
+Cabal-Version:  >= 1.10
+License:        Apache-2.0
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Category:       Data
+Build-Type:     Simple
+
+Executable dot-product
+  Ghc-options:          -Wall -threaded
+  Default-language:	Haskell2010
+  Build-Depends:
+    base         >=3 && <5,
+    bytestring,
+    transformers >= 0.4.1,
+    binary       >= 0.7.2,
+    vector-binary-instances >= 0.2.1.0,
+    vector       >= 0.10,
+    containers, 
+    fgl,
+    time,
+    distributed-process                >= 0.5.0,
+    distributed-process-simplelocalnet >= 0.2.0.9,
+    distributed-process-platform       >= 0.1,
+    distributed-static                 >= 0.2.1
+  Main-is:
+    main.hs
+  Other-modules:
+    Data.HListF
+    Graph.Actor
+    Graph.Graph
