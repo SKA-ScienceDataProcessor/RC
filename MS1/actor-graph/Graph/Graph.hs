@@ -1,3 +1,9 @@
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE OverlappingInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -18,6 +24,7 @@ module Graph.Graph (
   , Conn
   , use
   , connect
+  , Member
   ) where
 
 import Control.Applicative
@@ -230,7 +237,15 @@ use a = do
          )
 
 -- FIXME: ensure statically that types match
-connect :: forall a actor. Typeable a => Conn a -> A actor -> GraphBuilder ()
+connect :: forall a actor. (Typeable a, Member a (Inputs actor))
+        => Conn a -> A actor -> GraphBuilder ()
 connect (Conn idx n) (A node) = do
   GState i ns es <- get
   put $ GState i ns ((n,node,AConn idx (typeOf (undefined :: a))) : es)
+
+-- | Class which tells that /x/ is element in the type level list /xs/
+class Member (x :: *) (xs :: [*])
+
+-- Implementation uses overlapping instances
+instance                Member x (x ': xs)
+instance Member x xs => Member x (y ': xs)
