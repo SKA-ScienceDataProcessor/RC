@@ -18,8 +18,8 @@ module Graph.Actor (
     -- * Extra data types
   , Channels(..)
   , Remote(..)
-  , ActorHandler(..)
-  , ActorHandlers
+  , MsgHandler(..)
+  , ActorHandlers(..)
   , Conn(..)
   ) where
 
@@ -103,10 +103,15 @@ data Channels a = Channels (SendPort a) (ReceivePort a)
 newtype Remote a = Remote ProcessId
                    deriving (Typeable)
 
--- | Single handler for actor
-newtype ActorHandler s outs i = ActorHandler (HListF outs SendPort -> i -> s -> Process s)
+-- | Handler for incoming message of type /i/. /s/ is state of actor
+--   and /outs/ is list of outputs
+newtype MsgHandler s outs i = MsgHandler (HListF outs SendPort -> i -> s -> Process s)
 
-type ActorHandlers a = HListF (Inputs a) (ActorHandler (ActorState a) (Outputs a))
+-- | Handlers for actor /a/. It could be either list of handlers or
+--   action or action to perform
+data ActorHandlers a
+  = StateMachine (HListF (Inputs a) (MsgHandler (ActorState a) (Outputs a)))
+  | Source       (ActorState a -> Process (Maybe (ActorState a)))
 
 -- | Phantom typed connection info
 data Conn a = Conn Int Node

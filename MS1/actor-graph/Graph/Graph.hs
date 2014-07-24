@@ -141,10 +141,15 @@ runActor master actor = do
         ]
   outs <- loop $ mapF (\(Remote a) -> Compose (Left a)) remotes
   --
-  let aloop s = do
-        act <- receiveWait $ monomorphize
-                 (\(ActorHandler f) -> match (return . f outs))  handlers
-        aloop =<< act s
+  let aloop s =
+        case handlers of
+          StateMachine h -> do
+            act <- receiveWait $ monomorphize
+                     (\(MsgHandler f) -> match (return . f outs)) h
+            aloop =<< act s
+          Source step -> do ms <- step s
+                            case ms of Nothing -> return ()
+                                       Just s' -> aloop s'
   aloop =<< initS
 
 sendConnection :: GetPort -> HListF xs Channels -> Process ()
