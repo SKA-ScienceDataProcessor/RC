@@ -1,0 +1,95 @@
+Current directory: /home/hpcsriv1/jaya/git_24July/RC/MS1/assignment/d1
+JobID: 536996
+======
+Time: Fri Jul 25 20:53:27 BST 2014
+Running on master node: tesla93
+perl: warning: Setting locale failed.
+perl: warning: Please check that your locale settings:
+	LANGUAGE = (unset),
+	LC_ALL = (unset),
+	LC_CTYPE = "UTF-8",
+	LANG = "en_US.UTF-8"
+    are supported and installed on your system.
+perl: warning: Falling back to the standard locale ("C").
+
+Nodes allocated:
+================
+tesla93 tesla94 tesla95 tesla96
+dna_check_rc performed!!
+Generating CAD File
+============
+
+tesla93:6010 tesla94:6011 tesla95:6012 tesla96:6013
+generatingCADFile performed!!
+md5sum performed!!
+
+============
+CH Process initiated
+============
+
+Skip Master node IP
+============
+
+Sleeping for 2 secs!!
+
+============
+Starting Slave==<10.143.60.94>=====<6011>=====
+============
+
+cloud: bind: resource busy (Address already in use)
+cloud: bind: resource busy (Address already in use)
+cloud: bind: resource busy (Address already in use)
+srun: error: tesla94: tasks 0-1,3: Exited with exit code 1
+Sleeping for 2 secs!!
+
+============
+Starting Slave==<10.143.60.95>=====<6012>=====
+============
+
+cloud: bind: resource busy (Address already in use)
+cloud: bind: resource busy (Address already in use)
+cloud: bind: resource busy (Address already in use)
+srun: error: tesla95: tasks 0-1,3: Exited with exit code 1
+Sleeping for 2 secs!!
+
+============
+Starting Slave==<10.143.60.96>=====<6013>=====
+============
+
+cloud: bind: resource busy (Address already in use)
+cloud: bind: resource busy (Address already in use)
+cloud: bind: resource busy (Address already in use)
+srun: error: tesla96: tasks 0,2-3: Exited with exit code 1
+Sleeping for 2 secs!!
+
+============
+Starting Master====<10.143.60.93>=====<6010>=====
+============
+
+cloud: bind: resource busy (Address already in use)
+cloud: bind: resource busy (Address already in use)
+cloud: bind: resource busy (Address already in use)
+srun: error: tesla93: tasks 0,2-3: Exited with exit code 1
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.93:6010:0:3: [Master] : Master Initiated !! :pid://10.143.60.93:6010:0:3
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.93:6010:0:3: [Master] : Spawning CH process on Collector Node :nid://10.143.60.94:6011:0
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.93:6010:0:3: --------------------------------------------------------------------------------------
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.93:6010:0:3: [Master] : Spawning CH process on Compute Node :nid://10.143.60.95:6012:0
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.93:6010:0:3: [Master] : Spawning CH process on Compute Node :nid://10.143.60.96:6013:0
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.95:6012:0:4: [Compute] : Waiting for master!! :pid://10.143.60.95:6012:0:4
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.94:6011:0:4: [Collector] : Waiting for master!! : pid://10.143.60.94:6011:0:4
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.94:6011:0:4: [Collector] : Ready for further computation :pid://10.143.60.94:6011:0:4
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.93:6010:0:3: [Master-Compute] : Received Ack for further computation from Compute :pid://10.143.60.94:6011:0:4
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.96:6013:0:4: [Compute] : Waiting for master!! :pid://10.143.60.96:6013:0:4
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.95:6012:0:4: [Compute] : sumOnComputeNode : 25.0 at pid://10.143.60.95:6012:0:4
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.95:6012:0:4: [Compute] : Sending results to Controller : pid://10.143.60.94:6011:0:4
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.93:6010:0:3: [Master-Compute] : Received Ack for further computation from Compute :pid://10.143.60.95:6012:0:4
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.94:6011:0:4: [Collector]: RESULT : 25.0 from Compute Node : nid://10.143.60.95:6012:0 
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.96:6013:0:4: [Compute] : sumOnComputeNode : 4.441456022254609e-306 at pid://10.143.60.96:6013:0:4
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.96:6013:0:4: [Compute] : Sending results to Controller : pid://10.143.60.94:6011:0:4
+Fri Jul 25 19:53:38 UTC 2014 pid://10.143.60.94:6011:0:4: [Collector]: RESULT : 4.441456022254609e-306 from Compute Node : nid://10.143.60.96:6013:0 
+
+============
+CH Process initiation completed
+============
+
+startingCHprocess performed!!
