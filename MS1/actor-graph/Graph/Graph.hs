@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -25,6 +26,9 @@ module Graph.Graph (
   , use
   , connect
   , Member
+    -- * Static
+  , staticRunActor
+  ,  __remoteTable
   ) where
 
 import Control.Applicative (Applicative(..),(<$>))
@@ -32,18 +36,20 @@ import Control.Monad
 import Control.Monad.Trans.State.Strict
 import Control.Concurrent (threadDelay)
 import Control.Distributed.Process
+import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Serializable
+import Control.Distributed.Static
 
 import Data.Binary (Binary)
 import qualified Data.Binary     as Binary
 import qualified Data.Binary.Put as Binary
 import qualified Data.Binary.Get as Binary
+import Data.ByteString.Lazy (ByteString)
 import Data.Typeable
 import Data.Functor.Compose
 import Data.Functor.Identity
 import Data.Graph.Inductive.Graph hiding (match)
 import Data.Graph.Inductive.PatriciaTree
-import qualified Data.IntMap as IntMap
 import qualified Data.Foldable as T
 import qualified Data.Set    as Set
 
@@ -108,6 +114,8 @@ runActorGraph gr = do
   --
   -- FIXME: we want to set up some monitoring of actors
   forever $ liftIO $ threadDelay 1000000
+
+
 
 
 -- Start actors and assign
@@ -282,6 +290,7 @@ instance                Member x (x ': xs)
 instance Member x xs => Member x (y ': xs)
 
 
+
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
@@ -292,3 +301,23 @@ nmapM f = ufold step (return empty)
     step (p,v,a,s) mgr = do gr <- mgr
                             b  <- f a
                             return $ (p,v,b,s) & gr
+
+
+
+----------------------------------------------------------------
+-- Static
+----------------------------------------------------------------
+
+staticRun :: forall a. ActorDict a -> ByteString -> Process ()
+staticRun ActorDict bs
+  = runActor pid a
+  where
+    (pid,a :: a) = Binary.decode bs
+
+remotable [ 'staticRun
+          ]
+
+staticRunActor :: Serializable a
+               => Static (ActorDict a) -> ProcessId -> a -> Closure (Process ())
+staticRunActor sdict pid a
+  = closure ($(mkStatic 'staticRun) `staticApply` sdict) (Binary.encode (pid,a))

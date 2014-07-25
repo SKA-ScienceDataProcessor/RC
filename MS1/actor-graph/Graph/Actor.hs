@@ -62,6 +62,7 @@ class ( Connectable  (Outputs a)
 -- | Reification of actor dictionary
 data ActorDict a where
   ActorDict :: Actor a => ActorDict a
+  deriving (Typeable)
 
 -- | Type class which means that for every type in the list we can
 --   create channel for each type.
