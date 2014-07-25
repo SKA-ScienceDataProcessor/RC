@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
@@ -25,6 +26,7 @@ module Graph.Actor (
 
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
+import Data.Binary (Binary)
 import Data.Typeable
 import Data.Graph.Inductive (Node)
 
@@ -39,6 +41,7 @@ import Data.HListF
 class ( Connectable  (Outputs a)
       , AllocChans   (Inputs a)
       , Serializable (HListF (Outputs a) Remote)
+      , Typeable a
       ) => Actor a where
   -- | List of input types for the actor. We assume that they are
   --   unique since we dispatch by type. It's however not enforced.
@@ -101,7 +104,7 @@ data Channels a = Channels (SendPort a) (ReceivePort a)
 
 -- | Wrapper for remote ID
 newtype Remote a = Remote ProcessId
-                   deriving (Typeable)
+                   deriving (Typeable,Binary)
 
 -- | Handler for incoming message of type /i/. /s/ is state of actor
 --   and /outs/ is list of outputs
@@ -111,7 +114,7 @@ newtype MsgHandler s outs i = MsgHandler (HListF outs SendPort -> i -> s -> Proc
 --   action or action to perform
 data ActorHandlers a
   = StateMachine (HListF (Inputs a) (MsgHandler (ActorState a) (Outputs a)))
-  | Source       (ActorState a -> Process (Maybe (ActorState a)))
+  | Source       (HListF (Outputs a) SendPort -> ActorState a -> Process (Maybe (ActorState a)))
 
 -- | Phantom typed connection info
 data Conn a = Conn Int Node

@@ -53,6 +53,7 @@ import Data.HListF
 import Graph.Actor
 
 
+
 ----------------------------------------------------------------
 -- Graph data types
 ----------------------------------------------------------------
@@ -64,9 +65,13 @@ type ActorGraph = Gr ANode AConn
 data ANode where
   ANode :: Actor a => a -> ANode
 
+instance Show ANode where
+  show (ANode a) = "ANode:(" ++ show (typeOf a) ++ ")"
+
 -- | Connection of actor. We store both type signature and position in
 --   output list of outgoing node
 data AConn = AConn Int TypeRep
+             deriving Show
 
 
 ----------------------------------------------------------------
@@ -115,15 +120,21 @@ runActor master actor = do
   (initS,handlers) <- startActor actor
   -- Allocate channels for receiving messages
   inputs  <- allocChans :: Process (HListF (Inputs a) Channels)
-  -- Get list of connections. Here we send it as list of PIDs because
-  -- defining Typeable for HListF is way to troublesome (It's no
-  -- problem in 7.8 though)
+  -- Get list of connections and send connection requests to other
+  -- actors
   remotes <- expect :: Process (HListF (Outputs a) Remote)
+  iforHListF remotes $ \i r@(Remote conn) ->
+    send conn (GetPort (getFingerprint r) i me)
+  -- If actor have no outgoing connections it's ready and we send
+  -- message immediately since we'll never get connection request
+  case remotes of
+    NilF -> send master (Initialized me)
+    _    -> return ()
   -- Enter first loop where we establish connection
   let loop outs = receiveWait
           -- We received message to start. By that point all
           -- connections should be established and we should receive
-        [ match $ \Start ->
+        [ match $ \Start -> do
             case sequenceHListF outs of
               Right o -> return o
               Left  _ -> error "Internal error"
@@ -141,19 +152,26 @@ runActor master actor = do
         ]
   outs <- loop $ mapF (\(Remote a) -> Compose (Left a)) remotes
   --
+  say $ "actor " ++ show (typeOf actor) ++ " started"
+  say $ show $ monomorphize (\(Channels c _) -> show c) inputs
+  say $ show $ monomorphize show outs
+  -- let handlers = monomorphize2 (\(MsgHandler h) (Channels _ p) ->
+                   -- ) 
   let aloop s =
         case handlers of
           StateMachine h -> do
-            act <- receiveWait $ monomorphize
-                     (\(MsgHandler f) -> match (return . f outs)) h
+            act <- receiveWait $ monomorphize2
+                     (\(MsgHandler f) (Channels _ port) -> matchChan port (\a -> return (f outs a))
+                     ) h inputs
             aloop =<< act s
-          Source step -> do ms <- step s
+          Source step -> do ms <- step outs s
+                            say "Sending"
                             case ms of Nothing -> return ()
                                        Just s' -> aloop s'
   aloop =<< initS
 
 sendConnection :: GetPort -> HListF xs Channels -> Process ()
-sendConnection _ NilF = error "sendConnection: unknown connection type"
+sendConnection _ NilF = say "OOPS" >> error "sendConnection: unknown connection type"
 sendConnection port@(GetPort fp i pid) (ConsF (Channels p _) xs)
   | fp == fpx = send pid $ Connection i (wrapMessage p)
   | otherwise = sendConnection port xs
@@ -199,6 +217,10 @@ instance Binary Start
 -- | Request for SendPort. It include type of messages being sent and position of
 data GetPort = GetPort Fingerprint Int ProcessId
              deriving (Typeable,Generic)
+
+instance Show GetPort where
+  show (GetPort fp i p) = "(GetPort " ++ showFingerprint fp "" ++ " " ++ show i ++ " " ++ show p ++ ")"
+
 instance Binary GetPort where
   put (GetPort f i p)
     = Binary.putByteString (encodeFingerprint f) >> Binary.put i >> Binary.put p
@@ -209,7 +231,7 @@ instance Binary GetPort where
 
 -- | Return SendPort wrapped as a message.
 data Connection = Connection Int Message
-                deriving (Typeable,Generic)
+                deriving (Typeable,Generic,Show)
 instance Binary Connection
 
 

@@ -14,9 +14,11 @@ module Data.HListF (
     -- * Generic functions
   , sequenceHListF
   , monomorphize
+  , monomorphize2
   , mapF
   , forHListF
   , iforHListF
+  , zipHListF
   ) where
 
 import Control.Applicative
@@ -76,6 +78,12 @@ monomorphize :: (forall a. Serializable a => f a -> x) -> HListF xs f -> [x]
 monomorphize _ NilF = []
 monomorphize f (ConsF x xs) = f x : monomorphize f  xs
 
+
+monomorphize2 :: (forall a. Serializable a => f a -> g a -> x) -> HListF xs f -> HListF xs g -> [x]
+monomorphize2 _ NilF NilF= []
+monomorphize2 f (ConsF x xs) (ConsF y ys) = f x y : monomorphize2 f xs ys
+monomorphize2 _ _ _ = error "Impossible"
+
 -- | Change type constructor of list
 mapF :: (forall a. f a -> g a) -> HListF xs f -> HListF xs g
 mapF _ NilF = NilF
@@ -102,3 +110,11 @@ iforHListF = go 0
     go :: Monad m => Int -> HListF xs f -> (forall a. Serializable a => Int -> f a -> m ()) -> m ()
     go _  NilF        _ = return ()
     go i (ConsF x xs) f = f i x >> go (i+1) xs f
+
+zipHListF :: (forall a. f a -> g a -> h a)
+          -> HListF xs f
+          -> HListF xs g
+          -> HListF xs h
+zipHListF _ NilF NilF = NilF
+zipHListF f (x `ConsF` xs) (y `ConsF` ys) = f x y `ConsF` zipHListF f xs ys
+zipHListF _ _ _ = error "Impossible"
