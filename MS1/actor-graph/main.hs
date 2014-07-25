@@ -26,8 +26,8 @@ instance (Show a, Serializable a) => Actor (Printer a) where
   type ActorState (Printer a) = ()
   startActor _ = return ( return ()
                         , StateMachine
-                        $ ConsF (MsgHandler $ \_ a _ -> say $ "*** " ++ show a)
-                          NilF
+                        $ (MsgHandler $ \_ a _ -> say $ "*** " ++ show a)
+                        :. Nil
                         )
 
 
@@ -41,7 +41,7 @@ instance (Show a, Serializable a) => Actor (Src a) where
   type ActorState (Src a) = [a]
   startActor (Src list) = return
     ( return list
-    , Source $ \(ConsF port NilF) as -> case as of
+    , Source $ \(port :. Nil) as -> case as of
         []   -> return Nothing
         x:xs -> sendChan port x >> return (Just xs) 
     )
@@ -57,6 +57,6 @@ main = do
   startMaster backend $ \_ -> do
     say "Started"
     runActorGraph $ runGraphBuilder $ do
-      (p, NilF)          <- use (Printer :: Printer Int)
-      (_, ConsF cS NilF) <- use (Src [1 .. 10::Int])
+      (p, Nil)       <- use (Printer :: Printer Int)
+      (_, cS :. Nil) <- use (Src [1 .. 10::Int])
       connect cS p

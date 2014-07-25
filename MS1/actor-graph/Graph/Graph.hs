@@ -129,7 +129,7 @@ runActor master actor = do
   -- If actor have no outgoing connections it's ready and we send
   -- message immediately since we'll never get connection request
   case remotes of
-    NilF -> send master (Initialized me)
+    Nil -> send master (Initialized me)
     _    -> return ()
   -- Enter first loop where we establish connection
   let loop outs = receiveWait
@@ -167,8 +167,8 @@ runActor master actor = do
   aloop =<< initS
 
 sendConnection :: GetPort -> HListF xs Channels -> Process ()
-sendConnection _ NilF = say "OOPS" >> error "sendConnection: unknown connection type"
-sendConnection port@(GetPort fp i pid) (ConsF (Channels p _) xs)
+sendConnection _ Nil = say "OOPS" >> error "sendConnection: unknown connection type"
+sendConnection port@(GetPort fp i pid) (Channels p _ :. xs)
   | fp == fpx = send pid $ Connection i (wrapMessage p)
   | otherwise = sendConnection port xs
   where
@@ -179,14 +179,14 @@ sendConnection port@(GetPort fp i pid) (ConsF (Channels p _) xs)
 setConnection :: Connection
               -> HListF xs (Either ProcessId `Compose` SendPort)
               -> HListF xs (Either ProcessId `Compose` SendPort)
-setConnection (Connection 0 msg) (ConsF (Compose x) xs) =
+setConnection (Connection 0 msg) (Compose x :. xs) =
   case x of
     Right _ -> error "setConnection: connection is already established"
     Left _  -> case runIdentity $ unwrapMessage msg of
                  Nothing -> error "oops!"
-                 Just  p -> ConsF (Compose (Right p)) xs
-setConnection (Connection n msg) (ConsF x xs)
-  = ConsF x $ setConnection (Connection (n-1) msg) xs
+                 Just  p -> Compose (Right p) :. xs
+setConnection (Connection n msg) (x :. xs)
+  = x :. setConnection (Connection (n-1) msg) xs
 setConnection _ _
   = error "setConnection: No such index"
 

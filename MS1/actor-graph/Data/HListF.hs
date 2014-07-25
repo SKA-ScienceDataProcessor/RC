@@ -33,16 +33,18 @@ import Data.Functor.Compose
 --
 --   Here we carry Serializable dictionary for every element
 data HListF xs f where
-  ConsF :: (Serializable x) => f x -> HListF xs f -> HListF (x ': xs) f
-  NilF  :: HListF '[] f
+  (:.) :: (Serializable x) => f x -> HListF xs f -> HListF (x ': xs) f
+  Nil  :: HListF '[] f
+infixr 5 :.
+
 
 instance Binary (HListF '[] f) where
-  get      = return NilF
-  put NilF = return ()
+  get      = return Nil
+  put Nil = return ()
 
 instance (Binary (f x), Binary x, Typeable x,  Binary (HListF xs f)) => Binary (HListF (x ': xs) f) where
-  get = ConsF <$> get <*> get
-  put (ConsF x xs) = put x >> put xs
+  get = (:.) <$> get <*> get
+  put (x :. xs) = put x >> put xs
 
 data Proxy a = Proxy
 
@@ -68,26 +70,26 @@ instance (Typeable1 f, TypeableList xs) => Typeable (HListF xs f) where
 
 -- | Float outermost monad out. It's similar to 'Control.Monad.sequence'
 sequenceHListF :: Monad m => HListF xs (m `Compose` f) -> m (HListF xs f)
-sequenceHListF NilF = return NilF
-sequenceHListF (ConsF (Compose m) rest) = do
+sequenceHListF Nil = return Nil
+sequenceHListF (Compose m :. rest) = do
   x  <- m
   xs <- sequenceHListF rest
-  return $ ConsF x xs
+  return $ x :. xs
 
 monomorphize :: (forall a. Serializable a => f a -> x) -> HListF xs f -> [x]
-monomorphize _ NilF = []
-monomorphize f (ConsF x xs) = f x : monomorphize f  xs
+monomorphize _ Nil = []
+monomorphize f (x :. xs) = f x : monomorphize f  xs
 
 
 monomorphize2 :: (forall a. Serializable a => f a -> g a -> x) -> HListF xs f -> HListF xs g -> [x]
-monomorphize2 _ NilF NilF= []
-monomorphize2 f (ConsF x xs) (ConsF y ys) = f x y : monomorphize2 f xs ys
+monomorphize2 _ Nil Nil= []
+monomorphize2 f (x :. xs) (y :. ys) = f x y : monomorphize2 f xs ys
 monomorphize2 _ _ _ = error "Impossible"
 
 -- | Change type constructor of list
 mapF :: (forall a. f a -> g a) -> HListF xs f -> HListF xs g
-mapF _ NilF = NilF
-mapF f (ConsF x xs) = f x `ConsF` mapF f xs
+mapF _ Nil = Nil
+mapF f (x :. xs) = f x :. mapF f xs
 
 
 -- | Execute monadic action for every element in list
@@ -95,8 +97,8 @@ forHListF :: Monad m
           => HListF xs f
           -> (forall a. Serializable a => f a -> m ())
           -> m ()
-forHListF  NilF        _ = return ()
-forHListF (ConsF x xs) f = f x >> forHListF xs f
+forHListF  Nil        _ = return ()
+forHListF (x :. xs) f = f x >> forHListF xs f
 
 
 -- | Execute monadic action which takes element index as well for
@@ -108,13 +110,13 @@ iforHListF :: Monad m
 iforHListF = go 0
   where
     go :: Monad m => Int -> HListF xs f -> (forall a. Serializable a => Int -> f a -> m ()) -> m ()
-    go _  NilF        _ = return ()
-    go i (ConsF x xs) f = f i x >> go (i+1) xs f
+    go _  Nil        _ = return ()
+    go i (x :. xs) f = f i x >> go (i+1) xs f
 
 zipHListF :: (forall a. f a -> g a -> h a)
           -> HListF xs f
           -> HListF xs g
           -> HListF xs h
-zipHListF _ NilF NilF = NilF
-zipHListF f (x `ConsF` xs) (y `ConsF` ys) = f x y `ConsF` zipHListF f xs ys
+zipHListF _ Nil Nil = Nil
+zipHListF f (x :. xs) (y :. ys) = f x y :. zipHListF f xs ys
 zipHListF _ _ _ = error "Impossible"

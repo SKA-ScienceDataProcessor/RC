@@ -63,12 +63,12 @@ class AllocChans xs where
   allocChans :: Process (HListF xs Channels)
 
 instance AllocChans '[] where
-  allocChans = return NilF
+  allocChans = return Nil
 
 instance (Serializable x,AllocChans xs) => AllocChans (x ': xs) where
   allocChans = do (sp,rp) <- newChan
                   rest    <- allocChans
-                  return $ ConsF (Channels sp rp) rest
+                  return $ Channels sp rp :. rest
 
 
 -- | Type class for constructing table connection
@@ -78,15 +78,15 @@ class Connectable xs where
 
 
 instance Connectable '[] where
-  doBuildeConnections _ _ = Just NilF
-  doGraphConnections  _ _ = NilF
+  doBuildeConnections _ _ = Just Nil
+  doGraphConnections  _ _ = Nil
 
 instance (Serializable x, Connectable xs) => Connectable (x ': xs) where
   doBuildeConnections off pids = do
     x  <- off `lookup` pids
     xs <- doBuildeConnections (off+1) pids
-    return $ Remote x `ConsF` xs
-  doGraphConnections n i = Conn i n `ConsF` doGraphConnections n (i+1)
+    return $ Remote x :. xs
+  doGraphConnections n i = Conn i n :. doGraphConnections n (i+1)
 
 buildConnections :: Connectable xs => [(Int,ProcessId)] -> Maybe (HListF xs Remote)
 buildConnections = doBuildeConnections 0
