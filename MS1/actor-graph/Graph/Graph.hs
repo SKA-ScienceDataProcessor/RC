@@ -118,14 +118,14 @@ startActors = nmapM $ \n@(ANode a) -> do
   return (pid,n)
 
 
--- | Start actor execution. We send list of its connections as message
---   since we can't
+-- | Start actor execution.
 runActor :: forall a. Actor a
          => ProcessId           -- PID of master process
          -> a                   -- Actor state
          -> Process ()
 runActor master actor = do
   me               <- getSelfPid
+  -- Obtain information for actor execution
   (initS,handlers) <- startActor actor
   -- Allocate channels for receiving messages
   inputs  <- allocChans :: Process (HListF (Inputs a) Channels)
@@ -138,7 +138,7 @@ runActor master actor = do
   -- message immediately since we'll never get connection request
   case remotes of
     Nil -> send master (Initialized me)
-    _    -> return ()
+    _   -> return ()
   -- Enter first loop where we establish connection
   let loop outs = receiveWait
           -- We received message to start. By that point all

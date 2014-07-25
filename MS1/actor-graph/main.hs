@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds    #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -19,8 +20,10 @@ import Graph.Actor
 import Graph.Graph
 
 ----------------------------------------------------------------
+-- Primitive actors
+----------------------------------------------------------------
 
--- Simple actor which prints to stdout everything it gets
+-- | Simple actor which prints to stdout everything it gets
 data Printer a = Printer
                  deriving (Show,Typeable,Generic)
 instance Binary (Printer a)
@@ -36,7 +39,7 @@ instance (Show a, Serializable a, Typeable a) => Actor (Printer a) where
                         )
 
 
--- Simple data source
+-- | Simple data source. Could be used for testing
 data Src a = Src [a]
            deriving (Show,Typeable,Generic)
 instance Binary a => Binary (Src a)
@@ -49,14 +52,46 @@ instance (Show a, Serializable a) => Actor (Src a) where
     ( return list
     , Source $ \(port :. Nil) as -> case as of
         []   -> return Nothing
-        x:xs -> sendChan port x >> return (Just xs) 
+        x:xs -> sendChan port x >> return (Just xs)
     )
+
+
+----------------------------------------------------------------
+-- Dot-product related actors
+----------------------------------------------------------------
+
+-- | Worker for dot product
+data DotWorker = DotWorker
+                 deriving (Show,Typeable,Generic)
+instance Binary DotWorker
+
+instance Actor DotWorker where
+  type Inputs     DotWorker = '[Input (Int,Int)]
+  type Outputs    DotWorker = '[Result Double]
+  type ActorState DotWorker = ()
+  startActor _ = return
+    ( return ()
+    , StateMachine
+    $ (MsgHandler $ \(r :. Nil) (Input (i1,i2)) _ -> return ())
+    :. Nil
+    )
+
+newtype Result a = Result a
+                   deriving (Show,Typeable,Generic,Binary)
+
+newtype Input a = Input a
+                deriving (Show,Typeable,Generic,Binary)
+
+data Terminate = Terminate
+                   deriving (Show,Typeable,Generic)
+
+instance Binary Terminate
 
 
 ----------------------------------------------------------------
 
 
-  
+
 main :: IO ()
 main = do
   backend <- initializeBackend "localhost" "8001" initRemoteTable
