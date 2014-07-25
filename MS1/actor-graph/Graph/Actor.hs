@@ -12,6 +12,7 @@
 module Graph.Actor (
     -- * Type classes
     Actor(..)
+  , ActorDict(..)
   , AllocChans(..)
   , Connectable
   , buildConnections
@@ -42,6 +43,7 @@ class ( Connectable  (Outputs a)
       , AllocChans   (Inputs a)
       , Serializable (HListF (Outputs a) Remote)
       , Typeable a
+      , Binary a
       ) => Actor a where
   -- | List of input types for the actor. We assume that they are
   --   unique since we dispatch by type. It's however not enforced.
@@ -56,6 +58,10 @@ class ( Connectable  (Outputs a)
                              , ActorHandlers a
                              )
 
+
+-- | Reification of actor dictionary
+data ActorDict a where
+  ActorDict :: Actor a => ActorDict a
 
 -- | Type class which means that for every type in the list we can
 --   create channel for each type.

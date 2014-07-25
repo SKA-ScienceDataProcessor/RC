@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds    #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric      #-}
 module Main(main) where
 
 import Control.Distributed.Process
@@ -9,7 +10,10 @@ import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Backend.SimpleLocalnet
 import Control.Distributed.Process.Node (initRemoteTable)
 
-import Data.Typeable
+import Data.Binary   (Binary)
+import Data.Typeable (Typeable)
+import GHC.Generics  (Generic)
+
 import Data.HListF
 import Graph.Actor
 import Graph.Graph
@@ -18,9 +22,10 @@ import Graph.Graph
 
 -- Simple actor which prints to stdout everything it gets
 data Printer a = Printer
-                 deriving (Show,Typeable)
+                 deriving (Show,Typeable,Generic)
+instance Binary (Printer a)
 
-instance (Show a, Serializable a) => Actor (Printer a) where
+instance (Show a, Serializable a, Typeable a) => Actor (Printer a) where
   type Inputs     (Printer a) = '[a]
   type Outputs    (Printer a) = '[]
   type ActorState (Printer a) = ()
@@ -33,7 +38,8 @@ instance (Show a, Serializable a) => Actor (Printer a) where
 
 -- Simple data source
 data Src a = Src [a]
-           deriving (Show,Typeable)
+           deriving (Show,Typeable,Generic)
+instance Binary a => Binary (Src a)
 
 instance (Show a, Serializable a) => Actor (Src a) where
   type Inputs     (Src a) = '[]

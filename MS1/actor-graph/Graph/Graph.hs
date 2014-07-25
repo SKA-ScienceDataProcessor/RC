@@ -27,7 +27,7 @@ module Graph.Graph (
   , Member
   ) where
 
-import Control.Applicative
+import Control.Applicative (Applicative(..),(<$>))
 import Control.Monad
 import Control.Monad.Trans.State.Strict
 import Control.Concurrent (threadDelay)
@@ -76,38 +76,46 @@ data AConn = AConn Int TypeRep
 
 ----------------------------------------------------------------
 -- Executing graph
---
--- First step is to convert explicit graph to implicit where all connection info is stored in
 ----------------------------------------------------------------
 
--- | Start actor graph execution
+-- | Start execution of actor graph.
 runActorGraph :: ActorGraph ->Process ()
 runActorGraph gr = do
-  me <- getSelfPid
   say $ "GRAPH:\n" ++ (prettify gr)
-  -- Start actor for every node in the graph
-  actors <- fmap IntMap.fromList $ forM (nodes gr) $ \n -> do
-    pid <- spawnLocal $ case lab' $ context gr n of
-                          ANode a -> runActor me a
-    return (n,pid)
-  -- Send connection info to each of the actors
-  forM_ (IntMap.toList actors) $ \(n,pid) -> do
-    let remotes = [ (i, actors IntMap.! i)
-                  | (_,AConn i _) <- lsuc' $ context gr n
-                  ]
-    case lab' $ context gr n of
-      ANode (_ :: a) ->
+  -- Start actor for every node in the graph. Their PIDs are stored in
+  -- nodes of new graph.
+  runGr <- startActors gr
+  -- Send connection info to each of the actors. To need to start
+  -- processes first otherwise we can't build connection network
+  forM_ (nodes runGr) $ \n -> do
+    let cxt         = context runGr n
+        (pid,anode) = lab' cxt
+        remotes     = [ (i, pid) | (_,AConn i _) <- lsuc' cxt]
+    case anode of
+      ANode (_::a) ->
         case buildConnections remotes :: Maybe (HListF (Outputs a) Remote) of
           Nothing -> error "Bad connections"
           Just  p -> send pid p
-  -- Wait until all actors are ready
+  -- Wait until all actors are ready. When all actors establish
+  -- connections we send Start message to each of them
   let readyLoop pending ready
         | Set.null pending = T.forM_ ready $ \p -> send p Start
         | otherwise        = do Initialized p <- expect
                                 readyLoop (Set.delete p pending) (Set.insert p ready)
-  readyLoop (Set.fromList $ T.toList actors) Set.empty
+  readyLoop (Set.fromList [ pid | (pid,_) <- map (lab' . context runGr) (nodes runGr)])
+             Set.empty
   -- Stuck here forever
+  --
+  -- FIXME: we want to set up some monitoring of actors
   forever $ liftIO $ threadDelay 1000000
+
+
+-- Start actors and assign
+startActors :: ActorGraph -> Process (Gr (ProcessId,ANode) AConn)
+startActors = nmapM $ \n@(ANode a) -> do
+  me  <- getSelfPid
+  pid <- spawnLocal $ runActor me a
+  return (pid,n)
 
 
 -- | Start actor execution. We send list of its connections as message
@@ -272,3 +280,15 @@ class Member (x :: *) (xs :: [*])
 -- Implementation uses overlapping instances
 instance                Member x (x ': xs)
 instance Member x xs => Member x (y ': xs)
+
+
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
+
+nmapM :: Monad m => (a -> m b) -> Gr a c -> m (Gr b c)
+nmapM f = ufold step (return empty)
+  where
+    step (p,v,a,s) mgr = do gr <- mgr
+                            b  <- f a
+                            return $ (p,v,b,s) & gr
