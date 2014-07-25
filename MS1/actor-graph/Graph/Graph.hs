@@ -84,6 +84,7 @@ data AConn = AConn Int TypeRep
 runActorGraph :: ActorGraph ->Process ()
 runActorGraph gr = do
   me <- getSelfPid
+  say $ "GRAPH:\n" ++ (prettify gr)
   -- Start actor for every node in the graph
   actors <- fmap IntMap.fromList $ forM (nodes gr) $ \n -> do
     pid <- spawnLocal $ case lab' $ context gr n of
@@ -151,23 +152,18 @@ runActor master actor = do
             loop outs'
         ]
   outs <- loop $ mapF (\(Remote a) -> Compose (Left a)) remotes
-  --
-  say $ "actor " ++ show (typeOf actor) ++ " started"
-  say $ show $ monomorphize (\(Channels c _) -> show c) inputs
-  say $ show $ monomorphize show outs
-  -- let handlers = monomorphize2 (\(MsgHandler h) (Channels _ p) ->
-                   -- ) 
-  let aloop s =
-        case handlers of
-          StateMachine h -> do
-            act <- receiveWait $ monomorphize2
-                     (\(MsgHandler f) (Channels _ port) -> matchChan port (\a -> return (f outs a))
-                     ) h inputs
-            aloop =<< act s
-          Source step -> do ms <- step outs s
-                            say "Sending"
-                            case ms of Nothing -> return ()
-                                       Just s' -> aloop s'
+  -- Start main loop
+  say $ "actor `" ++ show (typeOf actor) ++ "' started"
+  let aloop = case handlers of
+        StateMachine h ->
+          let matches = monomorphize2
+                          (\(MsgHandler f) (Channels _ port) -> matchChan port (\a -> return (f outs a))
+                          ) h inputs
+          in \s -> do act <- receiveWait matches
+                      aloop =<< act s
+        Source step -> \s -> do ms <- step outs s
+                                case ms of Nothing -> return ()
+                                           Just s' -> aloop s'
   aloop =<< initS
 
 sendConnection :: GetPort -> HListF xs Channels -> Process ()
