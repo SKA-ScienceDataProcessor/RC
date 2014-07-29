@@ -24,7 +24,7 @@ executable ddp-erlang-style
 
   main-is:             ddp-erlang-style.hs
 
-  Other-modules:       DNA.Channel.File
+  Other-modules:       DNA.Channel.File, DNA.Message
 
   c-sources:           DNA/Channel/channel-file.c
 
