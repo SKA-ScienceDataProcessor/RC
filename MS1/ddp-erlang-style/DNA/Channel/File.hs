@@ -16,7 +16,7 @@ roundUpDiv a b = - div (-a) b
 chunkOffset :: Int -> Int -> Int -> Int
 chunkOffset chunkCount itemCount chunkNo
     | chunkNo > chunkCount || chunkNo < 1 = -1
-    | otherwise = (chunkNo -1 ) * roundUpDiv itemCount chunkCount
+    | otherwise = itemSize * (chunkNo -1 ) * roundUpDiv itemCount chunkCount
 
 
 chunkSize :: Int -> Int -> Int -> Int
@@ -27,7 +27,7 @@ chunkSize cC iC cN
 
 -- read a buffer from a file into pinned memory
 -- arguments: buffer ptr, size, offset, path
-foreign import ccall unsafe "buffer-io.h read_data"
+foreign import ccall unsafe "read_data"
     c_read_data :: Ptr CDouble -> CInt -> CInt -> CString -> IO ()
 
 readData :: Int -> Int -> String -> IO (S.Vector Double)
