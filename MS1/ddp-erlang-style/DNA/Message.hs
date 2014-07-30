@@ -23,6 +23,8 @@ instance Binary DnaPidList
 
 sayDebug :: String -> Process ()
 sayDebug msg = do
+	say msg
+{-
 	logger <- Log.client
 	case logger of
 		Nothing -> do
@@ -38,6 +40,7 @@ sayDebug msg = do
 			r <- resolve cl
 			say $ "cl agent "++show r
 			Log.debug cl (Log.LogText msg)
+-}
 
 
 -- in: name slavePid out: masterPid

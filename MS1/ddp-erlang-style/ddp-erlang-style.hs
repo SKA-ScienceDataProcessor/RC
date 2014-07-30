@@ -21,6 +21,8 @@ import qualified Data.Vector.Storable as S
 import Text.Printf
 import Control.Distributed.Process.Debug
 import qualified Control.Distributed.Process.Platform.Service.SystemLog as Log
+import qualified Control.Distributed.Process.Platform.Time as Time
+import qualified Control.Distributed.Process.Platform.Timer as Timer
 import Data.Binary
 
 import DNA.Channel.File
@@ -51,6 +53,7 @@ spawnCollector pid = do
         (DnaPidList computePids) <- expect
         sum <- dpSum computePids 0
         send masterPID (Result sum)
+	traceMessage "trace message from collector."
 
 data FileVec = FileVec ProcessId (S.Vector Double) deriving (Eq, Show, Typeable, Generic)
 
@@ -88,6 +91,7 @@ spawnCChan n f pid = do
 
 spawnCompute :: (FilePath, Int, Int, Int, ProcessId) -> Process ()
 spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
+	getSelfPid >>= enableTrace
 	computePID <- getSelfPid
 	sayDebug $ printf "[Compute %s] : f:%s iC:%s cS:%s cO:%s coll:%s" (show computePID) file (show itemCount) (show chSize) (show chOffset) (show collectorPID)
         masterPID <- dnaSlaveHandleStart "compute" computePID
@@ -103,6 +107,7 @@ spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
 	sayDebug $ printf "[Compute] : sumOnComputeNode : %s at %s send to %s" (show sumOnComputeNode) (show computePID) (show collectorPID)
 	send collectorPID (PartialSum computePID sumOnComputeNode)
         send masterPID (DnaFinished computePID)
+	traceMessage "trace message from compute."
 
 remotable [ 'spawnCompute, 'spawnCollector]
 
@@ -115,9 +120,33 @@ master backend peers = do
   --        -> Process ProcessId
         logPID <- Log.systemLog (liftIO . putStrLn) (return ()) Log.Debug return
 
+	startTracer $ \ev -> say $ "event: "++show ev
+
+--	startTracer $ \ev -> do
+--		sayDebug $ "evant in tracer: "++show ev
+
+	Timer.sleep (Time.milliSeconds 100)
+
 	masterPID <- getSelfPid
  	say $ printf "[Master %s]" (show masterPID)
 
+	-- enable tracing after all is set up.
+	forM_ peers $ \peer -> do
+		startTraceRelay peer
+		setTraceFlags $ TraceFlags {
+			  traceSpawned = Nothing
+			, traceDied = Nothing
+			, traceRegistered = Nothing
+			, traceUnregistered = Nothing
+			, traceSend = Just TraceAll
+			, traceRecv = Just TraceAll
+			, traceNodes = True
+			, traceConnections = True
+			}
+
+	enableTrace masterPID
+
+	traceMessage "trace message from master"
 
 -- Set up scheduling variables
   	let allComputeNids = tail peers
@@ -136,9 +165,12 @@ master backend peers = do
  	let collectorNid = head peers
         collectorPid <- dnaMasterStartSlave "collector" masterPID collectorNid ($(mkClosure 'spawnCollector) (masterPID))
 
+	enableTrace collectorPid
+
         -- Start compute processes
   	computePids <- forM (zip3 allComputeNids chunkOffsets chunkSizes)  $ \(computeNid,chO,chS) -> do
   		pid <- dnaMasterStartSlave "compute" masterPID computeNid ( $(mkClosure 'spawnCompute) (filePath, chO, chS, itemCount, collectorPid)) 
+		enableTrace pid
                 return pid
 
         -- Send collector computePid's

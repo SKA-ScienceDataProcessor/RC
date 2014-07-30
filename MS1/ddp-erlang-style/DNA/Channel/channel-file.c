@@ -16,5 +16,6 @@ void read_data(double *buf, int n, int o, char *p)
   assert(fd > 0);
   /*  printf("reading %lu bytes at offset %d\n", n* sizeof(double), o); */
   assert( pread(fd, buf, n * sizeof(double), o) == n * sizeof(double) );
+  close(fd);
   return;
 }
