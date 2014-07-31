@@ -36,14 +36,28 @@ instance Binary Result
 filePath :: FilePath
 filePath="float_file.txt"
 
+-- |Collects data from compute processes, looking for
+-- either partial sum result or monitoring messages.
+--
+-- Partial sums are get accumulated.
+--
+-- Monitoring notifications are checked whether process computed
+-- partial sum or not. If process died before any partial sum computation
+-- this process also terminate.
 dpSum :: [ProcessId] -> Double -> Process(Double)
 dpSum [ ] sum = do
       return sum
 dpSum pids sum = do
-      m <- expect
-      case m of 
-           (PartialSum pid s) -> dpSum (filter (/= pid) pids) (s+sum)
-           _ -> say "Something wrong" >> terminate
+	-- here we wait either for message with PartialSum or for message regarding process status.
+	receiveWait
+		[ match $ \(PartialSum pid s) -> dpSum (filter (/= pid) pids) (s+sum)
+		, match $ \(ProcessMonitorNotification _ pid _) ->
+			if pid `elem` pids
+				then do
+					say "process terminated before its contribution to sum."
+					terminate
+				else dpSum pids sum
+		]
 
 spawnCollector :: ProcessId -> Process ()
 spawnCollector pid = do
@@ -51,6 +65,9 @@ spawnCollector pid = do
         masterPID <- dnaSlaveHandleStart "collector" collectorPID
 
         (DnaPidList computePids) <- expect
+
+	-- install monitors for compute processes.
+	forM_ computePids $ \pid -> monitor pid
         sum <- dpSum computePids 0
         send masterPID (Result sum)
 	traceMessage "trace message from collector."
