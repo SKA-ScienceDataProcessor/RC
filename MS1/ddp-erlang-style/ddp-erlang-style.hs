@@ -28,6 +28,8 @@ import Data.Binary
 import DNA.Channel.File
 import DNA.Message
 
+import Cfg
+
 data PartialSum = PartialSum ProcessId Double deriving (Show,Typeable,Generic)
 instance Binary PartialSum
 newtype Result = Result Double deriving (Show,Typeable,Generic)
@@ -213,20 +215,21 @@ main = do
 		["write-tests"] -> do
 			writeFile "start-ddp" $ unlines [
 				  "#!/bin/sh"
-				, "ddp-erlang-style slave localhost 60001 &"
-				, "ddp-erlang-style slave localhost 60002 &"
-				, "ddp-erlang-style slave localhost 60003 &"
+				, executableName++" slave localhost 60001 &"
+				, executableName++" slave localhost 60002 &"
+				, executableName++" slave localhost 60003 &"
 				, "sleep 1"
-				, "ddp-erlang-style master localhost 44440"
+				, executableName++" master localhost 44440"
 				]
 		["write-data", count] -> do
 			return ()
-                _ -> do
-			putStrLn "usage: 'ddp-erlang-style (master|slave) host port"
-			putStrLn "   or: 'ddp-erlang-style write-tests"
-			putStrLn ""
-			putStrLn "'ddp-erlang-style write-tests' will write file 'start-ddp' into current directory."
-			putStrLn "make it executable and run to test the program."
+                _ -> do putStrLn $ unlines [
+				  "usage: '"++executableName++" (master|slave) host port"
+				, "   or: '"++executableName++" write-tests"
+				, ""
+				, "'"++executableName++" write-tests' will write file 'start-ddp' into current directory."
+				, "make it executable and run to test the program."
+				]
 
   where
   	rtable :: RemoteTable
