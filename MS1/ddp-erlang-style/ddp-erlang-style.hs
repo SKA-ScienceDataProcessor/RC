@@ -84,7 +84,7 @@ instance Binary FileVec where
 spawnFChan :: String -> Int -> Int -> ProcessId -> Process()
 spawnFChan path cO cS pid = do
         mypid <- getSelfPid
-	iov <- liftIO $ readData cS cO path
+	iov <- liftIO $ readDataMMap cS cO path
 -- XXX must be an unsafe send to avoid copying
         send pid (FileVec mypid iov)
 

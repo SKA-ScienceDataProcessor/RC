@@ -1,5 +1,7 @@
-module DNA.Channel.File (itemSize, readData, roundUpDiv, chunkOffset, chunkSize) where
+module DNA.Channel.File (itemSize, readData, readDataMMap, roundUpDiv, chunkOffset, chunkSize) where
 
+import Control.Monad
+import Foreign
 import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.C.String
@@ -30,6 +32,11 @@ chunkSize cC iC cN
 foreign import ccall unsafe "read_data"
     c_read_data :: Ptr CDouble -> CInt -> CInt -> CString -> IO ()
 
+-- read a buffer from a file into mmapped memory.
+-- arguments: size (num of elements of double type), offset, path
+foreign import ccall unsafe "read_data_mmap"
+    c_read_data_mmap :: CInt -> CInt -> CString -> IO (Ptr CDouble)
+
 readData :: Int -> Int -> String -> IO (S.Vector Double)
 readData n o p = do
 	mv <- MS.new n :: IO (MS.IOVector Double)
@@ -38,4 +45,10 @@ readData n o p = do
     --     -- and blindly cast pointer
         	withCString p (c_read_data (castPtr ptr) (fromIntegral n) (fromIntegral o))
         S.unsafeFreeze mv
+
+readDataMMap :: Int -> Int -> String -> IO (S.Vector Double)
+readDataMMap n o p = do
+	ptr <- withCString p (c_read_data_mmap (fromIntegral n) (fromIntegral o))
+	fptr <- newForeignPtr_ ptr
+	return $ S.unsafeFromForeignPtr0 (castForeignPtr fptr) n
 
