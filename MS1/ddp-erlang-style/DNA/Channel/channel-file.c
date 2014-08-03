@@ -30,13 +30,26 @@ double* read_data_mmap(int n, int o, char *p)
 
   int real_size = n * sizeof(double);
 
+  int read_size;
+
   double *mapping;
 
+
   fd = open(p, O_RDONLY | __O_DIRECT);
+
   assert(fd > 0);
-  mapping = (double*)mmap(NULL, real_size, PROT_READ, MAP_ANONYMOUS, -1, 0);
+
+  mapping = (double*)mmap(NULL, real_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
   assert(mapping != NULL);
-  assert( pread(fd, (void*)mapping, real_size, o) == real_size);
+
+  read_size= pread(fd, (void*)mapping, real_size, o);
+
+//  printf("mapping %p, n %d, o %d, real_size %d, read_size %d, mapping %p.\n", mapping, n, o, real_size, read_size);
+
+  assert(real_size == read_size);
+
   close(fd);
+
   return mapping;
 }

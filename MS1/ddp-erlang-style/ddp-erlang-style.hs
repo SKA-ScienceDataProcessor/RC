@@ -84,7 +84,7 @@ instance Binary FileVec where
 spawnFChan :: String -> Int -> Int -> ProcessId -> Process()
 spawnFChan path cO cS pid = do
         mypid <- getSelfPid
-	iov <- liftIO $ readDataMMap cS cO path
+	iov <- liftIO $ readData cS cO path
 -- XXX must be an unsafe send to avoid copying
         send pid (FileVec mypid iov)
 
@@ -139,7 +139,7 @@ master backend peers = do
   --        -> Process ProcessId
         logPID <- Log.systemLog (liftIO . putStrLn) (return ()) Log.Debug return
 
-	startTracer $ \ev -> say $ "event: "++show ev
+	--startTracer $ \ev -> say $ "event: "++show ev
 
 --	startTracer $ \ev -> do
 --		sayDebug $ "evant in tracer: "++show ev
@@ -150,22 +150,22 @@ master backend peers = do
  	say $ printf "[Master %s]" (show masterPID)
 
 	-- enable tracing after all is set up.
-	forM_ peers $ \peer -> do
-		startTraceRelay peer
-		setTraceFlags $ TraceFlags {
-			  traceSpawned = Nothing
-			, traceDied = Nothing
-			, traceRegistered = Nothing
-			, traceUnregistered = Nothing
-			, traceSend = Just TraceAll
-			, traceRecv = Just TraceAll
-			, traceNodes = True
-			, traceConnections = True
-			}
+--	forM_ peers $ \peer -> do
+--		startTraceRelay peer
+--		setTraceFlags $ TraceFlags {
+--			  traceSpawned = Nothing
+--			, traceDied = Nothing
+--			, traceRegistered = Nothing
+--			, traceUnregistered = Nothing
+--			, traceSend = Just TraceAll
+--			, traceRecv = Just TraceAll
+--			, traceNodes = True
+--			, traceConnections = True
+--			}
 
-	enableTrace masterPID
+--	enableTrace masterPID
 
-	traceMessage "trace message from master"
+--	traceMessage "trace message from master"
 
 -- Set up scheduling variables
   	let allComputeNids = tail peers
@@ -184,7 +184,9 @@ master backend peers = do
  	let collectorNid = head peers
         collectorPid <- dnaMasterStartSlave "collector" masterPID collectorNid ($(mkClosure 'spawnCollector) (masterPID))
 
-	enableTrace collectorPid
+--	enableTrace collectorPid
+
+	liftIO $ putStrLn "AAAAAAAAAAAAAAAAAAAAAA"
 
         -- Start compute processes
   	computePids <- forM (zip3 allComputeNids chunkOffsets chunkSizes)  $ \(computeNid,chO,chS) -> do
