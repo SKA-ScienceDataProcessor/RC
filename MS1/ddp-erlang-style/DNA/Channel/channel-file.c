@@ -28,22 +28,15 @@ double* read_data_mmap(int n, int o, char *p)
 {
   int fd;
 
-  int page_size = sysconf(_SC_PAGE_SIZE);
-
-  int offset_within_page = (o % page_size);
-
-  int index_within_page = offset_within_page / sizeof(double);
-
-  int page_gran_offset = o - offset_within_page;
-
   int real_size = n * sizeof(double);
 
   double *mapping;
 
   fd = open(p, O_RDONLY | __O_DIRECT);
   assert(fd > 0);
-  mapping = (double*)mmap(NULL, real_size, PROT_READ, MAP_PRIVATE, fd, page_gran_offset);
+  mapping = (double*)mmap(NULL, real_size, PROT_READ, MAP_ANONYMOUS, -1, 0);
   assert(mapping != NULL);
+  assert( pread(fd, (void*)mapping, real_size, o) == real_size);
   close(fd);
-  return &mapping[index_within_page];
+  return mapping;
 }
