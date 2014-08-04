@@ -1,0 +1,13 @@
+#!/bin/sh
+DA=~/.cabal/bin/ddp-erlang-style-SIMD-eventlog
+cp $DA slave1
+cp $DA slave2
+cp $DA slave3
+cp $DA master
+
+./slave1 slave localhost 60001 +RTS -lsgpfu &
+./slave2 slave localhost 60002 +RTS -lsgpfu &
+./slave3 slave localhost 60003 +RTS -lsgpfu &
+sleep 1
+./master master localhost 44440 +RTS -lsgpfu
+rm -f master slave1 slave2 slave3

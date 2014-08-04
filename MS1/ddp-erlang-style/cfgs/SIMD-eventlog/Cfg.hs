@@ -12,7 +12,13 @@ module Cfg
 import Control.Monad
 import Control.Monad.Trans
 
-executableName = "ddp-erlang-style-SIMD"
+import Debug.Trace
+
+executableName = "ddp-erlang-style-SIMD-eventlog"
 
 event :: MonadIO m => String -> m a -> m a
-event _ io = io
+event ev a = do
+	liftIO $ traceEventIO $ "START "++ev
+	r <- a
+	liftIO $ traceEventIO $ "END "++ev
+	return r

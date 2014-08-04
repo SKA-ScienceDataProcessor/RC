@@ -28,7 +28,7 @@ import Data.Binary
 import DNA.Channel.File
 import DNA.Message
 
-import Cfg
+import Cfg (executableName, event)
 
 data PartialSum = PartialSum ProcessId Double deriving (Show,Typeable,Generic)
 instance Binary PartialSum
@@ -84,7 +84,7 @@ instance Binary FileVec where
 spawnFChan :: String -> Int -> Int -> ProcessId -> Process()
 spawnFChan path cO cS pid = do
         mypid <- getSelfPid
-	iov <- liftIO $ readData cS cO path
+	iov <- event "reading file" $ liftIO $ readData cS cO path
 -- XXX must be an unsafe send to avoid copying
         send pid (FileVec mypid iov)
 
@@ -124,7 +124,8 @@ spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
 
 	let sumOnComputeNode = S.sum $ S.zipWith (*) iov cv
 	sayDebug $ printf "[Compute] : sumOnComputeNode : %s at %s send to %s" (show sumOnComputeNode) (show computePID) (show collectorPID)
-	send collectorPID (PartialSum computePID sumOnComputeNode)
+	event "compute sends sum" $ do
+		send collectorPID (PartialSum computePID sumOnComputeNode)
         send masterPID (DnaFinished computePID)
 	traceMessage "trace message from compute."
 
@@ -186,18 +187,18 @@ master backend peers = do
 
 --	enableTrace collectorPid
 
-	liftIO $ putStrLn "AAAAAAAAAAAAAAAAAAAAAA"
-
         -- Start compute processes
   	computePids <- forM (zip3 allComputeNids chunkOffsets chunkSizes)  $ \(computeNid,chO,chS) -> do
   		pid <- dnaMasterStartSlave "compute" masterPID computeNid ( $(mkClosure 'spawnCompute) (filePath, chO, chS, itemCount, collectorPid)) 
 		enableTrace pid
                 return pid
+	sum <- event "master waits for result" $ do
 
-        -- Send collector computePid's
-        send collectorPid (DnaPidList computePids)
-        sayDebug "--------------------------------------------------------------------------------------"	
-        (Result sum) <- expect
+	        -- Send collector computePid's
+        	send collectorPid (DnaPidList computePids)
+	        sayDebug "--------------------------------------------------------------------------------------"	
+        	(Result sum) <- expect
+		return sum
         sayDebug $ printf "Result %s" (show sum)
   	terminateAllSlaves backend	
 

@@ -17,7 +17,7 @@ cabal-version:       >=1.10
 
 executable ddp-erlang-style
   default-language:    Haskell2010
-  build-depends:       base >=4.6, binary, unix,
+  build-depends:       base >=4.6, binary, unix, mtl,
                        distributed-process == 0.5.*,
                        distributed-process-platform == 0.1.*,
                        distributed-process-simplelocalnet,
@@ -38,7 +38,7 @@ executable ddp-erlang-style
 
 executable ddp-erlang-style-SIMD
   default-language:    Haskell2010
-  build-depends:       base >=4.6, binary, unix,
+  build-depends:       base >=4.6, binary, unix, mtl,
                        distributed-process == 0.5.*,
                        distributed-process-platform == 0.1.*,
                        distributed-process-simplelocalnet,
@@ -48,6 +48,27 @@ executable ddp-erlang-style-SIMD
   hs-source-dirs:      ., cfgs/SIMD
 
   ghc-options:         -O2 -fllvm
+
+  main-is:             ddp-erlang-style.hs
+
+  Other-modules:       DNA.Channel.File, DNA.Message
+
+  c-sources:           DNA/Channel/channel-file.c
+
+  default-extensions:  ForeignFunctionInterface
+
+executable ddp-erlang-style-SIMD-eventlog
+  default-language:    Haskell2010
+  build-depends:       base >=4.6, binary, unix, mtl,
+                       distributed-process == 0.5.*,
+                       distributed-process-platform == 0.1.*,
+                       distributed-process-simplelocalnet,
+                       mmap, 
+                       vector >= 0.10
+
+  hs-source-dirs:      ., cfgs/SIMD-eventlog
+
+  ghc-options:         -O2 -fllvm -rtsopts -eventlog
 
   main-is:             ddp-erlang-style.hs
 
