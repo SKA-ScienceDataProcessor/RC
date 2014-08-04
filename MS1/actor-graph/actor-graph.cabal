@@ -25,6 +25,8 @@ Executable dot-product
     containers, 
     fgl,
     time,
+    haskell-src-exts,
+    haskell-src-exts-qq,
     distributed-process                >= 0.5.0,
     distributed-process-simplelocalnet >= 0.2.0.9,
     distributed-process-platform       >= 0.1,
