@@ -6,7 +6,9 @@
 module DNA.Actor (
     -- * Actor description
     ActorDef
-  , Conn
+  , Conn(..)
+  , ConnInfo(..)
+  , ConnMap
   , simpleOut
   , rule
   , startingState
@@ -16,6 +18,7 @@ module DNA.Actor (
     -- * Dataflow graph building
   , DataflowGraph
   , ANode(..)
+  , ANode'(..)
   , buildDataflow
   , use
   , connect

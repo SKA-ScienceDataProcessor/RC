@@ -4,6 +4,7 @@ module DNA.Compiler.Types (
   , CompileA
   , applicatively
   , freshName
+  , fresh
     -- * Applicative either
   , EitherA(..)
   , leftA
@@ -32,10 +33,14 @@ applicatively :: CompileA a -> Compile a
 applicatively = toExceptT
 
 freshName :: Compile String
-freshName = do
+freshName = fresh "x"
+
+fresh :: String -> Compile String
+fresh pref = do
   i <- lift get
   lift $ put $! i + 1
-  return $ "x_" ++ show i
+  return $ pref ++ "_" ++ show i
+
 
 ----------------------------------------------------------------
 -- Variant of Expect monad which collects all errors
