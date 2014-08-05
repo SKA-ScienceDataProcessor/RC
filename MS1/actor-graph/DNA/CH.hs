@@ -67,6 +67,11 @@ handleRule f
 startActor :: s -> ProcessDefinition s -> Process ()
 startActor s = serve () (\_ -> return (InitOk s NoDelay))
 
+producer :: s -> (s -> (s,Process())) -> Process ()
+producer s0 step = loop s0
+  where
+    loop s = let (s',m) = step s in m >> loop s'
+
 
 defaultMain :: (RemoteTable -> RemoteTable) -> ([NodeId] -> Process ()) -> IO ()
 defaultMain remotes master = do

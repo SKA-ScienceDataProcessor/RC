@@ -105,7 +105,7 @@ compileToCH gr = do
 
 -- Compile actor for
 compileNode :: Actor' outs  -> Compile (HS.Name,[HS.Decl])
-compileNode (StateM outs conns i rules) = do
+compileNode (StateM _ conns i rules) = do
   -- Name of the actor
   nm <- HS.Ident <$> fresh "actor"
   -- Name of collection of remotes
@@ -129,7 +129,20 @@ compileNode (StateM outs conns i rules) = do
   return (nm,[ HS.TypeSig loc [nm] [ty| Process () |]
              , nm =: (HS.Do exprs)
              ])
-
+compileNode (Producer _ conns i step) = do
+  -- Name of the actor
+  nm <- HS.Ident <$> fresh "actor"
+  -- Name of collection of remotes
+  pids <- HS.Ident <$> fresh "pids"
+  --
+  stepExpr <- compileExpr (Env pids None) step
+  stExpr   <- compileExpr (Env pids None) i
+  let exprs = [ pids <-- [hs| expect :: IntMap ProcessId |]
+              , stmt $ [hs|producer|] $$ stExpr $$ stepExpr
+              ]
+  return (nm,[ HS.TypeSig loc [nm] [ty| Process () |]
+             , nm =: (HS.Do exprs)
+             ])
 
 -- Compile AST to haskell expression
 compileExpr :: Env env -> Expr env a -> Compile HS.Exp

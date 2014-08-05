@@ -11,6 +11,7 @@ module DNA.Actor (
   , ConnMap
   , simpleOut
   , rule
+  , producer
   , startingState
     -- ** Complete actor
   , Actor(..)
@@ -100,6 +101,7 @@ newtype ActorDef s a = ActorDef (State (ActorDefState s) a)
 data ActorDefState s = ActorDefState
   { adsRules :: [Rule s]        -- Transition rules
   , adsInit  :: [Expr () s]     -- Initial state
+  , adsProd  :: [Expr () (s -> (s,Out))]
   , adsConns :: ConnMap         -- Outbound connections
   }
   
@@ -114,9 +116,13 @@ simpleOut = ActorDef $ do
   return $ Conn No n
 
 -- | Transition rule for an actor
-rule :: Expr () (s -> a -> (s,Out)) => ActorDef s ()
+rule :: Expr () (s -> a -> (s,Out)) -> ActorDef s ()
 rule f = ActorDef $ do
   modify $ \st -> st { adsRules = Rule f : adsRules st }
+
+producer :: Expr () (s -> (s,Out)) -> ActorDef s ()
+producer f = ActorDef $ do
+  modify $ \st -> st { adsProd = f : adsProd st }
 
 -- | Set initial state for the 
 startingState :: Expr () s -> ActorDef s ()
@@ -127,12 +133,14 @@ startingState s = ActorDef $ do
 actor :: ConnCollection outs => ActorDef s outs -> Actor outs
 actor (ActorDef m) =
   case s of
-    ActorDefState [] _   _ -> oops "No transition rules"
-    ActorDefState rs [i] c -> Actor (StateM outs c i rs)
-    ActorDefState _  []  _ -> oops "No initial sate specified"
-    ActorDefState _  _   _ -> oops "Several initial states specified"
+    ActorDefState _  []  _   _ -> oops "No initial sate specified"
+    ActorDefState [] _   []  _ -> oops "No transition rules/producers"
+    ActorDefState rs [i] []  c -> Actor (StateM outs c i rs)
+    ActorDefState [] [i] [f] c -> Actor (Producer outs c i f)
+    ActorDefState [] _   _   _ -> oops "Several producer steps specified"
+    ActorDefState _  _   _   _ -> oops "Several initial states specified"
   where
-    (outs,s) = runState m $ ActorDefState [] [] IntMap.empty
+    (outs,s) = runState m $ ActorDefState [] [] [] IntMap.empty
     oops = Invalid . pure
 
 
@@ -149,12 +157,19 @@ data Actor outs
 
 -- Real description of an actor
 data Actor' outs where
-  StateM :: ConnCollection outs
-         => outs   
-         -> ConnMap
-         -> Expr () s
-         -> [Rule s]
-         -> Actor' outs
+  -- State machine
+  StateM   :: ConnCollection outs
+           => outs   
+           -> ConnMap
+           -> Expr () s
+           -> [Rule s]
+           -> Actor' outs
+  Producer :: ConnCollection outs
+           => outs
+           -> ConnMap
+           -> Expr () s
+           -> Expr () (s -> (s,Out))
+           -> Actor' outs
 
 -- Transition rule for the state machine
 data Rule s where
