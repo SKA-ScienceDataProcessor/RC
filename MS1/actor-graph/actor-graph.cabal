@@ -36,30 +36,3 @@ Library
     DNA.Compiler.Types
     DNA.Compiler.CH
     DNA.Compiler.Scheduler
-
-
-Executable dot-product
-  Ghc-options:          -Wall -threaded
-  Default-language:	Haskell2010
-  Build-Depends:
-    base         >=3 && <5,
-    bytestring,
-    transformers >= 0.4.1,
-    binary       >= 0.7.2,
-    vector-binary-instances >= 0.2.1.0,
-    vector       >= 0.10,
-    containers, 
-    fgl,
-    time,
-    haskell-src-exts,
-    haskell-src-exts-qq,
-    distributed-process                >= 0.5.0,
-    distributed-process-simplelocalnet >= 0.2.0.9,
-    distributed-process-platform       >= 0.1,
-    distributed-static                 >= 0.2.1
-  Main-is:
-    main.hs
-  Other-modules:
-    Data.HListF
-    Graph.Actor
-    Graph.Graph
