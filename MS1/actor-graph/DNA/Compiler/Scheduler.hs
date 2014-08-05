@@ -1,5 +1,5 @@
 -- | Schedule program for execution
-module DNA.Compiler.Schedule where
+module DNA.Compiler.Scheduler where
 
 import DNA.AST
 import DNA.Actor
