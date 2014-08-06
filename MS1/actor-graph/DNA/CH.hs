@@ -1,7 +1,8 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GADTs #-}
--- | Library functions for the 
+{-# LANGUAGE DeriveGeneric #-}
+-- | Library functions for the
 module DNA.CH where
 
 import Control.Distributed.Process
@@ -16,6 +17,8 @@ import Data.Binary   (Binary)
 import qualified Data.Vector.Storable as S
 import qualified Data.IntMap as IntMap
 import System.Environment (getArgs)
+
+import GHC.Generics (Generic)
 
 import DNA.AST
 
@@ -57,6 +60,8 @@ data RemoteMap = RemoteMap
   { rmapResult :: ProcessId
   , rmapConns  :: IntMap.IntMap ProcessId
   }
+  deriving (Typeable,Show,Generic)
+instance Binary RemoteMap
 
 sendToI :: Serializable a => RemoteMap -> Int -> a -> Process ()
 sendToI (RemoteMap _ m) i a = send (m IntMap.! i) a
@@ -102,8 +107,8 @@ defaultMain remotes master = do
 
 
 -- | Set up monitoring of slave processes
-monitor :: Process ()
-monitor = loop
+monitorActors :: Process ()
+monitorActors = loop
   where
     loop = receiveWait
              [ match $ \(Result x) -> say $ "RESULT = " ++ show (x :: Double)

@@ -2,6 +2,7 @@ module DNA.Compiler.Types (
     -- * Data types
     Compile
   , CompileA
+  , compile
   , applicatively
   , freshName
   , fresh
@@ -29,6 +30,11 @@ import Data.Monoid
 type Compile = ExceptT [String] (State Int)
 
 type CompileA = EitherA [String] (State Int)
+
+compile :: Compile a -> Either [String] a
+compile
+  = flip evalState 0
+  . runExceptT 
 
 applicatively :: CompileA a -> Compile a
 applicatively = toExceptT

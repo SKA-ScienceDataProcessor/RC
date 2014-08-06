@@ -13,6 +13,8 @@ module DNA.Actor (
   , rule
   , producer
   , startingState
+  , No
+  , Yes
     -- ** Complete actor
   , Actor(..)
   , actor
@@ -30,8 +32,6 @@ module DNA.Actor (
 
 import Control.Applicative
 import Control.Monad.Trans.State.Strict
-import Control.Monad.Trans.Except
-import Control.Monad.Trans.Class
 
 import Data.Typeable
 import Data.Graph.Inductive.Graph hiding (match)
@@ -62,34 +62,36 @@ type ConnMap = IntMap.IntMap TypeRep
 
 
 -- | Phantom typed connection information
-data Conn f a where
-  Conn :: Typeable a => f Int -> Int -> Conn f a
+data Conn x a where
+  -- Port ID
+  Conn1    :: Typeable a => Int        -> Conn No a
+  -- From -> Port ID
+  Conn2    :: Typeable a => Int -> Int -> Conn Yes a
+  ConnFail :: Conn Yes a
 
-data No a = No
-data Id a = Id a
+data No
+data Yes
 
--- | Description of connection
-class Connectable c where
-  setConnection :: Int -> c No a -> c Id a
-
-instance Connectable Conn where
-  setConnection i (Conn _ j) = Conn (Id i) j
-
-  
 -- | Collection of outbound connections
 class ConnCollection a where
   type Connected a
   setActorId :: Int -> a -> Connected a
+  nullConnection :: a -> Connected a
 
 instance ConnCollection (Conn No a) where
-  type Connected (Conn No a) = Conn Id a
-  setActorId = setConnection
-  
+  type Connected (Conn No a) = Conn Yes a
+  setActorId n (Conn1 i) = (Conn2 i n)
+  nullConnection _ = ConnFail
+
 instance (ConnCollection a, ConnCollection b) => ConnCollection (a,b) where
   type Connected (a,b) = (Connected a, Connected b)
   setActorId i (a,b) = (setActorId i a, setActorId i b)
+  nullConnection _ = (nullConnection (undefined :: a), nullConnection (undefined :: b))
 
-
+instance ConnCollection () where
+  type Connected () = ()
+  setActorId _ = id
+  nullConnection _ = ()
 
 
 
@@ -113,7 +115,7 @@ simpleOut = ActorDef $ do
   let conns = adsConns st
       n     = IntMap.size conns
   put $! st { adsConns = IntMap.insert n (typeOf (undefined :: a)) conns }
-  return $ Conn No n
+  return $ Conn1 n
 
 -- | Transition rule for an actor
 rule :: Expr () (s -> a -> (s,Out)) -> ActorDef s ()
@@ -133,7 +135,7 @@ startingState s = ActorDef $ do
 actor :: ConnCollection outs => ActorDef s outs -> Actor outs
 actor (ActorDef m) =
   case s of
-    ActorDefState _  []  _   _ -> oops "No initial sate specified"
+    ActorDefState _  []  _   _ -> oops "No initial state specified"
     ActorDefState [] _   []  _ -> oops "No transition rules/producers"
     ActorDefState rs [i] []  c -> Actor (StateM outs c i rs)
     ActorDefState [] [i] [f] c -> Actor (Producer outs c i f)
@@ -216,16 +218,22 @@ buildDataflow m
                   
 -- | Bind actor as node in the dataflow graph. It returns handle to
 --   the node and collection of its outputs.
-use :: ConnCollection outs => Actor outs -> Dataflow (A, outs)
+use :: forall outs. ConnCollection outs => Actor outs -> Dataflow (A, Connected outs)
 use a = do
   (i,acts,conns) <- get
-  put (i+1, (i,ANode a) : acts, conns)
-  return (A i, undefined)
+  put (i+1, (i,ANode a) : acts, conns)  
+  return (A i, case a of
+                 Invalid _              -> nullConnection (undefined :: outs)
+                 Actor (StateM o _ _ _) -> setActorId i o
+                 Actor (Producer o _ _ _) -> setActorId i o
+         )
 
 -- | Connect graphs
-connect :: forall a. Conn Id a -> A -> Dataflow ()
-connect (Conn (Id from) i) (A to) = do
+connect :: forall a. Conn Yes a -> A -> Dataflow ()
+connect ConnFail _ = return ()
+connect (Conn2 from i) (A to) = do
   (j, acts, conns) <- get  
-  put ( j, acts
-             , (from,to,ConnInfo i (typeOf (undefined :: a))) : conns
-             )
+  put ( j
+      , acts
+      , (from,to,ConnInfo i (typeOf (undefined :: a))) : conns
+      )

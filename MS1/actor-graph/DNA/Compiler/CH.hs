@@ -9,6 +9,7 @@ import Control.Monad
 
 import qualified Data.IntMap as IntMap
 import           Data.IntMap   (IntMap,(!))
+import qualified Data.Foldable    as T
 import qualified Data.Traversable as T
 import Data.Graph.Inductive.Graph
 
@@ -80,16 +81,28 @@ compileToCH gr = do
                )
         | n <- nodes gr
         ]
+  -- Fill remote table
+  let rtable = HS.SpliceDecl loc
+             $ [hs|remotable|] $$ HS.List
+                 [ HS.Var (HS.UnQual (HS.Ident ("'" ++ x)))
+                 | (_,HS.Ident x) <- T.toList actorMap
+                 ]
   --
   let master =
         [ HS.TypeSig loc [HS.Ident "master"] [ty| [NodeId] -> Process () |]
-        , HS.Ident "master" =: HS.Do
-          (concat [ map snd (IntMap.elems actorVar)
-                  -- ,
-                  , [ stmt [hs| monitor |] ]
-                  , tables
-                  ]
-          )
+        , HS.FunBind
+          [ HS.Match loc (HS.Ident "master")
+             [HS.PVar vnodes]     
+             Nothing
+             (HS.UnGuardedRhs $ HS.Do
+                (concat [ [vme <-- [hs| getSelfPid |]]
+                        , map snd (IntMap.elems actorVar)
+                        , [ stmt [hs| monitorActors |] ]
+                        , tables
+                        ]
+                ))
+             (HS.BDecls [])
+          ]
         ]
   --
   return Project
@@ -101,12 +114,14 @@ compileToCH gr = do
                    Nothing      -- Export list
                    [ importD "Data.IntMap" True (Just "IntMap")
                    , importA "Control.Distributed.Process"
+                   , importA "Control.Distributed.Process.Closure"
                    , importA "Control.Distributed.Process.Platform.ManagedProcess"
                    , importA "DNA.CH"
                    ]           -- Imports
                    (concat [ (\(_,(_,_,d)) -> d) =<< actors
+                           , [rtable]
                            , master
-                           , [ HS.TypeSig loc [HS.Ident "main"] [ty| Process () |]
+                           , [ HS.TypeSig loc [HS.Ident "main"] [ty| IO () |]
                              , HS.Ident "main" =: [hs| defaultMain __remoteTable master |]
                              ]
                            ]
@@ -128,7 +143,7 @@ compileNode (StateM _ conns i rules) = do
   -- Compile initial state into haskell expression
   stExpr    <- compileExpr (Env pids None) i
   --
-  let exprs = [ pids <-- [hs| expect :: RemoteMap |]
+  let exprs = [ pids <-- [hs| expect :: Process RemoteMap |]
               , HS.LetStmt $ HS.BDecls
                   [ srv =: recUpd (HS.Ident "defaultProcess")
                     [ "apiHandlers" ==: HS.List
@@ -149,7 +164,7 @@ compileNode (Producer _ conns i step) = do
   --
   stepExpr <- compileExpr (Env pids None) step
   stExpr   <- compileExpr (Env pids None) i
-  let exprs = [ pids <-- [hs| expect :: IntMap ProcessId |]
+  let exprs = [ pids <-- [hs| expect :: Process RemoteMap |]
               , stmt $ [hs|producer|] $$ stExpr $$ stepExpr
               ]
   return (nm,[ HS.TypeSig loc [nm] [ty| Process () |]
@@ -216,7 +231,10 @@ compileExpr env@(Env pids _) expr =
           OutRes a -> do
             ea <- compileExpr env a
             return $ [hs| sendResult |] $$ HS.Var (HS.UnQual pids) $$ ea
-      return $ [hs|sequence|] $$ HS.List eouts
+          PrintInt a -> do
+            ea <- compileExpr env a
+            return $ [hs| say . show |] $$ ea
+      return $ [hs|sequence_|] $$ HS.List eouts
     -- Array sizes
     EShape sh -> return $ liftHS sh
     ESlice sl -> return $ liftHS sl

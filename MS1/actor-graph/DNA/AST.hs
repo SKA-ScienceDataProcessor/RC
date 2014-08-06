@@ -97,6 +97,8 @@ data Outbound env where
            -> Outbound env
   OutRes   :: Expr env a
            -> Outbound env
+  PrintInt :: Expr env Int
+           -> Outbound env
 
 ----------------------------------------------------------------
 
