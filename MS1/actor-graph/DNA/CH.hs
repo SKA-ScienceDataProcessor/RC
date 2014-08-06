@@ -53,10 +53,16 @@ generateArray f sh =
 newtype Result a = Result a
                    deriving (Eq,Ord,Show,Typeable,Binary)
 
-type RemoteMap = IntMap.IntMap ProcessId
+data RemoteMap = RemoteMap
+  { rmapResult :: ProcessId
+  , rmapConns  :: IntMap.IntMap ProcessId
+  }
 
 sendToI :: Serializable a => RemoteMap -> Int -> a -> Process ()
-sendToI m i a = send (m IntMap.! i) a
+sendToI (RemoteMap _ m) i a = send (m IntMap.! i) a
+
+sendResult :: Serializable a => RemoteMap -> a -> Process ()
+sendResult (RemoteMap p _) a = send p a
 
 handleRule :: (Serializable a) => (s -> a -> (s, Process ())) -> Dispatcher s
 handleRule f

@@ -95,6 +95,8 @@ data Outbound env where
   Outbound :: Int         -- Number of port to send to. 
            -> Expr env a
            -> Outbound env
+  OutRes   :: Expr env a
+           -> Outbound env
 
 ----------------------------------------------------------------
 

@@ -61,12 +61,15 @@ compileToCH gr = do
                       )
            )
   -- Build remote connection tables
+  vme <- HS.Ident <$> fresh "me"
   let tables =
         [ let conns = out gr n           -- outgoing connections
               apid  = fst $ actorVar ! n -- PID of an actor
           in stmt $ [hs| send |] $$ HS.Var (HS.UnQual apid) $$
-               ([hs| IntMap.fromList |] $$ liftHS
-                  [(i,HVar (fst (actorVar ! to))) | (_,to,ConnInfo i _) <- conns]
+               ([hs|RemoteMap|] $$ HS.Var (HS.UnQual vme) $$
+                ([hs| IntMap.fromList |] $$ liftHS
+                 [(i,HVar (fst (actorVar ! to))) | (_,to,ConnInfo i _) <- conns]
+                )
                )
         | n <- nodes gr
         ]
@@ -81,7 +84,7 @@ compileToCH gr = do
                   ]
           )
         ]
-
+  --
   return Project
     { prjName  = ""
     , prjCabal = "CABAL"
@@ -103,6 +106,8 @@ compileToCH gr = do
                    )
     }
 
+
+
 -- Compile actor for
 compileNode :: Actor' outs  -> Compile (HS.Name,[HS.Decl])
 compileNode (StateM _ conns i rules) = do
@@ -116,7 +121,7 @@ compileNode (StateM _ conns i rules) = do
   -- Compile initial state into haskell expression
   stExpr    <- compileExpr (Env pids None) i
   --
-  let exprs = [ pids <-- [hs| expect :: IntMap ProcessId |]
+  let exprs = [ pids <-- [hs| expect :: RemoteMap |]
               , HS.LetStmt $ HS.BDecls
                   [ srv =: recUpd (HS.Ident "defaultProcess")
                     [ "apiHandlers" ==: HS.List
@@ -143,6 +148,8 @@ compileNode (Producer _ conns i step) = do
   return (nm,[ HS.TypeSig loc [nm] [ty| Process () |]
              , nm =: (HS.Do exprs)
              ])
+
+
 
 -- Compile AST to haskell expression
 compileExpr :: Env env -> Expr env a -> Compile HS.Exp
@@ -194,9 +201,14 @@ compileExpr env@(Env pids _) expr =
     String s -> return $ HS.Lit (HS.String s)
     -- Result expression
     Out outs -> do
-      eouts <- forM outs $ \(Outbound i a) -> do
-        ea <- compileExpr env a
-        return $ [hs| sendToI |] $$ HS.Var (HS.UnQual pids) $$ liftHS i $$ ea
+      eouts <- forM outs $ \o ->
+        case o of
+          Outbound i a -> do
+            ea <- compileExpr env a
+            return $ [hs| sendToI |] $$ HS.Var (HS.UnQual pids) $$ liftHS i $$ ea
+          OutRes a -> do
+            ea <- compileExpr env a
+            return $ [hs| sendResult |] $$ HS.Var (HS.UnQual pids) $$ ea
       return $ [hs|sequence|] $$ HS.List eouts
     -- Array sizes
     EShape sh -> return $ liftHS sh
