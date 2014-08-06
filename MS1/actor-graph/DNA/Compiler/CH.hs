@@ -46,22 +46,29 @@ compileToCH :: DataflowGraph -> Compile Project
 compileToCH gr = do
   -- Generate declarations for every actor
   actors <- forM (nodes gr) $ \n -> do
-    (nm,decls) <- case lab' $ context gr n of
-                    ANode' a -> compileNode a
-    return (n,(nm,decls))
-  let actorMap = IntMap.fromList [(n,nm) | (n,(nm,_)) <- actors]
+    let a = lab' $ context gr n
+        i = case a of ANode' j _ -> j
+    (nm,decls) <- case a of
+                    ANode' _ aa -> compileNode aa
+    return (n,(i,nm,decls))
+  let actorMap = IntMap.fromList [(n,(i,nm)) | (n,(i,nm,_)) <- actors]
   -- * Generate master process
   --
   -- Code for spawning worker processes
-  actorVar <- T.forM actorMap $ \(HS.Ident bare) -> do
+  vnodes <- HS.Ident <$> fresh "nodes"
+  actorVar <- T.forM actorMap $ \(i,HS.Ident bare) -> do
     x <- HS.Ident <$> freshName
-    return (x, x <-- ([hs| spawn nodeID |]
+    return (x, x <-- ([hs| spawn |]
+                      $$ (HS.InfixApp (HS.Var (HS.UnQual vnodes))
+                                      (HS.QVarOp (HS.UnQual (HS.Symbol "!!")))
+                                      (liftHS i)
+                         )
                       $$ (HS.SpliceExp $ HS.ParenSplice $
                           [hs|mkStaticClosure|] $$ HS.Var (HS.UnQual (HS.Ident ("'" ++ bare))))
                       )
            )
   -- Build remote connection tables
-  vme <- HS.Ident <$> fresh "me"
+  vme   <- HS.Ident <$> fresh "me"
   let tables =
         [ let conns = out gr n           -- outgoing connections
               apid  = fst $ actorVar ! n -- PID of an actor
@@ -75,7 +82,7 @@ compileToCH gr = do
         ]
   --
   let master =
-        [ HS.TypeSig loc [HS.Ident "master"] [ty| Process () |]
+        [ HS.TypeSig loc [HS.Ident "master"] [ty| [NodeId] -> Process () |]
         , HS.Ident "master" =: HS.Do
           (concat [ map snd (IntMap.elems actorVar)
                   -- ,
@@ -97,7 +104,7 @@ compileToCH gr = do
                    , importA "Control.Distributed.Process.Platform.ManagedProcess"
                    , importA "DNA.CH"
                    ]           -- Imports
-                   (concat [ (\(_,(_,d)) -> d) =<< actors
+                   (concat [ (\(_,(_,_,d)) -> d) =<< actors
                            , master
                            , [ HS.TypeSig loc [HS.Ident "main"] [ty| Process () |]
                              , HS.Ident "main" =: [hs| defaultMain __remoteTable master |]

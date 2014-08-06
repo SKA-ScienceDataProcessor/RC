@@ -187,7 +187,7 @@ data ANode where
   ANode :: Actor outs -> ANode
 
 data ANode' where
-  ANode' :: Actor' outs -> ANode'
+  ANode' :: Int -> Actor' outs -> ANode'
 
 -- | Complete description of dataflow graph  
 type DataflowGraph = Gr ANode' ConnInfo
@@ -210,7 +210,7 @@ buildDataflow m
   $ (\n -> mkGraph n es) <$> T.traverse validate ns
   where
     validate (_,ANode (Invalid errs)) = leftA errs
-    validate (i,ANode (Actor a))      = pure (i,ANode' a)
+    validate (i,ANode (Actor a))      = pure (i,ANode' 0 a)
     (_,ns,es) = execState m (0,[],[])
 
                   

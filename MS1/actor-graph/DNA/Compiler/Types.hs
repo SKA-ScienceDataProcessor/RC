@@ -5,6 +5,7 @@ module DNA.Compiler.Types (
   , applicatively
   , freshName
   , fresh
+  , compError
     -- * Applicative either
   , EitherA(..)
   , leftA
@@ -40,6 +41,10 @@ fresh pref = do
   i <- lift get
   lift $ put $! i + 1
   return $ pref ++ "_" ++ show i
+
+
+compError :: [String] -> Compile a
+compError = throwE
 
 
 ----------------------------------------------------------------
