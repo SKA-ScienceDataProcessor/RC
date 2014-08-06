@@ -64,7 +64,7 @@ data RemoteMap = RemoteMap
 instance Binary RemoteMap
 
 sendToI :: Serializable a => RemoteMap -> Int -> a -> Process ()
-sendToI (RemoteMap _ m) i a = send (m IntMap.! i) a
+sendToI (RemoteMap _ m) i a = cast (m IntMap.! i) a
 
 sendResult :: Serializable a => RemoteMap -> a -> Process ()
 sendResult (RemoteMap p _) a = send p a
