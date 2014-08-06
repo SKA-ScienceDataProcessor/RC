@@ -80,10 +80,13 @@ data Array sh a = Array sh (S.Vector a)
 ----------------------------------------------------------------
   
 data Out
-  
+
+newtype ConnId = ConnId Int
+                 deriving (Show)
+
 -- | Outgoing message
 data Outbound env where
-  Outbound :: Int         -- Number of port to send to. 
+  Outbound :: ConnId         -- Number of port to send to. 
            -> Expr env a
            -> Outbound env
   OutRes   :: Expr env a

@@ -77,7 +77,7 @@ compileToCH gr = do
           in stmt $ [hs| send |] $$ HS.Var (HS.UnQual apid) $$
                ([hs|RemoteMap|] $$ HS.Var (HS.UnQual vme) $$
                 ([hs| IntMap.fromList |] $$ liftHS
-                 [(i,HVar (fst (actorVar ! to))) | (_,to,ConnInfo i _) <- conns]
+                 [(i,HVar (fst (actorVar ! to))) | (_,to,ConnInfo (ConnId i) _) <- conns]
                 )
                )
         | n <- nodes gr
@@ -230,7 +230,7 @@ compileExpr env@(Env pids _) expr =
     Out outs -> do
       eouts <- forM outs $ \o ->
         case o of
-          Outbound i a -> do
+          Outbound (ConnId i) a -> do
             ea <- compileExpr env a
             return $ [hs| sendToI |] $$ HS.Var (HS.UnQual pids) $$ liftHS i $$ ea
           OutRes a -> do

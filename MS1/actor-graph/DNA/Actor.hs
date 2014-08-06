@@ -3,32 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GADTs #-}
-module DNA.Actor (
-    -- * Actor description
-    ActorDef
-  , Conn(..)
-  , ConnInfo(..)
-  , ConnMap
-  , simpleOut
-  , rule
-  , producer
-  , startingState
-  , No
-  , Yes
-    -- ** Complete actor
-  , Actor(..)
-  , actor
-    -- * Dataflow graph building
-  , DataflowGraph
-  , ANode(..)
-  , ANode'(..)
-  , buildDataflow
-  , use
-  , connect
-    -- * Internal
-  , Actor'(..)
-  , Rule(..)
-  ) where
+module DNA.Actor where
 
 import Control.Applicative
 import Control.Monad.Trans.State.Strict
@@ -52,20 +27,19 @@ import DNA.Compiler.Types
 -- connection index and type of the connection. Type is also stored by
 -- the actor so it's needed as sanity check.
 data ConnInfo = ConnInfo
-  Int      -- ID of outgoing port
+  ConnId   -- ID of outgoing port
   TypeRep  -- Type of messages
   deriving (Show)
 
 -- Set of outgoing connections for the actor
 type ConnMap = IntMap.IntMap TypeRep
 
-
 -- | Phantom typed connection information
 data Conn x a where
   -- Port ID
-  Conn1    :: Typeable a => Int        -> Conn No a
+  Conn1    :: Typeable a => ConnId         -> Conn No a
   -- From -> Port ID
-  Conn2    :: Typeable a => Int -> Int -> Conn Yes a
+  Conn2    :: Typeable a => ConnId -> Node -> Conn Yes a
   ConnFail :: Conn Yes a
 
 data No
@@ -74,12 +48,12 @@ data Yes
 -- | Collection of outbound connections
 class ConnCollection a where
   type Connected a
-  setActorId :: Int -> a -> Connected a
+  setActorId     :: Node -> a -> Connected a
   nullConnection :: a -> Connected a
 
 instance ConnCollection (Conn No a) where
   type Connected (Conn No a) = Conn Yes a
-  setActorId n (Conn1 i) = (Conn2 n i)
+  setActorId n (Conn1 i) = (Conn2 i n)
   nullConnection _ = ConnFail
 
 instance (ConnCollection a, ConnCollection b) => ConnCollection (a,b) where
@@ -114,7 +88,7 @@ simpleOut = ActorDef $ do
   let conns = adsConns st
       n     = IntMap.size conns
   put $! st { adsConns = IntMap.insert n (typeOf (undefined :: a)) conns }
-  return $ Conn1 n
+  return $ Conn1 (ConnId n)
 
 -- | Transition rule for an actor
 rule :: Expr () (s -> a -> (s,Out)) -> ActorDef s ()
@@ -188,7 +162,9 @@ data ANode where
   ANode :: Actor outs -> ANode
 
 data ANode' where
-  ANode' :: Int -> Actor' outs -> ANode'
+  ANode' :: Int                 -- Node index (default 0)
+         -> Actor' outs         -- Actor data
+         -> ANode'
 
 -- | Complete description of dataflow graph  
 type DataflowGraph = Gr ANode' ConnInfo
@@ -230,7 +206,7 @@ use a = do
 -- | Connect graphs
 connect :: forall a. Conn Yes a -> A -> Dataflow ()
 connect ConnFail _ = return ()
-connect (Conn2 from i) (A to) = do
+connect (Conn2 i from) (A to) = do
   (j, acts, conns) <- get  
   put ( j
       , acts
