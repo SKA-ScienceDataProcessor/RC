@@ -37,8 +37,6 @@ import Data.Typeable
 import Data.Graph.Inductive.Graph hiding (match)
 import Data.Graph.Inductive.PatriciaTree
 import qualified Data.Traversable as T
-import qualified Data.Set as Set
-import qualified Data.Map as Map
 import qualified Data.IntMap as IntMap
 
 import DNA.AST
@@ -56,6 +54,7 @@ import DNA.Compiler.Types
 data ConnInfo = ConnInfo
   Int      -- ID of outgoing port
   TypeRep  -- Type of messages
+  deriving (Show)
 
 -- Set of outgoing connections for the actor
 type ConnMap = IntMap.IntMap TypeRep
@@ -80,7 +79,7 @@ class ConnCollection a where
 
 instance ConnCollection (Conn No a) where
   type Connected (Conn No a) = Conn Yes a
-  setActorId n (Conn1 i) = (Conn2 i n)
+  setActorId n (Conn1 i) = (Conn2 n i)
   nullConnection _ = ConnFail
 
 instance (ConnCollection a, ConnCollection b) => ConnCollection (a,b) where
