@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 module DNA.AST where
 
@@ -22,7 +23,8 @@ data Expr env a where
       -> Expr env a
       -> Expr env b   
   -- | Lambda abstraction
-  Lam :: Expr (env,a) b
+  Lam :: IsValue a
+      => Expr (env,a) b
       -> Expr env (a -> b)
 
   -- Fold 
@@ -48,7 +50,7 @@ data Expr env a where
       -> Expr env Out
 
   -- Scalars
-  Scalar :: Scalar a => a -> Expr env a
+  Scalar :: IsScalar a => a -> Expr env a
   Tup2   :: Expr env a -> Expr env b -> Expr env (a,b)
   String :: String -> Expr env String
   -- Array sizes
@@ -72,18 +74,7 @@ data Slice = Slice Int Int
 data Array sh a = Array sh (S.Vector a)
 
 
-data ShapeDict a where
-  ShShape :: ShapeDict Shape
-  ShSlice :: ShapeDict Slice
 
-class IsShape a where
-  reifyShape :: a -> ShapeDict a
-
-instance IsShape Shape where reifyShape _ = ShShape 
-instance IsShape Slice where reifyShape _ = ShSlice
-
-
-                            
 ----------------------------------------------------------------
 -- Connection encoding
 ----------------------------------------------------------------
@@ -108,12 +99,55 @@ data ScalarDict a where
   IntDict    :: ScalarDict Int
   UnitDict   :: ScalarDict ()
 
-class Scalar a where
+class IsScalar a where
   reifyScalar :: a -> ScalarDict a
 
-instance Scalar Double where reifyScalar _ = DoubleDict
-instance Scalar Int    where reifyScalar _ = IntDict
-instance Scalar ()     where reifyScalar _ = UnitDict
+instance IsScalar Double where reifyScalar _ = DoubleDict
+instance IsScalar Int    where reifyScalar _ = IntDict
+instance IsScalar ()     where reifyScalar _ = UnitDict
+
+
+
+
+data ShapeDict a where
+  ShShape :: ShapeDict Shape
+  ShSlice :: ShapeDict Slice
+
+class IsShape a where
+  reifyShape :: a -> ShapeDict a
+
+instance IsShape Shape where reifyShape _ = ShShape 
+instance IsShape Slice where reifyShape _ = ShSlice
+
+
+data VectorDict a where
+  VecD :: IsShape sh => VectorDict (Array sh Double)
+
+class IsVector a where
+  reifyVector :: a -> VectorDict a
+
+instance IsShape sh => IsVector (Array sh Double) where
+  reifyVector _ = VecD
+
+
+
+data ValueDict a where
+  ValScalar :: IsScalar a => ValueDict a
+  ValShape  :: IsShape  a => ValueDict a
+  ValVec    :: IsVector a => ValueDict a
+
+class IsValue a where
+  reifyValue :: a -> ValueDict a
+
+instance IsValue Int    where reifyValue _ = ValScalar
+instance IsValue Double where reifyValue _ = ValScalar
+instance IsValue ()     where reifyValue _ = ValScalar
+
+instance IsValue Shape where reifyValue _ = ValShape
+instance IsValue Slice where reifyValue _ = ValShape
+
+instance IsShape sh => IsValue (Array sh Double) where
+  reifyValue _ = ValVec
 
 
 ----------------------------------------------------------------

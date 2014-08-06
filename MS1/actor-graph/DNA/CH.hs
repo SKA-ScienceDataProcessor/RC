@@ -91,7 +91,8 @@ defaultMain remotes master = do
   case args of
     ["master", host, port] -> do
       backend <- initializeBackend host port rtable
-      startMaster backend master
+      startMaster backend $ \nids -> do me <- getSelfPid
+                                        master (processNodeId me : nids)
     ["slave", host, port] -> do
       backend <- initializeBackend host port rtable
       startSlave backend

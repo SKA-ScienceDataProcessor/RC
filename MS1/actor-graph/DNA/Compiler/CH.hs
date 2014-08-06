@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs           #-}
 {-# LANGUAGE QuasiQuotes     #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -97,8 +98,8 @@ compileToCH gr = do
              (HS.UnGuardedRhs $ HS.Do
                 (concat [ [vme <-- [hs| getSelfPid |]]
                         , map snd (IntMap.elems actorVar)
-                        , [ stmt [hs| monitorActors |] ]
                         , tables
+                        , [ stmt [hs| monitorActors |] ]
                         ]
                 ))
              (HS.BDecls [])
@@ -109,7 +110,9 @@ compileToCH gr = do
     { prjName  = ""
     , prjCabal = "CABAL"
     , prjMain  = HS.Module loc (HS.ModuleName "Main")
-                   [pragmas ["TemplateHaskell"]]
+                   [pragmas [ "TemplateHaskell"
+                            , "ScopedTypeVariables"
+                            ]]
                    Nothing      -- Warnings
                    Nothing      -- Export list
                    [ importD "Data.IntMap" True (Just "IntMap")
@@ -190,9 +193,11 @@ compileExpr env@(Env pids _) expr =
                  ea <- compileExpr env a
                  return $ HS.App ef ea
     -- Lambda function
-    Lam f -> do x  <- freshName
-                ef <- compileExpr (bind x env) f
-                return $ HS.Lambda loc [HS.PVar (HS.Ident x)] ef
+    Lam f  -> do
+      x  <- freshName
+      ef <- compileExpr (bind x env) f
+      return $ HS.Lambda loc [HS.PatTypeSig loc (HS.PVar (HS.Ident x)) (typeOfVar (bvar f))
+                             ] ef
     -- Fold
     Fold f a vec -> do ef <- compileExpr env f
                        ea <- compileExpr env a
@@ -241,6 +246,21 @@ compileExpr env@(Env pids _) expr =
     --
     Vec _ -> error "NOT IMPLEMENTED"
 
+
+bvar :: Expr (env,a) b -> a
+bvar _ = undefined
+
+typeOfVar :: IsValue a => a -> HS.Type
+typeOfVar a =
+  case reifyValue a of
+    ValScalar -> case reifyScalar a of
+                   DoubleDict -> [ty| Double |]
+                   IntDict    -> [ty| Int |]
+                   UnitDict   -> [ty| () |]
+    ValShape  -> case reifyShape a of
+                   ShShape -> [ty| Shape |]
+                   ShSlice -> [ty| Slice |]
+    ValVec -> error "Not implemented"
 
 data Env env = Env HS.Name (Ctx env)
 
