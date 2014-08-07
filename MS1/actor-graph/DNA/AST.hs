@@ -83,17 +83,14 @@ data Array sh a = Array sh (S.Vector a)
 -- | Type tag for expressions for sending data
 data Out
 
+-- | ID of outgoing connection
+newtype ConnId = ConnId Int
+               deriving (Show)
+
 -- | Connection nor bound into dataflow graph
 data ConnFree a where
   ConnFree :: Typeable a => ConnId -> ConnFree a
 
--- | Connection bound into dataflow graph
-data ConnBound a where
-  ConnBound :: Typeable a => ConnId -> Int -> ConnBound a
-
--- | ID of outgoing connection
-newtype ConnId = ConnId Int
-                 deriving (Show)
 
 -- | Outgoing message
 data Outbound env where

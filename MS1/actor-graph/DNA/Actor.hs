@@ -40,10 +40,13 @@ class ConnCollection a where
   setActorId     :: Node -> a -> Connected a
   nullConnection :: a -> Connected a
 
+data Bound a = Bound Node a
+             | Failed
+
 instance ConnCollection (ConnFree a) where
-  type Connected (ConnFree a) = Maybe (ConnBound a)
-  setActorId n (ConnFree i) = Just (ConnBound i n)
-  nullConnection _ = Nothing
+  type Connected (ConnFree a) = Bound (ConnFree a)
+  setActorId n c = Bound n c
+  nullConnection _ = Failed
 
 instance (ConnCollection a, ConnCollection b) => ConnCollection (a,b) where
   type Connected (a,b) = (Connected a, Connected b)
@@ -194,9 +197,9 @@ use a = do
          )
 
 -- | Connect graphs
-connect :: forall a. Maybe (ConnBound a) -> A -> Dataflow ()
-connect Nothing _ = return ()
-connect (Just (ConnBound i from)) (A to) = do
+connect :: forall a. Bound (ConnFree a) -> A -> Dataflow ()
+connect Failed _ = return ()
+connect (Bound from (ConnFree i)) (A to) = do
   (j, acts, conns) <- get
   put ( j
       , acts
