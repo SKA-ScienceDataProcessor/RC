@@ -34,27 +34,16 @@ data ConnInfo = ConnInfo
 -- Set of outgoing connections for the actor
 type ConnMap = IntMap.IntMap TypeRep
 
--- | Phantom typed connection information
-data Conn x a where
-  -- Port ID
-  Conn1    :: Typeable a => ConnId         -> Conn No a
-  -- From -> Port ID
-  Conn2    :: Typeable a => ConnId -> Node -> Conn Yes a
-  ConnFail :: Conn Yes a
-
-data No
-data Yes
-
 -- | Collection of outbound connections
 class ConnCollection a where
   type Connected a
   setActorId     :: Node -> a -> Connected a
   nullConnection :: a -> Connected a
 
-instance ConnCollection (Conn No a) where
-  type Connected (Conn No a) = Conn Yes a
-  setActorId n (Conn1 i) = (Conn2 i n)
-  nullConnection _ = ConnFail
+instance ConnCollection (ConnFree a) where
+  type Connected (ConnFree a) = Maybe (ConnBound a)
+  setActorId n (ConnFree i) = Just (ConnBound i n)
+  nullConnection _ = Nothing
 
 instance (ConnCollection a, ConnCollection b) => ConnCollection (a,b) where
   type Connected (a,b) = (Connected a, Connected b)
@@ -79,16 +68,16 @@ data ActorDefState s = ActorDefState
   , adsProd  :: [Expr () (s -> (s,Out))]
   , adsConns :: ConnMap         -- Outbound connections
   }
-  
+
 
 -- | Simple connection information
-simpleOut :: forall s a. Typeable a => ActorDef s (Conn No a)
+simpleOut :: forall s a. Typeable a => ActorDef s (ConnFree a)
 simpleOut = ActorDef $ do
   st <- get
   let conns = adsConns st
       n     = IntMap.size conns
   put $! st { adsConns = IntMap.insert n (typeOf (undefined :: a)) conns }
-  return $ Conn1 (ConnId n)
+  return $ ConnFree (ConnId n)
 
 -- | Transition rule for an actor
 rule :: Expr () (s -> a -> (s,Out)) -> ActorDef s ()
@@ -99,7 +88,7 @@ producer :: Expr () (s -> (s,Out)) -> ActorDef s ()
 producer f = ActorDef $ do
   modify $ \st -> st { adsProd = f : adsProd st }
 
--- | Set initial state for the 
+-- | Set initial state for the
 startingState :: Expr () s -> ActorDef s ()
 startingState s = ActorDef $ do
   modify $ \st -> st { adsInit = s : adsInit st }
@@ -134,17 +123,22 @@ data Actor outs
 data Actor' outs where
   -- State machine
   StateM   :: ConnCollection outs
-           => outs   
+           => outs
            -> ConnMap
            -> Expr () s
            -> [Rule s]
            -> Actor' outs
+  -- Actor which produces data
   Producer :: ConnCollection outs
            => outs
            -> ConnMap
            -> Expr () s
            -> Expr () (s -> (s,Out))
            -> Actor' outs
+  -- FIXME: scatter/gather primitives does not have
+  -- Scatted data
+  -- Gather data
+
 
 -- Transition rule for the state machine
 data Rule s where
@@ -166,7 +160,7 @@ data ANode' where
          -> Actor' outs         -- Actor data
          -> ANode'
 
--- | Complete description of dataflow graph  
+-- | Complete description of dataflow graph
 type DataflowGraph = Gr ANode' ConnInfo
 
 
@@ -190,24 +184,24 @@ buildDataflow m
     validate (i,ANode (Actor a))      = pure (i,ANode' 0 a)
     (_,ns,es) = execState m (0,[],[])
 
-                  
+
 -- | Bind actor as node in the dataflow graph. It returns handle to
 --   the node and collection of its outputs.
 use :: forall outs. ConnCollection outs => Actor outs -> Dataflow (A, Connected outs)
 use a = do
   (i,acts,conns) <- get
-  put (i+1, (i,ANode a) : acts, conns)  
+  put (i+1, (i,ANode a) : acts, conns)
   return (A i, case a of
-                 Invalid _              -> nullConnection (undefined :: outs)
-                 Actor (StateM o _ _ _) -> setActorId i o
+                 Invalid _                -> nullConnection (undefined :: outs)
+                 Actor (StateM o _ _ _)   -> setActorId i o
                  Actor (Producer o _ _ _) -> setActorId i o
          )
 
 -- | Connect graphs
-connect :: forall a. Conn Yes a -> A -> Dataflow ()
-connect ConnFail _ = return ()
-connect (Conn2 i from) (A to) = do
-  (j, acts, conns) <- get  
+connect :: forall a. Maybe (ConnBound a) -> A -> Dataflow ()
+connect Nothing _ = return ()
+connect (Just (ConnBound i from)) (A to) = do
+  (j, acts, conns) <- get
   put ( j
       , acts
       , (from,to,ConnInfo i (typeOf (undefined :: a))) : conns

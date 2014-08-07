@@ -9,7 +9,8 @@ import Data.Typeable
 ----------------------------------------------------------------
 -- AST
 ----------------------------------------------------------------
-           
+
+-- | AST for expression.
 data Expr env a where
   -- | Local let binding
   Let :: Expr env expr          -- Bound expression
@@ -21,13 +22,13 @@ data Expr env a where
   -- | Apply
   Ap  :: Expr env (a -> b)
       -> Expr env a
-      -> Expr env b   
+      -> Expr env b
   -- | Lambda abstraction
   Lam :: IsValue a
       => Expr (env,a) b
       -> Expr env (a -> b)
 
-  -- Fold 
+  -- Fold
   Fold :: (Expr env (a -> a -> a))
        -> Expr env a
        -> Expr env (Array sh a)
@@ -36,7 +37,7 @@ data Expr env a where
   Zip  :: (Expr env (a -> b -> c))
        -> Expr env (Array sh a)
        -> Expr env (Array sh b)
-       -> Expr env (Array sh c)   
+       -> Expr env (Array sh c)
   -- Generate vector
   Generate :: Expr env sh
            -> Expr env (Int -> a)
@@ -56,7 +57,7 @@ data Expr env a where
   -- Array sizes
   EShape :: Shape -> Expr env Shape
   ESlice :: Slice -> Expr env Slice
-  -- Primitive array 
+  -- Primitive array
   Vec :: Array sh a -> Expr env (Array sh a)
 
   -- FFI
@@ -78,15 +79,25 @@ data Array sh a = Array sh (S.Vector a)
 ----------------------------------------------------------------
 -- Connection encoding
 ----------------------------------------------------------------
-  
+
+-- | Type tag for expressions for sending data
 data Out
 
+-- | Connection nor bound into dataflow graph
+data ConnFree a where
+  ConnFree :: Typeable a => ConnId -> ConnFree a
+
+-- | Connection bound into dataflow graph
+data ConnBound a where
+  ConnBound :: Typeable a => ConnId -> Int -> ConnBound a
+
+-- | ID of outgoing connection
 newtype ConnId = ConnId Int
                  deriving (Show)
 
 -- | Outgoing message
 data Outbound env where
-  Outbound :: ConnId         -- Number of port to send to. 
+  Outbound :: ConnFree a        -- Number of port to send to.
            -> Expr env a
            -> Outbound env
   OutRes   :: Expr env a
@@ -119,7 +130,7 @@ data ShapeDict a where
 class IsShape a where
   reifyShape :: a -> ShapeDict a
 
-instance IsShape Shape where reifyShape _ = ShShape 
+instance IsShape Shape where reifyShape _ = ShShape
 instance IsShape Slice where reifyShape _ = ShSlice
 
 

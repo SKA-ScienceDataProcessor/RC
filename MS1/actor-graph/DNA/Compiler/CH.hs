@@ -93,7 +93,7 @@ compileToCH gr = do
         [ HS.TypeSig loc [HS.Ident "master"] [ty| [NodeId] -> Process () |]
         , HS.FunBind
           [ HS.Match loc (HS.Ident "master")
-             [HS.PVar vnodes]     
+             [HS.PVar vnodes]
              Nothing
              (HS.UnGuardedRhs $ HS.Do
                 (concat [ [vme <-- [hs| getSelfPid |]]
@@ -230,7 +230,7 @@ compileExpr env@(Env pids _) expr =
     Out outs -> do
       eouts <- forM outs $ \o ->
         case o of
-          Outbound (ConnId i) a -> do
+          Outbound (ConnFree (ConnId i)) a -> do
             ea <- compileExpr env a
             return $ [hs| sendToI |] $$ HS.Var (HS.UnQual pids) $$ liftHS i $$ ea
           OutRes a -> do
