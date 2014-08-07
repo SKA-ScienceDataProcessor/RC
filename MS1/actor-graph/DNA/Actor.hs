@@ -99,8 +99,8 @@ actor (ActorDef m) =
   case s of
     ActorDefState _  []  _   _ -> oops "No initial state specified"
     ActorDefState [] _   []  _ -> oops "No transition rules/producers"
-    ActorDefState rs [i] []  c -> Actor (StateM outs c i rs)
-    ActorDefState [] [i] [f] c -> Actor (Producer outs c i f)
+    ActorDefState rs [i] []  c -> Actor outs (StateM   c i rs)
+    ActorDefState [] [i] [f] c -> Actor outs (Producer c i f)
     ActorDefState [] _   _   _ -> oops "Several producer steps specified"
     ActorDefState _  _   _   _ -> oops "Several initial states specified"
   where
@@ -116,25 +116,21 @@ actor (ActorDef m) =
 data Actor outs
   -- We allow invalid actors. Instead of checking at construction time
   -- all errors are reported during compilation phase
-  = Actor (Actor' outs)
+  = Actor outs Actor'
   | Invalid [String]
 
 -- Real description of an actor
-data Actor' outs where
+data Actor' where
   -- State machine
-  StateM   :: ConnCollection outs
-           => outs
-           -> ConnMap
+  StateM   :: ConnMap
            -> Expr () s
            -> [Rule s]
-           -> Actor' outs
+           -> Actor'
   -- Actor which produces data
-  Producer :: ConnCollection outs
-           => outs
-           -> ConnMap
+  Producer :: ConnMap
            -> Expr () s
            -> Expr () (s -> (s,Out))
-           -> Actor' outs
+           -> Actor'
   -- FIXME: scatter/gather primitives does not have
   -- Scatted data
   -- Gather data
@@ -157,7 +153,7 @@ data ANode where
 
 data ANode' where
   ANode' :: Int                 -- Node index (default 0)
-         -> Actor' outs         -- Actor data
+         -> Actor'              -- Actor data
          -> ANode'
 
 -- | Complete description of dataflow graph
@@ -181,7 +177,7 @@ buildDataflow m
   $ (\n -> mkGraph n es) <$> T.traverse validate ns
   where
     validate (_,ANode (Invalid errs)) = leftA errs
-    validate (i,ANode (Actor a))      = pure (i,ANode' 0 a)
+    validate (i,ANode (Actor _ a))      = pure (i,ANode' 0 a)
     (_,ns,es) = execState m (0,[],[])
 
 
@@ -193,8 +189,8 @@ use a = do
   put (i+1, (i,ANode a) : acts, conns)
   return (A i, case a of
                  Invalid _                -> nullConnection (undefined :: outs)
-                 Actor (StateM o _ _ _)   -> setActorId i o
-                 Actor (Producer o _ _ _) -> setActorId i o
+                 Actor o (StateM   _ _ _) -> setActorId i o
+                 Actor o (Producer _ _ _) -> setActorId i o
          )
 
 -- | Connect graphs

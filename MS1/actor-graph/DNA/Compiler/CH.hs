@@ -134,8 +134,8 @@ compileToCH gr = do
 
 
 -- Compile actor for
-compileNode :: Actor' outs  -> Compile (HS.Name,[HS.Decl])
-compileNode (StateM _ conns i rules) = do
+compileNode :: Actor'  -> Compile (HS.Name,[HS.Decl])
+compileNode (StateM _ i rules) = do
   -- Name of the actor
   nm <- HS.Ident <$> fresh "actor"
   -- Name of collection of remotes
@@ -159,7 +159,7 @@ compileNode (StateM _ conns i rules) = do
   return (nm,[ HS.TypeSig loc [nm] [ty| Process () |]
              , nm =: (HS.Do exprs)
              ])
-compileNode (Producer _ conns i step) = do
+compileNode (Producer _ i step) = do
   -- Name of the actor
   nm <- HS.Ident <$> fresh "actor"
   -- Name of collection of remotes
