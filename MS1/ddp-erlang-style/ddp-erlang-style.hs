@@ -12,7 +12,7 @@ import Control.Monad
 import System.Posix.Files
 import System.Environment (getArgs)
 import Control.Concurrent (threadDelay)
-import Control.Distributed.Process
+import Control.Distributed.Process hiding (say)
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Backend.SimpleLocalnet
 import Control.Distributed.Process.Node (initRemoteTable)
@@ -28,6 +28,7 @@ import Data.Binary
 import DNA.Channel.File
 import DNA.Message
 
+import Common (startLogger, say)
 import Cfg (executableName, event)
 
 data PartialSum = PartialSum ProcessId Double deriving (Show,Typeable,Generic)
@@ -120,7 +121,7 @@ spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
         (FileVec fChanPid iov) <- expect
         (CompVec cChanPid cv) <- expect
 
-	sayDebug $ printf "[Compute %s] : Value of iov: %s" (show computePID) (show iov) 
+	--sayDebug $ printf "[Compute %s] : Value of iov: %s" (show computePID) (show iov) 
 
 	let sumOnComputeNode = S.sum $ S.zipWith (*) iov cv
 	sayDebug $ printf "[Compute] : sumOnComputeNode : %s at %s send to %s" (show sumOnComputeNode) (show computePID) (show collectorPID)
@@ -133,6 +134,7 @@ remotable [ 'spawnCompute, 'spawnCollector]
 
 master :: Backend -> [NodeId] -> Process ()
 master backend peers = do
+	startLogger peers
   --systemLog :: (String -> Process ()) -- ^ This expression does the actual logging
   --        -> (Process ())  -- ^ An expression used to clean up any residual state
   --        -> LogLevel      -- ^ The initial 'LogLevel' to use
