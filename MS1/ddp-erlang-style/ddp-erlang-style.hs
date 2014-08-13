@@ -24,6 +24,9 @@ import qualified Control.Distributed.Process.Platform.Service.SystemLog as Log
 import qualified Control.Distributed.Process.Platform.Time as Time
 import qualified Control.Distributed.Process.Platform.Timer as Timer
 import Data.Binary
+import System.IO
+
+import Network.URI (URI(..), URIAuth(..), parseURI)
 
 import DNA.Channel.File
 import DNA.Message
@@ -71,7 +74,7 @@ spawnCollector pid = do
 
 	-- install monitors for compute processes.
 	forM_ computePids $ \pid -> monitor pid
-        sum <- dpSum computePids 0
+        sum <- event "collection phase" $ dpSum computePids 0
         send masterPID (Result sum)
 	traceMessage "trace message from collector."
 
@@ -106,7 +109,7 @@ spawnCChan n f pid = do
         myPid <- getSelfPid 
         let vec = S.generate n f
 -- XXX must be an unsafe send to avoid copying
-        send pid (CompVec myPid vec)
+        event "generating and sending precomputed vector" $ send pid (CompVec myPid vec)
 
 
 spawnCompute :: (FilePath, Int, Int, Int, ProcessId) -> Process ()
@@ -204,6 +207,24 @@ master backend peers = do
         sayDebug $ printf "Result %s" (show sum)
   	terminateAllSlaves backend	
 
+findSlavesByURIs :: [String] -> Int -> IO [NodeId]
+findSlavesByURIs uris _ignoredTimeout = do
+	nodes' <- mapM parseNode uris
+	let errURIs = concatMap snd nodes'
+	case errURIs of
+		[] -> return $ concatMap fst nodes'
+		errs -> do
+			putStrLn $ "Error parsing uris: "++show errs
+			hFlush stdout
+			error "error parsing uris."
+	where
+		parseNode uri = do
+			putStrLn $ "PArsing "++show uri
+			hFlush stdout
+			case parseURI uri of
+				Just (URI _ (Just (URIAuth _ host port)) _ _ _) -> return (error uri, [])
+				_ -> return ([], [uri])
+
 main :: IO ()
 main = do
 	args <- getArgs
@@ -214,11 +235,17 @@ main = do
       			startMaster backend (master backend)
       			liftIO (threadDelay 200)
 
+ 		("master-nodes-uris" : host : port : uris) -> do
+    			backend' <- initializeBackend host port rtable
+			let backend = backend { findPeers = findSlavesByURIs uris }
+      			startMaster backend (master backend)
+      			liftIO (threadDelay 200)
+
 		["slave", host, port] -> do
     			backend <- initializeBackend host port rtable
       			startSlave backend
 		["write-tests"] -> do
-			writeFile "start-ddp" $ unlines [
+			writeFile ("start-"++executableName) $ unlines [
 				  "#!/bin/sh"
 				, executableName++" slave localhost 60001 &"
 				, executableName++" slave localhost 60002 &"
@@ -226,14 +253,23 @@ main = do
 				, "sleep 1"
 				, executableName++" master localhost 44440"
 				]
+			writeFile ("start-"++executableName++"-uri") $ unlines [
+				  "#!/bin/sh"
+				, executableName++" slave localhost 60001 &"
+				, executableName++" slave localhost 60002 &"
+				, executableName++" slave localhost 60003 &"
+				, "sleep 1"
+				, executableName++" master-nodes-uris localhost 44440 slave://localhost:60001/ slave://127.0.0.1:60002/ slave://128.0.0.0:60003/"
+				]
 		["write-data", count] -> do
 			return ()
                 _ -> do putStrLn $ unlines [
 				  "usage: '"++executableName++" (master|slave) host port"
+				, "   or: '"++executableName++" master-nodes-uris host port ?uri ?uri?..?"
 				, "   or: '"++executableName++" write-tests"
 				, ""
-				, "'"++executableName++" write-tests' will write file 'start-ddp' into current directory."
-				, "make it executable and run to test the program."
+				, "'"++executableName++" write-tests' will write files 'start-"++executableName ++"' and 'start-"++executableName++"-uri' into current directory."
+				, "make them executable and run to test the program."
 				]
 
   where
