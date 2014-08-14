@@ -68,12 +68,12 @@ compileToCH gr = do
   actorVar <- T.forM actorMap $ \(i,HS.Ident bare) -> do
     x <- HS.Ident <$> freshName
     return (x, x <-- ([hs| spawn |]
-                      $$ (HS.InfixApp (HS.Var (HS.UnQual vnodes))
+                      $$ (HS.InfixApp (var vnodes)
                                       (HS.QVarOp (HS.UnQual (HS.Symbol "!!")))
                                       (liftHS i)
                          )
                       $$ (HS.SpliceExp $ HS.ParenSplice $
-                          [hs|mkStaticClosure|] $$ HS.Var (HS.UnQual (HS.Ident ("'" ++ bare))))
+                          [hs|mkStaticClosure|] $$ var (HS.Ident ("'" ++ bare)))
                       )
            )
   -- Build remote connection tables
@@ -81,8 +81,8 @@ compileToCH gr = do
   let tables =
         [ let conns = out gr n           -- outgoing connections
               apid  = fst $ actorVar ! n -- PID of an actor
-          in stmt $ [hs| send |] $$ HS.Var (HS.UnQual apid) $$
-               ([hs|RemoteMap|] $$ HS.Var (HS.UnQual vme) $$
+          in stmt $ [hs| send |] $$ var apid $$
+               ([hs|RemoteMap|] $$ var vme $$
                 ([hs| IntMap.fromList |] $$ liftHS
                  [(i,HVar (fst (actorVar ! to))) | (_,to,ConnInfo (ConnId i) _) <- conns]
                 )
@@ -92,7 +92,7 @@ compileToCH gr = do
   -- Fill remote table
   let rtable = HS.SpliceDecl loc
              $ [hs|remotable|] $$ HS.List
-                 [ HS.Var (HS.UnQual (HS.Ident ("'" ++ x)))
+                 [ var (HS.Ident ("'" ++ x))
                  | (_,HS.Ident x) <- T.toList actorMap
                  ]
   --
@@ -160,7 +160,7 @@ compileNode (StateM _ i rules) = do
                       [ [hs| handleRule |] $$ e | e <- ruleExprs ]
                     ]
                   ]
-              , stmt $ [hs| startActor |] $$ stExpr $$ HS.Var (HS.UnQual srv)
+              , stmt $ [hs| startActor |] $$ stExpr $$ var srv
               ]
   --
   return (nm,[ HS.TypeSig loc [nm] [ty| Process () |]
@@ -194,7 +194,7 @@ compileExpr env@(Env pids _) expr =
       ee <- compileExpr (bind x env) e
       return $ HS.Let (HS.BDecls [ x =: eb ]) ee
     -- Bound variable
-    Var idx -> return $ HS.Var $ HS.UnQual $ lookupVar idx env
+    Var idx -> return $ var $ lookupVar idx env
     -- Function application
     Ap f a -> do ef <- compileExpr env f
                  ea <- compileExpr env a
@@ -220,8 +220,8 @@ compileExpr env@(Env pids _) expr =
                         ef  <- compileExpr env f
                         return $ [hs| DNA.generateArray |] $$ esh $$ ef
     -- Primitives
-    Add -> return $ HS.Var (HS.UnQual (HS.Symbol "+"))
-    Mul -> return $ HS.Var (HS.UnQual (HS.Symbol "*"))
+    Add -> return $ var (HS.Symbol "+")
+    Mul -> return $ var (HS.Symbol "*")
     -- Scalars
     Scalar a -> return $
       case reifyScalar a of
@@ -239,10 +239,10 @@ compileExpr env@(Env pids _) expr =
         case o of
           Outbound (ConnSimple (ConnId i)) a -> do
             ea <- compileExpr env a
-            return $ [hs| sendToI |] $$ HS.Var (HS.UnQual pids) $$ liftHS i $$ ea
+            return $ [hs| sendToI |] $$ var pids $$ liftHS i $$ ea
           OutRes a -> do
             ea <- compileExpr env a
-            return $ [hs| sendResult |] $$ HS.Var (HS.UnQual pids) $$ ea
+            return $ [hs| sendResult |] $$ var pids $$ ea
           PrintInt a -> do
             ea <- compileExpr env a
             return $ [hs| say . show |] $$ ea
@@ -323,7 +323,7 @@ instance Lift a => Lift [a] where
 newtype HVar = HVar HS.Name
 
 instance Lift HVar where
-  liftHS (HVar nm) = HS.Var (HS.UnQual nm)
+  liftHS (HVar nm) = var nm
 
 -- | Unknown source location
 loc :: HS.SrcLoc
@@ -347,7 +347,7 @@ x =: expr = HS.PatBind loc (HS.PVar x) Nothing (HS.UnGuardedRhs expr) (HS.BDecls
 
 -- | Record update
 recUpd :: HS.Name -> [HS.FieldUpdate] -> HS.Exp
-recUpd nm upds = HS.RecUpdate (HS.Var (HS.UnQual nm)) upds
+recUpd nm upds = HS.RecUpdate (var nm) upds
 
 -- | Field update
 (==:) :: String -> HS.Exp -> HS.FieldUpdate
@@ -365,3 +365,7 @@ importD modN qual as
 -- | Unqualified import
 importA :: String -> HS.ImportDecl
 importA modN = importD modN False Nothing
+
+-- | Unqualified variable name
+var :: HS.Name -> HS.Exp
+var = HS.Var . HS.UnQual
