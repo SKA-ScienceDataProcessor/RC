@@ -3,13 +3,17 @@
 {-# LANGUAGE QuasiQuotes     #-}
 {-# LANGUAGE TemplateHaskell #-}
 -- | Compile dataflow graph to cloud haskell
-module DNA.Compiler.CH where
+module DNA.Compiler.CH (
+    Project(..)
+  , saveProject
+  , compileToCH 
+  ) where
 
 import Control.Applicative
 import Control.Monad
 
 import qualified Data.IntMap as IntMap
-import           Data.IntMap   (IntMap,(!))
+import           Data.IntMap   ((!))
 import qualified Data.Foldable    as T
 import qualified Data.Traversable as T
 import Data.Graph.Inductive.Graph
@@ -27,12 +31,14 @@ import DNA.Actor
 -- Data types
 ----------------------------------------------------------------
 
+-- | Haskell project
 data Project = Project
   { prjName    :: String
   , prjCabal   :: String
   , prjMain    :: HS.Module
   }
 
+-- | Save project on disk
 saveProject :: FilePath -> Project -> IO ()
 saveProject dir (Project _ _ m) = do
   writeFile (dir++"/main.hs") (HS.prettyPrint m)
@@ -44,6 +50,7 @@ saveProject dir (Project _ _ m) = do
 -- For every node in  the dataflow graph we spawn an actor
 ----------------------------------------------------------------
 
+-- | Compile graph to cloud haskell project
 compileToCH :: DataflowGraph -> Compile Project
 compileToCH gr = do
   -- Generate declarations for every actor
@@ -182,21 +189,21 @@ compileExpr env@(Env pids _) expr =
   case expr of
     -- Let expression
     Let bound e -> do
-      x  <- freshName
+      x  <- HS.Ident <$> freshName
       eb <- compileExpr env bound
       ee <- compileExpr (bind x env) e
-      return $ HS.Let (HS.BDecls [ HS.Ident x =: eb ]) ee
+      return $ HS.Let (HS.BDecls [ x =: eb ]) ee
     -- Bound variable
-    Var idx -> return $ HS.Var $ HS.UnQual $ HS.Ident $ lookupVar idx env
+    Var idx -> return $ HS.Var $ HS.UnQual $ lookupVar idx env
     -- Function application
     Ap f a -> do ef <- compileExpr env f
                  ea <- compileExpr env a
                  return $ HS.App ef ea
     -- Lambda function
     Lam f  -> do
-      x  <- freshName
+      x  <- HS.Ident <$> freshName
       ef <- compileExpr (bind x env) f
-      return $ HS.Lambda loc [HS.PatTypeSig loc (HS.PVar (HS.Ident x)) (typeOfVar (bvar f))
+      return $ HS.Lambda loc [HS.PatTypeSig loc (HS.PVar x) (typeOfVar (bvar f))
                              ] ef
     -- Fold
     Fold f a vec -> do ef <- compileExpr env f
@@ -264,21 +271,22 @@ typeOfVar a =
 
 data Env env = Env HS.Name (Ctx env)
 
--- Bound variables in context of expression
+-- | Bound variables in context of expression
 data Ctx env where
   None :: Ctx ()
-  BVar :: String -> Ctx e -> Ctx (e,t)
+  BVar :: HS.Name -> Ctx e -> Ctx (e,t)
 
-lookupVar :: Idx env t -> Env env -> String
+-- | Find variable name
+lookupVar :: Idx env t -> Env env -> HS.Name
 lookupVar idx (Env _ c) = go idx c
   where
-    go :: Idx env t -> Ctx env -> String
+    go :: Idx env t -> Ctx env -> HS.Name
     go  ZeroIdx    (BVar nm _) = nm
     go (SuccIdx i) (BVar _  v) = go i v
     go  _           _          = error "Impossible"
 
-
-bind :: String -> Env env -> Env (env,t)
+-- | Bind variable
+bind :: HS.Name -> Env env -> Env (env,t)
 bind nm (Env n e) = Env n (BVar nm e)
 
 
@@ -286,6 +294,7 @@ bind nm (Env n e) = Env n (BVar nm e)
 -- Helpers
 ----------------------------------------------------------------
 
+-- | Lift value to the syntax of haskell
 class Lift a where
   liftHS :: a -> HS.Exp
 
@@ -310,38 +319,49 @@ instance (Lift a, Lift b) => Lift (a,b) where
 instance Lift a => Lift [a] where
   liftHS xs = HS.List (map liftHS xs)
 
+-- | Haskell variable
 newtype HVar = HVar HS.Name
 
 instance Lift HVar where
   liftHS (HVar nm) = HS.Var (HS.UnQual nm)
 
+-- | Unknown source location
 loc :: HS.SrcLoc
 loc = HS.SrcLoc "<unknown>.hs" 1 1
 
+-- | Function application
 ($$) :: HS.Exp -> HS.Exp -> HS.Exp
 ($$) = HS.App
 
+-- | Bind in do block
 (<--) :: HS.Name -> HS.Exp -> HS.Stmt
 x <-- expr = HS.Generator loc (HS.PVar x) expr
 
+-- | Statement in do block
 stmt :: HS.Exp -> HS.Stmt
 stmt = HS.Qualifier
 
+-- | Bind variable.  @x := expr@ translates to declaration @x = $expr@
 (=:) :: HS.Name -> HS.Exp -> HS.Decl
 x =: expr = HS.PatBind loc (HS.PVar x) Nothing (HS.UnGuardedRhs expr) (HS.BDecls [])
 
-
+-- | Record update
 recUpd :: HS.Name -> [HS.FieldUpdate] -> HS.Exp
 recUpd nm upds = HS.RecUpdate (HS.Var (HS.UnQual nm)) upds
 
+-- | Field update
 (==:) :: String -> HS.Exp -> HS.FieldUpdate
 nm ==: expr = HS.FieldUpdate (HS.UnQual (HS.Ident nm)) expr
 
+-- | List of LANGUAGE pragmas
 pragmas :: [String] -> HS.ModulePragma
 pragmas = HS.LanguagePragma loc . map HS.Ident
 
+-- | General import statement
 importD :: String -> Bool -> Maybe String -> HS.ImportDecl
 importD modN qual as
   = HS.ImportDecl loc (HS.ModuleName modN) qual False Nothing (HS.ModuleName <$> as) Nothing
 
+-- | Unqualified import
+importA :: String -> HS.ImportDecl
 importA modN = importD modN False Nothing
