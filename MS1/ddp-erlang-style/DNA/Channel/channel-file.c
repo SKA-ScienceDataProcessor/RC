@@ -10,6 +10,12 @@
 #warning "__O_DIRECT is undefined, defining as 0."
 #define	__O_DIRECT	0
 #endif
+
+#ifndef	MAP_ANONYMOUS
+#warning "defining MAP_ANONYMOUS as MAP_ANON."
+#define	MAP_ANONYMOUS	MAP_ANON
+#endif
+
 /* XXX error handling: should we return an ssize_t
    XXX types: buffer size is a ssize_t, not int
 */
