@@ -25,4 +25,4 @@ schedule n gr = do
   when (n < noNodes gr) $
     compError ["Not enough nodes to schedule algorithm"]
   let ns = IntMap.fromList $ nodes gr `zip` [0..]
-  return $ gmap (\(a1, i, ANode' _ a, a2) -> (a1, i, ANode' (ns ! i) a, a2)) gr
+  return $ gmap (\(a1, i, ANode _ a, a2) -> (a1, i, ANode (ns ! i) a, a2)) gr

@@ -10,7 +10,7 @@ module DNA.Actor (
   , ConnMap
   , ConnCollection(..)
   , Actor(..)
-  , Actor'(..)
+  , RealActor(..)
   , Rule(..)
     -- * Definition of actors
   , ActorDef
@@ -21,7 +21,6 @@ module DNA.Actor (
   , startingState
     -- * Dataflow graph
   , ANode(..)
-  , ANode'(..)
   , DataflowGraph
     -- * Building of dataflow graph
   , Dataflow
@@ -84,25 +83,25 @@ instance ConnCollection () where
   setActorId _ = id
   nullConnection _ = ()
 
--- | Representation of actor
+-- | Representation of actor.
 data Actor outs
   -- We allow invalid actors. Instead of checking at construction time
   -- all errors are reported during compilation phase
-  = Actor outs Actor'
+  = Actor outs RealActor
   | Invalid [String]
 
 -- Real description of an actor
-data Actor' where
+data RealActor where
   -- State machine
   StateM   :: ConnMap
            -> Expr () s
            -> [Rule s]
-           -> Actor'
+           -> RealActor
   -- Actor which produces data
   Producer :: ConnMap
            -> Expr () s
            -> Expr () (s -> (s,Out))
-           -> Actor'
+           -> RealActor
   -- FIXME: scatter/gather primitives does not have
   -- Scatted data
   -- Gather data
@@ -169,28 +168,23 @@ actor (ActorDef m) =
     oops = Invalid . pure
 
 
-----------------------------------------------------------------
--- Actor representation
-----------------------------------------------------------------
-
-
-
 
 ----------------------------------------------------------------
 -- Dataflow graph
 ----------------------------------------------------------------
 
--- Node of a graph
-data ANode where
-  ANode :: Actor outs -> ANode
+-- Node of a dataflow graph which is used during graph construction
+data BuildNode where
+  BuildNode :: Actor outs -> BuildNode
 
-data ANode' where
-  ANode' :: Int                 -- Node index (default 0)
-         -> Actor'              -- Actor data
-         -> ANode'
+-- Node of dataflow graph
+data ANode where
+  ANode :: Int                 -- Node index (default 0)
+        -> RealActor           -- Actor data
+        -> ANode
 
 -- | Complete description of dataflow graph
-type DataflowGraph = Gr ANode' ConnInfo
+type DataflowGraph = Gr ANode ConnInfo
 
 
 
@@ -200,7 +194,7 @@ type DataflowGraph = Gr ANode' ConnInfo
 ----------------------------------------------------------------
 
 -- | Monad for building dataflow graph
-type Dataflow = (State (Int, [(Int,ANode)], [(Int,Int,ConnInfo)]))
+type Dataflow = (State (Int, [(Int,BuildNode)], [(Int,Int,ConnInfo)]))
 
 data A = A Node
 
@@ -209,8 +203,8 @@ buildDataflow m
   = applicatively
   $ (\n -> mkGraph n es) <$> T.traverse validate ns
   where
-    validate (_,ANode (Invalid errs)) = leftA errs
-    validate (i,ANode (Actor _ a))      = pure (i,ANode' 0 a)
+    validate (_,BuildNode (Invalid errs)) = leftA errs
+    validate (i,BuildNode (Actor _ a))    = pure (i,ANode 0 a)
     (_,ns,es) = execState m (0,[],[])
 
 
@@ -219,7 +213,7 @@ buildDataflow m
 use :: forall outs. ConnCollection outs => Actor outs -> Dataflow (A, Connected outs)
 use a = do
   (i,acts,conns) <- get
-  put (i+1, (i,ANode a) : acts, conns)
+  put (i+1, (i,BuildNode a) : acts, conns)
   return (A i, case a of
                  Invalid _                -> nullConnection (undefined :: outs)
                  Actor o (StateM   _ _ _) -> setActorId i o

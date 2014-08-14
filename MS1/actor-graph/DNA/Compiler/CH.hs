@@ -89,9 +89,9 @@ compileAllNodes :: DataflowGraph -> Compile (IntMap (Int,HS.Name), [HS.Decl])
 compileAllNodes gr = do
   actors <- forM (nodes gr) $ \n -> do
     let a = lab' $ context gr n
-        i = case a of ANode' j _ -> j
+        i = case a of ANode j _ -> j
     (nm,decls) <- case a of
-                    ANode' _ aa -> compileNode aa
+                    ANode _ aa -> compileNode aa
     return (n,(i,nm,decls))
   return ( IntMap.fromList [(n,(i,nm)) | (n,(i,nm,_)) <- actors]
          , concat [decl | (_,(_,_,decl)) <- actors]
@@ -151,7 +151,7 @@ buildMaster gr actorMap = do
 
 -- Compile actor to haskell declaration. It returns name of top level
 -- declaration and list of declarations
-compileNode :: Actor' -> Compile (HS.Name,[HS.Decl])
+compileNode :: RealActor -> Compile (HS.Name,[HS.Decl])
 compileNode (StateM _ i rules) = do
   -- Name of the actor
   nm <- HS.Ident <$> fresh "actor"
