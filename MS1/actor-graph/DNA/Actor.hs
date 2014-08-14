@@ -24,7 +24,7 @@ module DNA.Actor (
   , DataflowGraph
     -- * Building of dataflow graph
   , Dataflow
-  , A(..)
+  , A
   , buildDataflow
   , use
   , connect
@@ -196,8 +196,10 @@ type DataflowGraph = Gr ANode ConnInfo
 -- | Monad for building dataflow graph
 type Dataflow = (State (Int, [(Int,BuildNode)], [(Int,Int,ConnInfo)]))
 
-data A = A Node
+-- | Handle for actor
+newtype A = A Node
 
+-- | Construct dataflow graph from its description
 buildDataflow :: Dataflow () -> Compile DataflowGraph
 buildDataflow m
   = applicatively
