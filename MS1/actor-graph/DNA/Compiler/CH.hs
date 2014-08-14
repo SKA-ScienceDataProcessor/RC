@@ -6,7 +6,7 @@
 module DNA.Compiler.CH (
     Project(..)
   , saveProject
-  , compileToCH 
+  , compileToCH
   ) where
 
 import Control.Applicative
@@ -55,52 +55,8 @@ compileToCH :: DataflowGraph -> Compile Project
 compileToCH gr = do
   -- Generate declarations for every actor
   (actorMap,actorDecls) <- compileAllNodes gr
-  -- * Generate master process
-  --
-  -- Code for spawning worker processes
-  vnodes <- HS.Ident <$> fresh "nodes"
-  actorVar <- T.forM actorMap $ \(i,nm) -> do
-    x <- HS.Ident <$> freshName
-    return (x, x <-- ([hs| spawn |]
-                      $$ (HS.InfixApp (var vnodes)
-                                      (HS.QVarOp (HS.UnQual (HS.Symbol "!!")))
-                                      (liftHS i)
-                         )
-                      $$ (HS.SpliceExp $ HS.ParenSplice $
-                          [hs|mkStaticClosure|] $$ var (quote nm))
-                      )
-           )
-  -- Build remote connection tables
-  vme   <- HS.Ident <$> fresh "me"
-  let tables =
-        [ let conns = out gr n           -- outgoing connections
-              apid  = fst $ actorVar ! n -- PID of an actor
-          in stmt $ [hs| send |] $$ var apid $$
-               ([hs|RemoteMap|] $$ var vme $$
-                ([hs| IntMap.fromList |] $$ liftHS
-                 [(i,HVar (fst (actorVar ! to))) | (_,to,ConnInfo (ConnId i) _) <- conns]
-                )
-               )
-        | n <- nodes gr
-        ]
-  --
-  let master =
-        [ HS.TypeSig loc [HS.Ident "master"] [ty| [NodeId] -> Process () |]
-        , HS.FunBind
-          [ HS.Match loc (HS.Ident "master")
-             [HS.PVar vnodes]
-             Nothing
-             (HS.UnGuardedRhs $ HS.Do
-                (concat [ [vme <-- [hs| getSelfPid |]]
-                        , map snd (IntMap.elems actorVar)
-                        , tables
-                        , [ stmt [hs| monitorActors |] ]
-                        ]
-                ))
-             (HS.BDecls [])
-          ]
-        ]
-  --
+  master                <- buildMaster gr actorMap
+  -- Assemble project
   return Project
     { prjName  = ""
     , prjCabal = "CABAL"
@@ -147,6 +103,50 @@ buildRemoteTable actorMap =
   [ HS.SpliceDecl loc
   $ [hs|remotable|] $$ HS.List [var (quote nm) | (_,nm) <- T.toList actorMap]
   ]
+
+-- Generate master fucntion
+buildMaster :: DataflowGraph -> IntMap (Int,HS.Name) -> Compile [HS.Decl]
+buildMaster gr actorMap = do
+  -- Identifier for node list
+  vnodes <- HS.Ident <$> fresh "nodes"
+  -- Generate map from node ID to variable it's bound and statement
+  -- for spawning CH process
+  actorVar <- T.forM actorMap $ \(i,nm) -> do
+    x <- HS.Ident <$> freshName
+    return (x, x <-- ([hs| spawn |]
+                      $$ infx (var vnodes) "!!" (liftHS i)
+                      $$ (HS.SpliceExp $ HS.ParenSplice $ [hs|mkStaticClosure|] $$ var (quote nm)))
+           )
+  vme   <- HS.Ident <$> fresh "me"
+  -- Build table for connections between actors
+  let tables =
+        [ let conns = out gr n           -- outgoing connections
+              apid  = fst $ actorVar ! n -- PID of an actor
+          in stmt $ [hs| send |] $$ var apid $$
+               ([hs|RemoteMap|] $$ var vme $$
+                ([hs| IntMap.fromList |] $$ liftHS
+                 [(i,HVar (fst (actorVar ! to))) | (_,to,ConnInfo (ConnId i) _) <- conns]
+                )
+               )
+        | n <- nodes gr
+        ]
+  -- Generate 'master' fucntion
+  return
+    [ HS.TypeSig loc [HS.Ident "master"] [ty| [NodeId] -> Process () |]
+    , HS.FunBind
+      [ HS.Match loc (HS.Ident "master")
+         [HS.PVar vnodes]
+         Nothing
+         (HS.UnGuardedRhs $ HS.Do
+            (concat [ [vme <-- [hs| getSelfPid |]]
+                    , map snd (IntMap.elems actorVar)
+                    , tables
+                    , [ stmt [hs| monitorActors |] ]
+                    ]
+            ))
+         (HS.BDecls [])
+      ]
+    ]
 
 
 -- Compile actor to haskell declaration. It returns name of top level
@@ -383,3 +383,7 @@ var = HS.Var . HS.UnQual
 quote :: HS.Name -> HS.Name
 quote (HS.Ident nm) = HS.Ident ("'" ++ nm)
 quote (HS.Symbol _) = error "DNA.Compiler.CH.quote: cannot quote symbol"
+
+-- | Infix function application
+infx :: HS.Exp -> String -> HS.Exp -> HS.Exp
+infx e1 op e2 = HS.InfixApp e1 (HS.QVarOp (HS.UnQual (HS.Symbol op))) e2
