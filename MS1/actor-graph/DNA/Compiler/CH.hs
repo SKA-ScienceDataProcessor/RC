@@ -59,7 +59,7 @@ compileToCH gr = do
   --
   -- Code for spawning worker processes
   vnodes <- HS.Ident <$> fresh "nodes"
-  actorVar <- T.forM actorMap $ \(i,HS.Ident bare) -> do
+  actorVar <- T.forM actorMap $ \(i,nm) -> do
     x <- HS.Ident <$> freshName
     return (x, x <-- ([hs| spawn |]
                       $$ (HS.InfixApp (var vnodes)
@@ -67,7 +67,7 @@ compileToCH gr = do
                                       (liftHS i)
                          )
                       $$ (HS.SpliceExp $ HS.ParenSplice $
-                          [hs|mkStaticClosure|] $$ var (HS.Ident ("'" ++ bare)))
+                          [hs|mkStaticClosure|] $$ var (quote nm))
                       )
            )
   -- Build remote connection tables
@@ -85,10 +85,7 @@ compileToCH gr = do
         ]
   -- Fill remote table
   let rtable = HS.SpliceDecl loc
-             $ [hs|remotable|] $$ HS.List
-                 [ var (HS.Ident ("'" ++ x))
-                 | (_,HS.Ident x) <- T.toList actorMap
-                 ]
+             $ [hs|remotable|] $$ HS.List [var (quote nm) | (_,nm) <- T.toList actorMap]
   --
   let master =
         [ HS.TypeSig loc [HS.Ident "master"] [ty| [NodeId] -> Process () |]
@@ -378,3 +375,7 @@ importA modN = importD modN False Nothing
 -- | Unqualified variable name
 var :: HS.Name -> HS.Exp
 var = HS.Var . HS.UnQual
+
+quote :: HS.Name -> HS.Name
+quote (HS.Ident nm) = HS.Ident ("'" ++ nm)
+quote (HS.Symbol _) = error "DNA.Compiler.CH.quote: cannot quote symbol"
