@@ -83,9 +83,6 @@ compileToCH gr = do
                )
         | n <- nodes gr
         ]
-  -- Fill remote table
-  let rtable = HS.SpliceDecl loc
-             $ [hs|remotable|] $$ HS.List [var (quote nm) | (_,nm) <- T.toList actorMap]
   --
   let master =
         [ HS.TypeSig loc [HS.Ident "master"] [ty| [NodeId] -> Process () |]
@@ -120,7 +117,7 @@ compileToCH gr = do
                    , importA "DNA.CH"
                    ]           -- Imports
                    (concat [ actorDecls
-                           , [rtable]
+                           , buildRemoteTable actorMap
                            , master
                            , [ HS.TypeSig loc [HS.Ident "main"] [ty| IO () |]
                              , HS.Ident "main" =: [hs| defaultMain __remoteTable master |]
@@ -143,6 +140,13 @@ compileAllNodes gr = do
   return ( IntMap.fromList [(n,(i,nm)) | (n,(i,nm,_)) <- actors]
          , concat [decl | (_,(_,_,decl)) <- actors]
          )
+
+-- Build remote table for CH
+buildRemoteTable :: IntMap (Int,HS.Name) -> [HS.Decl]
+buildRemoteTable actorMap =
+  [ HS.SpliceDecl loc
+  $ [hs|remotable|] $$ HS.List [var (quote nm) | (_,nm) <- T.toList actorMap]
+  ]
 
 
 -- Compile actor to haskell declaration. It returns name of top level
