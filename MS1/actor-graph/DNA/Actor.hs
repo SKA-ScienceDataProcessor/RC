@@ -43,8 +43,8 @@ class ConnCollection a where
 data Bound a = Bound Node a
              | Failed
 
-instance ConnCollection (ConnFree a) where
-  type Connected (ConnFree a) = Bound (ConnFree a)
+instance ConnCollection (ConnSimple a) where
+  type Connected (ConnSimple a) = Bound (ConnSimple a)
   setActorId n c = Bound n c
   nullConnection _ = Failed
 
@@ -74,13 +74,13 @@ data ActorDefState s = ActorDefState
 
 
 -- | Simple connection information
-simpleOut :: forall s a. Typeable a => ActorDef s (ConnFree a)
+simpleOut :: forall s a. Typeable a => ActorDef s (ConnSimple a)
 simpleOut = ActorDef $ do
   st <- get
   let conns = adsConns st
       n     = IntMap.size conns
   put $! st { adsConns = IntMap.insert n (typeOf (undefined :: a)) conns }
-  return $ ConnFree (ConnId n)
+  return $ ConnSimple (ConnId n)
 
 -- | Transition rule for an actor
 rule :: Expr () (s -> a -> (s,Out)) -> ActorDef s ()
@@ -197,9 +197,9 @@ use a = do
          )
 
 -- | Connect graphs
-connect :: forall a. Bound (ConnFree a) -> A -> Dataflow ()
+connect :: forall a. Bound (ConnSimple a) -> A -> Dataflow ()
 connect Failed _ = return ()
-connect (Bound from (ConnFree i)) (A to) = do
+connect (Bound from (ConnSimple i)) (A to) = do
   (j, acts, conns) <- get
   put ( j
       , acts

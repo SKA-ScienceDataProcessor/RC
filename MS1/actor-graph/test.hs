@@ -24,12 +24,12 @@ actorPrint = actor $ do
 -- Source actor
 ----------------------------------------------------------------
 
-exprSrcInt :: ConnFree Int -> Expr () (Int -> (Int,Out))
+exprSrcInt :: ConnSimple Int -> Expr () (Int -> (Int,Out))
 exprSrcInt i
   = Lam $ Tup2 (Ap (Ap Add (Var ZeroIdx)) (Scalar (1 :: Int)))
                (Out [Outbound i (Var ZeroIdx)])
 
-actorSrcInt :: Actor (ConnFree Int)
+actorSrcInt :: Actor (ConnSimple Int)
 actorSrcInt = actor $ do
   c <- simpleOut
   producer $ exprSrcInt c

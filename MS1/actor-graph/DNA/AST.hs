@@ -88,17 +88,27 @@ newtype ConnId = ConnId Int
                deriving (Show)
 
 -- | Connection nor bound into dataflow graph
-data ConnFree a where
-  ConnFree :: Typeable a => ConnId -> ConnFree a
+data ConnSimple a where
+  ConnSimple :: Typeable a => ConnId -> ConnSimple a
 
+-- | Connection for scattering data to several worker processes
+data ConnScatter a where
+  ConnScatter :: Typeable a => ConnId -> Int -> ConnScatter a
 
 -- | Outgoing message
 data Outbound env where
-  Outbound :: ConnFree a        -- Number of port to send to.
+  -- | Simple outgoing connection
+  Outbound :: ConnSimple a
            -> Expr env a
            -> Outbound env
+  -- | Outgoing connection for scattering data
+  Scatter  :: ConnScatter a
+           -> Expr env [a]
+           -> Outbound env
+  -- | Sending result of computation
   OutRes   :: Expr env a
            -> Outbound env
+  -- | Log message
   PrintInt :: Expr env Int
            -> Outbound env
 

@@ -230,7 +230,7 @@ compileExpr env@(Env pids _) expr =
     Out outs -> do
       eouts <- forM outs $ \o ->
         case o of
-          Outbound (ConnFree (ConnId i)) a -> do
+          Outbound (ConnSimple (ConnId i)) a -> do
             ea <- compileExpr env a
             return $ [hs| sendToI |] $$ HS.Var (HS.UnQual pids) $$ liftHS i $$ ea
           OutRes a -> do
