@@ -13,7 +13,7 @@ import Control.Applicative
 import Control.Monad
 
 import qualified Data.IntMap as IntMap
-import           Data.IntMap   ((!))
+import           Data.IntMap   (IntMap,(!))
 import qualified Data.Foldable    as T
 import qualified Data.Traversable as T
 import Data.Graph.Inductive.Graph
@@ -54,13 +54,7 @@ saveProject dir (Project _ _ m) = do
 compileToCH :: DataflowGraph -> Compile Project
 compileToCH gr = do
   -- Generate declarations for every actor
-  actors <- forM (nodes gr) $ \n -> do
-    let a = lab' $ context gr n
-        i = case a of ANode' j _ -> j
-    (nm,decls) <- case a of
-                    ANode' _ aa -> compileNode aa
-    return (n,(i,nm,decls))
-  let actorMap = IntMap.fromList [(n,(i,nm)) | (n,(i,nm,_)) <- actors]
+  (actorMap,actorDecls) <- compileAllNodes gr
   -- * Generate master process
   --
   -- Code for spawning worker processes
@@ -128,7 +122,7 @@ compileToCH gr = do
                    , importA "Control.Distributed.Process.Platform.ManagedProcess"
                    , importA "DNA.CH"
                    ]           -- Imports
-                   (concat [ (\(_,(_,_,d)) -> d) =<< actors
+                   (concat [ actorDecls
                            , [rtable]
                            , master
                            , [ HS.TypeSig loc [HS.Ident "main"] [ty| IO () |]
@@ -138,10 +132,25 @@ compileToCH gr = do
                    )
     }
 
+-- Compile all actor to cloud haskell expressions. Function returns
+-- map from node id to pair of 1) CH node index and name of name of
+-- function and 2) list of all generated declarations.
+compileAllNodes :: DataflowGraph -> Compile (IntMap (Int,HS.Name), [HS.Decl])
+compileAllNodes gr = do
+  actors <- forM (nodes gr) $ \n -> do
+    let a = lab' $ context gr n
+        i = case a of ANode' j _ -> j
+    (nm,decls) <- case a of
+                    ANode' _ aa -> compileNode aa
+    return (n,(i,nm,decls))
+  return ( IntMap.fromList [(n,(i,nm)) | (n,(i,nm,_)) <- actors]
+         , concat [decl | (_,(_,_,decl)) <- actors]
+         )
 
 
--- Compile actor for
-compileNode :: Actor'  -> Compile (HS.Name,[HS.Decl])
+-- Compile actor to haskell declaration. It returns name of top level
+-- declaration and list of declarations
+compileNode :: Actor' -> Compile (HS.Name,[HS.Decl])
 compileNode (StateM _ i rules) = do
   -- Name of the actor
   nm <- HS.Ident <$> fresh "actor"
@@ -255,7 +264,7 @@ compileExpr env@(Env pids _) expr =
 
 
 bvar :: Expr (env,a) b -> a
-bvar _ = undefined
+bvar _ = error "DNA.Compiler.CH.bvar: impossible happened"
 
 typeOfVar :: IsValue a => a -> HS.Type
 typeOfVar a =
