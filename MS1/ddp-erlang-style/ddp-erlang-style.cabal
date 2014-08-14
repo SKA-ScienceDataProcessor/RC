@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                ddp-erlang-style
-version:             0.1.3.0
+version:             0.1.3.1
 synopsis:            DSL constructions for radio astronomy imaging with a focus on data movement and optimization
 -- description:         
 homepage:            https://github.com/SKA-ScienceDataProcessor/RC

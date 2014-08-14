@@ -32,7 +32,7 @@ import DNA.Channel.File
 import DNA.Message
 
 import Common (startLogger, say)
-import Cfg (executableName, event)
+import Cfg (executableName, event, eventPure)
 
 data PartialSum = PartialSum ProcessId Double deriving (Show,Typeable,Generic)
 instance Binary PartialSum
@@ -109,7 +109,7 @@ spawnCChan n f pid = do
         myPid <- getSelfPid 
         let vec = S.generate n f
 -- XXX must be an unsafe send to avoid copying
-        event "generating and sending precomputed vector" $ send pid (CompVec myPid vec)
+        event "generating and sending precomputed vector" $ send pid (CompVec myPid $! vec)
 
 
 spawnCompute :: (FilePath, Int, Int, Int, ProcessId) -> Process ()
@@ -121,15 +121,18 @@ spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
 
         fChanPid <- spawnLocal  (spawnFChan filePath chOffset chSize computePID)
         cChanPid <- spawnLocal  (spawnCChan chSize (\n -> 1.0) computePID)
-        (FileVec fChanPid iov) <- expect
-        (CompVec cChanPid cv) <- expect
+	(iov, cv) <- event "receiving vectors" $ do
+	        (FileVec fChanPid iov) <- event "receiving read vector" expect
+        	(CompVec cChanPid cv) <- event "receiving computed vector" expect
+		return (iov, cv)
 
 	--sayDebug $ printf "[Compute %s] : Value of iov: %s" (show computePID) (show iov) 
 
-	let sumOnComputeNode = S.sum $ S.zipWith (*) iov cv
-	sayDebug $ printf "[Compute] : sumOnComputeNode : %s at %s send to %s" (show sumOnComputeNode) (show computePID) (show collectorPID)
-	event "compute sends sum" $ do
+	sumOnComputeNode <- event "compute sends sum" $ do
+		let sumOnComputeNode = eventPure "pure computation time" $ S.sum $ S.zipWith (*) iov cv
 		send collectorPID (PartialSum computePID sumOnComputeNode)
+		return sumOnComputeNode
+	sayDebug $ printf "[Compute] : sumOnComputeNode : %s at %s send to %s" (show sumOnComputeNode) (show computePID) (show collectorPID)
         send masterPID (DnaFinished computePID)
 	traceMessage "trace message from compute."
 

@@ -5,6 +5,11 @@
 #include <sys/uio.h>
 #include <sys/mman.h>
 #include <unistd.h>
+
+#ifndef	__O_DIRECT
+#warning "__O_DIRECT is undefined, defining as 0."
+#define	__O_DIRECT	0
+#endif
 /* XXX error handling: should we return an ssize_t
    XXX types: buffer size is a ssize_t, not int
 */
