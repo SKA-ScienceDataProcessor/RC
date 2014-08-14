@@ -3,7 +3,33 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GADTs #-}
-module DNA.Actor where
+-- | Description of the
+module DNA.Actor (
+    -- * Actor representation
+    ConnInfo(..)
+  , ConnMap
+  , ConnCollection(..)
+  , Actor(..)
+  , Actor'(..)
+  , Rule(..)
+    -- * Definition of actors
+  , ActorDef
+  , actor
+  , simpleOut
+  , rule
+  , producer
+  , startingState
+    -- * Dataflow graph
+  , ANode(..)
+  , ANode'(..)
+  , DataflowGraph
+    -- * Building of dataflow graph
+  , Dataflow
+  , A(..)
+  , buildDataflow
+  , use
+  , connect
+  ) where
 
 import Control.Applicative
 import Control.Monad.Trans.State.Strict
@@ -20,7 +46,7 @@ import DNA.Compiler.Types
 
 
 ----------------------------------------------------------------
--- Actor building
+-- Actor representation
 ----------------------------------------------------------------
 
 -- Information about outgoing connection for the actor. It's pair of
@@ -58,8 +84,40 @@ instance ConnCollection () where
   setActorId _ = id
   nullConnection _ = ()
 
+-- | Representation of actor
+data Actor outs
+  -- We allow invalid actors. Instead of checking at construction time
+  -- all errors are reported during compilation phase
+  = Actor outs Actor'
+  | Invalid [String]
+
+-- Real description of an actor
+data Actor' where
+  -- State machine
+  StateM   :: ConnMap
+           -> Expr () s
+           -> [Rule s]
+           -> Actor'
+  -- Actor which produces data
+  Producer :: ConnMap
+           -> Expr () s
+           -> Expr () (s -> (s,Out))
+           -> Actor'
+  -- FIXME: scatter/gather primitives does not have
+  -- Scatted data
+  -- Gather data
 
 
+-- Transition rule for the state machine
+data Rule s where
+  Rule :: Expr () (s -> a -> (s,Out)) -- Transition rule
+       -> Rule s
+
+
+
+----------------------------------------------------------------
+-- Defining actors
+----------------------------------------------------------------
 
 -- | Monad for defining actor
 newtype ActorDef s a = ActorDef (State (ActorDefState s) a)
@@ -115,34 +173,6 @@ actor (ActorDef m) =
 -- Actor representation
 ----------------------------------------------------------------
 
--- | Representation of actor
-data Actor outs
-  -- We allow invalid actors. Instead of checking at construction time
-  -- all errors are reported during compilation phase
-  = Actor outs Actor'
-  | Invalid [String]
-
--- Real description of an actor
-data Actor' where
-  -- State machine
-  StateM   :: ConnMap
-           -> Expr () s
-           -> [Rule s]
-           -> Actor'
-  -- Actor which produces data
-  Producer :: ConnMap
-           -> Expr () s
-           -> Expr () (s -> (s,Out))
-           -> Actor'
-  -- FIXME: scatter/gather primitives does not have
-  -- Scatted data
-  -- Gather data
-
-
--- Transition rule for the state machine
-data Rule s where
-  Rule :: Expr () (s -> a -> (s,Out)) -- Transition rule
-       -> Rule s
 
 
 

@@ -1,6 +1,29 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-module DNA.AST where
+module DNA.AST (
+    -- * AST
+    Expr(..)
+  , Idx(..)
+    -- ** Array and array shaped
+  , Array(..)
+  , Shape(..)
+  , Slice(..)
+    -- ** Connection encoding
+  , Out
+  , ConnId(..)
+  , ConnSimple(..)
+  , ConnScatter(..)
+  , Outbound(..)
+    -- ** Dictionaries
+  , ScalarDict(..)
+  , IsScalar(..)
+  , ShapeDict(..)
+  , IsShape(..)
+  , VectorDict(..)
+  , IsVector(..)
+  , ValueDict(..)
+  , IsValue(..)
+  ) where
 
 import qualified Data.Vector.Storable as S
 import Data.Typeable
@@ -169,13 +192,3 @@ instance IsValue Slice where reifyValue _ = ValShape
 
 instance IsShape sh => IsValue (Array sh Double) where
   reifyValue _ = ValVec
-
-
-----------------------------------------------------------------
--- JUNK
-----------------------------------------------------------------
-
--- data NumDict a where
---   NumDict :: Num a => NumDict a
--- instance IsNum a where
---   reify
