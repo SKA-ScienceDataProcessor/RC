@@ -8,6 +8,7 @@ import Foreign.C.String
 import qualified Data.Vector.Storable as S
 import qualified Data.Vector.Storable.Mutable as MS
 
+-- XXX Let's have 8 space indents everywhere
 itemSize :: Int
 itemSize = 8
 -- divide up a file in chunkCount chunks
@@ -52,3 +53,4 @@ readDataMMap n o p = do
 	fptr <- newForeignPtr_ ptr
 	return $ S.unsafeFromForeignPtr0 (castForeignPtr fptr) n
 
+-- XXX The channels should be started in a CH Process (so that I/O proceeds in the background), let's move the start function to this file.

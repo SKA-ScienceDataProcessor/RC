@@ -39,10 +39,12 @@ instance Binary PartialSum
 newtype Result = Result Double deriving (Show,Typeable,Generic)
 instance Binary Result
 
+
+-- XXX should be an argument of the program
 filePath :: FilePath
 filePath="float_file.txt"
 
--- |Collects data from compute processes, looking for
+-- Collects data from compute processes, looking for
 -- either partial sum result or monitoring messages.
 --
 -- Partial sums are get accumulated.
@@ -61,7 +63,10 @@ dpSum pids sum = do
 			if pid `elem` pids
 				then do
 					say "process terminated before its contribution to sum."
-					terminate
+--XXX if a compute process fails we record the failure in a log file that is being monitored, but carry on
+--XXX This seems to terminate the collector if any compute node fails
+					terminate  
+--XXX in the else case where would the ProcessMonitorNotification be coming from
 				else dpSum pids sum
 		]
 
@@ -72,6 +77,8 @@ spawnCollector pid = do
 
         (DnaPidList computePids) <- expect
 
+-- XXX The specification said the master monitors the compute nodes (failure of which is ignored)
+-- XXX and the master monitors the collector (failure of which terminates the program)
 	-- install monitors for compute processes.
 	forM_ computePids $ \pid -> monitor pid
         sum <- event "collection phase" $ dpSum computePids 0
@@ -79,17 +86,16 @@ spawnCollector pid = do
 	traceMessage "trace message from collector."
 
 data FileVec = FileVec ProcessId (S.Vector Double) deriving (Eq, Show, Typeable, Generic)
-
 instance Binary FileVec where
 	put (FileVec pid vec) = put pid >> put vec
 	get = do { pid <- get; vec <- get; return (FileVec pid vec)}
 
--- XXX how do we make an S.Vector binary?
+
 spawnFChan :: String -> Int -> Int -> ProcessId -> Process()
 spawnFChan path cO cS pid = do
         mypid <- getSelfPid
 	iov <- event "reading file" $ liftIO $ readData cS cO path
--- XXX must be an unsafe send to avoid copying
+-- XXX must be an unsafe sending of the POINTER ONLY to avoid all data in the vector being touched.  Is that so?
         send pid (FileVec mypid iov)
 
 instance (S.Storable e, Binary e) => Binary (S.Vector e) where
@@ -98,8 +104,6 @@ instance (S.Storable e, Binary e) => Binary (S.Vector e) where
 
 
 data CompVec = CompVec ProcessId (S.Vector Double) deriving (Eq, Show, Typeable, Generic)
--- XXX how do we make an S.Vector binary?
-
 instance Binary CompVec where
 	put (CompVec pid vec) = put pid >> put vec
 	get = do { pid <- get; vec <- get; return (CompVec pid vec)}
@@ -131,13 +135,13 @@ spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
 	event "compute sends sum" $ do
 		send collectorPID (PartialSum computePID sumOnComputeNode)
         send masterPID (DnaFinished computePID)
-	traceMessage "trace message from compute."
 
 remotable [ 'spawnCompute, 'spawnCollector]
 
 master :: Backend -> [NodeId] -> Process ()
 master backend peers = do
 	startLogger peers
+-- XXX Why is this comment here?
   --systemLog :: (String -> Process ()) -- ^ This expression does the actual logging
   --        -> (Process ())  -- ^ An expression used to clean up any residual state
   --        -> LogLevel      -- ^ The initial 'LogLevel' to use
@@ -155,6 +159,7 @@ master backend peers = do
 	masterPID <- getSelfPid
  	say $ printf "[Master %s]" (show masterPID)
 
+-- XXX with a function please - this is messy
 	-- enable tracing after all is set up.
 --	forM_ peers $ \peer -> do
 --		startTraceRelay peer
@@ -207,6 +212,9 @@ master backend peers = do
         sayDebug $ printf "Result %s" (show sum)
   	terminateAllSlaves backend	
 
+
+-- XXX Please make this the beginning of a DNA.Backend package
+-- XXX not in this file
 findSlavesByURIs :: [String] -> Int -> IO [NodeId]
 findSlavesByURIs uris _ignoredTimeout = do
 	nodes' <- mapM parseNode uris
@@ -229,6 +237,7 @@ main :: IO ()
 main = do
 	args <- getArgs
 
+-- XXX This is now a real mess... Let's use an option package and get rid of all the hardcoded strings.
 	case args of
  		["master", host, port] -> do
     			backend <- initializeBackend host port rtable
