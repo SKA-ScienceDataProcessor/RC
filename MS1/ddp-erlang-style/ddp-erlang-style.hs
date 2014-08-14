@@ -44,37 +44,21 @@ instance Binary Result
 filePath :: FilePath
 filePath="float_file.txt"
 
--- Collects data from compute processes, looking for
--- either partial sum result or monitoring messages.
---
+-- Collects data from compute processes, looking for either partial sum result or monitoring messages.
 -- Partial sums are get accumulated.
---
--- Monitoring notifications are checked whether process computed
--- partial sum or not. If process died before any partial sum computation
--- this process also terminate.
 dpSum :: [ProcessId] -> Double -> Process(Double)
 dpSum [ ] sum = do
-      return sum
+        return sum
 dpSum pids sum = do
-	-- here we wait either for message with PartialSum or for message regarding process status.
 	receiveWait
 		[ match $ \(PartialSum pid s) -> dpSum (filter (/= pid) pids) (s+sum)
-		, match $ \(ProcessMonitorNotification _ pid _) ->
-			if pid `elem` pids
-				then do
-					say "process terminated before its contribution to sum."
---XXX if a compute process fails we record the failure in a log file that is being monitored, but carry on
---XXX This seems to terminate the collector if any compute node fails
-					terminate  
---XXX in the else case where would the ProcessMonitorNotification be coming from
-				else dpSum pids sum
+		, match $ \(ProcessMonitorNotification _ pid _) -> dpSum (filter (/= pid) pids) sum
 		]
 
 spawnCollector :: ProcessId -> Process ()
 spawnCollector pid = do
   	collectorPID <- getSelfPid
         masterPID <- dnaSlaveHandleStart "collector" collectorPID
-
         (DnaPidList computePids) <- expect
 
 -- XXX The specification said the master monitors the compute nodes (failure of which is ignored)
