@@ -12,7 +12,6 @@ module DNA.AST (
   , Out
   , ConnId(..)
   , ConnSimple(..)
-  , ConnScatter(..)
   , Outbound(..)
     -- ** Dictionaries
   , ScalarDict(..)
@@ -114,19 +113,11 @@ newtype ConnId = ConnId Int
 data ConnSimple a where
   ConnSimple :: Typeable a => ConnId -> ConnSimple a
 
--- | Connection for scattering data to several worker processes
-data ConnScatter a where
-  ConnScatter :: Typeable a => ConnId -> Int -> ConnScatter a
-
 -- | Outgoing message
 data Outbound env where
   -- | Simple outgoing connection
   Outbound :: ConnSimple a
            -> Expr env a
-           -> Outbound env
-  -- | Outgoing connection for scattering data
-  Scatter  :: ConnScatter a
-           -> Expr env [a]
            -> Outbound env
   -- | Sending result of computation
   OutRes   :: Expr env a

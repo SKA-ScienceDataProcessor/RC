@@ -21,6 +21,7 @@ module DNA.Actor (
   , startingState
     -- * Dataflow graph
   , ANode(..)
+  , ScheduleState(..)
   , DataflowGraph
     -- * Building of dataflow graph
   , Dataflow
@@ -80,8 +81,8 @@ instance (ConnCollection a, ConnCollection b) => ConnCollection (a,b) where
 
 instance ConnCollection () where
   type Connected () = ()
-  setActorId _ = id
-  nullConnection _ = ()
+  setActorId     _  = id
+  nullConnection _  = ()
 
 -- | Representation of actor.
 data Actor outs
@@ -93,24 +94,58 @@ data Actor outs
 -- Real description of an actor
 data RealActor where
   -- State machine
-  StateM   :: ConnMap
-           -> Expr () s
-           -> [Rule s]
-           -> RealActor
+  StateM
+    :: ConnMap
+    -> Expr () s
+    -> [Rule s]
+    -> RealActor
   -- Actor which produces data
-  Producer :: ConnMap
-           -> Expr () s
-           -> Expr () (s -> (s,Out))
-           -> RealActor
-  -- FIXME: scatter/gather primitives does not have
-  -- Scatted data
-  -- Gather data
+  Producer
+    :: ConnMap
+    -> Expr () s
+    -> Expr () (s -> (s,Out))
+    -> RealActor
+  -- Scatter/gather actor
+  ScatterGather
+    :: ConnMap
+       -- Gather actor
+    -> (Expr () c, Expr () (c -> c -> c), Expr () (c -> Out))
+       -- Worker actor
+    -> Expr () (b -> c)
+       -- Scatter actor
+    -> Expr () (Int -> a -> [b])
+    -> RealActor
 
 
 -- Transition rule for the state machine
 data Rule s where
   Rule :: Expr () (s -> a -> (s,Out)) -- Transition rule
        -> Rule s
+
+
+----------------------------------------------------------------
+-- Dataflow graph
+----------------------------------------------------------------
+
+-- Node of a dataflow graph which is used during graph construction
+data BuildNode where
+  BuildNode :: Actor outs -> BuildNode
+
+-- | Node of dataflow graph
+data ANode = ANode
+  ScheduleState       -- Node index (default 0)
+  RealActor           -- Actor data
+
+-- | How actor is schedule to run
+data ScheduleState
+  = NotSched
+  | Single  Int
+  | MasterSlaves Int [Int]
+
+
+
+-- | Complete description of dataflow graph
+type DataflowGraph = Gr ANode ConnInfo
 
 
 
@@ -170,26 +205,6 @@ actor (ActorDef m) =
 
 
 ----------------------------------------------------------------
--- Dataflow graph
-----------------------------------------------------------------
-
--- Node of a dataflow graph which is used during graph construction
-data BuildNode where
-  BuildNode :: Actor outs -> BuildNode
-
--- Node of dataflow graph
-data ANode where
-  ANode :: Int                 -- Node index (default 0)
-        -> RealActor           -- Actor data
-        -> ANode
-
--- | Complete description of dataflow graph
-type DataflowGraph = Gr ANode ConnInfo
-
-
-
-
-----------------------------------------------------------------
 -- Language for dataflow graph definition
 ----------------------------------------------------------------
 
@@ -206,7 +221,7 @@ buildDataflow m
   $ (\n -> mkGraph n es) <$> T.traverse validate ns
   where
     validate (_,BuildNode (Invalid errs)) = leftA errs
-    validate (i,BuildNode (Actor _ a))    = pure (i,ANode 0 a)
+    validate (i,BuildNode (Actor _ a))    = pure (i,ANode NotSched a)
     (_,ns,es) = execState m (0,[],[])
 
 

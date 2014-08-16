@@ -24,5 +24,5 @@ schedule :: CAD -> DataflowGraph -> Compile DataflowGraph
 schedule n gr = do
   when (n < noNodes gr) $
     compError ["Not enough nodes to schedule algorithm"]
-  let ns = IntMap.fromList $ nodes gr `zip` [0..]
+  let ns = IntMap.fromList $ nodes gr `zip` (map Single [0..])
   return $ gmap (\(a1, i, ANode _ a, a2) -> (a1, i, ANode (ns ! i) a, a2)) gr
