@@ -63,27 +63,33 @@ data RemoteMap = RemoteMap
   deriving (Typeable,Show,Generic)
 instance Binary RemoteMap
 
+-- | Send value to remote process
 sendToI :: Serializable a => RemoteMap -> Int -> a -> Process ()
 sendToI (RemoteMap _ m) i a = cast (m IntMap.! i) a
 
+-- | Send result of computation to master process
 sendResult :: Serializable a => RemoteMap -> a -> Process ()
 sendResult (RemoteMap p _) a = send p a
 
+-- | Handle for single transition rule for state machine
 handleRule :: (Serializable a) => (s -> a -> (s, Process ())) -> Dispatcher s
 handleRule f
   = handleCast
   $ \s a -> case f s a of
               (s',m) -> m >> return (ProcessContinue s')
 
+-- | Helper for starting state machine actor
 startActor :: s -> ProcessDefinition s -> Process ()
 startActor s = serve () (\_ -> return (InitOk s NoDelay))
 
+-- | Helper for starting data producer actor
 producer :: s -> (s -> (s,Process())) -> Process ()
 producer s0 step = loop s0
   where
     loop s = let (s',m) = step s in m >> loop s'
 
 
+-- | Default main
 defaultMain :: (RemoteTable -> RemoteTable) -> ([NodeId] -> Process ()) -> IO ()
 defaultMain remotes master = do
   args <- getArgs
