@@ -4,12 +4,14 @@ module DNA.Message (sayDebug, dnaSlaveHandleStart, dnaMasterStartSlave, DnaStart
 
 import Text.Printf
 --import Control.Distributed.Process.Debug
-import Control.Distributed.Process
+import Control.Distributed.Process hiding (say)
 import Control.Distributed.Process.Platform (resolve)
 import qualified Control.Distributed.Process.Platform.Service.SystemLog as Log
 import GHC.Generics (Generic)
 import Data.Binary
 import Data.Typeable
+
+import Common (say)
 
 newtype DnaStart = DnaStart ProcessId deriving (Eq, Ord, Show, Typeable, Generic)
 newtype DnaStarted = DnaStarted ProcessId deriving (Eq, Ord, Show, Typeable, Generic)
@@ -20,6 +22,7 @@ instance Binary DnaStart
 instance Binary DnaStarted
 instance Binary DnaFinished
 instance Binary DnaPidList
+
 
 sayDebug :: String -> Process ()
 sayDebug msg = do

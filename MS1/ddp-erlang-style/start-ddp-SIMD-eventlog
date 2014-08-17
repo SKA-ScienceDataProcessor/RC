@@ -5,9 +5,13 @@ cp $DA slave2
 cp $DA slave3
 cp $DA master
 
-./slave1 slave localhost 60001 +RTS -lsgpfu &
-./slave2 slave localhost 60002 +RTS -lsgpfu &
-./slave3 slave localhost 60003 +RTS -lsgpfu &
+./slave1 slave localhost 60001 +RTS -l-au &
+./slave2 slave localhost 60002 +RTS -l-au &
+./slave3 slave localhost 60003 +RTS -l-au &
 sleep 1
-./master master localhost 44440 +RTS -lsgpfu
+./master master localhost 44440 +RTS -l-au
 rm -f master slave1 slave2 slave3
+ghc-events show slave1.eventlog >slave1.eventlog.txt
+ghc-events show slave2.eventlog >slave2.eventlog.txt
+ghc-events show slave3.eventlog >slave3.eventlog.txt
+ghc-events show master.eventlog >master.eventlog.txt
