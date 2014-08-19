@@ -148,7 +148,7 @@ spawnActor vnodes sched nm = do
          Single       i   -> return i
          MasterSlaves i _ -> return i
   -- Statement for spawning process
-  let spawnStmt = x <-- ([hs| spawn |]
+  let spawnStmt = x <-- ([hs| spawnActor |]
                          $$ infx (var vnodes) "!!" (liftHS i)
                          $$ (HS.SpliceExp $ HS.ParenSplice $ [hs|mkStaticClosure|] $$ var (quote nm))
                         )

@@ -20,6 +20,7 @@ module DNA.CH (
   , monitorActors
   , scatterGather
   , worker
+  , spawnActor
     -- * Reexports
   , Shape(..)
   , Slice(..)
@@ -40,7 +41,7 @@ import qualified Data.IntMap   as IntMap
 import qualified Data.Sequence as Seq
 import           Data.Sequence   (ViewL(..),(|>))
 import System.Environment (getArgs)
-
+import Text.Printf
 
 import GHC.Generics (Generic)
 
@@ -135,6 +136,10 @@ defaultMain remotes master = do
   where
     executableName = "EXE"
 
+spawnActor :: NodeId -> Closure (Process ()) -> Process ProcessId
+spawnActor nid clos = do
+  (pid,_) <- spawnSupervised nid clos
+  return pid
 
 -- | Set up monitoring of slave processes
 monitorActors :: Process ()
@@ -143,6 +148,8 @@ monitorActors = loop
     loop = receiveWait
              [ match $ \(Result x) -> say $ "RESULT = " ++ show (x :: Double)
              , match $ \(Result x) -> say $ "RESULT = " ++ show (x :: Int)
+             , match $ \(ProcessMonitorNotification _ pid reason) ->
+                say $ printf "Process %s down: %s" (show pid) (show reason)
              ]
 
 
