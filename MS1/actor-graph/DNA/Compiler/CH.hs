@@ -229,7 +229,7 @@ compileNode (Producer _ i step) = do
     }
 -- ** Scatter-gather
 --
-compileNode (ScatterGather _ (st,merge,outs) worker scatter) = do
+compileNode (ScatterGather _ (SG (st,merge,outs) worker scatter)) = do
   masterNm <- HS.Ident <$> fresh "actor"
   workerNm <- HS.Ident <$> fresh "actor"
   pids     <- HS.Ident <$> fresh "pids"
@@ -245,7 +245,7 @@ compileNode (ScatterGather _ (st,merge,outs) worker scatter) = do
         , stmt $ [hs| scatterGather |]
             $$ liftHS (exprSt,exprMerge,exprOut)
             $$ exprScatter
-            $$ (undefined)
+            $$ (HS.SpliceExp $ HS.ParenSplice $ [hs|mkStaticClosure|] $$ var (quote workerNm))
         ]
       exprWFun =
         [ stmt $ [hs| worker |] $$ exprWorker
@@ -337,6 +337,7 @@ compileExpr env@(Env pids _) expr =
     -- Array sizes
     EShape sh -> return $ liftHS sh
     ESlice sl -> return $ liftHS sl
+    ScatterShape -> return [hs| scatterShape |]
     --
     Vec _ -> error "NOT IMPLEMENTED"
 

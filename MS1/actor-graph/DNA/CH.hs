@@ -8,6 +8,7 @@ module DNA.CH (
     zipArray
   , foldArray
   , generateArray
+  , scatterShape
     -- * CH utils
   , Result(..)
   , RemoteMap(..)
@@ -72,7 +73,16 @@ generateArray sh f =
     ShSlice -> case sh of
                  Slice off n -> Array sh (S.generate n (\i -> f (i + off)))
     
-
+scatterShape :: Int -> Shape -> [Slice]
+scatterShape n (Shape size)
+  = zipWith Slice chunkOffs chunkSizes
+  where
+    (chunk,rest) = size `divMod` n
+    extra        = replicate rest 1 ++ repeat 0
+    chunkSizes   = zipWith (+) (replicate n chunk) extra
+    chunkOffs    = scanl (+) 0 chunkSizes
+  
+  
 
 ----------------------------------------------------------------
 -- CH combinators
