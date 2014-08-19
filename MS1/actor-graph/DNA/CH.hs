@@ -94,7 +94,7 @@ sendToI (RemoteMap _ m) i a = cast (m IntMap.! i) a
 
 -- | Send result of computation to master process
 sendResult :: Serializable a => RemoteMap -> a -> Process ()
-sendResult (RemoteMap p _) a = send p a
+sendResult (RemoteMap p _) a = send p (Result a)
 
 -- | Handle for single transition rule for state machine
 handleRule :: (Serializable a) => (s -> a -> (s, Process ())) -> Dispatcher s
