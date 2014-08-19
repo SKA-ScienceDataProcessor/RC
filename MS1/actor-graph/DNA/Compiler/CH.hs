@@ -12,6 +12,7 @@ module DNA.Compiler.CH (
 import Control.Applicative
 import Control.Monad
 
+import Data.Typeable
 import qualified Data.IntMap as IntMap
 import           Data.IntMap   (IntMap,(!))
 import qualified Data.Foldable    as T
@@ -244,7 +245,7 @@ compileNode (ScatterGather _ (st,merge,outs) worker scatter) = do
         , stmt $ [hs| scatterGather |]
             $$ liftHS (exprSt,exprMerge,exprOut)
             $$ exprScatter
-            $$ (undefined)                        
+            $$ (undefined)
         ]
       exprWFun =
         [ stmt $ [hs| worker |] $$ exprWorker
@@ -309,16 +310,12 @@ compileExpr env@(Env pids _) expr =
     Add -> return $ var (HS.Symbol "+")
     Mul -> return $ var (HS.Symbol "*")
     -- Scalars
-    Scalar a -> return $
-      case reifyScalar a of
-        DoubleDict -> liftHS a
-        IntDict    -> liftHS a
-        UnitDict   -> [hs| () |]
-    Tup2 a b -> do
-      ea <- compileExpr env a
-      eb <- compileExpr env b
-      return $  HS.Tuple HS.Boxed [ea, eb]
+    Scalar a -> return $ compileScalar a
+    Tup tup  -> compileTuple env tup
+    Prj idx  -> compileTupleProj idx
     String s -> return $ HS.Lit (HS.String s)
+    -- List
+    List xs -> return $ liftHS $ map compileScalar xs
     -- Result expression
     Out outs -> do
       eouts <- forM outs $ \o ->
@@ -339,10 +336,38 @@ compileExpr env@(Env pids _) expr =
     --
     Vec _ -> error "NOT IMPLEMENTED"
 
+-- | Compile scalar expression
+compileScalar :: IsScalar a => a -> HS.Exp
+compileScalar a =
+  case reifyScalar a of
+    DoubleDict -> liftHS a
+    IntDict    -> liftHS a
+    UnitDict   -> [hs| () |]
+
+-- | Compile tuple expression
+compileTuple :: Env env -> Tuple (Expr env) xs -> Compile HS.Exp
+compileTuple env tup
+  = HS.Tuple HS.Boxed <$> sequence (compileElts env tup)
+  where
+    compileElts :: Env env -> Tuple (Expr env) xs -> [Compile HS.Exp]
+    compileElts _ Nil = []
+    compileElts e (Cons expr rest) = compileExpr e expr
+                                   : compileElts e rest
+
+compileTupleProj :: TupleIdx xs x -> Compile HS.Exp
+compileTupleProj idx = do
+  v <- HS.Ident <$> freshName
+  return $ HS.Lambda loc [HS.PTuple HS.Boxed (wilds v idx)] (var v)
+  where
+    wilds :: forall x xs. HS.Name -> TupleIdx xs x -> [HS.Pat]
+    wilds v Here      = (HS.PVar v) : replicate (arity (Proxy :: Proxy xs) - 1) HS.PWildCard
+    wilds v (There i) = HS.PWildCard : wilds v i
+
 
 bvar :: Expr (env,a) b -> a
 bvar _ = error "DNA.Compiler.CH.bvar: impossible happened"
 
+-- | Get type of haskell scalar variable
 typeOfVar :: IsValue a => a -> HS.Type
 typeOfVar a =
   case reifyValue a of

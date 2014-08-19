@@ -10,7 +10,9 @@ import DNA.Compiler.Types
 ----------------------------------------------------------------
 
 exprPrint :: Expr () (() -> Int -> ((),Out))
-exprPrint = Lam $ Lam $ Tup2 (Scalar ()) (Out [PrintInt $ Var ZeroIdx])
+exprPrint = Lam $ Lam $ Tup ( Scalar ()
+                       `Cons` Out [PrintInt $ Var ZeroIdx]
+                       `Cons` Nil)
 
 actorPrint :: Actor ()
 actorPrint = actor $ do
@@ -26,8 +28,9 @@ actorPrint = actor $ do
 
 exprSrcInt :: ConnSimple Int -> Expr () (Int -> (Int,Out))
 exprSrcInt i
-  = Lam $ Tup2 (Ap (Ap Add (Var ZeroIdx)) (Scalar (1 :: Int)))
-               (Out [Outbound i (Var ZeroIdx)])
+  = Lam $ Tup ( Ap (Ap Add (Var ZeroIdx)) (Scalar (1 :: Int))
+         `Cons` Out [Outbound i (Var ZeroIdx)]
+         `Cons` Nil)
 
 actorSrcInt :: Actor (ConnSimple Int)
 actorSrcInt = actor $ do
