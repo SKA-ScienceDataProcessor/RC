@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable, DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
@@ -37,6 +38,10 @@ import Control.Applicative
 import qualified Data.Vector.Storable as S
 import Data.Typeable
 import Data.Functor.Identity
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
+
+
 
 ----------------------------------------------------------------
 -- AST
@@ -78,6 +83,7 @@ data Expr env a where
   -- Primitive operations
   Add :: Num a => Expr env (a -> a -> a)
   Mul :: Num a => Expr env (a -> a -> a)
+  FromInt :: Expr env (Int -> Double)
 
   Out :: [Outbound env]
       -> Expr env Out
@@ -154,8 +160,12 @@ instance IsTuple (a,b,c) where
   fromRepr _ = error "Impossible"
 
 newtype Shape = Shape Int
+                deriving (Show,Eq,Typeable,Generic)
+instance Binary Shape
 
 data Slice = Slice Int Int
+           deriving (Show,Eq,Typeable,Generic)
+instance Binary Slice
 
 data Array sh a = Array sh (S.Vector a)
 

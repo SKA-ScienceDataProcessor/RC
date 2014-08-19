@@ -47,7 +47,7 @@ program = do
 
 main :: IO ()
 main = do
-  let r = compile $ compileToCH =<< buildDataflow program
+  let r = compile $ compileToCH =<< schedule 2 =<< buildDataflow program
   case r of
     Left errs -> mapM_ putStrLn errs
     Right prj -> saveProject "dir" prj

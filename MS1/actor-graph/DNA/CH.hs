@@ -3,7 +3,27 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveGeneric #-}
 -- | Library functions for the
-module DNA.CH where
+module DNA.CH (
+    -- * Array functions
+    zipArray
+  , foldArray
+  , generateArray
+    -- * CH utils
+  , Result(..)
+  , RemoteMap(..)
+  , sendToI
+  , sendResult
+  , handleRule
+  , producer
+  , startActor
+  , defaultMain
+  , monitorActors
+  , scatterGather
+  , worker
+    -- * Reexports
+  , Shape(..)
+  , Slice(..)
+  ) where
 
 import Control.Monad
 import Control.Distributed.Process
@@ -43,8 +63,8 @@ foldArray :: (S.Storable a)
 foldArray f x0 (Array _ v) = S.foldl' f x0 v
 
 generateArray :: (IsShape sh, S.Storable a)
-              => (Int -> a) -> sh -> Array sh a
-generateArray f sh =
+              => sh -> (Int -> a) -> Array sh a
+generateArray sh f =
   case reifyShape sh of
     ShShape -> case sh of
                  Shape n -> Array sh (S.generate n f)

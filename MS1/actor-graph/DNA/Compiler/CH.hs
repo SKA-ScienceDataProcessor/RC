@@ -296,19 +296,20 @@ compileExpr env@(Env pids _) expr =
     Fold f a vec -> do ef <- compileExpr env f
                        ea <- compileExpr env a
                        ev <- compileExpr env vec
-                       return $ [hs| DNA.fodlArray |] $$ ef $$ ea $$ ev
+                       return $ [hs| foldArray |] $$ ef $$ ea $$ ev
     -- Zip
     Zip  f va vb -> do ef <- compileExpr env f
                        ea <- compileExpr env va
                        eb <- compileExpr env vb
-                       return $ [hs| DNA.zipArray |] $$ ef $$ ea $$ eb
+                       return $ [hs| zipArray |] $$ ef $$ ea $$ eb
     -- Generate
     Generate sh f -> do esh <- compileExpr env sh
                         ef  <- compileExpr env f
-                        return $ [hs| DNA.generateArray |] $$ esh $$ ef
+                        return $ [hs| generateArray |] $$ esh $$ ef
     -- Primitives
     Add -> return $ var (HS.Symbol "+")
     Mul -> return $ var (HS.Symbol "*")
+    FromInt -> return $ [hs| fromIntegral |]
     -- Scalars
     Scalar a -> return $ compileScalar a
     Tup tup  -> compileTuple env tup
@@ -341,11 +342,17 @@ compileExpr env@(Env pids _) expr =
 
 -- | Compile scalar expression
 compileScalar :: IsScalar a => a -> HS.Exp
-compileScalar a =
-  case reifyScalar a of
-    DoubleDict -> liftHS a
-    IntDict    -> liftHS a
-    UnitDict   -> [hs| () |]
+compileScalar a
+  = HS.ExpTypeSig loc expr ety
+  where
+    ety  = case reifyScalar a of
+             DoubleDict -> [ty| Double |]
+             IntDict    -> [ty| Int    |]
+             UnitDict   -> [ty| ()     |]
+    expr = case reifyScalar a of
+             DoubleDict -> liftHS a
+             IntDict    -> liftHS a
+             UnitDict   -> [hs| () |]
 
 -- | Compile tuple expression
 compileTuple :: Env env -> Tuple (Expr env) xs -> Compile HS.Exp
