@@ -48,7 +48,7 @@ simpleDataflow = do
     producer $ shapeProducer c (Shape 100)
     startingState $ Scalar ()
     return c
-  return ()
+  connect c aDot
 
 
 
