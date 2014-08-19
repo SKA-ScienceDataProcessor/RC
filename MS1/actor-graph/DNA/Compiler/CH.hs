@@ -316,6 +316,9 @@ compileExpr env@(Env pids _) expr =
     String s -> return $ HS.Lit (HS.String s)
     -- List
     List xs -> return $ liftHS $ map compileScalar xs
+    FMap f xs -> do ef  <- compileExpr env f
+                    exs <- compileExpr env xs
+                    return $ [hs|map|] $$ ef $$ exs
     -- Result expression
     Out outs -> do
       eouts <- forM outs $ \o ->

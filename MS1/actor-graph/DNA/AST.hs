@@ -97,6 +97,8 @@ data Expr env a where
 
   -- | List literal
   List :: IsScalar a => [a] -> Expr env [a]
+  -- | Functor instance for list
+  FMap :: Expr env (a -> b) -> Expr env [a] -> Expr env [b]
   -- | Special form for scattering values
   ScatterShape :: Expr env (Int -> Shape -> [Slice])
   -- FFI
