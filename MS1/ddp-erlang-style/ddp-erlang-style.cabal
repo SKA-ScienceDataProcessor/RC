@@ -25,7 +25,7 @@ executable ddp-erlang-style
                        distributed-process == 0.5.*,
                        distributed-process-platform == 0.1.*,
                        distributed-process-simplelocalnet,
-                       mmap, network,
+                       mmap, network, deepseq,
                        vector >= 0.10
 
   ghc-options:         -O2
@@ -50,7 +50,7 @@ executable ddp-erlang-style-SIMD
                        distributed-process == 0.5.*,
                        distributed-process-platform == 0.1.*,
                        distributed-process-simplelocalnet,
-                       mmap, network, 
+                       mmap, network, deepseq,
                        vector >= 0.10
 
   hs-source-dirs:      ., cfgs/SIMD
@@ -75,7 +75,7 @@ executable ddp-erlang-style-SIMD-eventlog
                        distributed-process == 0.5.*,
                        distributed-process-platform == 0.1.*,
                        distributed-process-simplelocalnet,
-                       mmap, network, 
+                       mmap, network, deepseq,
                        vector >= 0.10
 
   hs-source-dirs:      ., cfgs/SIMD-eventlog

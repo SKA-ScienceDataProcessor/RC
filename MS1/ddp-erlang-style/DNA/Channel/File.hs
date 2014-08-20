@@ -1,16 +1,34 @@
-module DNA.Channel.File (itemSize, readData, readDataMMap, roundUpDiv, chunkOffset, chunkSize) where
+{-# LANGUAGE DeriveDataTypeable, DeriveGeneric, BangPatterns #-}
+
+module DNA.Channel.File (itemSize, readData, readDataMMap, roundUpDiv, chunkOffset, chunkSize, FileVec(..), spawnFChan) where
+
+import qualified Control.DeepSeq as CD
+
+import Control.Distributed.Process
+import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
 
 import Control.Monad
+import Control.Monad.Trans
+
+import Data.Binary
+
+import GHC.Generics (Generic)
+
+import Data.Typeable
+
+import qualified Data.Vector.Storable as S
+import qualified Data.Vector.Storable.Mutable as MS
+
 import Foreign
 import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.C.String
-import qualified Data.Vector.Storable as S
-import qualified Data.Vector.Storable.Mutable as MS
 
--- XXX Let's have 8 space indents everywhere
+import Cfg
+
 itemSize :: Int
 itemSize = 8
+
 -- divide up a file in chunkCount chunks
 -- functions to read chunkSize * itemSize from a file at offset chunkSize * itemSize
 roundUpDiv :: Int -> Int -> Int
@@ -40,17 +58,38 @@ foreign import ccall unsafe "read_data_mmap"
 
 readData :: Int -> Int -> String -> IO (S.Vector Double)
 readData n o p = do
-	mv <- MS.new n :: IO (MS.IOVector Double)
-  	MS.unsafeWith mv $ \ptr ->
+        mv <- MS.new n :: IO (MS.IOVector Double)
+        MS.unsafeWith mv $ \ptr ->
     -- Here I assume that CDouble and Double are same thing (it is)
     --     -- and blindly cast pointer
-        	withCString p (c_read_data (castPtr ptr) (fromIntegral n) (fromIntegral o))
+                withCString p (c_read_data (castPtr ptr) (fromIntegral n) (fromIntegral o))
         S.unsafeFreeze mv
 
 readDataMMap :: Int -> Int -> String -> IO (S.Vector Double)
 readDataMMap n o p = do
-	ptr <- withCString p (c_read_data_mmap (fromIntegral n) (fromIntegral o))
-	fptr <- newForeignPtr_ ptr
-	return $ S.unsafeFromForeignPtr0 (castForeignPtr fptr) n
+        ptr <- withCString p (c_read_data_mmap (fromIntegral n) (fromIntegral o))
+        fptr <- newForeignPtr_ ptr
+        return $ S.unsafeFromForeignPtr0 (castForeignPtr fptr) n
 
--- XXX The channels should be started in a CH Process (so that I/O proceeds in the background), let's move the start function to this file.
+
+instance (S.Storable e, Binary e) => Binary (S.Vector e) where
+        put vec = put (S.toList vec)
+        get = get >>= (return . S.fromList)
+
+
+data FileVec = FileVec ProcessId (S.Vector Double) deriving (Eq, Show, Typeable, Generic)
+
+instance Binary FileVec where
+        put (FileVec pid vec) = put pid >> put vec
+        get = do { pid <- get; vec <- get; return (FileVec pid vec)}
+
+instance CD.NFData FileVec where
+        rnf (FileVec !procId !vec) = CD.rnf procId `seq` CD.rnf vec `seq` ()
+
+
+spawnFChan :: String -> Int -> Int -> ProcessId -> Process()
+spawnFChan path cO cS pid = do
+        mypid <- getSelfPid
+        iov <- event "reading file" $ liftIO $ readData cS cO path
+        Unsafe.send pid (FileVec mypid iov)
+

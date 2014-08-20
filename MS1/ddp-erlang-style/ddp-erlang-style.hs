@@ -69,25 +69,9 @@ spawnCollector pid = do
         send masterPID (Result sum)
 	traceMessage "trace message from collector."
 
-data FileVec = FileVec ProcessId (S.Vector Double) deriving (Eq, Show, Typeable, Generic)
-instance Binary FileVec where
-	put (FileVec pid vec) = put pid >> put vec
-	get = do { pid <- get; vec <- get; return (FileVec pid vec)}
-
-
-spawnFChan :: String -> Int -> Int -> ProcessId -> Process()
-spawnFChan path cO cS pid = do
-        mypid <- getSelfPid
-	iov <- event "reading file" $ liftIO $ readData cS cO path
--- XXX must be an unsafe sending of the POINTER ONLY to avoid all data in the vector being touched.  Is that so?
-        send pid (FileVec mypid iov)
-
-instance (S.Storable e, Binary e) => Binary (S.Vector e) where
-	put vec = put (S.toList vec)
-	get = get >>= (return . S.fromList)
-
 
 data CompVec = CompVec ProcessId (S.Vector Double) deriving (Eq, Show, Typeable, Generic)
+
 instance Binary CompVec where
 	put (CompVec pid vec) = put pid >> put vec
 	get = do { pid <- get; vec <- get; return (CompVec pid vec)}
