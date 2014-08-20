@@ -12,6 +12,7 @@ module DNA.Compiler.CH (
 import Control.Applicative
 import Control.Monad
 
+import Data.Typeable
 import qualified Data.IntMap as IntMap
 import           Data.IntMap   (IntMap,(!))
 import qualified Data.Foldable    as T
@@ -147,7 +148,7 @@ spawnActor vnodes sched nm = do
          Single       i   -> return i
          MasterSlaves i _ -> return i
   -- Statement for spawning process
-  let spawnStmt = x <-- ([hs| spawn |]
+  let spawnStmt = x <-- ([hs| spawnActor |]
                          $$ infx (var vnodes) "!!" (liftHS i)
                          $$ (HS.SpliceExp $ HS.ParenSplice $ [hs|mkStaticClosure|] $$ var (quote nm))
                         )
@@ -228,7 +229,7 @@ compileNode (Producer _ i step) = do
     }
 -- ** Scatter-gather
 --
-compileNode (ScatterGather _ (st,merge,outs) worker scatter) = do
+compileNode (ScatterGather _ (SG (st,merge,outs) worker scatter)) = do
   masterNm <- HS.Ident <$> fresh "actor"
   workerNm <- HS.Ident <$> fresh "actor"
   pids     <- HS.Ident <$> fresh "pids"
@@ -244,7 +245,7 @@ compileNode (ScatterGather _ (st,merge,outs) worker scatter) = do
         , stmt $ [hs| scatterGather |]
             $$ liftHS (exprSt,exprMerge,exprOut)
             $$ exprScatter
-            $$ (undefined)                        
+            $$ (HS.SpliceExp $ HS.ParenSplice $ [hs|mkStaticClosure|] $$ var (quote workerNm))
         ]
       exprWFun =
         [ stmt $ [hs| worker |] $$ exprWorker
@@ -295,30 +296,30 @@ compileExpr env@(Env pids _) expr =
     Fold f a vec -> do ef <- compileExpr env f
                        ea <- compileExpr env a
                        ev <- compileExpr env vec
-                       return $ [hs| DNA.fodlArray |] $$ ef $$ ea $$ ev
+                       return $ [hs| foldArray |] $$ ef $$ ea $$ ev
     -- Zip
     Zip  f va vb -> do ef <- compileExpr env f
                        ea <- compileExpr env va
                        eb <- compileExpr env vb
-                       return $ [hs| DNA.zipArray |] $$ ef $$ ea $$ eb
+                       return $ [hs| zipArray |] $$ ef $$ ea $$ eb
     -- Generate
     Generate sh f -> do esh <- compileExpr env sh
                         ef  <- compileExpr env f
-                        return $ [hs| DNA.generateArray |] $$ esh $$ ef
+                        return $ [hs| generateArray |] $$ esh $$ ef
     -- Primitives
     Add -> return $ var (HS.Symbol "+")
     Mul -> return $ var (HS.Symbol "*")
+    FromInt -> return $ [hs| fromIntegral |]
     -- Scalars
-    Scalar a -> return $
-      case reifyScalar a of
-        DoubleDict -> liftHS a
-        IntDict    -> liftHS a
-        UnitDict   -> [hs| () |]
-    Tup2 a b -> do
-      ea <- compileExpr env a
-      eb <- compileExpr env b
-      return $  HS.Tuple HS.Boxed [ea, eb]
+    Scalar a -> return $ compileScalar a
+    Tup tup  -> compileTuple env tup
+    Prj idx  -> compileTupleProj idx
     String s -> return $ HS.Lit (HS.String s)
+    -- List
+    List xs -> return $ liftHS $ map compileScalar xs
+    FMap f xs -> do ef  <- compileExpr env f
+                    exs <- compileExpr env xs
+                    return $ [hs|map|] $$ ef $$ exs
     -- Result expression
     Out outs -> do
       eouts <- forM outs $ \o ->
@@ -336,13 +337,48 @@ compileExpr env@(Env pids _) expr =
     -- Array sizes
     EShape sh -> return $ liftHS sh
     ESlice sl -> return $ liftHS sl
+    ScatterShape -> return [hs| scatterShape |]
     --
     Vec _ -> error "NOT IMPLEMENTED"
+
+-- | Compile scalar expression
+compileScalar :: IsScalar a => a -> HS.Exp
+compileScalar a
+  = HS.ExpTypeSig loc expr ety
+  where
+    ety  = case reifyScalar a of
+             DoubleDict -> [ty| Double |]
+             IntDict    -> [ty| Int    |]
+             UnitDict   -> [ty| ()     |]
+    expr = case reifyScalar a of
+             DoubleDict -> liftHS a
+             IntDict    -> liftHS a
+             UnitDict   -> [hs| () |]
+
+-- | Compile tuple expression
+compileTuple :: Env env -> Tuple (Expr env) xs -> Compile HS.Exp
+compileTuple env tup
+  = HS.Tuple HS.Boxed <$> sequence (compileElts env tup)
+  where
+    compileElts :: Env env -> Tuple (Expr env) xs -> [Compile HS.Exp]
+    compileElts _ Nil = []
+    compileElts e (Cons expr rest) = compileExpr e expr
+                                   : compileElts e rest
+
+compileTupleProj :: TupleIdx xs x -> Compile HS.Exp
+compileTupleProj idx = do
+  v <- HS.Ident <$> freshName
+  return $ HS.Lambda loc [HS.PTuple HS.Boxed (wilds v idx)] (var v)
+  where
+    wilds :: forall x xs. HS.Name -> TupleIdx xs x -> [HS.Pat]
+    wilds v Here      = (HS.PVar v) : replicate (arity (Proxy :: Proxy xs) - 1) HS.PWildCard
+    wilds v (There i) = HS.PWildCard : wilds v i
 
 
 bvar :: Expr (env,a) b -> a
 bvar _ = error "DNA.Compiler.CH.bvar: impossible happened"
 
+-- | Get type of haskell scalar variable
 typeOfVar :: IsValue a => a -> HS.Type
 typeOfVar a =
   case reifyValue a of

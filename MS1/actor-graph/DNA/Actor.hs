@@ -12,11 +12,13 @@ module DNA.Actor (
   , Actor(..)
   , RealActor(..)
   , Rule(..)
+  , SG(..)
     -- * Definition of actors
   , ActorDef
   , actor
   , simpleOut
   , rule
+  , scatterGather
   , producer
   , startingState
     -- * Dataflow graph
@@ -108,12 +110,7 @@ data RealActor where
   -- Scatter/gather actor
   ScatterGather
     :: ConnMap
-       -- Gather actor
-    -> (Expr () c, Expr () (c -> c -> c), Expr () (c -> Out))
-       -- Worker actor
-    -> Expr () (b -> c)
-       -- Scatter actor
-    -> Expr () (Int -> a -> [b])
+    -> SG
     -> RealActor
 
 
@@ -121,6 +118,13 @@ data RealActor where
 data Rule s where
   Rule :: Expr () (s -> a -> (s,Out)) -- Transition rule
        -> Rule s
+
+data SG where
+  SG :: (Expr () c, Expr () (c -> c -> c), Expr () (c -> Out))
+     -> Expr () (b -> c) 
+     -> Expr () (Int -> a -> [b])
+     -> SG
+
 
 
 ----------------------------------------------------------------
@@ -161,6 +165,7 @@ data ActorDefState s = ActorDefState
   { adsRules :: [Rule s]        -- Transition rules
   , adsInit  :: [Expr () s]     -- Initial state
   , adsProd  :: [Expr () (s -> (s,Out))]
+  , adsSG    :: [SG]
   , adsConns :: ConnMap         -- Outbound connections
   }
 
@@ -183,6 +188,10 @@ producer :: Expr () (s -> (s,Out)) -> ActorDef s ()
 producer f = ActorDef $ do
   modify $ \st -> st { adsProd = f : adsProd st }
 
+scatterGather :: SG -> ActorDef s ()
+scatterGather sg = ActorDef $ do
+  modify $ \st -> st { adsSG = sg : adsSG st }
+
 -- | Set initial state for the
 startingState :: Expr () s -> ActorDef s ()
 startingState s = ActorDef $ do
@@ -192,14 +201,15 @@ startingState s = ActorDef $ do
 actor :: ConnCollection outs => ActorDef s outs -> Actor outs
 actor (ActorDef m) =
   case s of
-    ActorDefState _  []  _   _ -> oops "No initial state specified"
-    ActorDefState [] _   []  _ -> oops "No transition rules/producers"
-    ActorDefState rs [i] []  c -> Actor outs (StateM   c i rs)
-    ActorDefState [] [i] [f] c -> Actor outs (Producer c i f)
-    ActorDefState [] _   _   _ -> oops "Several producer steps specified"
-    ActorDefState _  _   _   _ -> oops "Several initial states specified"
+    ActorDefState [] []  [] [sg] c -> Actor outs (ScatterGather c sg)
+    ActorDefState _  []  _   _ _ -> oops "No initial state specified"
+    ActorDefState [] _   []  _ _ -> oops "No transition rules/producers"
+    ActorDefState rs [i] []  _ c -> Actor outs (StateM   c i rs)
+    ActorDefState [] [i] [f] _ c -> Actor outs (Producer c i f)
+    ActorDefState [] _   _   _ _ -> oops "Several producer steps specified"
+    ActorDefState _  _   _   _ _ -> oops "Several initial states specified"
   where
-    (outs,s) = runState m $ ActorDefState [] [] [] IntMap.empty
+    (outs,s) = runState m $ ActorDefState [] [] [] [] IntMap.empty
     oops = Invalid . pure
 
 
@@ -235,6 +245,7 @@ use a = do
                  Invalid _                -> nullConnection (undefined :: outs)
                  Actor o (StateM   _ _ _) -> setActorId i o
                  Actor o (Producer _ _ _) -> setActorId i o
+                 Actor o (ScatterGather _ _) -> setActorId i o
          )
 
 -- | Connect graphs

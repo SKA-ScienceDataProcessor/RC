@@ -3,7 +3,29 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveGeneric #-}
 -- | Library functions for the
-module DNA.CH where
+module DNA.CH (
+    -- * Array functions
+    zipArray
+  , foldArray
+  , generateArray
+  , scatterShape
+    -- * CH utils
+  , Result(..)
+  , RemoteMap(..)
+  , sendToI
+  , sendResult
+  , handleRule
+  , producer
+  , startActor
+  , defaultMain
+  , monitorActors
+  , scatterGather
+  , worker
+  , spawnActor
+    -- * Reexports
+  , Shape(..)
+  , Slice(..)
+  ) where
 
 import Control.Monad
 import Control.Distributed.Process
@@ -20,7 +42,7 @@ import qualified Data.IntMap   as IntMap
 import qualified Data.Sequence as Seq
 import           Data.Sequence   (ViewL(..),(|>))
 import System.Environment (getArgs)
-
+import Text.Printf
 
 import GHC.Generics (Generic)
 
@@ -43,15 +65,24 @@ foldArray :: (S.Storable a)
 foldArray f x0 (Array _ v) = S.foldl' f x0 v
 
 generateArray :: (IsShape sh, S.Storable a)
-              => (Int -> a) -> sh -> Array sh a
-generateArray f sh =
+              => sh -> (Int -> a) -> Array sh a
+generateArray sh f =
   case reifyShape sh of
     ShShape -> case sh of
                  Shape n -> Array sh (S.generate n f)
     ShSlice -> case sh of
                  Slice off n -> Array sh (S.generate n (\i -> f (i + off)))
     
-
+scatterShape :: Int -> Shape -> [Slice]
+scatterShape n (Shape size)
+  = zipWith Slice chunkOffs chunkSizes
+  where
+    (chunk,rest) = size `divMod` n
+    extra        = replicate rest 1 ++ repeat 0
+    chunkSizes   = zipWith (+) (replicate n chunk) extra
+    chunkOffs    = scanl (+) 0 chunkSizes
+  
+  
 
 ----------------------------------------------------------------
 -- CH combinators
@@ -73,7 +104,7 @@ sendToI (RemoteMap _ m) i a = cast (m IntMap.! i) a
 
 -- | Send result of computation to master process
 sendResult :: Serializable a => RemoteMap -> a -> Process ()
-sendResult (RemoteMap p _) a = send p a
+sendResult (RemoteMap p _) a = send p (Result a)
 
 -- | Handle for single transition rule for state machine
 handleRule :: (Serializable a) => (s -> a -> (s, Process ())) -> Dispatcher s
@@ -115,6 +146,10 @@ defaultMain remotes master = do
   where
     executableName = "EXE"
 
+spawnActor :: NodeId -> Closure (Process ()) -> Process ProcessId
+spawnActor nid clos = do
+  (pid,_) <- spawnSupervised nid clos
+  return pid
 
 -- | Set up monitoring of slave processes
 monitorActors :: Process ()
@@ -123,6 +158,8 @@ monitorActors = loop
     loop = receiveWait
              [ match $ \(Result x) -> say $ "RESULT = " ++ show (x :: Double)
              , match $ \(Result x) -> say $ "RESULT = " ++ show (x :: Int)
+             , match $ \(ProcessMonitorNotification _ pid reason) ->
+                say $ printf "Process %s down: %s" (show pid) (show reason)
              ]
 
 

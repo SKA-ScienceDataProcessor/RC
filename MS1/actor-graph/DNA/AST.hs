@@ -1,9 +1,19 @@
+{-# LANGUAGE DeriveDataTypeable, DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeFamilies #-}
 module DNA.AST (
     -- * AST
     Expr(..)
   , Idx(..)
+    -- ** Tuple
+  , Tuple(..)
+  , TupleIdx(..)
+  , IsTuple(..)
+  , Arity(..)
     -- ** Array and array shaped
   , Array(..)
   , Shape(..)
@@ -24,8 +34,13 @@ module DNA.AST (
   , IsValue(..)
   ) where
 
+import Control.Applicative
 import qualified Data.Vector.Storable as S
 import Data.Typeable
+import Data.Functor.Identity
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
+
 
 
 ----------------------------------------------------------------
@@ -50,17 +65,17 @@ data Expr env a where
       => Expr (env,a) b
       -> Expr env (a -> b)
 
-  -- Fold
+  -- | Fold
   Fold :: (Expr env (a -> a -> a))
        -> Expr env a
        -> Expr env (Array sh a)
        -> Expr env a
-  -- Zip two vectors
+  -- | Zip two vectors
   Zip  :: (Expr env (a -> b -> c))
        -> Expr env (Array sh a)
        -> Expr env (Array sh b)
        -> Expr env (Array sh c)
-  -- Generate vector
+  -- | Generate vector
   Generate :: Expr env sh
            -> Expr env (Int -> a)
            -> Expr env (Array sh a)
@@ -68,13 +83,17 @@ data Expr env a where
   -- Primitive operations
   Add :: Num a => Expr env (a -> a -> a)
   Mul :: Num a => Expr env (a -> a -> a)
+  FromInt :: Expr env (Int -> Double)
 
   Out :: [Outbound env]
       -> Expr env Out
 
   -- Scalars
   Scalar :: IsScalar a => a -> Expr env a
-  Tup2   :: Expr env a -> Expr env b -> Expr env (a,b)
+  -- | Tuple expression
+  Tup    :: IsTuple tup => Tuple (Expr env) (Elems tup) -> Expr env tup
+  -- | Tuple projection
+  Prj    :: TupleIdx (Elems tup) a -> Expr env (tup -> a)
   String :: String -> Expr env String
   -- Array sizes
   EShape :: Shape -> Expr env Shape
@@ -82,17 +101,71 @@ data Expr env a where
   -- Primitive array
   Vec :: Array sh a -> Expr env (Array sh a)
 
+  -- | List literal
+  List :: IsScalar a => [a] -> Expr env [a]
+  -- | Functor instance for list
+  FMap :: Expr env (a -> b) -> Expr env [a] -> Expr env [b]
+  -- | Special form for scattering values
+  ScatterShape :: Expr env (Int -> Shape -> [Slice])
   -- FFI
 
-
+-- | De-Bruijn index for variable
 data Idx env t where
   ZeroIdx ::              Idx (env,t) t
   SuccIdx :: Idx env t -> Idx (env,s) t
 
 
+----------------------------------------------------------------
+-- Tuples
+----------------------------------------------------------------
+
+-- | Encoding for a tuple
+data Tuple :: (* -> *) -> [*] -> * where
+  Nil  :: Tuple f '[]
+  Cons :: f a -> Tuple f as -> Tuple f (a ': as)
+infixr `Cons`
+
+-- | Index for tuple index
+data TupleIdx xs e where
+  Here  :: Arity xs =>      TupleIdx (x ': xs) x
+  There :: TupleIdx xs e -> TupleIdx (x ': xs) e
+
+class Arity (xs :: [*]) where
+  arity :: p xs -> Int
+
+instance Arity '[] where
+  arity _ = 0
+instance Arity xs => Arity (x ': xs) where
+  arity p = 1 + arity (sub p)
+    where
+      sub :: p (x ': xs) -> p xs
+      sub _ = undefined
+
+
+class IsTuple a where
+  type Elems a :: [*]
+  toRepr   :: a -> Tuple Identity (Elems a)
+  fromRepr :: Tuple Identity (Elems a) -> a
+
+instance IsTuple (a,b) where
+  type Elems (a,b) = '[a,b]
+  toRepr (a,b) = pure a `Cons` pure b `Cons` Nil
+  fromRepr (Identity a `Cons` Identity b `Cons` Nil) = (a,b)
+  fromRepr _ = error "Impossible"
+
+instance IsTuple (a,b,c) where
+  type Elems (a,b,c) = '[a,b,c]
+  toRepr (a,b,c) = pure a `Cons` pure b `Cons` pure c `Cons` Nil
+  fromRepr (Identity a `Cons` Identity b `Cons` Identity c `Cons` Nil) = (a,b,c)
+  fromRepr _ = error "Impossible"
+
 newtype Shape = Shape Int
+                deriving (Show,Eq,Typeable,Generic)
+instance Binary Shape
 
 data Slice = Slice Int Int
+           deriving (Show,Eq,Typeable,Generic)
+instance Binary Slice
 
 data Array sh a = Array sh (S.Vector a)
 
