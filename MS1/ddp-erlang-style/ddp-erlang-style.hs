@@ -8,6 +8,7 @@ module Main where
 
 import GHC.Generics (Generic)
 import Data.Typeable
+import Control.DeepSeq
 import Control.Monad
 import System.Posix.Files
 import System.Environment (getArgs)
@@ -17,6 +18,7 @@ import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Backend.SimpleLocalnet
 import Control.Distributed.Process.Node (initRemoteTable)
 import Control.Distributed.Process.Platform (resolve)
+import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
 import qualified Data.Vector.Storable as S
 import Text.Printf
 import Control.Distributed.Process.Debug
@@ -31,12 +33,16 @@ import Network.URI (URI(..), URIAuth(..), parseURI)
 import DNA.Channel.File
 import DNA.Message
 
-import Common (startLogger, say)
+import DNA.Common (startLogger, say, startTracing)
+
 import Cfg (executableName, event, eventPure)
 
 data PartialSum = PartialSum ProcessId Double deriving (Show,Typeable,Generic)
+
 instance Binary PartialSum
+
 newtype Result = Result Double deriving (Show,Typeable,Generic)
+
 instance Binary Result
 
 
@@ -50,208 +56,185 @@ dpSum :: [ProcessId] -> Double -> Process(Double)
 dpSum [ ] sum = do
         return sum
 dpSum pids sum = do
-	receiveWait
-		[ match $ \(PartialSum pid s) -> dpSum (filter (/= pid) pids) (s+sum)
-		, match $ \(ProcessMonitorNotification _ pid _) -> dpSum (filter (/= pid) pids) sum
-		]
+        receiveWait
+                [ match $ \(PartialSum pid s) -> dpSum (filter (/= pid) pids) (s+sum)
+                , match $ \(ProcessMonitorNotification _ pid _) -> dpSum (filter (/= pid) pids) sum
+                ]
 
 spawnCollector :: ProcessId -> Process ()
 spawnCollector pid = do
-  	collectorPID <- getSelfPid
+        collectorPID <- getSelfPid
         masterPID <- dnaSlaveHandleStart "collector" collectorPID
         (DnaPidList computePids) <- expect
 
 -- XXX The specification said the master monitors the compute nodes (failure of which is ignored)
 -- XXX and the master monitors the collector (failure of which terminates the program)
-	-- install monitors for compute processes.
-	forM_ computePids $ \pid -> monitor pid
+        -- install monitors for compute processes.
+        forM_ computePids $ \pid -> monitor pid
         sum <- event "collection phase" $ dpSum computePids 0
         send masterPID (Result sum)
-	traceMessage "trace message from collector."
+        traceMessage "trace message from collector."
 
 
 data CompVec = CompVec ProcessId (S.Vector Double) deriving (Eq, Show, Typeable, Generic)
 
 instance Binary CompVec where
-	put (CompVec pid vec) = put pid >> put vec
-	get = do { pid <- get; vec <- get; return (CompVec pid vec)}
+        put (CompVec pid vec) = put pid >> put vec
+        get = do { pid <- get; vec <- get; return (CompVec pid vec)}
+
+instance NFData CompVec where
+        rnf (CompVec p v) = rnf p `seq` rnf v
 
 spawnCChan :: Int -> (Int -> Double) -> ProcessId -> Process()
 spawnCChan n f pid = do
         myPid <- getSelfPid 
         let vec = S.generate n f
--- XXX must be an unsafe send to avoid copying
-        event "generating and sending precomputed vector" $ send pid (CompVec myPid $! vec)
+        event "generating and sending precomputed vector" $ Unsafe.send pid (CompVec myPid $! vec)
 
 
 spawnCompute :: (FilePath, Int, Int, Int, ProcessId) -> Process ()
 spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
-	getSelfPid >>= enableTrace
-	computePID <- getSelfPid
-	sayDebug $ printf "[Compute %s] : f:%s iC:%s cS:%s cO:%s coll:%s" (show computePID) file (show itemCount) (show chSize) (show chOffset) (show collectorPID)
+        getSelfPid >>= enableTrace
+        computePID <- getSelfPid
+        sayDebug $ printf "[Compute %s] : f:%s iC:%s cS:%s cO:%s coll:%s" (show computePID) file (show itemCount) (show chSize) (show chOffset) (show collectorPID)
         masterPID <- dnaSlaveHandleStart "compute" computePID
 
         fChanPid <- spawnLocal  (spawnFChan filePath chOffset chSize computePID)
         cChanPid <- spawnLocal  (spawnCChan chSize (\n -> 1.0) computePID)
-	(iov, cv) <- event "receiving vectors" $ do
-	        (FileVec fChanPid iov) <- event "receiving read vector" expect
-        	(CompVec cChanPid cv) <- event "receiving computed vector" expect
-		return (iov, cv)
+        (iov, cv) <- event "receiving vectors" $ do
+                (FileVec fChanPid iov) <- event "receiving read vector" expect
+                (CompVec cChanPid cv) <- event "receiving computed vector" expect
+                return (iov, cv)
 
-	--sayDebug $ printf "[Compute %s] : Value of iov: %s" (show computePID) (show iov) 
+        --sayDebug $ printf "[Compute %s] : Value of iov: %s" (show computePID) (show iov) 
 
-	sumOnComputeNode <- event "compute sends sum" $ do
-		let sumOnComputeNode = eventPure "pure computation time" $ S.sum $ S.zipWith (*) iov cv
-		send collectorPID (PartialSum computePID sumOnComputeNode)
-		return sumOnComputeNode
-	sayDebug $ printf "[Compute] : sumOnComputeNode : %s at %s send to %s" (show sumOnComputeNode) (show computePID) (show collectorPID)
+        sumOnComputeNode <- event "compute sends sum" $ do
+                let sumOnComputeNode = eventPure "pure computation time" $ S.sum $ S.zipWith (*) iov cv
+                send collectorPID (PartialSum computePID sumOnComputeNode)
+                return sumOnComputeNode
+        sayDebug $ printf "[Compute] : sumOnComputeNode : %s at %s send to %s" (show sumOnComputeNode) (show computePID) (show collectorPID)
         send masterPID (DnaFinished computePID)
 
 remotable [ 'spawnCompute, 'spawnCollector]
 
 master :: Backend -> [NodeId] -> Process ()
 master backend peers = do
-	startLogger peers
--- XXX Why is this comment here?
-  --systemLog :: (String -> Process ()) -- ^ This expression does the actual logging
-  --        -> (Process ())  -- ^ An expression used to clean up any residual state
-  --        -> LogLevel      -- ^ The initial 'LogLevel' to use
-  --        -> LogFormat     -- ^ An expression used to format logging messages/text
-  --        -> Process ProcessId
+        startLogger peers
         logPID <- Log.systemLog (liftIO . putStrLn) (return ()) Log.Debug return
 
-	--startTracer $ \ev -> say $ "event: "++show ev
+        Timer.sleep (Time.milliSeconds 100)
 
---	startTracer $ \ev -> do
---		sayDebug $ "evant in tracer: "++show ev
+        masterPID <- getSelfPid
+        say $ printf "[Master %s]" (show masterPID)
 
-	Timer.sleep (Time.milliSeconds 100)
+        -- startTracing peers
+        -- enableTrace masterPID
 
-	masterPID <- getSelfPid
- 	say $ printf "[Master %s]" (show masterPID)
+        -- traceMessage "trace message from master"
 
--- XXX with a function please - this is messy
-	-- enable tracing after all is set up.
---	forM_ peers $ \peer -> do
---		startTraceRelay peer
---		setTraceFlags $ TraceFlags {
---			  traceSpawned = Nothing
---			, traceDied = Nothing
---			, traceRegistered = Nothing
---			, traceUnregistered = Nothing
---			, traceSend = Just TraceAll
---			, traceRecv = Just TraceAll
---			, traceNodes = True
---			, traceConnections = True
---			}
+        -- Set up scheduling variables
+        let allComputeNids = tail peers
+        let chunkCount = length allComputeNids 
+        fileStatus <- liftIO $ getFileStatus filePath 
+        let itemCount = div (read $ show (fileSize fileStatus)) itemSize
+        liftIO . putStrLn $ "itemcount:  " ++  (show itemCount)
 
---	enableTrace masterPID
-
---	traceMessage "trace message from master"
-
--- Set up scheduling variables
-  	let allComputeNids = tail peers
-	let chunkCount = length allComputeNids 
-	fileStatus <- liftIO $ getFileStatus filePath 
-	let itemCount = div (read $ show (fileSize fileStatus)) itemSize
-	liftIO . putStrLn $ "itemcount:  " ++  (show itemCount)
-
-	let chunkOffsets = map (chunkOffset chunkCount itemCount) [1..chunkCount]
-	liftIO . putStrLn $ "Offsets : " ++ show chunkOffsets
-  	let chunkSizes = map (chunkSize chunkCount itemCount) [1..chunkCount]
-  	liftIO . putStrLn $ "chunkSizes : " ++  show chunkSizes
+        let chunkOffsets = map (chunkOffset chunkCount itemCount) [1..chunkCount]
+        liftIO . putStrLn $ "Offsets : " ++ show chunkOffsets
+        let chunkSizes = map (chunkSize chunkCount itemCount) [1..chunkCount]
+        liftIO . putStrLn $ "chunkSizes : " ++  show chunkSizes
 
 
-	-- Start collector process
- 	let collectorNid = head peers
+        -- Start collector process
+        let collectorNid = head peers
         collectorPid <- dnaMasterStartSlave "collector" masterPID collectorNid ($(mkClosure 'spawnCollector) (masterPID))
 
---	enableTrace collectorPid
+        -- enableTrace collectorPid
 
         -- Start compute processes
-  	computePids <- forM (zip3 allComputeNids chunkOffsets chunkSizes)  $ \(computeNid,chO,chS) -> do
-  		pid <- dnaMasterStartSlave "compute" masterPID computeNid ( $(mkClosure 'spawnCompute) (filePath, chO, chS, itemCount, collectorPid)) 
-		enableTrace pid
+        computePids <- forM (zip3 allComputeNids chunkOffsets chunkSizes)  $ \(computeNid,chO,chS) -> do
+                pid <- dnaMasterStartSlave "compute" masterPID computeNid ( $(mkClosure 'spawnCompute) (filePath, chO, chS, itemCount, collectorPid)) 
+                enableTrace pid
                 return pid
-	sum <- event "master waits for result" $ do
+        sum <- event "master waits for result" $ do
 
-	        -- Send collector computePid's
-        	send collectorPid (DnaPidList computePids)
-	        sayDebug "--------------------------------------------------------------------------------------"	
-        	(Result sum) <- expect
-		return sum
+                -- Send collector computePid's
+                send collectorPid (DnaPidList computePids)
+                sayDebug "--------------------------------------------------------------------------------------"	
+                (Result sum) <- expect
+                return sum
         sayDebug $ printf "Result %s" (show sum)
-  	terminateAllSlaves backend	
+        terminateAllSlaves backend	
 
 
 -- XXX Please make this the beginning of a DNA.Backend package
 -- XXX not in this file
 findSlavesByURIs :: [String] -> Int -> IO [NodeId]
 findSlavesByURIs uris _ignoredTimeout = do
-	nodes' <- mapM parseNode uris
-	let errURIs = concatMap snd nodes'
-	case errURIs of
-		[] -> return $ concatMap fst nodes'
-		errs -> do
-			putStrLn $ "Error parsing uris: "++show errs
-			hFlush stdout
-			error "error parsing uris."
-	where
-		parseNode uri = do
-			putStrLn $ "PArsing "++show uri
-			hFlush stdout
-			case parseURI uri of
-				Just (URI _ (Just (URIAuth _ host port)) _ _ _) -> return (error uri, [])
-				_ -> return ([], [uri])
+        nodes' <- mapM parseNode uris
+        let errURIs = concatMap snd nodes'
+        case errURIs of
+                [] -> return $ concatMap fst nodes'
+                errs -> do
+                        putStrLn $ "Error parsing uris: "++show errs
+                        hFlush stdout
+                        error "error parsing uris."
+        where
+                parseNode uri = do
+                        putStrLn $ "PArsing "++show uri
+                        hFlush stdout
+                        case parseURI uri of
+                                Just (URI _ (Just (URIAuth _ host port)) _ _ _) -> return (error uri, [])
+                                _ -> return ([], [uri])
 
 main :: IO ()
 main = do
-	args <- getArgs
+        args <- getArgs
 
 -- XXX This is now a real mess... Let's use an option package and get rid of all the hardcoded strings.
-	case args of
- 		["master", host, port] -> do
-    			backend <- initializeBackend host port rtable
-      			startMaster backend (master backend)
-      			liftIO (threadDelay 200)
+        case args of
+                ["master", host, port] -> do
+                        backend <- initializeBackend host port rtable
+                        startMaster backend (master backend)
+                        liftIO (threadDelay 200)
 
- 		("master-nodes-uris" : host : port : uris) -> do
-    			backend' <- initializeBackend host port rtable
-			let backend = backend { findPeers = findSlavesByURIs uris }
-      			startMaster backend (master backend)
-      			liftIO (threadDelay 200)
+                ("master-nodes-uris" : host : port : uris) -> do
+                        backend' <- initializeBackend host port rtable
+                        let backend = backend { findPeers = findSlavesByURIs uris }
+                        startMaster backend (master backend)
+                        liftIO (threadDelay 200)
 
-		["slave", host, port] -> do
-    			backend <- initializeBackend host port rtable
-      			startSlave backend
-		["write-tests"] -> do
-			writeFile ("start-"++executableName) $ unlines [
-				  "#!/bin/sh"
-				, executableName++" slave localhost 60001 &"
-				, executableName++" slave localhost 60002 &"
-				, executableName++" slave localhost 60003 &"
-				, "sleep 1"
-				, executableName++" master localhost 44440"
-				]
-			writeFile ("start-"++executableName++"-uri") $ unlines [
-				  "#!/bin/sh"
-				, executableName++" slave localhost 60001 &"
-				, executableName++" slave localhost 60002 &"
-				, executableName++" slave localhost 60003 &"
-				, "sleep 1"
-				, executableName++" master-nodes-uris localhost 44440 slave://localhost:60001/ slave://127.0.0.1:60002/ slave://128.0.0.0:60003/"
-				]
-		["write-data", count] -> do
-			return ()
+                ["slave", host, port] -> do
+                        backend <- initializeBackend host port rtable
+                        startSlave backend
+                ["write-tests"] -> do
+                        writeFile ("start-"++executableName) $ unlines [
+                                  "#!/bin/sh"
+                                , executableName++" slave localhost 60001 &"
+                                , executableName++" slave localhost 60002 &"
+                                , executableName++" slave localhost 60003 &"
+                                , "sleep 1"
+                                , executableName++" master localhost 44440"
+                                ]
+                        writeFile ("start-"++executableName++"-uri") $ unlines [
+                                  "#!/bin/sh"
+                                , executableName++" slave localhost 60001 &"
+                                , executableName++" slave localhost 60002 &"
+                                , executableName++" slave localhost 60003 &"
+                                , "sleep 1"
+                                , executableName++" master-nodes-uris localhost 44440 slave://localhost:60001/ slave://127.0.0.1:60002/ slave://128.0.0.0:60003/"
+                                ]
+                ["write-data", count] -> do
+                        return ()
                 _ -> do putStrLn $ unlines [
-				  "usage: '"++executableName++" (master|slave) host port"
-				, "   or: '"++executableName++" master-nodes-uris host port ?uri ?uri?..?"
-				, "   or: '"++executableName++" write-tests"
-				, ""
-				, "'"++executableName++" write-tests' will write files 'start-"++executableName ++"' and 'start-"++executableName++"-uri' into current directory."
-				, "make them executable and run to test the program."
-				]
+                                  "usage: '"++executableName++" (master|slave) host port"
+                                , "   or: '"++executableName++" master-nodes-uris host port ?uri ?uri?..?"
+                                , "   or: '"++executableName++" write-tests"
+                                , ""
+                                , "'"++executableName++" write-tests' will write files 'start-"++executableName ++"' and 'start-"++executableName++"-uri' into current directory."
+                                , "make them executable and run to test the program."
+                                ]
 
   where
-  	rtable :: RemoteTable
-  	rtable = __remoteTable initRemoteTable
+        rtable :: RemoteTable
+        rtable = __remoteTable initRemoteTable

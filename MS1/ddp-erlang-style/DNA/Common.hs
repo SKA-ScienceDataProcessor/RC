@@ -6,13 +6,15 @@
 
 {-# LANGUAGE DeriveDataTypeable, DeriveGeneric #-}
 
-module Common(
+module DNA.Common(
 	  startLogger
 	, say
+        , startTracing
 	) where
 
 import Control.Monad
 import qualified Control.Distributed.Process as P
+import qualified Control.Distributed.Process.Debug as D
 import Control.Distributed.Process.Platform (resolve)
 import qualified Control.Distributed.Process.Platform.Service.SystemLog as Log
 
@@ -65,9 +67,19 @@ say s = do
 		Just cl -> do
 			r <- resolve cl
 			Log.debug cl (Log.LogText s)
-{-
-	mbP <- P.whereis loggerProcessName
-	case mbP of
-		Nothing -> P.liftIO $ putStrLn $ "local log: "++s
-		Just pid -> P.send pid (Log s)
--}
+
+startTracing :: [P.NodeId] -> P.Process ()
+startTracing peers = do
+	-- enable tracing after all is set up.
+	forM_ peers $ \peer -> do
+		D.startTraceRelay peer
+		D.setTraceFlags $ D.TraceFlags {
+			  D.traceSpawned = Nothing
+			, D.traceDied = Nothing
+			, D.traceRegistered = Nothing
+			, D.traceUnregistered = Nothing
+			, D.traceSend = Just D.TraceAll
+			, D.traceRecv = Just D.TraceAll
+			, D.traceNodes = True
+			, D.traceConnections = True
+			}

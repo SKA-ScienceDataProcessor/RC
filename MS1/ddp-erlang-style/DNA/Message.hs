@@ -11,7 +11,7 @@ import GHC.Generics (Generic)
 import Data.Binary
 import Data.Typeable
 
-import Common (say)
+import DNA.Common (say)
 
 newtype DnaStart = DnaStart ProcessId deriving (Eq, Ord, Show, Typeable, Generic)
 newtype DnaStarted = DnaStarted ProcessId deriving (Eq, Ord, Show, Typeable, Generic)
