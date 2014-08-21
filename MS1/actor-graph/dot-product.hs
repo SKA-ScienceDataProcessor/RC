@@ -2,6 +2,7 @@
 -- | Implementation of distributed dot product
 import DNA.Actor
 import DNA.AST
+import DNA.Compiler.Basic
 import DNA.Compiler.CH
 import DNA.Compiler.Scheduler
 import DNA.Compiler.Types
@@ -86,7 +87,7 @@ distributedDataflow = do
 
 main :: IO ()
 main = do
-  let r = compile $ compileToCH =<< schedule 2 =<< buildDataflow distributedDataflow
+  let r = compile $ compileToCH =<< schedule 2 =<< checkGraph =<< buildDataflow distributedDataflow
   -- let r = compile $ compileToCH =<< schedule 2 =<< buildDataflow simpleDataflow
   case r of
     Left errs -> mapM_ putStrLn errs

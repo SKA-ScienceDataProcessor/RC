@@ -187,9 +187,7 @@ newtype ConnId = ConnId Int
 -- | Connection type
 data ConnType
   = ConnOne
-    -- ^ We allow to connect to one 
-  | ConnMany
-    -- ^ It could connect to one or more actors
+    -- ^ We allow to connect to one
   deriving (Show,Eq,Ord)
 
 -- | Typed wrapper for connection ID.

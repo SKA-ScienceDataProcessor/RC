@@ -7,6 +7,7 @@ module DNA.Compiler.Types (
   , freshName
   , fresh
   , compError
+  , compErrorA
     -- * Applicative either
   , EitherA(..)
   , leftA
@@ -52,6 +53,8 @@ fresh pref = do
 compError :: [String] -> Compile a
 compError = throwE
 
+compErrorA :: [String] -> CompileA a
+compErrorA = leftA
 
 ----------------------------------------------------------------
 -- Variant of Expect monad which collects all errors

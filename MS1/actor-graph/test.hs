@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs #-}
 import DNA.Actor
 import DNA.AST
+import DNA.Compiler.Basic
 import DNA.Compiler.CH
 import DNA.Compiler.Scheduler
 import DNA.Compiler.Types
@@ -47,7 +48,7 @@ program = do
 
 main :: IO ()
 main = do
-  let r = compile $ compileToCH =<< schedule 2 =<< buildDataflow program
+  let r = compile $ compileToCH =<< schedule 2 =<< checkGraph =<< buildDataflow program
   case r of
     Left errs -> mapM_ putStrLn errs
     Right prj -> saveProject "dir" prj
