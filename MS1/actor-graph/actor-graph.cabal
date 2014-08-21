@@ -29,6 +29,7 @@ Library
     haskell-src-exts,
     haskell-src-exts-qq
  Exposed-modules:
+    DNA
     DNA.AST
     DNA.Actor
     DNA.CH

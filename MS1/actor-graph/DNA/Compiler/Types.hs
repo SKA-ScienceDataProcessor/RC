@@ -2,7 +2,7 @@ module DNA.Compiler.Types (
     -- * Data types
     Compile
   , CompileA
-  , compile
+  , runCompile
   , applicatively
   , freshName
   , fresh
@@ -32,8 +32,8 @@ type Compile = ExceptT [String] (State Int)
 
 type CompileA = EitherA [String] (State Int)
 
-compile :: Compile a -> Either [String] a
-compile
+runCompile :: Compile a -> Either [String] a
+runCompile
   = flip evalState 0
   . runExceptT 
 

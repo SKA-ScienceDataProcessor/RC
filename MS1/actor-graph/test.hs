@@ -1,10 +1,8 @@
 {-# LANGUAGE GADTs #-}
 import DNA.Actor
 import DNA.AST
-import DNA.Compiler.Basic
+import DNA
 import DNA.Compiler.CH
-import DNA.Compiler.Scheduler
-import DNA.Compiler.Types
 
 ----------------------------------------------------------------
 -- Print actor
@@ -47,9 +45,6 @@ program = do
   connect c aPr
 
 main :: IO ()
-main = do
-  let r = compile $ compileToCH =<< checkSchedule =<< schedule 2 =<< checkGraph =<< buildDataflow program
-  case r of
-    Left errs -> mapM_ putStrLn errs
-    Right prj -> saveProject "dir" prj
+main = compile compileToCH (saveProject "dir") 2 program
+
 
