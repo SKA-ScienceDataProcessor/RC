@@ -85,5 +85,5 @@ distributedDataflow = do
 
 main :: IO ()
 main =
-  compile compileToCH (saveProject "dir") 2 $
+  compile compileToCH (saveProject "dir") 4 $
     distributedDataflow
