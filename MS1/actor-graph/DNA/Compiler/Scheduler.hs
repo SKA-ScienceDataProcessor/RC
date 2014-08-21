@@ -31,7 +31,7 @@ schedule nTotal gr = do
   -- Schedule for mandatory nodes. For each node we
   let mandSched = IntMap.fromList $ mandatoryNodes gr `zip` [0..]
   -- Now we should schedule remaining nodes.
-  let varGroups = contiguosChunks nMust (splitChunks nVar nFree)
+  let varGroups = contiguosChunks nMust (splitChunks nVar (nTotal - nMust))
       varSched  = IntMap.fromList $ variableNodes gr `zip` varGroups
   -- Build schedule for every
   let sched i (ANode _ a@(RealActor _ act)) =
