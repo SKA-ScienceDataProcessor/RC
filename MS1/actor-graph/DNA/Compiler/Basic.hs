@@ -1,6 +1,7 @@
 -- | Basic functions which 
 module DNA.Compiler.Basic (
     checkGraph
+  , checkSchedule  
   ) where
 
 import Control.Applicative
@@ -34,3 +35,18 @@ checkNodeConn (_,_,ANode _ (RealActor cmap _), conns)
     actual = Map.fromListWith (+) [(i,1) | (i,_) <- conns]
     -- Connection which should be present
     expected = (0 :: Int) <$ cmap
+
+
+-- | Check if scheduling is correct
+checkSchedule :: DataflowGraph -> Compile DataflowGraph
+checkSchedule gr = do
+  applicatively $ T.sequenceA_
+    [ let Just (ANode sched (RealActor _ a)) = lab gr n
+      in case (sched,a) of
+           (Single{},       StateM{}       ) -> pure ()
+           (Single{},       Producer{}     ) -> pure ()
+           (MasterSlaves{}, ScatterGather{}) -> pure ()
+           _ -> compErrorA ["Bad schedule"]
+    | n <- nodes gr
+    ]
+  return gr

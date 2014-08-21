@@ -84,8 +84,12 @@ compileToCH gr = do
     }
 
 -- Compile all actor to cloud haskell expressions. Function returns
--- map from node id to pair of 1) CH node index and name of name of
--- function and 2) list of all generated declarations.
+-- map from node id to triple:
+--
+--   1) Map from NID to (Schedule state, main actor name)
+--   2) All top-level names
+--   3) All top-level declarations
+--
 compileAllNodes :: DataflowGraph -> Compile (IntMap (ScheduleState,HS.Name), [HS.Name], [HS.Decl])
 compileAllNodes gr = do
   actors <- forM (nodes gr) $ \n -> do
