@@ -91,7 +91,8 @@ compileAllNodes gr = do
   actors <- forM (nodes gr) $ \n -> do
     let a = lab' $ context gr n
         i = case a of ANode j _ -> j
-    ActorRes nm nms decls <- case a of ANode _ aa -> compileNode aa
+    ActorRes nm nms decls <- case a of
+      ANode _ (RealActor _ aa) -> compileNode aa
     return (n,(i,nm,nms,decls))
   return ( IntMap.fromList [(n,(i,nm)) | (n,(i,nm,_,_)) <- actors]
          , concat [ nms  | (_,(_,_,nms,_ )) <- actors]
@@ -171,17 +172,17 @@ sendConnTable gr vme actorVars n =
   let conns = out gr n           -- outgoing connections
       apid  = actorVars ! n       -- PID of an actor
       tbl  = [hs| IntMap.fromList |] $$ liftHS
-             [(i,HVar (actorVars ! to)) | (_,to,ConnInfo (ConnId i) _) <- conns
+             [(i,HVar (actorVars ! to)) | (_,to,ConnId i) <- conns
              ]
       rmap = [hs|RemoteMap|] $$ var vme $$ tbl
   in stmt $ [hs|send|] $$ var apid $$ rmap
 
 -- Compile actor to haskell declaration. It returns name of top level
 -- declaration and list of declarations
-compileNode :: RealActor -> Compile ActorRes
+compileNode :: ActorDescr -> Compile ActorRes
 -- ** State machine
 --
-compileNode (StateM _ i rules) = do
+compileNode (StateM i rules) = do
   nm   <- HS.Ident <$> fresh "actor"  -- Name of the actor
   pids <- HS.Ident <$> fresh "pids"   -- Name of collection of remotes
   srv  <- HS.Ident <$> fresh "server"
@@ -209,7 +210,7 @@ compileNode (StateM _ i rules) = do
     }
 -- ** Data source
 --
-compileNode (Producer _ i step) = do
+compileNode (Producer i step) = do
   -- Name of the actor
   nm <- HS.Ident <$> fresh "actor"
   -- Name of collection of remotes
@@ -229,7 +230,7 @@ compileNode (Producer _ i step) = do
     }
 -- ** Scatter-gather
 --
-compileNode (ScatterGather _ (SG (st,merge,outs) worker scatter)) = do
+compileNode (ScatterGather (SG (st,merge,outs) worker scatter)) = do
   masterNm <- HS.Ident <$> fresh "actor"
   workerNm <- HS.Ident <$> fresh "actor"
   pids     <- HS.Ident <$> fresh "pids"
@@ -324,7 +325,7 @@ compileExpr env@(Env pids _) expr =
     Out outs -> do
       eouts <- forM outs $ \o ->
         case o of
-          Outbound (ConnSimple (ConnId i)) a -> do
+          Outbound (Conn (ConnId i) _) a -> do
             ea <- compileExpr env a
             return $ [hs| sendToI |] $$ var pids $$ liftHS i $$ ea
           OutRes a -> do

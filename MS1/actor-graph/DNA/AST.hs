@@ -21,7 +21,8 @@ module DNA.AST (
     -- ** Connection encoding
   , Out
   , ConnId(..)
-  , ConnSimple(..)
+  , ConnType(..)
+  , Conn(..)
   , Outbound(..)
     -- ** Dictionaries
   , ScalarDict(..)
@@ -178,18 +179,29 @@ data Array sh a = Array sh (S.Vector a)
 -- | Type tag for expressions for sending data
 data Out
 
--- | ID of outgoing connection
+-- | ID of outgoing connection. Each actor can have several outgoing
+--   connections which are identified by tat ID.
 newtype ConnId = ConnId Int
-               deriving (Show)
+               deriving (Show,Eq,Ord)
 
--- | Connection nor bound into dataflow graph
-data ConnSimple a where
-  ConnSimple :: Typeable a => ConnId -> ConnSimple a
+-- | Connection type
+data ConnType
+  = ConnOne
+    -- ^ We allow to connect to one 
+  | ConnMany
+    -- ^ It could connect to one or more actors
+  deriving (Show,Eq,Ord)
+
+-- | Typed wrapper for connection ID.
+data Conn a where
+  -- | Connection for which only 
+  Conn :: Typeable a => ConnId -> ConnType -> Conn a
+
 
 -- | Outgoing message
 data Outbound env where
   -- | Simple outgoing connection
-  Outbound :: ConnSimple a
+  Outbound :: Conn a
            -> Expr env a
            -> Outbound env
   -- | Sending result of computation
@@ -199,8 +211,9 @@ data Outbound env where
   PrintInt :: Expr env Int
            -> Outbound env
 
-----------------------------------------------------------------
 
+
+----------------------------------------------------------------
 
 data ScalarDict a where
   DoubleDict :: ScalarDict Double

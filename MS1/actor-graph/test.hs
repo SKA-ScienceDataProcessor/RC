@@ -26,15 +26,15 @@ actorPrint = actor $ do
 -- Source actor
 ----------------------------------------------------------------
 
-exprSrcInt :: ConnSimple Int -> Expr () (Int -> (Int,Out))
+exprSrcInt :: Conn Int -> Expr () (Int -> (Int,Out))
 exprSrcInt i
   = Lam $ Tup ( Ap (Ap Add (Var ZeroIdx)) (Scalar (1 :: Int))
          `Cons` Out [Outbound i (Var ZeroIdx)]
          `Cons` Nil)
 
-actorSrcInt :: Actor (ConnSimple Int)
+actorSrcInt :: Actor (Conn Int)
 actorSrcInt = actor $ do
-  c <- simpleOut
+  c <- simpleOut ConnOne
   producer $ exprSrcInt c
   startingState $ Scalar 0
   return c
