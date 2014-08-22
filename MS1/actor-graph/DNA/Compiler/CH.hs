@@ -55,8 +55,8 @@ saveProject dir (Project _ _ m) = do
 compileToCH :: DataflowGraph -> Compile Project
 compileToCH gr = do
   -- Generate declarations for every actor
-  (actorMap,allNames,actorDecls) <- compileAllNodes gr
-  master                         <- buildMaster gr actorMap
+  actors <- compileAllNodes gr
+  master <- buildMaster gr actors
   -- Assemble project
   return Project
     { prjName  = ""
@@ -73,8 +73,8 @@ compileToCH gr = do
                    , importA "Control.Distributed.Process.Platform.ManagedProcess"
                    , importA "DNA.CH"
                    ]           -- Imports
-                   (concat [ actorDecls
-                           , buildRemoteTable allNames
+                   (concat [ aresDecls =<< T.toList actors
+                           , buildRemoteTable $ aresDeclName =<< T.toList actors
                            , master
                            , [ HS.TypeSig loc [HS.Ident "main"] [ty| IO () |]
                              , HS.Ident "main" =: [hs| defaultMain __remoteTable master |]
@@ -83,20 +83,16 @@ compileToCH gr = do
                    )
     }
 
--- Compile all actor to cloud haskell expressions. Function returns
--- map from node id to pair of 1) CH node index and name of name of
--- function and 2) list of all generated declarations.
-compileAllNodes :: DataflowGraph -> Compile (IntMap (ScheduleState,HS.Name), [HS.Name], [HS.Decl])
+-- Compile all actors to cloud haskell expressions. 
+compileAllNodes :: DataflowGraph -> Compile (IntMap ActorRes)
 compileAllNodes gr = do
   actors <- forM (nodes gr) $ \n -> do
     let a = lab' $ context gr n
         i = case a of ANode j _ -> j
-    ActorRes nm nms decls <- case a of ANode _ aa -> compileNode aa
-    return (n,(i,nm,nms,decls))
-  return ( IntMap.fromList [(n,(i,nm)) | (n,(i,nm,_,_)) <- actors]
-         , concat [ nms  | (_,(_,_,nms,_ )) <- actors]
-         , concat [ decl | (_,(_,_,_,decl)) <- actors]
-         )
+    ares <- case a of ANode _ (RealActor _ aa) -> compileNode aa
+    return (n, ares)
+  return $ IntMap.fromList actors
+
 
 -- Build remote table for CH
 buildRemoteTable :: [HS.Name] -> [HS.Decl]
@@ -106,14 +102,15 @@ buildRemoteTable allNames =
   ]
 
 -- Generate master fucntion
-buildMaster :: DataflowGraph -> IntMap (ScheduleState,HS.Name) -> Compile [HS.Decl]
+buildMaster :: DataflowGraph -> IntMap ActorRes -> Compile [HS.Decl]
 buildMaster gr actorMap = do
   -- Identifier for node list
   vnodes <- HS.Ident <$> fresh "nodes"
   -- Generate map from node ID to variable it's bound and statement
   -- for spawning CH process
-  actorVar <- T.forM actorMap $ \(sched,nm) ->
-    spawnActor vnodes sched nm
+  actorVar <- forIntM actorMap $ \n a -> do
+    let Just (ANode sch _) = lab gr n
+    spawnActor vnodes sch a
   -- Variable holding PID of master process
   vme <- HS.Ident <$> fresh "me"
   -- Generate 'master' function
@@ -138,10 +135,9 @@ buildMaster gr actorMap = do
 -- PID of process and statement for do block
 spawnActor :: HS.Name           -- Name of variable holding list of nodes
            -> ScheduleState     -- How process is scheduled
-           -> HS.Name           -- Name of haskell function to which
-                                -- actor was compiled
+           -> ActorRes          -- Actor
            -> Compile (HS.Name,[HS.Stmt])
-spawnActor vnodes sched nm = do
+spawnActor vnodes sched actor = do
   x <- HS.Ident <$> freshName
   i <- case sched of
          NotSched         -> compError ["Node is not scheduled for execution"]
@@ -150,14 +146,17 @@ spawnActor vnodes sched nm = do
   -- Statement for spawning process
   let spawnStmt = x <-- ([hs| spawnActor |]
                          $$ infx (var vnodes) "!!" (liftHS i)
-                         $$ (HS.SpliceExp $ HS.ParenSplice $ [hs|mkStaticClosure|] $$ var (quote nm))
+                         $$ (HS.SpliceExp $ HS.ParenSplice $ [hs|mkStaticClosure|] $$ var (quote (aresName actor)))
                         )
   -- Optional sending of scheduling data
   let sendSlaves = case sched of
         MasterSlaves _ is ->
-          [ stmt $ [hs|send|] $$ var x $$
-             ([hs|map|] $$ HS.LeftSection (var vnodes) (HS.QVarOp (HS.UnQual (HS.Symbol "!!"))) $$ liftHS is)
-          ]
+          ( stmt $ [hs|send|] $$ var x $$
+             ([hs|map|] $$ HS.LeftSection (var vnodes) (HS.QVarOp (HS.UnQual (HS.Symbol "!!"))) $$ liftHS is))
+          : [ stmt $ [hs|send|] $$ var x $$
+                (HS.SpliceExp $ HS.ParenSplice $ [hs|mkStaticClosure|] $$ var (quote nm))
+            | nm <- aresClosures actor
+            ]
         _                 -> []
   return (x, spawnStmt : sendSlaves )
 
@@ -171,17 +170,17 @@ sendConnTable gr vme actorVars n =
   let conns = out gr n           -- outgoing connections
       apid  = actorVars ! n       -- PID of an actor
       tbl  = [hs| IntMap.fromList |] $$ liftHS
-             [(i,HVar (actorVars ! to)) | (_,to,ConnInfo (ConnId i) _) <- conns
+             [(i,HVar (actorVars ! to)) | (_,to,ConnId i) <- conns
              ]
       rmap = [hs|RemoteMap|] $$ var vme $$ tbl
   in stmt $ [hs|send|] $$ var apid $$ rmap
 
 -- Compile actor to haskell declaration. It returns name of top level
 -- declaration and list of declarations
-compileNode :: RealActor -> Compile ActorRes
+compileNode :: ActorDescr -> Compile ActorRes
 -- ** State machine
 --
-compileNode (StateM _ i rules) = do
+compileNode (StateM i rules) = do
   nm   <- HS.Ident <$> fresh "actor"  -- Name of the actor
   pids <- HS.Ident <$> fresh "pids"   -- Name of collection of remotes
   srv  <- HS.Ident <$> fresh "server"
@@ -203,13 +202,14 @@ compileNode (StateM _ i rules) = do
   return ActorRes
     { aresName     = nm
     , aresDeclName = [nm]
+    , aresClosures = []
     , aresDecls    = [ HS.TypeSig loc [nm] [ty| Process () |]
                      , nm =: (HS.Do exprs)
                      ]
     }
 -- ** Data source
 --
-compileNode (Producer _ i step) = do
+compileNode (Producer i step) = do
   -- Name of the actor
   nm <- HS.Ident <$> fresh "actor"
   -- Name of collection of remotes
@@ -223,13 +223,14 @@ compileNode (Producer _ i step) = do
   return ActorRes
     { aresName     =  nm
     , aresDeclName = [nm]
+    , aresClosures = []
     , aresDecls    = [ HS.TypeSig loc [nm] [ty| Process () |]
                      , nm =: (HS.Do exprs)
                      ]
     }
 -- ** Scatter-gather
 --
-compileNode (ScatterGather _ (SG (st,merge,outs) worker scatter)) = do
+compileNode (ScatterGather (SG (st,merge,outs) worker scatter)) = do
   masterNm <- HS.Ident <$> fresh "actor"
   workerNm <- HS.Ident <$> fresh "actor"
   pids     <- HS.Ident <$> fresh "pids"
@@ -245,7 +246,6 @@ compileNode (ScatterGather _ (SG (st,merge,outs) worker scatter)) = do
         , stmt $ [hs| scatterGather |]
             $$ liftHS (exprSt,exprMerge,exprOut)
             $$ exprScatter
-            $$ (HS.SpliceExp $ HS.ParenSplice $ [hs|mkStaticClosure|] $$ var (quote workerNm))
         ]
       exprWFun =
         [ stmt $ [hs| worker |] $$ exprWorker
@@ -253,6 +253,7 @@ compileNode (ScatterGather _ (SG (st,merge,outs) worker scatter)) = do
   return ActorRes
     { aresName     = masterNm
     , aresDeclName = [masterNm,workerNm]
+    , aresClosures = [workerNm]
     , aresDecls    = [ HS.TypeSig loc [masterNm] [ty| Process () |]
                      , masterNm =: (HS.Do exprMaster)
                      , HS.TypeSig loc [workerNm] [ty| Process () |]
@@ -263,6 +264,7 @@ compileNode (ScatterGather _ (SG (st,merge,outs) worker scatter)) = do
 data ActorRes = ActorRes
   { aresName     :: HS.Name     -- Name of main actor function
   , aresDeclName :: [HS.Name]   -- Names of all declarations
+  , aresClosures :: [HS.Name]   -- List of all closures to be sent to master process
   , aresDecls    :: [HS.Decl]   -- All top-level declarations
   }
 
@@ -324,7 +326,7 @@ compileExpr env@(Env pids _) expr =
     Out outs -> do
       eouts <- forM outs $ \o ->
         case o of
-          Outbound (ConnSimple (ConnId i)) a -> do
+          Outbound (Conn (ConnId i) _) a -> do
             ea <- compileExpr env a
             return $ [hs| sendToI |] $$ var pids $$ liftHS i $$ ea
           OutRes a -> do
@@ -505,3 +507,10 @@ quote (HS.Symbol _) = error "DNA.Compiler.CH.quote: cannot quote symbol"
 -- | Infix function application
 infx :: HS.Exp -> String -> HS.Exp -> HS.Exp
 infx e1 op e2 = HS.InfixApp e1 (HS.QVarOp (HS.UnQual (HS.Symbol op))) e2
+
+
+
+forIntM :: Monad m => IntMap a -> (Int -> a -> m b) -> m (IntMap b)
+forIntM xs f = do
+  ys <- forM (IntMap.toList xs) (\(i,a) -> do{b <- f i a; return (i,b)})
+  return $ IntMap.fromList ys

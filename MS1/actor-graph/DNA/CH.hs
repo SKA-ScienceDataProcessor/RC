@@ -175,12 +175,11 @@ scatterGather
      -- ^ Functions for doing gather
   -> (Int -> a -> [b])
      -- ^ Function for doing scatter
-  -> Closure (Process ())
-     -- ^ Closure for process
   -> Process ()
-scatterGather (x0,merge,sendRes) scatter workerProc = do
+scatterGather (x0,merge,sendRes) scatter = do
   -- Get necessary parameters
   workerNodes <- expect :: Process [NodeId]
+  workerProc  <- expect
   let nWorker = length workerNodes
   workers <- forM workerNodes $ \nid -> spawn nid workerProc
   forM_ workers $ \pid -> send pid =<< getSelfPid

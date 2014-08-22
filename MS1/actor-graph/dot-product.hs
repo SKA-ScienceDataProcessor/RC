@@ -1,10 +1,9 @@
 {-# LANGUAGE GADTs #-}
 -- | Implementation of distributed dot product
+import DNA
 import DNA.Actor
 import DNA.AST
 import DNA.Compiler.CH
-import DNA.Compiler.Scheduler
-import DNA.Compiler.Types
 
 
 ----------------------------------------------------------------
@@ -50,7 +49,7 @@ ddpScatter :: Expr () (Int -> Shape -> [Slice])
 ddpScatter = ScatterShape
 
 -- | Very hacky producer of shape
-shapeProducer :: ConnSimple Shape -> Shape -> Expr () (() -> ((),Out))
+shapeProducer :: Conn Shape -> Shape -> Expr () (() -> ((),Out))
 shapeProducer conn sh
   = Lam $ Tup (Scalar () `Cons` Out [Outbound conn (EShape sh)] `Cons` Nil)
 
@@ -66,7 +65,7 @@ simpleDataflow = do
     startingState $ Scalar ()
     rule simpleDotProduct
   (_, c) <- use $ actor $ do
-    c <- simpleOut
+    c <- simpleOut ConnOne
     producer $ shapeProducer c (Shape 100)
     startingState $ Scalar ()
     return c
@@ -76,7 +75,7 @@ distributedDataflow = do
   (aDot, ()) <- use $ actor $ do
     scatterGather $ SG ddpGather ddpWorker ddpScatter
   (_, c) <- use $ actor $ do
-    c <- simpleOut
+    c <- simpleOut ConnOne
     producer $ shapeProducer c (Shape 100)
     startingState $ Scalar ()
     return c
@@ -85,11 +84,6 @@ distributedDataflow = do
 
 
 main :: IO ()
-main = do
-  let r = compile $ compileToCH =<< schedule 2 =<< buildDataflow distributedDataflow
-  -- let r = compile $ compileToCH =<< schedule 2 =<< buildDataflow simpleDataflow
-  case r of
-    Left errs -> mapM_ putStrLn errs
-    Right prj -> saveProject "dir" prj
-
-  
+main =
+  compile compileToCH (saveProject "dir") 4 $
+    distributedDataflow

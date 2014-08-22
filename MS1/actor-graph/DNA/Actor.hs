@@ -6,13 +6,15 @@
 -- | Description of the
 module DNA.Actor (
     -- * Actor representation
-    ConnInfo(..)
+    Actor(..)
+  , ActorConn(..)
   , ConnMap
-  , ConnCollection(..)
-  , Actor(..)
   , RealActor(..)
+  , ActorDescr(..)
   , Rule(..)
   , SG(..)
+  , ConnCollection(..)
+  , Bounded(..)
     -- * Definition of actors
   , ActorDef
   , actor
@@ -22,9 +24,9 @@ module DNA.Actor (
   , producer
   , startingState
     -- * Dataflow graph
+  , DataflowGraph
   , ANode(..)
   , ScheduleState(..)
-  , DataflowGraph
     -- * Building of dataflow graph
   , Dataflow
   , A
@@ -40,7 +42,7 @@ import Data.Typeable
 import Data.Graph.Inductive.Graph hiding (match)
 import Data.Graph.Inductive.PatriciaTree
 import qualified Data.Traversable as T
-import qualified Data.IntMap as IntMap
+import qualified Data.Map as Map
 
 import DNA.AST
 import DNA.Compiler.Types
@@ -48,19 +50,11 @@ import DNA.Compiler.Types
 
 
 ----------------------------------------------------------------
--- Actor representation
+-- Connection variations
 ----------------------------------------------------------------
 
--- Information about outgoing connection for the actor. It's pair of
--- connection index and type of the connection. Type is also stored by
--- the actor so it's needed as sanity check.
-data ConnInfo = ConnInfo
-  ConnId   -- ID of outgoing port
-  TypeRep  -- Type of messages
-  deriving (Show)
-
--- Set of outgoing connections for the actor
-type ConnMap = IntMap.IntMap TypeRep
+data Bound a = Bound Node (Conn a)
+             | Failed
 
 -- | Collection of outbound connections
 class ConnCollection a where
@@ -68,11 +62,8 @@ class ConnCollection a where
   setActorId     :: Node -> a -> Connected a
   nullConnection :: a -> Connected a
 
-data Bound a = Bound Node a
-             | Failed
-
-instance ConnCollection (ConnSimple a) where
-  type Connected (ConnSimple a) = Bound (ConnSimple a)
+instance ConnCollection (Conn a) where
+  type Connected (Conn a) = Bound a
   setActorId n c = Bound n c
   nullConnection _ = Failed
 
@@ -86,42 +77,56 @@ instance ConnCollection () where
   setActorId     _  = id
   nullConnection _  = ()
 
--- | Representation of actor.
+
+----------------------------------------------------------------
+-- Actor representation
+----------------------------------------------------------------
+
+-- | Abstract representation of actor.
 data Actor outs
-  -- We allow invalid actors. Instead of checking at construction time
-  -- all errors are reported during compilation phase
+  -- | Actor. We store both collection of outputs and real actor
+  --   description.
   = Actor outs RealActor
+  -- | Invalid actor state. These errors will be reported during
+  --   compilation phase.
   | Invalid [String]
 
--- Real description of an actor
-data RealActor where
+-- | Internal representation of connections of actor.
+data ActorConn = ActorConn ConnType TypeRep
+
+-- | Map of all outgoing connection of actor
+type ConnMap = Map.Map ConnId ActorConn
+
+-- | Representation of an actor. It's pair of connection map and it's
+--   inner working
+data RealActor = RealActor ConnMap ActorDescr
+
+-- | Description of inner working of actor.
+data ActorDescr where
   -- State machine
   StateM
-    :: ConnMap
-    -> Expr () s
+    :: Expr () s
     -> [Rule s]
-    -> RealActor
+    -> ActorDescr
   -- Actor which produces data
   Producer
-    :: ConnMap
-    -> Expr () s
+    :: Expr () s
     -> Expr () (s -> (s,Out))
-    -> RealActor
+    -> ActorDescr
   -- Scatter/gather actor
   ScatterGather
-    :: ConnMap
-    -> SG
-    -> RealActor
+    :: SG
+    -> ActorDescr
 
-
--- Transition rule for the state machine
+-- | Transition rule for the state machine
 data Rule s where
   Rule :: Expr () (s -> a -> (s,Out)) -- Transition rule
        -> Rule s
 
+-- | State of scatter-gather actor.
 data SG where
   SG :: (Expr () c, Expr () (c -> c -> c), Expr () (c -> Out))
-     -> Expr () (b -> c) 
+     -> Expr () (b -> c)
      -> Expr () (Int -> a -> [b])
      -> SG
 
@@ -131,25 +136,30 @@ data SG where
 -- Dataflow graph
 ----------------------------------------------------------------
 
--- Node of a dataflow graph which is used during graph construction
+-- | Complete description of dataflow graph.
+--
+type DataflowGraph = Gr ANode ConnId
+
+-- | Node of a dataflow graph which is used during graph construction
 data BuildNode where
   BuildNode :: Actor outs -> BuildNode
 
 -- | Node of dataflow graph
 data ANode = ANode
-  ScheduleState       -- Node index (default 0)
+  ScheduleState       -- How actor is scheduled
   RealActor           -- Actor data
 
 -- | How actor is schedule to run
 data ScheduleState
   = NotSched
+    -- ^ Actor is not scheduled
   | Single  Int
+    -- ^ Actor scheduled for execution on single node
   | MasterSlaves Int [Int]
+    -- ^ Actor scheduled for execution on many nodes
+  deriving (Show)
 
 
-
--- | Complete description of dataflow graph
-type DataflowGraph = Gr ANode ConnInfo
 
 
 
@@ -162,54 +172,61 @@ newtype ActorDef s a = ActorDef (State (ActorDefState s) a)
                      deriving (Functor,Applicative,Monad)
 
 data ActorDefState s = ActorDefState
-  { adsRules :: [Rule s]        -- Transition rules
-  , adsInit  :: [Expr () s]     -- Initial state
+  { adsRules :: [Rule s]
+    -- Transition rules
+  , adsInit  :: [Expr () s]
+    -- Initial state
   , adsProd  :: [Expr () (s -> (s,Out))]
+    --
   , adsSG    :: [SG]
-  , adsConns :: ConnMap         -- Outbound connections
+    --
+  , adsConns :: ConnMap
+    -- Outbound connections
   }
 
 
 -- | Simple connection information
-simpleOut :: forall s a. Typeable a => ActorDef s (ConnSimple a)
-simpleOut = ActorDef $ do
+simpleOut :: forall s a. Typeable a => ConnType -> ActorDef s (Conn a)
+simpleOut ct = ActorDef $ do
   st <- get
   let conns = adsConns st
-      n     = IntMap.size conns
-  put $! st { adsConns = IntMap.insert n (typeOf (undefined :: a)) conns }
-  return $ ConnSimple (ConnId n)
+      cid   = ConnId $ Map.size conns
+  put $! st { adsConns = Map.insert cid (ActorConn ct (typeOf (undefined :: a))) conns }
+  return $ Conn cid ConnOne
 
 -- | Transition rule for an actor
 rule :: Expr () (s -> a -> (s,Out)) -> ActorDef s ()
 rule f = ActorDef $ do
   modify $ \st -> st { adsRules = Rule f : adsRules st }
 
+-- | Producer actor. One which sends data indefinitely
 producer :: Expr () (s -> (s,Out)) -> ActorDef s ()
 producer f = ActorDef $ do
   modify $ \st -> st { adsProd = f : adsProd st }
 
+-- | Scatter-gather actor
 scatterGather :: SG -> ActorDef s ()
 scatterGather sg = ActorDef $ do
   modify $ \st -> st { adsSG = sg : adsSG st }
 
--- | Set initial state for the
+-- | Set initial state for the actor
 startingState :: Expr () s -> ActorDef s ()
 startingState s = ActorDef $ do
   modify $ \st -> st { adsInit = s : adsInit st }
 
 -- | Generate actor representation
-actor :: ConnCollection outs => ActorDef s outs -> Actor outs
+actor :: ActorDef s outs -> Actor outs
 actor (ActorDef m) =
   case s of
-    ActorDefState [] []  [] [sg] c -> Actor outs (ScatterGather c sg)
+    ActorDefState [] []  [] [sg] c -> Actor outs (RealActor c (ScatterGather sg))
     ActorDefState _  []  _   _ _ -> oops "No initial state specified"
     ActorDefState [] _   []  _ _ -> oops "No transition rules/producers"
-    ActorDefState rs [i] []  _ c -> Actor outs (StateM   c i rs)
-    ActorDefState [] [i] [f] _ c -> Actor outs (Producer c i f)
+    ActorDefState rs [i] []  _ c -> Actor outs (RealActor c (StateM   i rs))
+    ActorDefState [] [i] [f] _ c -> Actor outs (RealActor c (Producer i f))
     ActorDefState [] _   _   _ _ -> oops "Several producer steps specified"
     ActorDefState _  _   _   _ _ -> oops "Several initial states specified"
   where
-    (outs,s) = runState m $ ActorDefState [] [] [] [] IntMap.empty
+    (outs,s) = runState m $ ActorDefState [] [] [] [] Map.empty
     oops = Invalid . pure
 
 
@@ -219,9 +236,9 @@ actor (ActorDef m) =
 ----------------------------------------------------------------
 
 -- | Monad for building dataflow graph
-type Dataflow = (State (Int, [(Int,BuildNode)], [(Int,Int,ConnInfo)]))
+type Dataflow = (State (Int, [(Node,BuildNode)], [(Node,Node,ConnId)]))
 
--- | Handle for actor
+-- | Handle for actor.
 newtype A = A Node
 
 -- | Construct dataflow graph from its description
@@ -242,18 +259,16 @@ use a = do
   (i,acts,conns) <- get
   put (i+1, (i,BuildNode a) : acts, conns)
   return (A i, case a of
-                 Invalid _                -> nullConnection (undefined :: outs)
-                 Actor o (StateM   _ _ _) -> setActorId i o
-                 Actor o (Producer _ _ _) -> setActorId i o
-                 Actor o (ScatterGather _ _) -> setActorId i o
+                 Invalid _  -> nullConnection (undefined :: outs)
+                 Actor o _  -> setActorId i o
          )
 
 -- | Connect graphs
-connect :: forall a. Bound (ConnSimple a) -> A -> Dataflow ()
+connect :: Bound a -> A -> Dataflow ()
 connect Failed _ = return ()
-connect (Bound from (ConnSimple i)) (A to) = do
+connect (Bound from (Conn i _)) (A to) = do
   (j, acts, conns) <- get
   put ( j
       , acts
-      , (from,to,ConnInfo i (typeOf (undefined :: a))) : conns
+      , (from,to, i) : conns
       )

@@ -1,0 +1,10 @@
+
+Various low priority tasks that should be done
+
+
+ * We can connect output of an actor to several other actors. It's currently
+   disallowed but there's no fundamental reason to do so. It however require
+   changes to 
+
+ * Better error reporting. At this point we just throw at user couple of
+   incomprehensible lines.

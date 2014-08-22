@@ -1,9 +1,8 @@
 {-# LANGUAGE GADTs #-}
 import DNA.Actor
 import DNA.AST
+import DNA
 import DNA.Compiler.CH
-import DNA.Compiler.Scheduler
-import DNA.Compiler.Types
 
 ----------------------------------------------------------------
 -- Print actor
@@ -26,15 +25,15 @@ actorPrint = actor $ do
 -- Source actor
 ----------------------------------------------------------------
 
-exprSrcInt :: ConnSimple Int -> Expr () (Int -> (Int,Out))
+exprSrcInt :: Conn Int -> Expr () (Int -> (Int,Out))
 exprSrcInt i
   = Lam $ Tup ( Ap (Ap Add (Var ZeroIdx)) (Scalar (1 :: Int))
          `Cons` Out [Outbound i (Var ZeroIdx)]
          `Cons` Nil)
 
-actorSrcInt :: Actor (ConnSimple Int)
+actorSrcInt :: Actor (Conn Int)
 actorSrcInt = actor $ do
-  c <- simpleOut
+  c <- simpleOut ConnOne
   producer $ exprSrcInt c
   startingState $ Scalar 0
   return c
@@ -46,9 +45,6 @@ program = do
   connect c aPr
 
 main :: IO ()
-main = do
-  let r = compile $ compileToCH =<< schedule 2 =<< buildDataflow program
-  case r of
-    Left errs -> mapM_ putStrLn errs
-    Right prj -> saveProject "dir" prj
+main = compile compileToCH (saveProject "dir") 2 program
+
 
