@@ -35,7 +35,7 @@ import DNA.Message
 
 import DNA.Common (startLogger, say, startTracing)
 
-import Cfg (executableName, event, eventPure)
+import Cfg (executableName, timePeriod, timePeriodPure, synchronizationPoint)
 
 data PartialSum = PartialSum ProcessId Double deriving (Show,Typeable,Generic)
 
@@ -63,6 +63,7 @@ dpSum pids sum = do
 
 spawnCollector :: ProcessId -> Process ()
 spawnCollector pid = do
+        synchronizationPoint
         collectorPID <- getSelfPid
         masterPID <- dnaSlaveHandleStart "collector" collectorPID
         (DnaPidList computePids) <- expect
@@ -71,7 +72,7 @@ spawnCollector pid = do
 -- XXX and the master monitors the collector (failure of which terminates the program)
         -- install monitors for compute processes.
         forM_ computePids $ \pid -> monitor pid
-        sum <- event "collection phase" $ dpSum computePids 0
+        sum <- timePeriod "collection phase" $ dpSum computePids 0
         send masterPID (Result sum)
         traceMessage "trace message from collector."
 
@@ -89,11 +90,12 @@ spawnCChan :: Int -> (Int -> Double) -> ProcessId -> Process()
 spawnCChan n f pid = do
         myPid <- getSelfPid 
         let vec = S.generate n f
-        event "generating and sending precomputed vector" $ Unsafe.send pid (CompVec myPid $! vec)
+        timePeriod "generating and sending precomputed vector" $ Unsafe.send pid (CompVec myPid $! vec)
 
 
 spawnCompute :: (FilePath, Int, Int, Int, ProcessId) -> Process ()
 spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
+        synchronizationPoint
         getSelfPid >>= enableTrace
         computePID <- getSelfPid
         sayDebug $ printf "[Compute %s] : f:%s iC:%s cS:%s cO:%s coll:%s" (show computePID) file (show itemCount) (show chSize) (show chOffset) (show collectorPID)
@@ -101,15 +103,15 @@ spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
 
         fChanPid <- spawnLocal  (spawnFChan filePath chOffset chSize computePID)
         cChanPid <- spawnLocal  (spawnCChan chSize (\n -> 1.0) computePID)
-        (iov, cv) <- event "receiving vectors" $ do
-                (FileVec fChanPid iov) <- event "receiving read vector" expect
-                (CompVec cChanPid cv) <- event "receiving computed vector" expect
+        (iov, cv) <- timePeriod "receiving vectors" $ do
+                (FileVec fChanPid iov) <- timePeriod "receiving read vector" expect
+                (CompVec cChanPid cv) <- timePeriod "receiving computed vector" expect
                 return (iov, cv)
 
         --sayDebug $ printf "[Compute %s] : Value of iov: %s" (show computePID) (show iov) 
 
-        sumOnComputeNode <- event "compute sends sum" $ do
-                let sumOnComputeNode = eventPure "pure computation time" $ S.sum $ S.zipWith (*) iov cv
+        sumOnComputeNode <- timePeriod "compute sends sum" $ do
+                let sumOnComputeNode = timePeriodPure "pure computation time" $ S.sum $ S.zipWith (*) iov cv
                 send collectorPID (PartialSum computePID sumOnComputeNode)
                 return sumOnComputeNode
         sayDebug $ printf "[Compute] : sumOnComputeNode : %s at %s send to %s" (show sumOnComputeNode) (show computePID) (show collectorPID)
@@ -119,6 +121,7 @@ remotable [ 'spawnCompute, 'spawnCollector]
 
 master :: Backend -> [NodeId] -> Process ()
 master backend peers = do
+        synchronizationPoint
         startLogger peers
         logPID <- Log.systemLog (liftIO . putStrLn) (return ()) Log.Debug return
 
@@ -156,7 +159,7 @@ master backend peers = do
                 pid <- dnaMasterStartSlave "compute" masterPID computeNid ( $(mkClosure 'spawnCompute) (filePath, chO, chS, itemCount, collectorPid)) 
                 enableTrace pid
                 return pid
-        sum <- event "master waits for result" $ do
+        sum <- timePeriod "master waits for result" $ do
 
                 -- Send collector computePid's
                 send collectorPid (DnaPidList computePids)

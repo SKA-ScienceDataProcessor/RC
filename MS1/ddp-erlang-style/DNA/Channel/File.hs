@@ -90,6 +90,6 @@ instance CD.NFData FileVec where
 spawnFChan :: String -> Int -> Int -> ProcessId -> Process()
 spawnFChan path cO cS pid = do
         mypid <- getSelfPid
-        iov <- event "reading file" $ liftIO $ readData cS cO path
+        iov <- timePeriod "reading file" $ liftIO $ readData cS cO path
         Unsafe.send pid (FileVec mypid iov)
 
