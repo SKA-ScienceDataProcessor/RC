@@ -25,6 +25,10 @@ module DNA.CH (
     -- * Reexports
   , Shape(..)
   , Slice(..)
+    -- * Logging
+  , startLogger
+  , sayMsg
+  , startTracing
   ) where
 
 import Control.Monad
@@ -34,6 +38,8 @@ import Control.Distributed.Process.Platform.ManagedProcess
 import Control.Distributed.Process.Platform.Time (Delay(..))
 import Control.Distributed.Process.Backend.SimpleLocalnet
 import Control.Distributed.Process.Node (initRemoteTable)
+import qualified Control.Distributed.Process.Debug as D
+import qualified Control.Distributed.Process.Platform.Service.SystemLog as Log
 
 import Data.Typeable (Typeable)
 import Data.Binary   (Binary)
@@ -72,7 +78,7 @@ generateArray sh f =
                  Shape n -> Array sh (S.generate n f)
     ShSlice -> case sh of
                  Slice off n -> Array sh (S.generate n (\i -> f (i + off)))
-    
+
 scatterShape :: Int -> Shape -> [Slice]
 scatterShape n (Shape size)
   = zipWith Slice chunkOffs chunkSizes
@@ -81,8 +87,8 @@ scatterShape n (Shape size)
     extra        = replicate rest 1 ++ repeat 0
     chunkSizes   = zipWith (+) (replicate n chunk) extra
     chunkOffs    = scanl (+) 0 chunkSizes
-  
-  
+
+
 
 ----------------------------------------------------------------
 -- CH combinators
@@ -234,4 +240,72 @@ data SGState a c = SGState (Seq.Seq a) (GatherAcc c)
 data GatherAcc a
   = NoAcc                       -- ^ Accumulator is empty
   | Await !a !Int               -- ^ Accumulator holding value and we expect n more answers
-  
+
+
+
+----------------------------------------------------------------
+-- Logging
+----------------------------------------------------------------
+
+-- | Start the logger. Run it on master node.
+startLogger :: [NodeId]         -- ^ List of all known nodes
+            -> Process ()
+startLogger peers = do
+  pid <- getSelfPid
+  _   <- spawnLocal $ loggerProcess peers pid
+  -- Wait for logger process to initialize
+  () <- expect
+  return ()
+
+-- Logger process - register itself and waits for Log messages.
+loggerProcess :: [NodeId] -> ProcessId -> Process ()
+loggerProcess peers starter = do
+  me <- getSelfPid
+  register loggerProcessName me
+  forM_ peers $ \n ->
+    registerRemoteAsync n loggerProcessName me
+  send starter ()
+  forever $ do
+    LogMsg pid s <- expect
+    liftIO $ printf "[%s] %s\n" (show pid) s
+
+
+-- Common logger process name.
+loggerProcessName :: String
+loggerProcessName = "dna-logger"
+
+-- |Send log messages to logger process.
+sayMsg :: String -> Process ()
+sayMsg msg = do
+  logger <- Log.client
+  case logger of
+    Nothing -> do
+      logg <- whereis loggerProcessName
+      case logg of
+        Just l -> do me <- getSelfPid
+                     send l (LogMsg me msg)
+	Nothing -> error "completely unable to resolve any logging facility!"
+    Just cl -> do
+      Log.debug cl (Log.LogText msg)
+
+-- |Message to logger.
+data LogMsg = LogMsg ProcessId String
+         deriving (Show,Typeable,Generic)
+instance Binary LogMsg where
+
+-- | Enable tracing after all is set up.
+startTracing :: [NodeId] -> Process ()
+startTracing peers = do
+  forM_ peers $ \peer -> do
+    _ <- D.startTraceRelay peer
+    D.setTraceFlags $ D.TraceFlags
+       { D.traceSpawned      = Nothing
+       , D.traceDied         = Nothing
+       , D.traceRegistered   = Nothing
+       , D.traceUnregistered = Nothing
+       , D.traceSend         = Nothing -- Just D.TraceAll
+       , D.traceRecv         = Nothing -- Just D.TraceAll
+       , D.traceNodes        = True
+       , D.traceConnections  = True
+       }
+    D.startTracer (liftIO . putStrLn . show)
