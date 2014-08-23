@@ -119,6 +119,25 @@ spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
 
 remotable [ 'spawnCompute, 'spawnCollector]
 
+-- |Monitoring of processes. We watch out for collector process, ignoring all other failures.
+masterMonitor :: ProcessId -> Process Double
+masterMonitor collectorPid = do
+        -- if we will just return the value, we may stackoverflow on really big number of processes (1e6+).
+        -- so we return a value to dispatch later.
+        maybeResult <- receiveWait
+                [ match $ \(ProcessMonitorNotification _ pid _) ->
+                        if pid == collectorPid
+                                then do
+                                        sayDebug "Collector failure. Master process terminate."
+                                        terminate
+                                else return Nothing
+                , match $ \(Result sum) -> return (Just sum)
+                ]
+        -- dispatch result.
+        case maybeResult of
+                Nothing -> masterMonitor collectorPid
+                Just r -> return r
+
 master :: Backend -> [NodeId] -> Process ()
 master backend peers = do
         synchronizationPoint
@@ -163,11 +182,10 @@ master backend peers = do
 
                 -- Send collector computePid's
                 send collectorPid (DnaPidList computePids)
-                sayDebug "--------------------------------------------------------------------------------------"	
-                (Result sum) <- expect
-                return sum
+                sayDebug "--------------------------------------------------------------------------------------"
+                masterMonitor collectorPid
         sayDebug $ printf "Result %s" (show sum)
-        terminateAllSlaves backend	
+        terminateAllSlaves backend
 
 
 -- XXX Please make this the beginning of a DNA.Backend package
