@@ -1,5 +1,6 @@
 __author__ = "mcsquaredjr"
 
+import sys
 
 import matplotlib
 matplotlib.use('pdf')
@@ -74,26 +75,27 @@ def all_times(evt_lst, zooming=False):
 
 
         if not zooming:
+            timeScale = 1e9
             if len(events) != len(set(events)):
-                plt.plot([evt[1]/1e6, evt[2]/1e6], [evt[6] + 4*shift, evt[6] + 4*shift], "-", color=color, lw=1.5)
+                plt.plot([evt[1]/timeScale, evt[2]/timeScale], [evt[6] + 4*shift, evt[6] + 4*shift], "-", color=color, lw=1.5)
             else:
                 if evt[0] == "generating and sending precomputed vector":
                     label = "generating and sending \nprecomputed vector"
                 else:
                     label = evt[0]
-                plt.plot([evt[1]/1e6, evt[2]/1e6], [evt[6] + 4*shift, evt[6] + 4*shift], "-", color=color, lw=1.5, label=label)
+                plt.plot([evt[1]/timeScale, evt[2]/timeScale], [evt[6] + 4*shift, evt[6] + 4*shift], "-", color=color, lw=1.5, label=label)
         else:
 
             ax1 = fig.add_subplot(111)
             if len(events) != len(set(events)):
-                ax1.plot([evt[1]/1e6, evt[2]/1e6], [evt[6] + 4*shift, evt[6] + 4*shift], "-", color=color, lw=1.5)
+                ax1.plot([evt[1]/timeScale, evt[2]/timeScale], [evt[6] + 4*shift, evt[6] + 4*shift], "-", color=color, lw=1.5)
 
             else:
                 if evt[0] == "generating and sending precomputed vector":
                     label = "generating and sending \nprecomputed vector"
                 else:
                     label = evt[0]
-                ax1.plot([evt[1]/1e6, evt[2]/1e6], [evt[6] + 4*shift, evt[6] + 4*shift], "-", color=color, lw=1.5, label=label)
+                ax1.plot([evt[1]/timeScale, evt[2]/timeScale], [evt[6] + 4*shift, evt[6] + 4*shift], "-", color=color, lw=1.5, label=label)
 
 
 
@@ -154,6 +156,8 @@ if __name__ == "__main__":
     #evt_folder = "/Users/serge/Downloads/textualLogs_32nodes"
     # evt_folder = "/Users/serge/Downloads/textualLogs_48nodes"
     evt_folder = "/Users/serge/Downloads/textualLogs32nodes_NewVersion"
+    if length(sys.args) > 0:
+        evt_folder = sys.args[0]
     ed = readlog.events_dict(evt_folder)
     print ed['events']
 all_times(ed['list'], False)
