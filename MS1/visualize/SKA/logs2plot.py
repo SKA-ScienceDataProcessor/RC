@@ -156,8 +156,8 @@ if __name__ == "__main__":
     #evt_folder = "/Users/serge/Downloads/textualLogs_32nodes"
     # evt_folder = "/Users/serge/Downloads/textualLogs_48nodes"
     evt_folder = "/Users/serge/Downloads/textualLogs32nodes_NewVersion"
-    if length(sys.args) > 0:
-        evt_folder = sys.args[0]
+    if len(sys.argv) > 1:
+        evt_folder = sys.argv[1]
     ed = readlog.events_dict(evt_folder)
     print ed['events']
 all_times(ed['list'], False)

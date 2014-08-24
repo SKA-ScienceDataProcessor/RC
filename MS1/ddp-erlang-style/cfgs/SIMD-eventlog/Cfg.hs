@@ -41,5 +41,5 @@ synchronizationPoint :: MonadIO m => m ()
 synchronizationPoint = liftIO $ do
         utcTime <- getCurrentTime
         let     -- we are formatting time to number of seconds in POSIX epoch and fractional part in picoseconds.
-                timeString = formatTime defaultTimeLocale "%s.%Q" utcTime
+                timeString = formatTime defaultTimeLocale "%s.%q" utcTime
         traceEventIO $ "SYNCHRONIZATION "++timeString

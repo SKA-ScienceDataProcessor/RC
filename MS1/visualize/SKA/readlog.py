@@ -16,6 +16,7 @@ import numpy as np
 START_MARKER = "START "
 END_MARKER = "END "
 
+SYNC_MARKER = "SYNCHRONIZATION "
 
 class LogEntry(object):
     """Class representing log entry with name, start, end times and
@@ -82,12 +83,18 @@ def _find_incomplete_entry(entries, event):
 
 
 
-def parse_log(fname, verbose=False):
+def parse_log(fname, syncStarts, verbose=False):
     with open(fname) as f:
         entries = []
         for line in f:
             try:
                 (time_stamp, cap, event) = line.split(": ")
+                if event.find(SYNC_MARKER) >= 0:
+                    print event
+                    matches = re.match("[^00-9]+([0-9]+)\.([0-9]+)",event)
+                    sec_part = float(matches.group(1))
+                    ps_part = float(matches.group(2))
+                    syncStarts[fname] = float(time_stamp), sec_part, ps_part
                 if event.find(START_MARKER) >= 0:
                     name_start = event[len(START_MARKER):-1]
                     entry = LogEntry(time_stamp, None, name_start, log_name=fname)
@@ -134,13 +141,13 @@ def list_logs(folder_name, pattern="eventlog"):
     """Return names of all log files in the current folder.
      """
     log_files = []
-    try:
-        os.chdir(folder_name)
-    except OSError, e:
-        print "\n*** Error: directory does not exist. Exiting. Stack trace was: \n{}".format(e)
-        sys.exit(100)
+#    try:
+#        os.chdir(folder_name)
+#    except OSError, e:
+#        print "\n*** Error: directory does not exist. Exiting. Stack trace was: \n{}".format(e)
+#        sys.exit(100)
 
-    for afile in os.listdir("."):
+    for afile in os.listdir(folder_name):
         if afile.find('eventlog') >= 0:
             log_files.append(os.path.join(folder_name, afile))
     return log_files
@@ -154,6 +161,7 @@ def events_dict(logs_folder):
         'events' list of unique events
         'nodes' list of all nodes
     """
+    starts = dict()
     log_files = list_logs(logs_folder)
     entries = []
     entries_lst = []
@@ -161,9 +169,29 @@ def events_dict(logs_folder):
     out_dict = dict()
 
     for afile in log_files:
-        entries += parse_log(afile, True)
+        entries += parse_log(afile, starts, True)
+
+    for _f, v in starts.iteritems():
+        smalles_ns, smallest_s, smallest_ps = v
+        break
+
+    for _f, v in starts.iteritems():
+        ns, s, ps = v
+        if (s<smallest_s) or (s==smallest_s and ps < smallest_ps):
+            smallest_s = s
+            smallest_ps = ps
+            smallest_ns = ns
+
+    print "smallests ", smallest_s, smallest_ps
 
     for entry in entries:
+        print "entry before ", entry.to_list()
+        start_ns, start_s, start_ps = starts[entry.log_name]
+        offset = (start_s - smallest_s)*1000000000.0 + (start_ps - smallest_ps)/1000.0 + start_ns
+        print "offset ", offset
+        entry.start = float(entry.start) - offset
+        entry.end = float(entry.end) - offset
+        print "entry after ", entry.to_list()
         entries_lst.append(entry.to_list())
 
     events = unique_events(entries_lst)
