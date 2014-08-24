@@ -120,14 +120,17 @@ handleRule f
               (s',m) -> m >> return (ProcessContinue s')
 
 -- | Helper for starting state machine actor
-startActor :: s -> ProcessDefinition s -> Process ()
-startActor s = serve () (\_ -> return (InitOk s NoDelay))
+startActor :: Process s -> ProcessDefinition s -> Process ()
+startActor ms def = do
+  s <- ms
+  serve () (\_ -> return (InitOk s NoDelay)) def
 
 -- | Helper for starting data producer actor
-producer :: s -> (s -> (s,Process())) -> Process ()
-producer s0 step = loop s0
+producer :: Process s -> (s -> Process (s,())) -> Process ()
+producer s0 step = loop =<< s0
   where
-    loop s = let (s',m) = step s in m >> loop s'
+    loop s = do (s',()) <- step s
+                loop s'
 
 -- | Default main
 defaultMain :: (RemoteTable -> RemoteTable) -> ([NodeId] -> Process ()) -> IO ()
@@ -177,12 +180,13 @@ monitorActors = loop
 -- | Process for doing scatter\/gather.
 scatterGather
   :: (Serializable a, Serializable b, Serializable c)
-  => (c, c -> c -> c, c -> Process ())
+  => (Process c, c -> c -> Process c, c -> Process ())
      -- ^ Functions for doing gather
-  -> (Int -> a -> [b])
+  -> (Int -> a -> Process [b])
      -- ^ Function for doing scatter
   -> Process ()
-scatterGather (x0,merge,sendRes) scatter = do
+scatterGather (monadX0,merge,sendRes) scatter = do
+  x0 <- monadX0
   -- Get necessary parameters
   workerNodes <- expect :: Process [NodeId]
   workerProc  <- expect
@@ -192,24 +196,24 @@ scatterGather (x0,merge,sendRes) scatter = do
   -- Handler for gather message
   let handleGather (SGState _ NoAcc) _ = error "Internal error!"
       handleGather (SGState queue (Await acc n)) (Gather c) = do
-        let acc' = merge acc c
+        acc' <- merge acc c
         case n of
           1 -> do sendRes acc'
                   case Seq.viewl queue of
                     EmptyL  -> return $ ProcessContinue $ SGState queue NoAcc
-                    a :< as -> do let bs = scatter nWorker a
+                    a :< as -> do bs <- scatter nWorker a
                                   forM_ (zip bs workers) $ \(b,pid) -> cast pid (Scatter b)
                                   return $ ProcessContinue $ SGState as (Await x0 nWorker)
           _ -> return $ ProcessContinue $ SGState queue (Await acc' (n-1))
   -- Handler for scatter messages
   let handleScatter (SGState queue NoAcc) a = do
-        let bs = scatter nWorker a
+        bs <- scatter nWorker a
         forM_ (zip bs workers) $ \(b,pid) -> cast pid (Scatter b)
         return $ ProcessContinue $ SGState queue (Await x0 nWorker)
       handleScatter (SGState queue acc) a = do
         return $ ProcessContinue $ SGState (queue |> a) acc
   -- Definition of server
-  startActor (SGState Seq.empty NoAcc) $ defaultProcess
+  startActor (return $ SGState Seq.empty NoAcc) $ defaultProcess
     { apiHandlers =
          [ handleCast handleGather
          , handleCast handleScatter
@@ -217,12 +221,13 @@ scatterGather (x0,merge,sendRes) scatter = do
     }
 
 -- | Function for worker
-worker :: (Serializable a, Serializable b) => (a -> b) -> Process ()
+worker :: (Serializable a, Serializable b) => (a -> Process b) -> Process ()
 worker f = do
   master <- expect :: Process ProcessId
-  startActor () $ defaultProcess
+  startActor (return ()) $ defaultProcess
     { apiHandlers = [ handleCast $ \() (Scatter a) -> do
-                         cast master (Gather $ f a)
+                         b <- f a
+                         cast master (Gather b)
                          return $ ProcessContinue ()
                     ]
     }
