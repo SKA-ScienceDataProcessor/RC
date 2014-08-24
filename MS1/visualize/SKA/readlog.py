@@ -187,10 +187,10 @@ def events_dict(logs_folder):
     for entry in entries:
         print "entry before ", entry.to_list()
         start_ns, start_s, start_ps = starts[entry.log_name]
-        offset = (start_s - smallest_s)*1000000000.0 + (start_ps - smallest_ps)/1000.0 + start_ns
+        offset = (start_s - smallest_s)*1000000000.0 + (start_ps - smallest_ps)/1000.0 - start_ns
         print "offset ", offset
-        entry.start = float(entry.start) - offset
-        entry.end = float(entry.end) - offset
+        entry.start = float(entry.start) + offset
+        entry.end = float(entry.end) + offset
         print "entry after ", entry.to_list()
         entries_lst.append(entry.to_list())
 
