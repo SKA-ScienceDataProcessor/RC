@@ -9,6 +9,7 @@ module DNA.AST (
     -- * AST
     Expr(..)
   , Idx(..)
+  , typeOfExpr
     -- ** Tuple
   , Tuple(..)
   , TupleIdx(..)
@@ -77,7 +78,8 @@ data Expr env a where
        -> Expr env (Array sh b)
        -> Expr env (Array sh c)
   -- | Generate vector
-  Generate :: Expr env sh
+  Generate :: IsShape sh
+           => Expr env sh
            -> Expr env (Int -> a)
            -> Expr env (Array sh a)
 
@@ -114,6 +116,9 @@ data Expr env a where
 data Idx env t where
   ZeroIdx ::              Idx (env,t) t
   SuccIdx :: Idx env t -> Idx (env,s) t
+
+typeOfExpr :: Expr env a -> a
+typeOfExpr = error "DNA.AST.typeOfExpr: Impossible!"
 
 
 ----------------------------------------------------------------

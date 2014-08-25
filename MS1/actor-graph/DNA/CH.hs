@@ -70,14 +70,14 @@ foldArray :: (S.Storable a)
           => (a -> a -> a) -> a -> (Array sh a) -> a
 foldArray f x0 (Array _ v) = S.foldl' f x0 v
 
-generateArray :: (IsShape sh, S.Storable a)
-              => sh -> (Int -> a) -> Array sh a
-generateArray sh f =
-  case reifyShape sh of
-    ShShape -> case sh of
-                 Shape n -> Array sh (S.generate n f)
-    ShSlice -> case sh of
-                 Slice off n -> Array sh (S.generate n (\i -> f (i + off)))
+generateArrayShape
+  :: (S.Storable a) => Shape -> (Int -> a) -> Array Shape a
+generateArrayShape sh@(Shape n) f = Array sh (S.generate n f)
+
+generateArraySlice
+  :: (S.Storable a) => Slice -> (Int -> a) -> Array Slice a
+generateArraySlice sh@(Slice off n) f
+  = Array sh (S.generate n (\i -> f (i + off)))
 
 scatterShape :: Int -> Shape -> [Slice]
 scatterShape n (Shape size)

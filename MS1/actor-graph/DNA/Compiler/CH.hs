@@ -394,7 +394,10 @@ compileExpr env@(Env pids _) expr =
     -- Generate
     Generate sh f -> do esh <- compileExpr env sh
                         ef  <- compileExpr env f
-                        return $ Pure [hs| generateArray |] $$$ esh $$$ ef
+                        let gen = case reifyShape (typeOfExpr sh) of
+                                    ShShape -> [hs| generateArrayShape |]
+                                    ShSlice -> [hs| generateArraySlice |]
+                        return $ Pure gen $$$ esh $$$ ef
     -- Primitives
     Add -> do x <- HS.Ident <$> freshName
               y <- HS.Ident <$> freshName
