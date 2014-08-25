@@ -438,6 +438,12 @@ compileExpr env@(Env pids _) expr =
                        return $ Lambda (pvar x) $ Lambda (pvar y) $ Pure $ [hs| scatterShape |] $$ var x $$ var y
     --
     Vec _ -> error "NOT IMPLEMENTED"
+    ReadFile nm sh -> do enm <- compileExpr env nm
+                         esh <- compileExpr env sh
+                         let gen = case reifyShape (typeOfExpr sh) of
+                                     ShShape -> [hs| readShapeWith readData |]
+                                     ShSlice -> [hs| readSliceWith readData |]
+                         return $ Pure gen $$$ enm $$$ esh
 
 -- Generate expression for sending messages
 sendExpression :: HS.Exp -> Env env -> Expr env a -> Compile CodeBlock

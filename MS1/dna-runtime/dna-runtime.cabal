@@ -16,6 +16,8 @@ Build-Type:     Simple
 Library
   Ghc-options:          -Wall
   Default-language:	Haskell2010
+  c-sources:
+    c-bits/channel-file.c
   Build-Depends:
     base         >=3 && <5,
     transformers >= 0.4.1,
@@ -27,3 +29,4 @@ Library
     distributed-process-platform       >= 0.1
  Exposed-modules:
     DNA.CH
+    DNA.Channel

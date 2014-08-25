@@ -110,7 +110,9 @@ data Expr env a where
   FMap :: Expr env (a -> b) -> Expr env [a] -> Expr env [b]
   -- | Special form for scattering values
   ScatterShape :: Expr env (Int -> Shape -> [Slice])
-  -- FFI
+  -- Read data from file. Arguably it shouldn't be primitive but
+  -- implemented as some foreign function.
+  ReadFile :: IsShape sh => Expr env String -> Expr env sh -> Expr env (Array sh Double)
 
 -- | De-Bruijn index for variable
 data Idx env t where
