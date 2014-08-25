@@ -12,7 +12,7 @@ Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
 Category:       Data
 Build-Type:     Simple
 
-Extra-source-files:
+Data-files:
   data/template.cabal
 
 Library
@@ -27,7 +27,7 @@ Library
     fgl,
     haskell-src-exts,
     haskell-src-exts-qq
- Exposed-modules:
+  Exposed-modules:
     DNA
     DNA.AST
     DNA.Actor
@@ -35,3 +35,5 @@ Library
     DNA.Compiler.Types
     DNA.Compiler.CH
     DNA.Compiler.Scheduler
+  Other-modules:
+    Paths_dna
