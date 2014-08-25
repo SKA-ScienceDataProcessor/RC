@@ -1,8 +1,8 @@
-Name:           dna
+Name:           dna-runtime
 Version:        0.1
-Synopsis:       Descriptive Numerical Analysis
+Synopsis:       DNA runtime
 Description:
-  Graph of actors
+  Runtime library for DNA programs compiled to cloud haskell
 
 Cabal-Version:  >= 1.10
 License:        Apache-2.0
@@ -22,14 +22,8 @@ Library
     containers,
     binary,
     vector,
-    fgl,
-    haskell-src-exts,
-    haskell-src-exts-qq
+    distributed-process                >= 0.5.0,
+    distributed-process-simplelocalnet >= 0.2.0.9,
+    distributed-process-platform       >= 0.1
  Exposed-modules:
-    DNA
-    DNA.AST
-    DNA.Actor
-    DNA.Compiler.Basic
-    DNA.Compiler.Types
-    DNA.Compiler.CH
-    DNA.Compiler.Scheduler
+    DNA.CH

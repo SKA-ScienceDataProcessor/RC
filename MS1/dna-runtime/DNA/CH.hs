@@ -7,7 +7,8 @@ module DNA.CH (
     -- * Array functions
     zipArray
   , foldArray
-  , generateArray
+  , generateArrayShape
+  , generateArraySlice
   , scatterShape
     -- * CH utils
   , Result(..)
@@ -52,8 +53,17 @@ import Text.Printf
 
 import GHC.Generics (Generic)
 
-import DNA.AST
 
+
+newtype Shape = Shape Int
+                deriving (Show,Eq,Typeable,Generic)
+instance Binary Shape
+
+data Slice = Slice Int Int
+           deriving (Show,Eq,Typeable,Generic)
+instance Binary Slice
+
+data Array sh a = Array sh (S.Vector a)
 
 
 ----------------------------------------------------------------
