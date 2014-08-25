@@ -49,20 +49,21 @@ sayDebug msg = do
 -- in: name slavePid out: masterPid
 dnaSlaveHandleStart :: String -> ProcessId -> Process (ProcessId)
 dnaSlaveHandleStart name slavePid = do
-       	sayDebug $ printf "[%s] : Waiting for master." name
-	(DnaStart masterPid) <- expect     
-  	sayDebug $ printf "[%s] : DnaStart from master :%s" name (show masterPid)
-  	send masterPid (DnaStarted slavePid)
-  	sayDebug $ printf "[%s] : Started" name
+        sayDebug $ printf "[%s] : Waiting for master." name
+        (DnaStart masterPid) <- expect     
+        sayDebug $ printf "[%s] : DnaStart from master :%s" name (show masterPid)
+--        send masterPid (DnaStarted slavePid)
+        sayDebug $ printf "[%s] : Started" name
         return masterPid
 
 -- in: name masterPid nodeId  out: slavePid
 dnaMasterStartSlave :: String -> ProcessId -> NodeId -> Closure( Process() ) -> Process ProcessId
 dnaMasterStartSlave name masterPid nodeId clo = do
- 	sayDebug $ printf "[Master] : spawning %s on node: %s" name (show nodeId)
+        sayDebug $ printf "[Master] : spawning %s on node: %s" name (show nodeId)
         pid <- spawn nodeId clo
 --        enableTrace pid
         send pid (DnaStart masterPid)
-        (DnaStarted slavePid) <- expect
- 	sayDebug $ printf "[Master] : %s started %s" name (show slavePid)
+--        (DnaStarted slavePid) <- expect
+        let slavePid = pid
+        sayDebug $ printf "[Master] : %s started %s" name (show slavePid)
         return slavePid
