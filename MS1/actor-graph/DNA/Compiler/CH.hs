@@ -26,6 +26,7 @@ import DNA.Compiler.Types
 import DNA.AST
 import DNA.Actor
 
+import Paths_dna (getDataDir)
 
 
 ----------------------------------------------------------------
@@ -42,8 +43,10 @@ data Project = Project
 -- | Save project on disk
 saveProject :: FilePath -> Project -> IO ()
 saveProject dir (Project _ _ m) = do
-  writeFile (dir++"/main.hs") (HS.prettyPrint m)
-
+  ddir  <- getDataDir
+  cabal <- readFile (ddir ++ "/data/template.cabal")
+  writeFile (dir++"/main.hs")   (HS.prettyPrint m)
+  writeFile (dir++"/main.cabal") cabal
 
 ----------------------------------------------------------------
 -- Code generation

@@ -12,26 +12,16 @@ Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
 Category:       Data
 Build-Type:     Simple
 
-Extra-source-files:
-  data/template.cabal
-
-Library
+Executable main
   Ghc-options:          -Wall
   Default-language:	Haskell2010
+  Main-is:              main.hs
   Build-Depends:
     base         >=3 && <5,
-    transformers >= 0.4.1,
     containers,
     binary,
     vector,
-    fgl,
-    haskell-src-exts,
-    haskell-src-exts-qq
- Exposed-modules:
-    DNA
-    DNA.AST
-    DNA.Actor
-    DNA.Compiler.Basic
-    DNA.Compiler.Types
-    DNA.Compiler.CH
-    DNA.Compiler.Scheduler
+    distributed-process                >= 0.5.0,
+    distributed-process-simplelocalnet >= 0.2.0.9,
+    distributed-process-platform       >= 0.1,
+    dna-runtime
