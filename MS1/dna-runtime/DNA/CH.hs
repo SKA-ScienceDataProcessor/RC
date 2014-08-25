@@ -123,11 +123,11 @@ sendResult :: Serializable a => RemoteMap -> a -> Process ()
 sendResult (RemoteMap p _) a = send p (Result a)
 
 -- | Handle for single transition rule for state machine
-handleRule :: (Serializable a) => (s -> a -> (s, Process ())) -> Dispatcher s
+handleRule :: (Serializable a) => (s -> a -> Process (s,())) -> Dispatcher s
 handleRule f
   = handleCast
-  $ \s a -> case f s a of
-              (s',m) -> m >> return (ProcessContinue s')
+  $ \s a -> do (s',()) <- f s a
+               return (ProcessContinue s')
 
 -- | Helper for starting state machine actor
 startActor :: Process s -> ProcessDefinition s -> Process ()
