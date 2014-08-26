@@ -15,7 +15,7 @@ module DNA.Actor (
   , SG(..)
   , ConnCollection(..)
   , Bounded(..)
-  , Bound(..)
+  , Connection(..)
     -- * Dataflow graph
   , DataflowGraph
   , ANode(..)
@@ -35,8 +35,8 @@ import DNA.AST
 -- Connection variations
 ----------------------------------------------------------------
 
-data Bound a = Bound Node (Conn a)
-             | Failed
+data Connection a = Bound Node (Conn a)
+                  | Failed
 
 -- | Collection of outbound connections
 class ConnCollection a where
@@ -45,7 +45,7 @@ class ConnCollection a where
   nullConnection :: a -> Connected a
 
 instance ConnCollection (Conn a) where
-  type Connected (Conn a) = Bound a
+  type Connected (Conn a) = Connection a
   setActorId n c = Bound n c
   nullConnection _ = Failed
 

@@ -138,7 +138,7 @@ use a = do
          )
 
 -- | Connect graphs
-connect :: Bound a -> A -> Dataflow ()
+connect :: Connection a -> A -> Dataflow ()
 connect Failed _ = return ()
 connect (Bound from (Conn i _)) (A to) = do
   (j, acts, conns) <- get
