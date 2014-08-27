@@ -32,6 +32,7 @@ import Network.URI (URI(..), URIAuth(..), parseURI)
 
 import DNA.Channel.File
 import DNA.Message
+import DNA.CmdOpts
 
 import DNA.Common (startLogger, say, startTracing)
 
@@ -210,6 +211,9 @@ findSlavesByURIs uris _ignoredTimeout = do
 
 main :: IO ()
 main = do
+        dnaParseCommandLineAndRun rtable "ddp-erlang-style" master
+{-
+        opts <- dnaParseCommandLineOpts "ddp-elang-style"
         args <- getArgs
 
 -- XXX This is now a real mess... Let's use an option package and get rid of all the hardcoded strings.
@@ -245,8 +249,6 @@ main = do
                                 , "sleep 1"
                                 , executableName++" master-nodes-uris localhost 44440 slave://localhost:60001/ slave://127.0.0.1:60002/ slave://128.0.0.0:60003/"
                                 ]
-                ["write-data", count] -> do
-                        return ()
                 _ -> do putStrLn $ unlines [
                                   "usage: '"++executableName++" (master|slave) host port"
                                 , "   or: '"++executableName++" master-nodes-uris host port ?uri ?uri?..?"
@@ -255,6 +257,7 @@ main = do
                                 , "'"++executableName++" write-tests' will write files 'start-"++executableName ++"' and 'start-"++executableName++"-uri' into current directory."
                                 , "make them executable and run to test the program."
                                 ]
+-}
 
   where
         rtable :: RemoteTable
