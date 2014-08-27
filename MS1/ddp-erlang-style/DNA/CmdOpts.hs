@@ -19,8 +19,8 @@ import Options.Applicative
 -- |@Options@ data type. Holds information parsed from command line.
 -- It is a record, main field is optionsRunMode 
 data Options =
-                Master  Bool    String  String
-        |       Slave   String  String
+                Master  Bool    String  String  [String]
+        |       Slave   String  String [String]
         deriving (Show)
 
 -- |Parse options.
@@ -32,11 +32,12 @@ optionsParser name = info (helper <*> (subparser (master <> slave)))
                 )
         where
                 master = command "master"
-                        (info (Master <$> crashOpt <*> ip <*> port) (progDesc "run as master on IP:PORT"))
+                        (info (Master <$> crashOpt <*> ip <*> port <*> restParser) (fullDesc <> progDesc "run as master on IP:PORT"))
                 slave = command "slave"
-                        (info (Slave <$> ip <*> port) (progDesc "run as slave on IP:PORT"))
+                        (info (Slave <$> ip <*> port <*> restParser) (fullDesc <> progDesc "run as slave on IP:PORT"))
                 crashOpt :: Parser Bool
                 crashOpt = switch (long "crash" <> short 'c' <> help "make one node to crash.")
+                restParser = many (argument str (metavar "ARGS"))
                 ip = strOption (metavar "IP" <> long "ip" <> short 'i' <> help "IP address")
                 port = strOption (metavar "PORT" <> long "port" <> short 'p' <> help "port for binnding")
 
@@ -51,10 +52,10 @@ dnaParseCommandLineAndRun :: RemoteTable -> String -> (Backend -> [NodeId] -> Pr
 dnaParseCommandLineAndRun remoteTable progName master= do
         options <- dnaParseCommandLineOpts progName
         case options of
-                Master crash ip port -> do
+                Master crash ip port _args -> do
                         backend <- initializeBackend ip port remoteTable
                         startMaster backend (master backend)
                         liftIO $ threadDelay 100
-                Slave ip port -> do
+                Slave ip port _args -> do
                         backend <- initializeBackend ip port remoteTable
                         startSlave backend
