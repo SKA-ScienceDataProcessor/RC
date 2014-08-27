@@ -1,0 +1,27 @@
+Name:           dna
+Version:        0.1
+Synopsis:       Descriptive Numerical Analysis
+Description:
+  Graph of actors
+
+Cabal-Version:  >= 1.10
+License:        Apache-2.0
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Category:       Data
+Build-Type:     Simple
+
+Executable main
+  Ghc-options:          -Wall
+  Default-language:	Haskell2010
+  Main-is:              main.hs
+  Build-Depends:
+    base         >=3 && <5,
+    containers,
+    binary,
+    vector,
+    distributed-process                >= 0.5.0,
+    distributed-process-simplelocalnet >= 0.2.0.9,
+    distributed-process-platform       >= 0.1,
+    dna-runtime

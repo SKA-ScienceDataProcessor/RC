@@ -26,6 +26,7 @@ import DNA.Compiler.Types
 import DNA.AST
 import DNA.Actor
 
+import Paths_dna (getDataDir)
 
 
 ----------------------------------------------------------------
@@ -42,8 +43,10 @@ data Project = Project
 -- | Save project on disk
 saveProject :: FilePath -> Project -> IO ()
 saveProject dir (Project _ _ m) = do
-  writeFile (dir++"/main.hs") (HS.prettyPrint m)
-
+  ddir  <- getDataDir
+  cabal <- readFile (ddir ++ "/data/template.cabal")
+  writeFile (dir++"/main.hs")   (HS.prettyPrint m)
+  writeFile (dir++"/main.cabal") cabal
 
 ----------------------------------------------------------------
 -- Code generation
@@ -83,7 +86,7 @@ compileToCH gr = do
                    )
     }
 
--- Compile all actors to cloud haskell expressions. 
+-- Compile all actors to cloud haskell expressions.
 compileAllNodes :: DataflowGraph -> Compile (IntMap ActorRes)
 compileAllNodes gr = do
   actors <- forM (nodes gr) $ \n -> do
@@ -184,8 +187,9 @@ compileNode (StateM i rules) = do
   nm   <- HS.Ident <$> fresh "actor"  -- Name of the actor
   pids <- HS.Ident <$> fresh "pids"   -- Name of collection of remotes
   srv  <- HS.Ident <$> fresh "server"
-  -- Compile rules into haskell expressions
-  ruleExprs <- sequence [ compileExpr (Env pids None) r | Rule r <- rules ]
+  -- Compile rules into haskell expressions.
+  ruleExprs <- forM rules $ \(Rule r) -> do
+    codeBlock <$> compileExpr (Env pids None) r
   -- Compile initial state into haskell expression
   stExpr    <- compileExpr (Env pids None) i
   --
@@ -196,7 +200,7 @@ compileNode (StateM i rules) = do
                       [ [hs| handleRule |] $$ e | e <- ruleExprs ]
                     ]
                   ]
-              , stmt $ [hs| startActor |] $$ stExpr $$ var srv
+              , stmt $ [hs| startActor |] $$ codeBlock stExpr $$ var srv
               ]
   --
   return ActorRes
@@ -218,7 +222,7 @@ compileNode (Producer i step) = do
   stepExpr <- compileExpr (Env pids None) step
   stExpr   <- compileExpr (Env pids None) i
   let exprs = [ pids <-- [hs| expect :: Process RemoteMap |]
-              , stmt $ [hs|producer|] $$ stExpr $$ stepExpr
+              , stmt $ [hs|producer|] $$ codeBlock stExpr $$ codeBlock stepExpr
               ]
   return ActorRes
     { aresName     =  nm
@@ -244,11 +248,11 @@ compileNode (ScatterGather (SG (st,merge,outs) worker scatter)) = do
   let exprMaster =
         [ pids <-- [hs| expect :: Process RemoteMap |]
         , stmt $ [hs| scatterGather |]
-            $$ liftHS (exprSt,exprMerge,exprOut)
-            $$ exprScatter
+            $$ liftHS (codeBlock exprSt, codeBlock exprMerge, codeBlock exprOut)
+            $$ codeBlock exprScatter
         ]
       exprWFun =
-        [ stmt $ [hs| worker |] $$ exprWorker
+        [ stmt $ [hs| worker |] $$ codeBlock exprWorker
         ]
   return ActorRes
     { aresName     = masterNm
@@ -268,81 +272,189 @@ data ActorRes = ActorRes
   , aresDecls    :: [HS.Decl]   -- All top-level declarations
   }
 
+
 ----------------------------------------------------------------
--- Compilation of Expr
+-- Compilation of expressions
 ----------------------------------------------------------------
 
+-- | Compiled expression. It could be either pure expression or
+--   monadic one in the 'Process' monad.
+--
+--   Types of corresponding haskell expressions are a bit tricky:
+--
+-- > typeof (a → b) = a → typeof b
+-- > typeof  a      = Process a
+data CodeBlock
+  = Pure  HS.Exp
+    -- ^ Pure expression
+  | Lambda HS.Pat CodeBlock
+    -- ^ Lambda expression
+  | Do [Stmt] HS.Exp
+    -- ^ Do-block. Note that last expression must be pure.
+  deriving (Show)
+
+-- | Statement in do block
+data Stmt
+  = Bind HS.Pat HS.Exp         -- ^ Variable binding in do block
+  | LetB HS.Pat HS.Exp         -- ^ Let binding in do block
+  deriving (Show)
+
+-- | Convert do block to haskell expression. It will have type Process a
+codeBlock :: CodeBlock -> HS.Exp
+codeBlock (Lambda pat f)  = HS.Lambda loc [pat] (codeBlock f)
+codeBlock (Pure a)        = [hs| return |] $$ a
+codeBlock (Do stmts a) = HS.Do $
+  map cnv stmts ++ [stmt $ [hs| return |] $$ a]
+  where
+    cnv (Bind p e) = HS.Generator loc p e
+    cnv (LetB p e) = HS.LetStmt $ HS.BDecls [ p =:: e ]
+
+-- | Application for code blocks.
+($$$) :: CodeBlock -> CodeBlock -> CodeBlock
+-- FIXME: Let convert lambda expression to Pure and pray
+e          $$$ Lambda p f
+  = e $$$ Pure (HS.Lambda loc [p] (toPure f))
+  where
+    toPure (Pure a)     = a
+    toPure (Lambda q g) = HS.Lambda loc [q] (toPure g)
+    toPure _            = error "Cannot do it"
+Lambda p f $$$ Pure a     = floatDownPure p a f
+Lambda p f $$$ Do stmts a = floatDownMonadic p stmts a f
+Pure a     $$$ Pure b     = Pure (a $$ b)
+Pure a     $$$ Do stmts b = Do stmts (a $$ b)
+Do stmts a $$$ Pure b     = Do stmts (a $$ b)
+Do stmtA a $$$ Do stmtB b = Do (stmtA ++ stmtB) (a $$ b)
+
+floatDownPure :: HS.Pat -> HS.Exp -> CodeBlock -> CodeBlock
+floatDownPure p e cb =
+  case cb of
+    Do st b -> Do ( LetB p e : st ) b
+    Pure  a -> Pure $ HS.Let (HS.BDecls [ p =:: e ]) a
+    Lambda p' f -> Lambda p' (floatDownPure p e f)
+
+floatDownMonadic :: HS.Pat -> [Stmt] -> HS.Exp -> CodeBlock -> CodeBlock
+floatDownMonadic p stmts expr cb =
+  case cb of
+    Do st b -> Do (stmts ++ [LetB p expr] ++ st ) b
+    Pure  a -> Do (stmts ++ [LetB p expr]) a
+    Lambda p' f -> Lambda p' (floatDownMonadic p stmts expr f)
+
+seqDoBlocks :: [CodeBlock] -> ([Stmt],[HS.Exp])
+seqDoBlocks blocks =
+  ( foldr go  [] blocks
+  , foldr pur [] blocks
+  )
+  where
+    pur (Lambda _ _) = error "Should not appear"
+    pur (Pure a) = (a : )
+    pur (Do _ a) = (a : )
+    go (Lambda _ _) _ = error "Should not appear"
+    go (Pure  _) xs = xs
+    go (Do st _) xs = st ++ xs
+
+seqDoBlocks_ :: [CodeBlock] -> CodeBlock
+seqDoBlocks_ blocks = Do (foldr go [] blocks) (liftHS ())
+  where
+    go (Pure  _) xs = xs
+    go (Do st _) xs = st ++ xs
+    go _         _  = error "Should not appear"
+
 -- Compile AST to haskell expression
-compileExpr :: Env env -> Expr env a -> Compile HS.Exp
+compileExpr :: Env env -> Expr env a -> Compile CodeBlock
 compileExpr env@(Env pids _) expr =
   case expr of
     -- Let expression
-    Let bound e -> do
+    Let bound ex -> do
       x  <- HS.Ident <$> freshName
       eb <- compileExpr env bound
-      ee <- compileExpr (bind x env) e
-      return $ HS.Let (HS.BDecls [ x =: eb ]) ee
+      ee <- compileExpr (bind x env) ex
+      case (eb,ee) of
+        (Pure   b, Pure   e) -> return $ Pure $ HS.Let (HS.BDecls [ x =: b ]) e
+        (Do st  b, Pure   e) -> return $ Do (st ++ [LetB (pvar x) b]) e
+        (Pure   b, Do st  e) -> return $ Do ([LetB (pvar x) b] ++ st) e
+        (Do stA b, Do stB e) -> return $ Do (stA ++ [LetB (pvar x) b] ++ stB) e
     -- Bound variable
-    Var idx -> return $ var $ lookupVar idx env
+    Var idx -> return $ Pure $ var $ lookupVar idx env
     -- Function application
     Ap f a -> do ef <- compileExpr env f
                  ea <- compileExpr env a
-                 return $ HS.App ef ea
+                 return $ ef $$$ ea
     -- Lambda function
     Lam f  -> do
       x  <- HS.Ident <$> freshName
       ef <- compileExpr (bind x env) f
-      return $ HS.Lambda loc [HS.PatTypeSig loc (HS.PVar x) (typeOfVar (bvar f))
-                             ] ef
+      return $ Lambda (HS.PatTypeSig loc (HS.PVar x) (typeOfVar (bvar f))) ef
     -- Fold
     Fold f a vec -> do ef <- compileExpr env f
                        ea <- compileExpr env a
                        ev <- compileExpr env vec
-                       return $ [hs| foldArray |] $$ ef $$ ea $$ ev
+                       return $ Pure [hs| foldArray |] $$$ ef $$$ ea $$$ ev
     -- Zip
     Zip  f va vb -> do ef <- compileExpr env f
                        ea <- compileExpr env va
                        eb <- compileExpr env vb
-                       return $ [hs| zipArray |] $$ ef $$ ea $$ eb
+                       return $ Pure [hs| zipArray |] $$$ ef $$$ ea $$$ eb
     -- Generate
     Generate sh f -> do esh <- compileExpr env sh
                         ef  <- compileExpr env f
-                        return $ [hs| generateArray |] $$ esh $$ ef
+                        let gen = case reifyShape (typeOfExpr sh) of
+                                    ShShape -> [hs| generateArrayShape |]
+                                    ShSlice -> [hs| generateArraySlice |]
+                        return $ Pure gen $$$ esh $$$ ef
     -- Primitives
-    Add -> return $ var (HS.Symbol "+")
-    Mul -> return $ var (HS.Symbol "*")
-    FromInt -> return $ [hs| fromIntegral |]
+    Add -> do x <- HS.Ident <$> freshName
+              y <- HS.Ident <$> freshName
+              return $ Lambda (HS.PVar x) $ Lambda (HS.PVar y) $ Pure $ infx (var x) "+" (var y)
+    Mul -> do x <- HS.Ident <$> freshName
+              y <- HS.Ident <$> freshName
+              return $ Lambda (HS.PVar x) $ Lambda (HS.PVar y) $ Pure $ infx (var x) "*" (var y)
+    FromInt -> return $ Pure $ [hs| fromIntegral |]
     -- Scalars
-    Scalar a -> return $ compileScalar a
+    Scalar a -> return $ Pure $ compileScalar a
     Tup tup  -> compileTuple env tup
     Prj idx  -> compileTupleProj idx
-    String s -> return $ HS.Lit (HS.String s)
+    String s -> return $ Pure $ HS.Lit (HS.String s)
     -- List
-    List xs -> return $ liftHS $ map compileScalar xs
+    List xs -> return $ Pure $ liftHS $ map compileScalar xs
     FMap f xs -> do ef  <- compileExpr env f
                     exs <- compileExpr env xs
-                    return $ [hs|map|] $$ ef $$ exs
+                    return $ Pure [hs|map|] $$$ ef $$$ exs
     -- Result expression
     Out outs -> do
       eouts <- forM outs $ \o ->
         case o of
           Outbound (Conn (ConnId i) _) a -> do
-            ea <- compileExpr env a
-            return $ [hs| sendToI |] $$ var pids $$ liftHS i $$ ea
+            sendExpression ([hs| sendToI |] $$ var pids $$ liftHS i) env a
           OutRes a -> do
-            ea <- compileExpr env a
-            return $ [hs| sendResult |] $$ var pids $$ ea
+            sendExpression ([hs| sendResult |] $$ var pids) env a
           PrintInt a -> do
-            ea <- compileExpr env a
-            return $ [hs| say . show |] $$ ea
-      return $ [hs|sequence_|] $$ HS.List eouts
+            sendExpression ([hs| say . show |]) env a
+      return $ seqDoBlocks_ eouts
     -- Array sizes
-    EShape sh -> return $ liftHS sh
-    ESlice sl -> return $ liftHS sl
-    ScatterShape -> return [hs| scatterShape |]
+    EShape sh -> return $ Pure $ liftHS sh
+    ESlice sl -> return $ Pure $ liftHS sl
+    ScatterShape -> do x <- HS.Ident <$> freshName
+                       y <- HS.Ident <$> freshName
+                       return $ Lambda (pvar x) $ Lambda (pvar y) $ Pure $ [hs| scatterShape |] $$ var x $$ var y
     --
     Vec _ -> error "NOT IMPLEMENTED"
+    ReadFile nm sh -> do enm <- compileExpr env nm
+                         esh <- compileExpr env sh
+                         let gen = case reifyShape (typeOfExpr sh) of
+                                     ShShape -> [hs| readShapeWith readData |]
+                                     ShSlice -> [hs| readSliceWith readData |]
+                         return $ Pure gen $$$ enm $$$ esh
 
+-- Generate expression for sending messages
+sendExpression :: HS.Exp -> Env env -> Expr env a -> Compile CodeBlock
+sendExpression sendE env exprA = do
+  ea <- compileExpr env exprA
+  x  <- HS.Ident <$> freshName
+  case ea of
+    Lambda _ _ -> error "Internal error. Cannot send function expressions"
+    Pure  a -> return $ Do [Bind (pvar x) (sendE $$ a)] (var x)
+    Do st a -> return $ Do (st ++ [Bind (pvar x) (sendE $$ a)]) (var x)
+    
 -- | Compile scalar expression
 compileScalar :: IsScalar a => a -> HS.Exp
 compileScalar a
@@ -358,19 +470,22 @@ compileScalar a
              UnitDict   -> [hs| () |]
 
 -- | Compile tuple expression
-compileTuple :: Env env -> Tuple (Expr env) xs -> Compile HS.Exp
-compileTuple env tup
-  = HS.Tuple HS.Boxed <$> sequence (compileElts env tup)
+compileTuple :: Env env -> Tuple (Expr env) xs -> Compile CodeBlock
+compileTuple env tup = do
+  blocks <- sequence $ compileElts env tup
+  case seqDoBlocks blocks of
+    ([],as) -> return $ Pure  $ HS.Tuple HS.Boxed as
+    (ss,as) -> return $ Do ss $ HS.Tuple HS.Boxed as
   where
-    compileElts :: Env env -> Tuple (Expr env) xs -> [Compile HS.Exp]
+    compileElts :: Env env -> Tuple (Expr env) xs -> [Compile CodeBlock]
     compileElts _ Nil = []
     compileElts e (Cons expr rest) = compileExpr e expr
                                    : compileElts e rest
 
-compileTupleProj :: TupleIdx xs x -> Compile HS.Exp
+compileTupleProj :: TupleIdx xs x -> Compile CodeBlock
 compileTupleProj idx = do
   v <- HS.Ident <$> freshName
-  return $ HS.Lambda loc [HS.PTuple HS.Boxed (wilds v idx)] (var v)
+  return $ Lambda (HS.PTuple HS.Boxed (wilds v idx)) (Pure $ var v)
   where
     wilds :: forall x xs. HS.Name -> TupleIdx xs x -> [HS.Pat]
     wilds v Here      = (HS.PVar v) : replicate (arity (Proxy :: Proxy xs) - 1) HS.PWildCard
@@ -459,7 +574,7 @@ instance Lift HVar where
 loc :: HS.SrcLoc
 loc = HS.SrcLoc "<unknown>.hs" 1 1
 
--- | Function application
+-- | Function application. Here we treat lambda specially
 ($$) :: HS.Exp -> HS.Exp -> HS.Exp
 ($$) = HS.App
 
@@ -473,7 +588,11 @@ stmt = HS.Qualifier
 
 -- | Bind variable.  @x := expr@ translates to declaration @x = $expr@
 (=:) :: HS.Name -> HS.Exp -> HS.Decl
-x =: expr = HS.PatBind loc (HS.PVar x) Nothing (HS.UnGuardedRhs expr) (HS.BDecls [])
+x =: expr = HS.PVar x =:: expr
+
+-- | Bind pattern.  @x := expr@ translates to declaration @x = $expr@
+(=::) :: HS.Pat -> HS.Exp -> HS.Decl
+p =:: expr = HS.PatBind loc p Nothing (HS.UnGuardedRhs expr) (HS.BDecls [])
 
 -- | Record update
 recUpd :: HS.Name -> [HS.FieldUpdate] -> HS.Exp
@@ -499,6 +618,10 @@ importA modN = importD modN False Nothing
 -- | Unqualified variable name
 var :: HS.Name -> HS.Exp
 var = HS.Var . HS.UnQual
+
+-- | Pattern variable
+pvar :: HS.Name -> HS.Pat
+pvar = HS.PVar
 
 quote :: HS.Name -> HS.Name
 quote (HS.Ident nm) = HS.Ident ("'" ++ nm)

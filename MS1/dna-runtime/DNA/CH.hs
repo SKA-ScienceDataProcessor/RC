@@ -7,7 +7,8 @@ module DNA.CH (
     -- * Array functions
     zipArray
   , foldArray
-  , generateArray
+  , generateArrayShape
+  , generateArraySlice
   , scatterShape
     -- * CH utils
   , Result(..)
@@ -25,6 +26,10 @@ module DNA.CH (
     -- * Reexports
   , Shape(..)
   , Slice(..)
+    -- * Logging
+  , startLogger
+  , sayMsg
+  , startTracing
   ) where
 
 import Control.Monad
@@ -34,6 +39,8 @@ import Control.Distributed.Process.Platform.ManagedProcess
 import Control.Distributed.Process.Platform.Time (Delay(..))
 import Control.Distributed.Process.Backend.SimpleLocalnet
 import Control.Distributed.Process.Node (initRemoteTable)
+import qualified Control.Distributed.Process.Debug as D
+import qualified Control.Distributed.Process.Platform.Service.SystemLog as Log
 
 import Data.Typeable (Typeable)
 import Data.Binary   (Binary)
@@ -46,8 +53,17 @@ import Text.Printf
 
 import GHC.Generics (Generic)
 
-import DNA.AST
 
+
+newtype Shape = Shape Int
+                deriving (Show,Eq,Typeable,Generic)
+instance Binary Shape
+
+data Slice = Slice Int Int
+           deriving (Show,Eq,Typeable,Generic)
+instance Binary Slice
+
+data Array sh a = Array sh (S.Vector a)
 
 
 ----------------------------------------------------------------
@@ -64,15 +80,15 @@ foldArray :: (S.Storable a)
           => (a -> a -> a) -> a -> (Array sh a) -> a
 foldArray f x0 (Array _ v) = S.foldl' f x0 v
 
-generateArray :: (IsShape sh, S.Storable a)
-              => sh -> (Int -> a) -> Array sh a
-generateArray sh f =
-  case reifyShape sh of
-    ShShape -> case sh of
-                 Shape n -> Array sh (S.generate n f)
-    ShSlice -> case sh of
-                 Slice off n -> Array sh (S.generate n (\i -> f (i + off)))
-    
+generateArrayShape
+  :: (S.Storable a) => Shape -> (Int -> a) -> Array Shape a
+generateArrayShape sh@(Shape n) f = Array sh (S.generate n f)
+
+generateArraySlice
+  :: (S.Storable a) => Slice -> (Int -> a) -> Array Slice a
+generateArraySlice sh@(Slice off n) f
+  = Array sh (S.generate n (\i -> f (i + off)))
+
 scatterShape :: Int -> Shape -> [Slice]
 scatterShape n (Shape size)
   = zipWith Slice chunkOffs chunkSizes
@@ -81,8 +97,8 @@ scatterShape n (Shape size)
     extra        = replicate rest 1 ++ repeat 0
     chunkSizes   = zipWith (+) (replicate n chunk) extra
     chunkOffs    = scanl (+) 0 chunkSizes
-  
-  
+
+
 
 ----------------------------------------------------------------
 -- CH combinators
@@ -107,21 +123,24 @@ sendResult :: Serializable a => RemoteMap -> a -> Process ()
 sendResult (RemoteMap p _) a = send p (Result a)
 
 -- | Handle for single transition rule for state machine
-handleRule :: (Serializable a) => (s -> a -> (s, Process ())) -> Dispatcher s
+handleRule :: (Serializable a) => (s -> a -> Process (s,())) -> Dispatcher s
 handleRule f
   = handleCast
-  $ \s a -> case f s a of
-              (s',m) -> m >> return (ProcessContinue s')
+  $ \s a -> do (s',()) <- f s a
+               return (ProcessContinue s')
 
 -- | Helper for starting state machine actor
-startActor :: s -> ProcessDefinition s -> Process ()
-startActor s = serve () (\_ -> return (InitOk s NoDelay))
+startActor :: Process s -> ProcessDefinition s -> Process ()
+startActor ms def = do
+  s <- ms
+  serve () (\_ -> return (InitOk s NoDelay)) def
 
 -- | Helper for starting data producer actor
-producer :: s -> (s -> (s,Process())) -> Process ()
-producer s0 step = loop s0
+producer :: Process s -> (s -> Process (s,())) -> Process ()
+producer s0 step = loop =<< s0
   where
-    loop s = let (s',m) = step s in m >> loop s'
+    loop s = do (s',()) <- step s
+                loop s'
 
 -- | Default main
 defaultMain :: (RemoteTable -> RemoteTable) -> ([NodeId] -> Process ()) -> IO ()
@@ -171,12 +190,13 @@ monitorActors = loop
 -- | Process for doing scatter\/gather.
 scatterGather
   :: (Serializable a, Serializable b, Serializable c)
-  => (c, c -> c -> c, c -> Process ())
+  => (Process c, c -> c -> Process c, c -> Process ())
      -- ^ Functions for doing gather
-  -> (Int -> a -> [b])
+  -> (Int -> a -> Process [b])
      -- ^ Function for doing scatter
   -> Process ()
-scatterGather (x0,merge,sendRes) scatter = do
+scatterGather (monadX0,merge,sendRes) scatter = do
+  x0 <- monadX0
   -- Get necessary parameters
   workerNodes <- expect :: Process [NodeId]
   workerProc  <- expect
@@ -186,24 +206,24 @@ scatterGather (x0,merge,sendRes) scatter = do
   -- Handler for gather message
   let handleGather (SGState _ NoAcc) _ = error "Internal error!"
       handleGather (SGState queue (Await acc n)) (Gather c) = do
-        let acc' = merge acc c
+        acc' <- merge acc c
         case n of
           1 -> do sendRes acc'
                   case Seq.viewl queue of
                     EmptyL  -> return $ ProcessContinue $ SGState queue NoAcc
-                    a :< as -> do let bs = scatter nWorker a
+                    a :< as -> do bs <- scatter nWorker a
                                   forM_ (zip bs workers) $ \(b,pid) -> cast pid (Scatter b)
                                   return $ ProcessContinue $ SGState as (Await x0 nWorker)
           _ -> return $ ProcessContinue $ SGState queue (Await acc' (n-1))
   -- Handler for scatter messages
   let handleScatter (SGState queue NoAcc) a = do
-        let bs = scatter nWorker a
+        bs <- scatter nWorker a
         forM_ (zip bs workers) $ \(b,pid) -> cast pid (Scatter b)
         return $ ProcessContinue $ SGState queue (Await x0 nWorker)
       handleScatter (SGState queue acc) a = do
         return $ ProcessContinue $ SGState (queue |> a) acc
   -- Definition of server
-  startActor (SGState Seq.empty NoAcc) $ defaultProcess
+  startActor (return $ SGState Seq.empty NoAcc) $ defaultProcess
     { apiHandlers =
          [ handleCast handleGather
          , handleCast handleScatter
@@ -211,12 +231,13 @@ scatterGather (x0,merge,sendRes) scatter = do
     }
 
 -- | Function for worker
-worker :: (Serializable a, Serializable b) => (a -> b) -> Process ()
+worker :: (Serializable a, Serializable b) => (a -> Process b) -> Process ()
 worker f = do
   master <- expect :: Process ProcessId
-  startActor () $ defaultProcess
+  startActor (return ()) $ defaultProcess
     { apiHandlers = [ handleCast $ \() (Scatter a) -> do
-                         cast master (Gather $ f a)
+                         b <- f a
+                         cast master (Gather b)
                          return $ ProcessContinue ()
                     ]
     }
@@ -234,4 +255,72 @@ data SGState a c = SGState (Seq.Seq a) (GatherAcc c)
 data GatherAcc a
   = NoAcc                       -- ^ Accumulator is empty
   | Await !a !Int               -- ^ Accumulator holding value and we expect n more answers
-  
+
+
+
+----------------------------------------------------------------
+-- Logging
+----------------------------------------------------------------
+
+-- | Start the logger. Run it on master node.
+startLogger :: [NodeId]         -- ^ List of all known nodes
+            -> Process ()
+startLogger peers = do
+  pid <- getSelfPid
+  _   <- spawnLocal $ loggerProcess peers pid
+  -- Wait for logger process to initialize
+  () <- expect
+  return ()
+
+-- Logger process - register itself and waits for Log messages.
+loggerProcess :: [NodeId] -> ProcessId -> Process ()
+loggerProcess peers starter = do
+  me <- getSelfPid
+  register loggerProcessName me
+  forM_ peers $ \n ->
+    registerRemoteAsync n loggerProcessName me
+  send starter ()
+  forever $ do
+    LogMsg pid s <- expect
+    liftIO $ printf "[%s] %s\n" (show pid) s
+
+
+-- Common logger process name.
+loggerProcessName :: String
+loggerProcessName = "dna-logger"
+
+-- |Send log messages to logger process.
+sayMsg :: String -> Process ()
+sayMsg msg = do
+  logger <- Log.client
+  case logger of
+    Nothing -> do
+      logg <- whereis loggerProcessName
+      case logg of
+        Just l -> do me <- getSelfPid
+                     send l (LogMsg me msg)
+	Nothing -> error "completely unable to resolve any logging facility!"
+    Just cl -> do
+      Log.debug cl (Log.LogText msg)
+
+-- |Message to logger.
+data LogMsg = LogMsg ProcessId String
+         deriving (Show,Typeable,Generic)
+instance Binary LogMsg where
+
+-- | Enable tracing after all is set up.
+startTracing :: [NodeId] -> Process ()
+startTracing peers = do
+  forM_ peers $ \peer -> do
+    _ <- D.startTraceRelay peer
+    D.setTraceFlags $ D.TraceFlags
+       { D.traceSpawned      = Nothing
+       , D.traceDied         = Nothing
+       , D.traceRegistered   = Nothing
+       , D.traceUnregistered = Nothing
+       , D.traceSend         = Nothing -- Just D.TraceAll
+       , D.traceRecv         = Nothing -- Just D.TraceAll
+       , D.traceNodes        = True
+       , D.traceConnections  = True
+       }
+    D.startTracer (liftIO . putStrLn . show)

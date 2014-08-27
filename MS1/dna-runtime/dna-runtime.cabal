@@ -1,0 +1,32 @@
+Name:           dna-runtime
+Version:        0.1
+Synopsis:       DNA runtime
+Description:
+  Runtime library for DNA programs compiled to cloud haskell
+
+Cabal-Version:  >= 1.10
+License:        Apache-2.0
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Category:       Data
+Build-Type:     Simple
+
+
+Library
+  Ghc-options:          -Wall
+  Default-language:	Haskell2010
+  c-sources:
+    c-bits/channel-file.c
+  Build-Depends:
+    base         >=3 && <5,
+    transformers >= 0.4.1,
+    containers,
+    binary,
+    vector,
+    distributed-process                >= 0.5.0,
+    distributed-process-simplelocalnet >= 0.2.0.9,
+    distributed-process-platform       >= 0.1
+ Exposed-modules:
+    DNA.CH
+    DNA.Channel

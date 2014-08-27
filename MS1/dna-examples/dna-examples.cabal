@@ -1,0 +1,31 @@
+Name:           dna-examples
+Version:        0.1
+Synopsis:       Example program for DNA
+Description:
+  Graph of actors
+
+Cabal-Version:  >= 1.10
+License:        Apache-2.0
+License-File:   LICENSE
+Author:         Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
+Category:       Data
+Build-Type:     Simple
+
+
+Executable test
+  Ghc-options:          -Wall
+  Default-language:	Haskell2010
+  Main-is:              test.hs
+  Build-Depends:
+    base         >=3 && <5,
+    dna
+
+
+Executable dot-product
+  Ghc-options:          -Wall
+  Default-language:	Haskell2010
+  Main-is:              dot-product.hs
+  Build-Depends:
+    base         >=3 && <5,
+    dna

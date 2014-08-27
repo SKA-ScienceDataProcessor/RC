@@ -1,6 +1,6 @@
-Name:           actor-graph
+Name:           dna
 Version:        0.1
-Synopsis:       Graph of actors
+Synopsis:       Descriptive Numerical Analysis
 Description:
   Graph of actors
 
@@ -12,6 +12,8 @@ Maintainer:     Aleksey Khudyakov <alexey.skladnoy@gmail.com>
 Category:       Data
 Build-Type:     Simple
 
+Data-files:
+  data/template.cabal
 
 Library
   Ghc-options:          -Wall
@@ -23,17 +25,15 @@ Library
     binary,
     vector,
     fgl,
-    distributed-process                >= 0.5.0,
-    distributed-process-simplelocalnet >= 0.2.0.9,
-    distributed-process-platform       >= 0.1,
     haskell-src-exts,
     haskell-src-exts-qq
- Exposed-modules:
+  Exposed-modules:
     DNA
     DNA.AST
     DNA.Actor
-    DNA.CH
     DNA.Compiler.Basic
     DNA.Compiler.Types
     DNA.Compiler.CH
     DNA.Compiler.Scheduler
+  Other-modules:
+    Paths_dna
