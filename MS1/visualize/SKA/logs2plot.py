@@ -309,10 +309,6 @@ def performance_plot(evt_lst, file_size, batch_size, num_nodes):
     fig.savefig("performance-{}.pdf".format(num_nodes))
 
 
-
-
-
-
 if __name__ == "__main__":
     #evt_folder = "/Users/serge/Downloads/logs_48nodes"
     #evt_folder = "/Users/serge/Downloads/textualLogs_32nodes"
@@ -324,20 +320,22 @@ if __name__ == "__main__":
         evt_folder = sys.argv[1]
     ed = readlog.events_dict(evt_folder)
     print "Unique events:", ed['events']
-    #all_times(ed['list'], "Dot product profiling results, 100-node cluster", ed["events"], min_port=ed["min_port"], zooming=False)
-    #distribution_plot(ed['list'], ed["min_port"])
+    all_times(ed['list'], "Dot product profiling results, 100-node cluster",
+              ed["events"], min_port=ed["min_port"], zooming=False)
+    distribution_plot(ed['list'], ed["min_port"])
 
-    # b, sumb = compute_io_bandwidth(ed["list"], 156)
-    # print "Bandwidth: ", b
-    # print "Total: ", sumb
-    #
-    # rs, srs, rp, srp = compute_flops(ed["list"], 20447232, 100)
-    #
-    # print "*** Event: Compute Sends Sum ***"
-    # print "per node: ", rs
-    # print "total: ", srs
-    # print "*** Event: Pure Computation Time ***"
-    # print "per node: ", rp
-    # print "total: ", srp
+    b, sumb = compute_io_bandwidth(ed["list"], 156)
+    print "Bandwidth: ", b
+    print "Total: ", sumb
 
+    rs, srs, rp, srp = compute_flops(ed["list"], 20447232, 100)
+
+    print "*** Event: Compute Sends Sum ***"
+    print "per node: ", rs
+    print "total: ", srs
+    print "*** Event: Pure Computation Time ***"
+    print "per node: ", rp
+    print "total: ", srp
+
+    #  You will need to change he last argument if you have a different number of nodes in the cluster!
     performance_plot(ed["list"], 156, 20447232, 100)
