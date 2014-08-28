@@ -22,7 +22,6 @@ import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
 import qualified Data.Vector.Storable as S
 import Text.Printf
 import Control.Distributed.Process.Debug
-import qualified Control.Distributed.Process.Platform.Service.SystemLog as Log
 import qualified Control.Distributed.Process.Platform.Time as Time
 import qualified Control.Distributed.Process.Platform.Timer as Timer
 import Data.Binary
@@ -46,6 +45,9 @@ newtype Result = Result Double deriving (Show,Typeable,Generic)
 
 instance Binary Result
 
+data Crash = Crash Bool deriving (Show, Typeable, Generic)
+
+instance Binary Crash
 
 -- XXX should be an argument of the program
 filePath :: FilePath
@@ -102,6 +104,11 @@ spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
         sayDebug $ printf "[Compute %s] : f:%s iC:%s cS:%s cO:%s coll:%s" (show computePID) file (show itemCount) (show chSize) (show chOffset) (show collectorPID)
         masterPID <- dnaSlaveHandleStart "compute" computePID
 
+        -- testing the crashing.
+        -- We will terminate before any computing actions take place if we receive True in Crash message.
+        (Crash crashEnabled) <- expect
+        when crashEnabled terminate     -- terminate the process.
+
         fChanPid <- spawnLocal  (spawnFChan filePath chOffset chSize computePID)
         cChanPid <- spawnLocal  (spawnCChan chSize (\n -> 1.0) computePID)
         (iov, cv) <- timePeriod "receiving vectors" $ do
@@ -139,8 +146,8 @@ masterMonitor collectorPid = do
                 Nothing -> masterMonitor collectorPid
                 Just r -> return r
 
-master :: Backend -> [NodeId] -> Process ()
-master backend peers = do
+master :: MasterOptions -> Backend -> [NodeId] -> Process ()
+master masterOptions backend peers = do
         synchronizationPoint
         startLogger peers
         logPID <- Log.systemLog (liftIO . putStrLn) (return ()) Log.Debug return
@@ -157,6 +164,8 @@ master backend peers = do
 
         -- Set up scheduling variables
         let allComputeNids = tail peers
+        let crashEnabled = masterOptsCrash masterOptions
+        let nidToCrash = head allComputeNids
         let chunkCount = length allComputeNids 
         fileStatus <- liftIO $ getFileStatus filePath 
         let itemCount = div (read $ show (fileSize fileStatus)) itemSize
@@ -177,7 +186,7 @@ master backend peers = do
         -- Start compute processes
         computePids <- forM (zip3 allComputeNids chunkOffsets chunkSizes)  $ \(computeNid,chO,chS) -> do
                 pid <- dnaMasterStartSlave "compute" masterPID computeNid ( $(mkClosure 'spawnCompute) (filePath, chO, chS, itemCount, collectorPid)) 
-                enableTrace pid
+                send pid (Crash (crashEnabled && computeNid == nidToCrash))
                 return pid
         sum <- timePeriod "master waits for result" $ do
 
@@ -212,52 +221,6 @@ findSlavesByURIs uris _ignoredTimeout = do
 main :: IO ()
 main = do
         dnaParseCommandLineAndRun rtable "ddp-erlang-style" master
-{-
-        opts <- dnaParseCommandLineOpts "ddp-elang-style"
-        args <- getArgs
-
--- XXX This is now a real mess... Let's use an option package and get rid of all the hardcoded strings.
-        case args of
-                ["master", host, port] -> do
-                        backend <- initializeBackend host port rtable
-                        startMaster backend (master backend)
-                        liftIO (threadDelay 200)
-
-                ("master-nodes-uris" : host : port : uris) -> do
-                        backend' <- initializeBackend host port rtable
-                        let backend = backend { findPeers = findSlavesByURIs uris }
-                        startMaster backend (master backend)
-                        liftIO (threadDelay 200)
-
-                ["slave", host, port] -> do
-                        backend <- initializeBackend host port rtable
-                        startSlave backend
-                ["write-tests"] -> do
-                        writeFile ("start-"++executableName) $ unlines [
-                                  "#!/bin/sh"
-                                , executableName++" slave localhost 60001 &"
-                                , executableName++" slave localhost 60002 &"
-                                , executableName++" slave localhost 60003 &"
-                                , "sleep 1"
-                                , executableName++" master localhost 44440"
-                                ]
-                        writeFile ("start-"++executableName++"-uri") $ unlines [
-                                  "#!/bin/sh"
-                                , executableName++" slave localhost 60001 &"
-                                , executableName++" slave localhost 60002 &"
-                                , executableName++" slave localhost 60003 &"
-                                , "sleep 1"
-                                , executableName++" master-nodes-uris localhost 44440 slave://localhost:60001/ slave://127.0.0.1:60002/ slave://128.0.0.0:60003/"
-                                ]
-                _ -> do putStrLn $ unlines [
-                                  "usage: '"++executableName++" (master|slave) host port"
-                                , "   or: '"++executableName++" master-nodes-uris host port ?uri ?uri?..?"
-                                , "   or: '"++executableName++" write-tests"
-                                , ""
-                                , "'"++executableName++" write-tests' will write files 'start-"++executableName ++"' and 'start-"++executableName++"-uri' into current directory."
-                                , "make them executable and run to test the program."
-                                ]
--}
 
   where
         rtable :: RemoteTable

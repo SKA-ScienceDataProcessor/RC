@@ -5,7 +5,7 @@ module DNA.Message (sayDebug, dnaSlaveHandleStart, dnaMasterStartSlave, DnaStart
 import Text.Printf
 --import Control.Distributed.Process.Debug
 import Control.Distributed.Process hiding (say)
-import Control.Distributed.Process.Platform (resolve)
+import Control.Distributed.Process.Debug (enableTrace)
 import qualified Control.Distributed.Process.Platform.Service.SystemLog as Log
 import GHC.Generics (Generic)
 import Data.Binary
@@ -60,7 +60,8 @@ dnaSlaveHandleStart name slavePid = do
 dnaMasterStartSlave :: String -> ProcessId -> NodeId -> Closure( Process() ) -> Process ProcessId
 dnaMasterStartSlave name masterPid nodeId clo = do
         sayDebug $ printf "[Master] : spawning %s on node: %s" name (show nodeId)
-        pid <- spawn nodeId clo
+        (pid,_) <- spawnMonitor nodeId clo
+        enableTrace pid
 --        enableTrace pid
         send pid (DnaStart masterPid)
 --        (DnaStarted slavePid) <- expect
