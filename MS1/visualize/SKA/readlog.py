@@ -8,13 +8,13 @@ manipulate the data.
 
 
 import os
-import sys
 import time
 import re
-import numpy as np
+import json
 
 START_MARKER = "START "
 END_MARKER = "END "
+ARGS_MARKER = "args"
 
 SYNC_MARKER = "SYNCHRONIZATION "
 
@@ -22,7 +22,7 @@ class LogEntry(object):
     """Class representing log entry with name, start, end times and
     duration.
     """
-    def __init__(self, start, end, event, cap="", log_name=""):
+    def __init__(self, start, end, event, port_no=0, cap="", log_name=""):
         self.start = start
         self.end = end
         self.event = event
@@ -33,6 +33,7 @@ class LogEntry(object):
             self.node_name = path_parts[-1].strip(".event.log.txt")
         else:
             self.node_name = ""
+        self.port_no = port_no
 
     def description(self):
         out_str = "Event {:<30}\tetime: {:>10} ms.\tSource: {}".format("<" + self.event + ">",
@@ -66,7 +67,7 @@ class LogEntry(object):
             lst.append(int(num_node[0]))
 
         lst.append(self.log_name)
-
+        lst.append(self.port_no)
         return lst
 
 
@@ -87,17 +88,19 @@ def parse_log(fname, syncStarts, verbose=False):
     with open(fname) as f:
         entries = []
         for line in f:
+            if line.find(ARGS_MARKER) >= 0:
+                args_str = line.split(": ")[-1]
+                port = int(json.loads(args_str)[-4])
             try:
                 (time_stamp, cap, event) = line.split(": ")
                 if event.find(SYNC_MARKER) >= 0:
-                    print event
                     matches = re.match("[^00-9]+([0-9]+)\.([0-9]+)",event)
                     sec_part = float(matches.group(1))
                     ps_part = float(matches.group(2))
                     syncStarts[fname] = float(time_stamp), sec_part, ps_part
                 if event.find(START_MARKER) >= 0:
                     name_start = event[len(START_MARKER):-1]
-                    entry = LogEntry(time_stamp, None, name_start, log_name=fname)
+                    entry = LogEntry(time_stamp, None, name_start, port_no=port, log_name=fname)
                     entries.append(entry)
                 if event.find(END_MARKER) >= 0:
                     if name_start == event[len(END_MARKER):-1]:
@@ -118,6 +121,9 @@ def parse_log(fname, syncStarts, verbose=False):
                         name_start = ""
             except ValueError:
                 pass
+
+
+
     return entries
 
 
@@ -135,6 +141,11 @@ def unique_nodes(evt_log_lst):
     transposed_logs = map(list, zip(*evt_log_lst))
     nodes = set(transposed_logs[5])
     return sorted(list(nodes))
+
+def min_port_no(evt_log_lst):
+    transposed_logs = map(list, zip(*evt_log_lst))
+    ports = set(transposed_logs[8])
+    return min(ports)
 
 
 def list_logs(folder_name, pattern="eventlog"):
@@ -196,10 +207,12 @@ def events_dict(logs_folder):
 
     events = unique_events(entries_lst)
     nodes = unique_nodes(entries_lst)
+    min_port = min_port_no(entries_lst)
 
     out_dict['list'] = entries_lst
     out_dict['events'] = events
     out_dict['nodes'] = nodes
+    out_dict['min_port'] = min_port
 
     return out_dict
 
