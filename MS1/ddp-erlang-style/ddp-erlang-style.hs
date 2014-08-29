@@ -18,6 +18,7 @@ import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Backend.SimpleLocalnet
 import Control.Distributed.Process.Node (initRemoteTable)
 import Control.Distributed.Process.Platform (resolve)
+import qualified Control.Distributed.Process.Platform.Service.SystemLog as Log
 import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
 import qualified Data.Vector.Storable as S
 import Text.Printf
@@ -49,10 +50,6 @@ data Crash = Crash Bool deriving (Show, Typeable, Generic)
 
 instance Binary Crash
 
--- XXX should be an argument of the program
-filePath :: FilePath
-filePath="float_file.txt"
-
 -- Collects data from compute processes, looking for either partial sum result or monitoring messages.
 -- Partial sums are get accumulated.
 dpSum :: [ProcessId] -> Double -> Process(Double)
@@ -73,6 +70,7 @@ spawnCollector pid = do
 
 -- XXX The specification said the master monitors the compute nodes (failure of which is ignored)
 -- XXX and the master monitors the collector (failure of which terminates the program)
+-- Monitoring here remains to prevent collector from entering infinite loop waiting for node that died.
         -- install monitors for compute processes.
         forM_ computePids $ \pid -> monitor pid
         sum <- timePeriod "collection phase" $ dpSum computePids 0
@@ -109,7 +107,7 @@ spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
         (Crash crashEnabled) <- expect
         when crashEnabled terminate     -- terminate the process.
 
-        fChanPid <- spawnLocal  (spawnFChan filePath chOffset chSize computePID)
+        fChanPid <- spawnLocal  (spawnFChan file chOffset chSize computePID)
         cChanPid <- spawnLocal  (spawnCChan chSize (\n -> 1.0) computePID)
         (iov, cv) <- timePeriod "receiving vectors" $ do
                 (FileVec fChanPid iov) <- timePeriod "receiving read vector" expect
@@ -165,6 +163,7 @@ master masterOptions backend peers = do
         -- Set up scheduling variables
         let allComputeNids = tail peers
         let crashEnabled = masterOptsCrash masterOptions
+        let filePath = masterOptsFilename masterOptions
         let nidToCrash = head allComputeNids
         let chunkCount = length allComputeNids 
         fileStatus <- liftIO $ getFileStatus filePath 
@@ -197,26 +196,6 @@ master masterOptions backend peers = do
         sayDebug $ printf "Result %s" (show sum)
         terminateAllSlaves backend
 
-
--- XXX Please make this the beginning of a DNA.Backend package
--- XXX not in this file
-findSlavesByURIs :: [String] -> Int -> IO [NodeId]
-findSlavesByURIs uris _ignoredTimeout = do
-        nodes' <- mapM parseNode uris
-        let errURIs = concatMap snd nodes'
-        case errURIs of
-                [] -> return $ concatMap fst nodes'
-                errs -> do
-                        putStrLn $ "Error parsing uris: "++show errs
-                        hFlush stdout
-                        error "error parsing uris."
-        where
-                parseNode uri = do
-                        putStrLn $ "PArsing "++show uri
-                        hFlush stdout
-                        case parseURI uri of
-                                Just (URI _ (Just (URIAuth _ host port)) _ _ _) -> return (error uri, [])
-                                _ -> return ([], [uri])
 
 main :: IO ()
 main = do

@@ -26,6 +26,7 @@ data Options =
 
 data MasterOptions = MasterOptions {
           masterOptsCrash               :: Bool
+        , masterOptsFilename            :: String
         }
         deriving (Show)
 
@@ -41,7 +42,8 @@ optionsParser name = info (helper <*> (subparser (master <> slave)))
                         (info (Master <$> masterOptions <*> ip <*> port <*> restParser) (fullDesc <> progDesc "run as master on IP:PORT"))
                 slave = command "slave"
                         (info (Slave <$> ip <*> port <*> restParser) (fullDesc <> progDesc "run as slave on IP:PORT"))
-                masterOptions = MasterOptions <$> crashOpt
+                masterOptions = MasterOptions <$> crashOpt <*> filenameOpt
+                filenameOpt = strOption (metavar "FILE" <> long "filename" <> short 'f' <> help "Filename to read data from." <> value "float_file.txt")
                 crashOpt = switch (long "crash" <> short 'c' <> help "make one node to crash.")
                 restParser = many (argument str (metavar "ARGS"))
                 ip = strOption (metavar "IP" <> long "ip" <> short 'i' <> help "IP address")
