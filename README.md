@@ -1,4 +1,4 @@
-## Installation Steps:
+## Installation Steps
 
 ### Installing GHC
 
@@ -116,12 +116,17 @@ We run some test suites that comes along with LLVM to verify everything is worki
 
     $ make check-all
 
-
 Now, we again add the path of the LLVM’s bin in `~/.bash_profile`
 
     PATH=$PATH:$HOME/bin:$HOME/.cabal/bin:$HOME/build/Release+Asserts/bin
 
 And the LLVM’s lib path by creating soft link in `$HOME/opt/lib` with `build/Release+Asserts/lib`
+
+**IMPORTANT NOTE FOR OS X USERS:**  If hgc complains that it is not able to figure out the location of LLVM binaries (namely llc and opt) you will need to run the following command in the terminal:
+
+    $ defaults write $HOME/.MacOSX/environment PATH "$PATH: 
+
+and reboot computer for changes to take effect.
 
 Finally, we execute `cabal build` to build our binaries.
 
