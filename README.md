@@ -78,7 +78,7 @@ Download `cabal-install-1.18.0.3.tar.gz` from
 
 Following directories are also present  - `lib `and `config`
 
-### BUILDING SKA_MS1
+### Building SKA_MS1
 
     $ mkdir SKA_MS1
     $ cd SKA_MS1
