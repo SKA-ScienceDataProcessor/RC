@@ -106,11 +106,6 @@ def all_times(evt_lst, title, uevents, min_port=0, zooming=False):
                     label = evt[0]
                 ax1.plot([evt[1]/timeScale, evt[2]/timeScale], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=1.5, label=label)
 
-
-
-
-
-
             ax2 = plt.axes([.4, .2, .2, .18], axisbg='w')
             if len(events) != len(set(events)):
                 ax2.plot([evt[1]/1e6, evt[2]/1e6], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=1.5)
@@ -325,6 +320,7 @@ if __name__ == "__main__":
     distribution_plot(ed['list'], ed["min_port"])
 
     b, sumb = compute_io_bandwidth(ed["list"], 156)
+
     print "Bandwidth: ", b
     print "Total: ", sumb
 
