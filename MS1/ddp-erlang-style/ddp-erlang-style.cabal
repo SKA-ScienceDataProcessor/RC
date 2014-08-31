@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                ddp-erlang-style
-version:             0.1.6.0
+version:             0.1.7.0
 synopsis:            DSL constructions for radio astronomy imaging with a focus on data movement and optimization
 -- description:         
 homepage:            https://github.com/SKA-ScienceDataProcessor/RC
@@ -25,7 +25,8 @@ executable ddp-erlang-style
                        distributed-process == 0.5.*,
                        distributed-process-platform == 0.1.*,
                        distributed-process-simplelocalnet,
-                       mmap, network, deepseq, optparse-applicative,
+                       mmap, network, network-transport, network-transport-tcp, containers, deepseq, optparse-applicative,
+                       transformers, data-accessor, bytestring, network-multicast,
                        vector >= 0.10
 
   ghc-options:         -O2 -threaded
@@ -34,7 +35,8 @@ executable ddp-erlang-style
 
   main-is:             ddp-erlang-style.hs
 
-  Other-modules:       DNA.Channel.File, DNA.Message, DNA.Common, DNA.Backend, DNA.CmdOpts
+  Other-modules:       DNA.Channel.File, DNA.Message, DNA.Common, DNA.Backend, DNA.CmdOpts,
+                       DNA.SimpleLocalNetWithoutDiscovery, DNA.SimpleLocalnet.Internal.Multicast
 
   c-sources:           DNA/Channel/channel-file.c
 
@@ -50,7 +52,8 @@ executable ddp-erlang-style-SIMD
                        distributed-process == 0.5.*,
                        distributed-process-platform == 0.1.*,
                        distributed-process-simplelocalnet,
-                       mmap, network, deepseq, optparse-applicative,
+                       mmap, network, network-transport, network-transport-tcp, containers, deepseq, optparse-applicative,
+                       transformers, data-accessor, bytestring, network-multicast,
                        vector >= 0.10
 
   hs-source-dirs:      ., cfgs/SIMD
@@ -59,7 +62,8 @@ executable ddp-erlang-style-SIMD
 
   main-is:             ddp-erlang-style.hs
 
-  Other-modules:       DNA.Channel.File, DNA.Message, DNA.Common, DNA.Backend, DNA.CmdOpts
+  Other-modules:       DNA.Channel.File, DNA.Message, DNA.Common, DNA.Backend, DNA.CmdOpts,
+                       DNA.SimpleLocalNetWithoutDiscovery, DNA.SimpleLocalnet.Internal.Multicast
 
   c-sources:           DNA/Channel/channel-file.c
 
@@ -75,7 +79,8 @@ executable ddp-erlang-style-SIMD-eventlog
                        distributed-process == 0.5.*,
                        distributed-process-platform == 0.1.*,
                        distributed-process-simplelocalnet,
-                       mmap, network, deepseq, time, old-locale, optparse-applicative,
+                       mmap, network, network-transport, network-transport-tcp, containers, deepseq, time, old-locale, optparse-applicative,
+                       transformers, data-accessor, bytestring, network-multicast,
                        vector >= 0.10
 
   hs-source-dirs:      ., cfgs/SIMD-eventlog
@@ -84,7 +89,8 @@ executable ddp-erlang-style-SIMD-eventlog
 
   main-is:             ddp-erlang-style.hs
 
-  Other-modules:       DNA.Channel.File, DNA.Message, DNA.Common, DNA.Backend, DNA.CmdOpts
+  Other-modules:       DNA.Channel.File, DNA.Message, DNA.Common, DNA.Backend, DNA.CmdOpts,
+                       DNA.SimpleLocalNetWithoutDiscovery, DNA.SimpleLocalnet.Internal.Multicast
 
   c-sources:           DNA/Channel/channel-file.c
 

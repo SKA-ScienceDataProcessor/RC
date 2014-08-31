@@ -15,7 +15,7 @@ import System.Environment (getArgs)
 import Control.Concurrent (threadDelay)
 import Control.Distributed.Process hiding (say)
 import Control.Distributed.Process.Closure
-import Control.Distributed.Process.Backend.SimpleLocalnet
+--import Control.Distributed.Process.Backend.SimpleLocalnet
 import Control.Distributed.Process.Node (initRemoteTable)
 import Control.Distributed.Process.Platform (resolve)
 import qualified Control.Distributed.Process.Platform.Service.SystemLog as Log
@@ -35,6 +35,8 @@ import DNA.Message
 import DNA.CmdOpts
 
 import DNA.Common (startLogger, say, startTracing)
+
+import DNA.SimpleLocalNetWithoutDiscovery
 
 import Cfg (executableName, timePeriod, timePeriodPure, synchronizationPoint)
 
@@ -146,6 +148,11 @@ masterMonitor collectorPid = do
 
 master :: MasterOptions -> Backend -> [NodeId] -> Process ()
 master masterOptions backend peers = do
+        case peers of
+                [] -> error "no peers found!"
+                _
+                        | length peers < 2 -> error "too small count of peers."
+                        | otherwise -> return ()
         synchronizationPoint
         startLogger peers
         logPID <- Log.systemLog (liftIO . putStrLn) (return ()) Log.Debug return

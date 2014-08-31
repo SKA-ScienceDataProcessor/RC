@@ -13,7 +13,7 @@ module DNA.CmdOpts (
 
 import Control.Concurrent
 import Control.Distributed.Process
-import Control.Distributed.Process.Backend.SimpleLocalnet
+import DNA.SimpleLocalNetWithoutDiscovery
 
 import Options.Applicative
 
