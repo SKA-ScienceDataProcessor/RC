@@ -1,5 +1,3 @@
 #!/bin/bash
 
-killall ping-multi
-killall cloud
-killall cloud3
+killall ddp-erlang-style
