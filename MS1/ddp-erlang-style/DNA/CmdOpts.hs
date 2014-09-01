@@ -20,8 +20,15 @@ import Options.Applicative
 -- |@Options@ data type. Holds information parsed from command line.
 -- It is a record, main field is optionsRunMode 
 data Options =
-                Master  MasterOptions   String  String  [String]
-        |       Slave   String  String [String]
+                Master  CommonOpts      MasterOptions   [String]
+        |       Slave   CommonOpts      [String]
+        deriving (Show)
+
+data CommonOpts = CommonOpts {
+          commonOptsCADFileName         :: Maybe String
+        , commonOptsHost                :: String
+        , commonOptsPort                :: String
+        }
         deriving (Show)
 
 data MasterOptions = MasterOptions {
@@ -39,9 +46,12 @@ optionsParser name = info (helper <*> (subparser (master <> slave)))
                 )
         where
                 master = command "master"
-                        (info (Master <$> masterOptions <*> ip <*> port <*> restParser) (fullDesc <> progDesc "run as master on IP:PORT"))
+                        (info (Master <$> commonOptions <*> masterOptions <*> restParser) (fullDesc <> progDesc "run as master on IP:PORT"))
                 slave = command "slave"
-                        (info (Slave <$> ip <*> port <*> restParser) (fullDesc <> progDesc "run as slave on IP:PORT"))
+                        (info (Slave <$> commonOptions <*> restParser) (fullDesc <> progDesc "run as slave on IP:PORT"))
+                commonOptions = CommonOpts <$> cadFile <*> ip <*> port
+                cadFile = Just <$> strOption (metavar "CAD" <> long "cad" <> help "Filename of cluster architecture description file.")
+                        <|> pure Nothing
                 masterOptions = MasterOptions <$> crashOpt <*> filenameOpt
                 filenameOpt = strOption (metavar "FILE" <> long "filename" <> short 'f' <> help "Filename to read data from." <> value "float_file.txt")
                 crashOpt = switch (long "crash" <> short 'c' <> help "make one node to crash.")
@@ -60,10 +70,10 @@ dnaParseCommandLineAndRun :: RemoteTable -> String -> (MasterOptions -> Backend 
 dnaParseCommandLineAndRun remoteTable progName master= do
         options <- dnaParseCommandLineOpts progName
         case options of
-                Master masterOptions ip port _args -> do
-                        backend <- initializeBackend Nothing ip port remoteTable
+                Master (CommonOpts cadFile ip port) masterOptions _args -> do
+                        backend <- initializeBackend cadFile ip port remoteTable
                         startMaster backend (master masterOptions backend)
                         liftIO $ threadDelay 100
-                Slave ip port _args -> do
-                        backend <- initializeBackend Nothing ip port remoteTable
+                Slave (CommonOpts cadFile ip port) _args -> do
+                        backend <- initializeBackend cadFile ip port remoteTable
                         startSlave backend

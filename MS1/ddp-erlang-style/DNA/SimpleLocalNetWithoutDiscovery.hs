@@ -106,7 +106,7 @@ import Data.Foldable (forM_)
 import Data.Typeable (Typeable)
 import Control.Applicative ((<$>))
 import Control.Exception (throw)
-import Control.Monad (forever, replicateM, replicateM_, forM, liftM)
+import Control.Monad (forever, replicateM, replicateM_, forM, liftM, when)
 import Control.Monad.IO.Class (liftIO)
 import Control.Concurrent (forkIO, threadDelay, ThreadId)
 import Control.Concurrent.MVar (MVar, newMVar, readMVar, modifyMVar_)
@@ -150,6 +150,7 @@ import qualified Network.Socket as N
 import qualified Network.Transport.TCP as NT
   ( createTransport
   , defaultTCPParameters
+  , encodeEndPointAddress
   )
 import qualified Network.URI as URI
 import qualified Network.Transport as NT (Transport(..), address)
@@ -180,7 +181,7 @@ initializeBackend :: Maybe FilePath -> N.HostName -> N.ServiceName -> RemoteTabl
 initializeBackend maybeCadFile host port rtable = do
   mTransport   <- NT.createTransport host port NT.defaultTCPParameters
   (recv, sendp) <- initMulticast  "224.0.0.99" 9999 1024
-  addresses <- case maybeCadFile of
+  (addresses, peersPreset) <- case maybeCadFile of
     Just cadFile -> do
       text <- readFile cadFile
       let nonEmpty ('#':_) = False
@@ -194,34 +195,33 @@ initializeBackend maybeCadFile host port rtable = do
             Just (host, port) -> (host, port)
             Nothing -> error $ "invalid uri "++show uri
       let hostPorts = map getHostPort $ catMaybes $ map URI.parseURI uriLines
-      liftM concat $ forM hostPorts $ \(theirHost, theirPort) -> do
+      putStrLn $ "uriLines "++show uriLines++", host and ports "++show hostPorts
+      addresses <- liftM concat $ forM hostPorts $ \(theirHost, theirPort) -> do
             if host == theirHost && port == theirPort
                     then return []
                     else do
-                            -- haven't found a better way.
-                            theirTransport <- NT.createTransport host port NT.defaultTCPParameters
-                            case theirTransport of
-                                    Left exc -> error $ "unable to get transport for "++show (host, port)
-                                    Right transport -> do
-                                            endPoint <- NT.newEndPoint transport
-                                            case endPoint of
-                                                    Left exc -> error $ "unable to get endpoint for "++show (host, port)
-                                                    Right endPoint -> return [NodeId $ NT.address endPoint]
-    Nothing -> return []
+                            -- passing 0 as a endpointid is a hack. Again, I haven't found any better way.
+                            let ep = NT.encodeEndPointAddress theirHost theirPort 0
+                            return [NodeId ep]
+      putStrLn $ "addresses "++show addresses
+      return (addresses, True)
+    Nothing -> return ([], False)
+  putStrLn $ "addresses read: "++show addresses
   (_, backendState) <- fixIO $ \ ~(tid, _) -> do
     backendState <- newMVar BackendState
                       { _localNodes      = []
                       , _peers           = Set.fromList addresses
                       ,  discoveryDaemon = tid
                       }
-    tid' <- forkIO $ peerDiscoveryDaemon backendState recv sendp
+    tid' <- forkIO $ peerDiscoveryDaemon peersPreset backendState recv sendp
     return (tid', backendState)
+  readMVar backendState >>= \bes -> putStrLn ("peers: "++show (_peers bes))
   case mTransport of
     Left err -> throw err
     Right transport ->
       let backend = Backend {
           newLocalNode       = apiNewLocalNode transport rtable backendState
-        , findPeers          = apiFindPeers sendp backendState
+        , findPeers          = apiFindPeers peersPreset sendp backendState
         , redirectLogsHere   = apiRedirectLogsHere backend
         }
       in return backend
@@ -237,13 +237,15 @@ apiNewLocalNode transport rtable backendState = do
   return localNode
 
 -- | Peer discovery
-apiFindPeers :: (PeerDiscoveryMsg -> IO ())
+apiFindPeers :: Bool
+             -> (PeerDiscoveryMsg -> IO ())
              -> MVar BackendState
              -> Int
              -> IO [NodeId]
-apiFindPeers sendfn backendState delay = do
-  sendfn PeerDiscoveryRequest
-  threadDelay delay
+apiFindPeers peersPreset sendfn backendState delay = do
+  when (not peersPreset) $ do
+        sendfn PeerDiscoveryRequest
+        threadDelay delay
   Set.toList . (^. peers) <$> readMVar backendState
 
 data PeerDiscoveryMsg =
@@ -261,11 +263,14 @@ instance Binary PeerDiscoveryMsg where
       _ -> fail "PeerDiscoveryMsg.get: invalid"
 
 -- | Respond to peer discovery requests sent by other nodes
-peerDiscoveryDaemon :: MVar BackendState
+peerDiscoveryDaemon :: Bool
+                    -> MVar BackendState
                     -> IO (PeerDiscoveryMsg, N.SockAddr)
                     -> (PeerDiscoveryMsg -> IO ())
                     -> IO ()
-peerDiscoveryDaemon backendState recv sendfn = forever go
+peerDiscoveryDaemon peersPreset backendState recv sendfn
+  | peersPreset = return ()
+  | otherwise = forever go
   where
     go = do
       (msg, _) <- recv
