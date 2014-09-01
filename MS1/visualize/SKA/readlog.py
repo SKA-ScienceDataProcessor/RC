@@ -235,7 +235,6 @@ def run_test():
     end_time = time.time()
 
 
-    print "===\nProcessing complete, elapsed time: {:.4} s".format(end_time - start_time)
 
     entries_list = []
     for entry in entries:

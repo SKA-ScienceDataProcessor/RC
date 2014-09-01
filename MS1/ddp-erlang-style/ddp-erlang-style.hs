@@ -138,7 +138,9 @@ masterMonitor collectorPid = do
                                 then do
                                         sayDebug "Collector failure. Master process terminate."
                                         terminate
-                                else return Nothing
+                                else do
+                                        sayDebug $ printf "[Coordinator] Compute node failure " ++ (show pid)
+                                        return Nothing
                 , match $ \(Result sum) -> return (Just sum)
                 ]
         -- dispatch result.

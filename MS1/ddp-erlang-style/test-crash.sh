@@ -6,4 +6,4 @@ ln dist/build/ddp-erlang-style-SIMD-eventlog/ddp-erlang-style-SIMD-eventlog ddp-
 ./ddp-erlang-style slave --ip localhost --port 60002 &
 ./ddp-erlang-style slave --ip localhost --port 60003 &
 sleep 1
-./ddp-erlang-style master --ip localhost --port 44440 --filename INPUT
+./ddp-erlang-style master --crash --ip localhost --port 44440 --filename INPUT > out
