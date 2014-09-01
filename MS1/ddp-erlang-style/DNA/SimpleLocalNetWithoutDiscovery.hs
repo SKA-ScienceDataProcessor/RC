@@ -101,18 +101,18 @@ import Data.Maybe (catMaybes)
 import Data.Binary (Binary(get, put), getWord8, putWord8)
 import Data.Accessor (Accessor, accessor, (^:), (^.))
 import Data.Set (Set)
-import qualified Data.Set as Set (insert, empty, toList)
+import qualified Data.Set as Set (insert, empty, toList, fromList)
 import Data.Foldable (forM_)
 import Data.Typeable (Typeable)
 import Control.Applicative ((<$>))
 import Control.Exception (throw)
-import Control.Monad (forever, replicateM, replicateM_)
+import Control.Monad (forever, replicateM, replicateM_, forM, liftM)
 import Control.Monad.IO.Class (liftIO)
 import Control.Concurrent (forkIO, threadDelay, ThreadId)
 import Control.Concurrent.MVar (MVar, newMVar, readMVar, modifyMVar_)
 import Control.Distributed.Process
   ( RemoteTable
-  , NodeId
+  , NodeId(..)
   , Process
   , ProcessId
   , WhereIsReply(..)
@@ -146,11 +146,13 @@ import qualified Control.Distributed.Process.Node as Node
   , localNodeId
   , runProcess
   )
+import qualified Network.Socket as N
 import qualified Network.Transport.TCP as NT
   ( createTransport
   , defaultTCPParameters
   )
-import qualified Network.Transport as NT (Transport)
+import qualified Network.URI as URI
+import qualified Network.Transport as NT (Transport(..), address)
 import qualified Network.Socket as N (HostName, ServiceName, SockAddr)
 import DNA.SimpleLocalnet.Internal.Multicast (initMulticast)
 
@@ -174,14 +176,42 @@ data BackendState = BackendState {
  }
 
 -- | Initialize the backend
-initializeBackend :: N.HostName -> N.ServiceName -> RemoteTable -> IO Backend
-initializeBackend host port rtable = do
+initializeBackend :: Maybe FilePath -> N.HostName -> N.ServiceName -> RemoteTable -> IO Backend
+initializeBackend maybeCadFile host port rtable = do
   mTransport   <- NT.createTransport host port NT.defaultTCPParameters
   (recv, sendp) <- initMulticast  "224.0.0.99" 9999 1024
+  addresses <- case maybeCadFile of
+    Just cadFile -> do
+      text <- readFile cadFile
+      let nonEmpty ('#':_) = False
+          nonEmpty "" = False
+          nonEmpty _ = True
+      let uriLines = map ("dna://"++) $ filter nonEmpty $ lines text
+      let splitURI uri = do
+            auth <- URI.uriAuthority uri
+            return (URI.uriRegName auth, drop 1 $ URI.uriPort auth)
+      let getHostPort uri = case splitURI uri of
+            Just (host, port) -> (host, port)
+            Nothing -> error $ "invalid uri "++show uri
+      let hostPorts = map getHostPort $ catMaybes $ map URI.parseURI uriLines
+      liftM concat $ forM hostPorts $ \(theirHost, theirPort) -> do
+            if host == theirHost && port == theirPort
+                    then return []
+                    else do
+                            -- haven't found a better way.
+                            theirTransport <- NT.createTransport host port NT.defaultTCPParameters
+                            case theirTransport of
+                                    Left exc -> error $ "unable to get transport for "++show (host, port)
+                                    Right transport -> do
+                                            endPoint <- NT.newEndPoint transport
+                                            case endPoint of
+                                                    Left exc -> error $ "unable to get endpoint for "++show (host, port)
+                                                    Right endPoint -> return [NodeId $ NT.address endPoint]
+    Nothing -> return []
   (_, backendState) <- fixIO $ \ ~(tid, _) -> do
     backendState <- newMVar BackendState
                       { _localNodes      = []
-                      , _peers           = Set.empty
+                      , _peers           = Set.fromList addresses
                       ,  discoveryDaemon = tid
                       }
     tid' <- forkIO $ peerDiscoveryDaemon backendState recv sendp

@@ -61,9 +61,9 @@ dnaParseCommandLineAndRun remoteTable progName master= do
         options <- dnaParseCommandLineOpts progName
         case options of
                 Master masterOptions ip port _args -> do
-                        backend <- initializeBackend ip port remoteTable
+                        backend <- initializeBackend Nothing ip port remoteTable
                         startMaster backend (master masterOptions backend)
                         liftIO $ threadDelay 100
                 Slave ip port _args -> do
-                        backend <- initializeBackend ip port remoteTable
+                        backend <- initializeBackend Nothing ip port remoteTable
                         startSlave backend
