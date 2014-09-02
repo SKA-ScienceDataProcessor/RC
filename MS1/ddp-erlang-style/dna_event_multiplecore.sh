@@ -127,19 +127,26 @@ function generatingCADFile {
         echo -e "Generating CAD File\n============\n"
         touch $PWD/CAD.$JOBID.file
 
-	slurmJobNodeList=$PWD/machine.file.$JOBID	
+	slurmJobNodeList=$PWD/machine.file.$JOBID
+	numberOfCores=12	
         portNo=79001 # Has some issue with automation, but can be done.
         # Create a file in the format <Hostname>:<Port no>
 	for machine in `cat $slurmJobNodeList`
         do
 		getIP=`ssh $machine nslookup $machine | grep Address | tail -1 | awk '{print $2}'` 
-                echo $getIP | sed "s/$/:${portNo}/" >> $PWD/CAD.$JOBID.file
-                portNo=`expr ${portNo} + 13`
-	done
+		coreCount=1	
+		while [ $coreCount -le $numberOfCores ]; 
+		do
+			echo $getIP | sed "s/$/:${portNo}/" >> $PWD/CAD.$JOBID.file
+			portNo=`expr ${portNo} + 1`
+			coreCount=`expr $coreCount + 1`
+		done
+        done
         echo `cat $PWD/CAD.$JOBID.file`
 	machineCount=`cat $slurmJobNodeList | wc -l`
+	totalmachineCount=`expr $machineCount \* $numberOfCores`
 	countCAD=`cat $PWD/CAD.$JOBID.file | wc -l`
-	if [ $machineCount -eq $countCAD ]; then
+	if [ $totalmachineCount -eq $countCAD ]; then
 		echo "CAD file generated successfully!"
 	else
 		echo "CAD file is either incomplete or wrong information!!"
@@ -178,59 +185,46 @@ set -x
                         flag=1
                 else
                         ipAdd=`ssh $machine nslookup $machine | grep Address | tail -1 | awk '{print $2}'`
-                        getCount=`cat $PWD/CAD.$JOBID.file | grep $ipAdd | wc -l`
-			if [[ $getCount -gt 1 ]]; then
-                        	portNo=`cat $PWD/CAD.$JOBID.file | grep $ipAdd | head -1 |cut -f2 -d":"`
-			else	
-                        	portNo=`cat $PWD/CAD.$JOBID.file | grep $ipAdd | cut -f2 -d":"`
-			fi
-                        echo -e "\n============\nStarting Slave==<$ipAdd>=====<$portNo>=====\n============\n"
+			cat $PWD/CAD.$JOBID.file | grep -w "$ipAdd" | sed -n '1,12p' >> $PWD/temp_CAD.txt
+			cat $PWD/temp_CAD.txt
 			cp $rc slave.$machine
-			coreCount=1	
 			chunkSize=0
-			UDPPortNo=$portNo 
 			if [[ $linkCount -eq 0 ]];then
 				srun -p $partition --nodelist $machine -N1 -n1 --exclusive ln -s /ramdisks/file.$machine $HOME/input_data.txt
 				linkCount=1
 			fi
-			while [ $coreCount -le $numberOfCores ]; 
+			while read -r line || [[ -n $line ]]; 
 			do
 				chunkSize=`expr $chunkSize + 1`
+				portNo=`echo $line | cut -f2 -d":"`
+                        	echo -e "\n============\nStarting Slave==<$ipAdd>=====<$portNo>=====\n============\n"
 				srun -p $partition --nodelist $machine -N1 -n1 --exclusive ./create-floats /ramdisks/file.$machine $itemCount 72 $chunkSize
-                        	srun -p $partition --nodelist $machine -N1 -n1 --exclusive ./slave.$machine slave --cad $PWD/CAD.$JOBID.file --ip $ipAdd --port $UDPPortNo +RTS -l-au & 
-                      #  	srun -p $partition --nodelist $machine --resv-ports -N1 -n1 --exclusive ./slave.$machine slave $ipAdd $UDPPortNo +RTS -l-au -N12 & 
-				UDPPortNo=`expr $UDPPortNo + 1`
-				coreCount=`expr $coreCount + 1`
-			done
+                                srun -p $partition --nodelist $machine -N1 -n1 --exclusive ./slave.$machine slave --cad $PWD/CAD.$JOBID.file --ip $ipAdd --port $portNo +RTS -l-au & 
+			done < $PWD/temp_CAD.txt
+			rm -rf $PWD/temp_CAD.txt
+
                 	sleep 2
                		echo -e "Sleeping for 2 secs!!"
                 fi
+		rm -rf $PWD/temp_CAD.txt
         done
 
+	rm -rf $PWD/temp_CAD.txt
         ipAdd=`nslookup $getMasterIP | grep Address | tail -1 | awk '{print $2}'`
-        getCount=`cat $PWD/CAD.$JOBID.file | grep $ipAdd | wc -l`
-	if [[ $getCount -gt 1 ]]; then
-        	portNo=`cat $PWD/CAD.$JOBID.file | grep $ipAdd | head -1 | cut -f2 -d":"`
-	else
-        	portNo=`cat $PWD/CAD.$JOBID.file | grep $ipAdd | cut -f2 -d":"`
-	fi
-	
-        echo -e "\n============\nStarting Master====<$ipAdd>=====<$portNo>=====\n============\n"
+	cat $PWD/CAD.$JOBID.file | grep $ipAdd | sed -n '1,12p' >> $PWD/temp_CAD.txt
 	cp $rc master.$getMasterIP	
-	coreCount=1	
-	UDPPortNo=$portNo 
+	
 	srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive rm -rf $HOME/input_data.txt
 	srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive touch /ramdisks/file.$getMasterIP
 	srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive ln -s /ramdisks/file.$getMasterIP $HOME/input_data.txt
-	while [ $coreCount -le $numberOfCores ]; 
-	do
+	while read line
+        do
+		portNo=`echo $line | cut -f2 -d":"`
 		srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive ./create-floats /ramdisks/file.$getMasterIP $itemCount 72 0 
-       		srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive ./master.$getMasterIP master --cad $PWD/CAD.$JOBID.file --ip $ipAdd --port $UDPPortNo --filename $HOME/input_data.txt +RTS -l-au 
-		UDPPortNo=`expr $UDPPortNo + 1`
-                coreCount=`expr $coreCount + 1`
-	done
-        #srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive ./master.$getMasterIP master $ipAdd $portNo input_data.txt norm +RTS -lsgpfu 
-
+        	echo -e "\n============\nStarting Master====<$ipAdd>=====<$portNo>=====\n============\n"
+       		srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive ./master.$getMasterIP master --cad $PWD/CAD.$JOBID.file --ip $ipAdd --port $portNo --filename $HOME/input_data.txt +RTS -l-au 
+	done< $PWD/temp_CAD.txt
+	rm -rf $PWD/temp_CAD.txt
         echo -e "\n============\nCH Process initiation completed\n============\n"
 }
 
@@ -254,6 +248,7 @@ function collectLogs {
 		fi
 		#srun -p $partition --nodelist $machine -N1 -n1 --exclusive rm -rf $HOME/input_data.txt
 		srun -p $partition --nodelist $machine -N1 -n1 --exclusive rm -rf /ramdisks/file.$machine 
+		rm -rf $PWD/temp_CAD.txt
 	done		
 	mv $PWD/slurm-$JOBID.out $PWD/Logs_$JOBID/.
 	mv $PWD/machine.file.$JOBID $PWD/Logs_$JOBID/.

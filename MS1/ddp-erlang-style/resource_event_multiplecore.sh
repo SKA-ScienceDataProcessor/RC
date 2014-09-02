@@ -31,7 +31,7 @@ rc=$1
 ##################################################################
 # The requested run-time
 #
-#SBATCH --time=00:10:00
+#SBATCH --time=00:05:00
 #SBATCH --exclusive
 # Acceptable time formats include "minutes", "minutes:seconds", 
 # "hours:minutes:seconds", "days-hours", "days-hours:minutes" 
@@ -149,4 +149,3 @@ else
 fi
 
 wait
-
