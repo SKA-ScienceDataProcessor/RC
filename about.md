@@ -1,8 +1,8 @@
 ---
 layout: page
 permalink: /about/
-title: About the Theme
-tags: [Jekyll, theme, modern, minimal, responsive]
+title: About Project
+tags: [Radio Cortex]
 image:
   feature: abstract-5.jpg
   credit: dargadgetz

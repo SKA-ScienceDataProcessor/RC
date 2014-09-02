@@ -1,5 +1,5 @@
-title:            RC Wiki
-description:      Radio Cortex Wiki Pages
+title:            Radio Cortex Project
+description:      Radio Cortex Project web site
 disqus_shortname:
 reading_time:     false
 words_per_minute: 200
@@ -8,9 +8,9 @@ url:              http://ska-sciencedataprocessor.github.io/RC/
 
 # Owner/author information
 owner:
-  name:           Your Name
+  name:           Radio Cortex Project
   avatar:         avatar.jpg
-  bio:            "Your bio goes here. It shouldn't be super long but a good two sentences or two should suffice."
+  bio:            "Radio Cortex Project "
   email:          you@email.com
   # Social networking links used in footer. Update and remove as you like.
   twitter:
