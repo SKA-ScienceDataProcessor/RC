@@ -21,7 +21,8 @@ else
 fi
 
 PWD=`pwd`
-binPath=$HOME/.cabal/bin
+#binPath=$HOME/.cabal/bin
+binPath=$HOME/RC/MS1/ddp-erlang-style
 Path=/usr/local/Cluster-Apps/slurm/bin
 getUser=`id -n -u`
 partition=`sacctmgr list user $getUser WithAssoc | awk '{print $6}' | tail -1`
@@ -180,9 +181,9 @@ set -x
         do
         	if [ $flag -eq 0 ]
                 then
-                        echo -e "Skip Master node IP\n============\n"
-                        getMasterIP=$machine
-                        flag=1
+                    echo -e "Skip Master node IP\n============\n"
+                    getMasterIP=$machine
+                    flag=1
                 else
                         ipAdd=`ssh $machine nslookup $machine | grep Address | tail -1 | awk '{print $2}'`
 			cat $PWD/CAD.$JOBID.file | grep -w "$ipAdd" | sed -n '1,12p' >> $PWD/temp_CAD.txt
@@ -197,10 +198,11 @@ set -x
 			do
 				chunkSize=`expr $chunkSize + 1`
 				portNo=`echo $line | cut -f2 -d":"`
-                        	echo -e "\n============\nStarting Slave==<$ipAdd>=====<$portNo>=====\n============\n"
+                echo -e "\n============\nStarting Slave==<$ipAdd>=====<$portNo>=====\n============\n"
 				srun -p $partition --nodelist $machine -N1 -n1 --exclusive ./create-floats /ramdisks/file.$machine $itemCount 72 $chunkSize
-                                srun -p $partition --nodelist $machine -N1 -n1 --exclusive ./slave.$machine slave --cad $PWD/CAD.$JOBID.file --ip $ipAdd --port $portNo +RTS -l-au & 
+                srun -p $partition --nodelist $machine -N1 -n1 --exclusive ./slave.$machine slave --cad $PWD/CAD.$JOBID.file --ip $ipAdd --port $portNo +RTS -l-au &
 			done < $PWD/temp_CAD.txt
+
 			rm -rf $PWD/temp_CAD.txt
 
                 	sleep 2
