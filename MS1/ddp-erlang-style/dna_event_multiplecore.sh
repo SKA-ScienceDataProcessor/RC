@@ -130,10 +130,11 @@ function generatingCADFile {
 
 	slurmJobNodeList=$PWD/machine.file.$JOBID
 	numberOfCores=12	
-        portNo=79001 # Has some issue with automation, but can be done.
+        #portNo=79001 # Has some issue with automation, but can be done.
         # Create a file in the format <Hostname>:<Port no>
 	for machine in `cat $slurmJobNodeList`
         do
+        portNo=79001
 		getIP=`ssh $machine nslookup $machine | grep Address | tail -1 | awk '{print $2}'` 
 		coreCount=1	
 		while [ $coreCount -le $numberOfCores ]; 
