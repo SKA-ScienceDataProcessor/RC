@@ -9,6 +9,7 @@ module Cfg
         , timePeriod
         , timePeriodPure
         , synchronizationPoint
+        , eventMessage
         ) where
 
 import Control.Monad
@@ -28,3 +29,7 @@ timePeriodPure _ = id
 -- |Synchronize timings - put into eventlog an event with current wall time.
 synchronizationPoint :: MonadIO m => m ()
 synchronizationPoint = return ()
+
+-- |Message to eventlog.
+eventMessage :: MonadIO m => String -> m ()
+eventMessage _ = return ()

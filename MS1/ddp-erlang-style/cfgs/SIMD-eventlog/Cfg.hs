@@ -9,6 +9,7 @@ module Cfg
         , timePeriod
         , timePeriodPure
         , synchronizationPoint
+        , eventMessage
         ) where
 
 import Control.Monad
@@ -43,3 +44,7 @@ synchronizationPoint = liftIO $ do
         let     -- we are formatting time to number of seconds in POSIX epoch and fractional part in picoseconds.
                 timeString = formatTime defaultTimeLocale "%s.%q" utcTime
         traceEventIO $ "SYNCHRONIZATION "++timeString
+
+-- |Message to eventlog.
+eventMessage :: MonadIO m => String -> m ()
+eventMessage msg = liftIO $ traceEventIO $ "MESSAGE "++msg
