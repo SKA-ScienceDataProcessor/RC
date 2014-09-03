@@ -172,9 +172,9 @@ set -x
 	numberOfCores=12
 	noOfProcess=`cat $slurmJobNodeList | wc -l`
 	noOfComputeP=`expr $noOfProcess - 1`
-	#itemCount=`expr $noOfComputeP \* 15728640`
+	itemCount=`expr $noOfComputeP \* 15000000`
 	itemCounti=`expr $numberOfCores \* 150`
-	itemCount=`expr $itemCounti \* $noOfProcess`
+	#itemCount=`expr $itemCounti \* $noOfProcess`
 	linkCount=0
 	linkCountM=0
         for machine in `cat $slurmJobNodeList`
@@ -199,7 +199,8 @@ set -x
 				chunkSize=`expr $chunkSize + 1`
 				portNo=`echo $line | cut -f2 -d":"`
                 echo -e "\n============\nStarting Slave==<$ipAdd>=====<$portNo>=====\n============\n"
-				srun -p $partition --nodelist $machine -N1 -n1 --exclusive ./create-floats /ramdisks/file.$machine $itemCount 72 $chunkSize
+                # create-float /tmp/file.slave1 itemcount processcount chunkno
+				srun -p $partition --nodelist $machine -N1 -n1 --exclusive ./create-floats /ramdisks/file.$machine $itemCount $noOfComputeP $chunkSize
                 srun -p $partition --nodelist $machine -N1 -n1 --exclusive ./slave.$machine slave --cad $PWD/CAD.$JOBID.file --ip $ipAdd --port $portNo +RTS -l-au &
 			done < $PWD/temp_CAD.txt
 
@@ -222,7 +223,7 @@ set -x
 	while read line
         do
 		portNo=`echo $line | cut -f2 -d":"`
-		srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive ./create-floats /ramdisks/file.$getMasterIP $itemCount 72 0 
+		srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive ./create-floats /ramdisks/file.$getMasterIP $itemCount $noOfComputeP 0
         	echo -e "\n============\nStarting Master====<$ipAdd>=====<$portNo>=====\n============\n"
        		srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive ./master.$getMasterIP master --cad $PWD/CAD.$JOBID.file --ip $ipAdd --port $portNo --filename $HOME/input_data.txt +RTS -l-au 
 	done< $PWD/temp_CAD.txt
