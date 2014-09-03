@@ -178,6 +178,8 @@ set -x
 	#itemCount=`expr $itemCounti \* $noOfProcess`
 	linkCount=0
 	linkCountM=0
+	# chunkSize is actually chunkNo and goes from one to the number of threads
+    chunkSize=0
         for machine in `cat $slurmJobNodeList`
         do
         	if [ $flag -eq 0 ]
@@ -190,12 +192,12 @@ set -x
 			cat $PWD/CAD.$JOBID.file | grep -w "$ipAdd" | sed -n '1,12p' >> $PWD/temp_CAD.txt
 			cat $PWD/temp_CAD.txt
 			cp $rc slave.$machine
-			chunkSize=0
+			# chunkSize=0
 			if [[ $linkCount -eq 0 ]];then
 				srun -p $partition --nodelist $machine -N1 -n1 --exclusive ln -s /ramdisks/file.$machine $HOME/input_data.txt
 				linkCount=1
 			fi
-			while read -r line || [[ -n $line ]]; 
+			while read -u 3 -r line || [[ -n $line ]];
 			do
 				chunkSize=`expr $chunkSize + 1`
 				portNo=`echo $line | cut -f2 -d":"`
@@ -203,7 +205,7 @@ set -x
                 # create-float /tmp/file.slave1 itemcount processcount chunkno
 				srun -p $partition --nodelist $machine -N1 -n1 --exclusive ./create-floats /ramdisks/file.$machine $itemCount $noOfComputeP $chunkSize
                 srun -p $partition --nodelist $machine -N1 -n1 --exclusive ./slave.$machine slave --cad $PWD/CAD.$JOBID.file --ip $ipAdd --port $portNo +RTS -l-au &
-			done < $PWD/temp_CAD.txt
+			done 3< $PWD/temp_CAD.txt
 
 			rm -rf $PWD/temp_CAD.txt
 
@@ -221,13 +223,13 @@ set -x
 	srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive rm -rf $HOME/input_data.txt
 	srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive touch /ramdisks/file.$getMasterIP
 	srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive ln -s /ramdisks/file.$getMasterIP $HOME/input_data.txt
-	while read line
+	while read -u 3 line
         do
 		portNo=`echo $line | cut -f2 -d":"`
 		srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive ./create-floats /ramdisks/file.$getMasterIP $itemCount $noOfComputeP 0
         	echo -e "\n============\nStarting Master====<$ipAdd>=====<$portNo>=====\n============\n"
        		srun -p $partition --nodelist $getMasterIP -N1 -n1 --exclusive ./master.$getMasterIP master --cad $PWD/CAD.$JOBID.file --ip $ipAdd --port $portNo --filename $HOME/input_data.txt +RTS -l-au 
-	done< $PWD/temp_CAD.txt
+	done 3< $PWD/temp_CAD.txt
 	rm -rf $PWD/temp_CAD.txt
         echo -e "\n============\nCH Process initiation completed\n============\n"
 }
