@@ -13,6 +13,8 @@ import Data.Typeable
 
 import DNA.Common (say)
 
+import Cfg (eventMessage)
+
 newtype DnaStart = DnaStart ProcessId deriving (Eq, Ord, Show, Typeable, Generic)
 newtype DnaStarted = DnaStarted ProcessId deriving (Eq, Ord, Show, Typeable, Generic)
 newtype DnaFinished = DnaFinished ProcessId deriving (Eq, Ord, Show, Typeable, Generic)
@@ -26,23 +28,24 @@ instance Binary DnaPidList
 
 sayDebug :: String -> Process ()
 sayDebug msg = do
-	say msg
+        say msg
+        eventMessage msg
 {-
-	logger <- Log.client
-	case logger of
-		Nothing -> do
-			--liftIO $ putStrLn $ "unable to resolve logger for "++show msg
-			log <- whereis "logger"
-			case log of
-				Just l -> do
-					us <- getSelfPid
-					send l $ ("<no time>", us, msg)
-				Nothing -> error "completely unable to resolve any logging facility!"
-			return ()
-		Just cl -> do
-			r <- resolve cl
-			say $ "cl agent "++show r
-			Log.debug cl (Log.LogText msg)
+        logger <- Log.client
+        case logger of
+                Nothing -> do
+                        --liftIO $ putStrLn $ "unable to resolve logger for "++show msg
+                        log <- whereis "logger"
+                        case log of
+                                Just l -> do
+                                        us <- getSelfPid
+                                        send l $ ("<no time>", us, msg)
+                                Nothing -> error "completely unable to resolve any logging facility!"
+                        return ()
+                Just cl -> do
+                        r <- resolve cl
+                        say $ "cl agent "++show r
+                        Log.debug cl (Log.LogText msg)
 -}
 
 
