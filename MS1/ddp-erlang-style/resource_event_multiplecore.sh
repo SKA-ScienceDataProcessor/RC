@@ -91,7 +91,7 @@ echo "Current directory: `pwd`"
 JOBID=$SLURM_JOB_ID
 
 echo -e "JobID: $JOBID and ntasks :$SLURM_NTASKS_PER_NODE\n======"
-echo "Time: `date`"
+echo "Time: `date`"s
 echo "Running on master node: `hostname`"
 
 if [ "$SLURM_JOB_NODELIST" ]; then

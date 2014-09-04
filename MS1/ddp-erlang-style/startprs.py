@@ -5,6 +5,7 @@ __date__ = "09/03/14"
 """
 
 from string import Template
+import subprocess
 
 CMD_SRUN = "srun -p $partition --nodelist $machine -N1 -n1 --exclusive "
 
@@ -15,7 +16,21 @@ CMD_START_SLAVE = Template(CMD_SRUN + "./slave.$machine slave --cad $PWD/CAD.$JO
 CMD_RM_MINUS_RF = Template(CMD_SRUN + "rm -rf $HOME/input_data.txt")
 CMD_TOUCH = Template(CMD_SRUN + "touch /ramdisks/file.$ip_addr")
 
-def run_command(pwd, home, rc, cad_file, job_id, num_cores=12, test=True):
+
+
+def execute_cmd(cmd_str, execute=False):
+    """Execute or output (execute==False) command string.
+    """
+    if execute:
+        subprocess.call(cmd_str, shell=True)
+    else:
+        print cmd_str
+
+
+
+
+
+def run_command(pwd, home, rc, cad_file, job_id, num_cores=12, execute=False):
     """Create input files and start processes on master and slave machines,
     reading list of reserved ips from cad_fil. If test=True, just output commands,
     without running them.
@@ -26,9 +41,7 @@ def run_command(pwd, home, rc, cad_file, job_id, num_cores=12, test=True):
             (ip_add, port) = line.split(":")
             if i <= num_cores - 1:
                 # Run on master
-                if test:
-                    print CMD_RM_MINUS_RF.substitute(partion=partition, machine=machine)
-
+                pass
 
 
 
