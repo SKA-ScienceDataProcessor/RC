@@ -173,6 +173,7 @@ set -x
 	numberOfCores=12
 	noOfProcess=`cat $slurmJobNodeList | wc -l`
 	noOfComputeP=`expr $noOfProcess - 1`
+	noOfComputeP=$(($noOfComputeP * $numberOfCores))
 	itemCount=`expr $noOfComputeP \* 15000000`
 	itemCounti=`expr $numberOfCores \* 150`
 	#itemCount=`expr $itemCounti \* $noOfProcess`
