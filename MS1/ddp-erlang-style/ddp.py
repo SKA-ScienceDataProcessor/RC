@@ -9,7 +9,7 @@ from string import Template
 import subprocess
 
 
-DEBUG = True
+DEBUG = False
 CMD = "$DDP $ROLE --filename INPUT --cad $CAD --ip $IP --port $PORT ../../INPUT $DDP_OPTS"
 
 

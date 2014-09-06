@@ -5,8 +5,8 @@ from dna_lib import *
 from string import Template
 import subprocess
 
-CMD = "../create_floats INPUT $ITEMCOUNT $CHUNKCOUNT $CHUNKNO"
-DEBUG = True
+CMD = "../create-floats INPUT $ITEMCOUNT $CHUNKCOUNT $CHUNKNO"
+DEBUG = False
 
 lines = my_lines()
 myip = get_ip()
