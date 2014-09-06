@@ -23,7 +23,7 @@ SLURM_JOB_ID=testdir
 
 mkdir $SLURM_JOB_ID
 cd $SLURM_JOB_ID
-cat $NODE_FILE | uniq > nodes.file
+# cat $NODE_FILE | uniq > nodes.file
 ../dna_cad.py
 ln -s /ramdisks/INPUT.$SLURM_JOB_ID  INPUT
 ../create_floats.py 
