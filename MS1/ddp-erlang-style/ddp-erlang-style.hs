@@ -1,3 +1,9 @@
+-- |Distributed Dot Product - Erlang Style
+--
+-- Backend implementation for DNA project.
+-- Author: Braam Research, LLC
+-- Copyright (C) 2014 Cambridge University
+
 {-# LANGUAGE TemplateHaskell		#-}
 {-# LANGUAGE DeriveDataTypeable		#-}
 {-# LANGUAGE DeriveGeneric		#-}
@@ -153,7 +159,7 @@ master masterOptions backend peers = do
         case peers of
                 [] -> error "no peers found!"
                 _
-                        | length peers < 2 -> error "too small count of peers."
+                        | length peers < 2 -> error "too few peers."
                         | otherwise -> return ()
         synchronizationPoint
         startLogger peers
@@ -180,7 +186,8 @@ master masterOptions backend peers = do
         liftIO . putStrLn $ "itemcount:  " ++  (show itemCount)
 
         let chunkOffsets = map (chunkOffset chunkCount itemCount) [1..chunkCount]
-        liftIO . putStrLn $ "Offsets : " ++ show chunkOffsets
+        liftIO . putStrLn $ "Offsets: " ++ show chunkOffsets
+        liftIO . putStrLn $ "NodeIds: " ++ show allComputeNids
         let chunkSizes = map (chunkSize chunkCount itemCount) [1..chunkCount]
         liftIO . putStrLn $ "chunkSizes : " ++  show chunkSizes
 
@@ -209,7 +216,6 @@ master masterOptions backend peers = do
 main :: IO ()
 main = do
         dnaParseCommandLineAndRun rtable "ddp-erlang-style" master
-
   where
         rtable :: RemoteTable
         rtable = __remoteTable initRemoteTable
