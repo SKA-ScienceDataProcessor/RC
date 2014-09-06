@@ -15,6 +15,7 @@ export $NODES=nodes.txt
 export $CAD=CAD_dna.txt
 export $DDP=`pwd`/dist/build/ddp-erlang-style-SIMD-eventlog/ddp-erlang-style-SIMD-eventlog
 export $DDP_OPTS="-RTS -+RTS -l-au"
+export $MIN_PORT= 44000
 
 mkdir $SLURM_JOB_ID
 cd $SLURM_JOB_ID
