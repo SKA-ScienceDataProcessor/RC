@@ -17,10 +17,10 @@ export $DDP=`pwd`/dist/build/ddp-erlang-style-SIMD-eventlog/ddp-erlang-style-SIM
 export $DDP_OPTS="-RTS -+RTS -l-au"
 
 mkdir $SLURM_JOB_ID
-chdir $SLURM_JOB_ID
+cd $SLURM_JOB_ID
 export NODEFILE=`generate_pbs_nodefile`
 cat $NODEFILE | uniq > nodes.file ; rm $NODEFILE
-dna_cad.py $NODES $CAD
+../dna_cad.py
 ln -f /ramdisks/INPUT.$SLURM_JOB_ID  INPUT
 srun --exclusive ../create_floats.py cadfile 
 srun --exclusive ../ddp.py cadfile
