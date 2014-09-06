@@ -10,8 +10,8 @@ import subprocess
 
 
 DEBUG = False
-CMD = "$DDP $ROLE --filename INPUT --cad $CAD --ip $IP --port $PORT ../../INPUT $DDP_OPTS"
-
+CMD_MASTER = "$DDP master --cad $CAD_FILE --ip $IP --port $PORT --filename../../INPUT $DDP_OPTS"
+CMD_SLAVE = "$DDP slave --cad $CAD_FILE --ip $IP --port $PORT $DDP_OPTS"
 
 children = []
 os.makedirs(get_ip())
@@ -31,9 +31,10 @@ for i, line in enumerate(my_lines()):
         os.chdir(str(port))
         if rls[i] == "master":
             time.sleep(5)
-        print "I am in: ", str(port)
+            cmd_str = Template(CMD_MASTER).substitute(DDP=DDP, CAD_FILE=CAD_FILE, PORT=port, DDP_OPTS=DDP_OPTS, IP=get_ip())
+        else:
+            cmd_str = Template(CMD_SLAVE).substitute(DDP=DDP, CAD_FILE=CAD_FILE, PORT=port, DDP_OPTS=DDP_OPTS, IP=get_ip())
 
-        cmd_str = Template(CMD).substitute(DDP=DDP, ROLE=rls[i], CAD=CAD_FILE, PORT=port, DDP_OPTS=DDP_OPTS, IP=get_ip())
         if DEBUG:
             print "Would execute: ", cmd_str
             print "Would rename:", "../../eventlog.{0}.{1}".format(get_ip(), port)
