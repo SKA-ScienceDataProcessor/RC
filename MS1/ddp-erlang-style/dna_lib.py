@@ -12,7 +12,6 @@ DDP_OPTS = os.environ["DDP_OPTS"]
 MIN_PORT = os.environ["MIN_PORT"]
 
 
-
 def get_ip():
     return socket.gethostbyname(socket.gethostname())
 
@@ -35,16 +34,17 @@ def host_no():
         for line in cad:
             ip_str, port = line.split(":")
             if ip_str == ip:
-                return i / PROCS_PER_NODE
+                return i / int(PROCS_PER_NODE)
             i += 1
 
 
 def chunk_numbers():
     cnum = []
     hn = host_no()
-    for i in range(hn, hn + PROCS_PER_NODE):
-        if i == 0 or i == 1:
-            cnum.append(i)
+
+    for i in range(hn, hn + int(PROCS_PER_NODE)):
+        if i <= 1:
+            cnum.append(0)
         else:
             cnum.append(i - 1)
     return cnum
@@ -60,12 +60,12 @@ def chunk_count():
 def roles():
     roles = []
     hn = host_no()
-    for i in range(hn, hn + PROCS_PER_NODE):
+    for i in range(hn, hn + int(PROCS_PER_NODE)):
         if i == 0:
             roles.append("master")
         else:
             roles.append("slave")
-
+    return roles
 
 
 if __name__ == '__main__':
