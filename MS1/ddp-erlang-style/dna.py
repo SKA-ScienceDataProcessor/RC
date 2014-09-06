@@ -68,7 +68,7 @@ class DNARunner(object):
         self.minport = minport
         self.vector_len = vector_len
 
-    # ==== properties goes below
+    # ==== properties go below
     @property
     def nodes(self):
         return ["bronco.local", "bronco.local", "bronco.local"]
