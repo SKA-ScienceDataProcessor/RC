@@ -7,9 +7,9 @@ CAD_FILE = os.environ["CAD"]
 NODE_FILE = os.environ["NODE_FILE"]
 PROCS_PER_NODE = os.environ["PROCS_PER_NODE"]
 ITEMCOUNT = os.environ["ITEMCOUNT"]
-DDP = os.environment["DDP"]
+DDP = os.environ["DDP"]
 DDP_OPTS = os.environ["DDP_OPTS"]
-MIN_PORT = os.environment["NIN_PORT"]
+MIN_PORT = os.environ["MIN_PORT"]
 
 
 
