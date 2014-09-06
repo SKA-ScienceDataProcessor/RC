@@ -13,7 +13,7 @@ from string import Template
 
 CMD_SRUN = "srun -p $partition --nodelist $node -N1 -n1 --exclusive "
 
-CMD_LN_MINUS_S = Template(CMD_SRUN + "ln -s /ramdisks/floats $HOME/input_data.txt")
+CMD_LN_MINUS_S = Template(CMD_SRUN + "ln -s $HOME/input_data.txt /ramdisks/floats")
 CMD_CREATE_FLOATS = Template(CMD_SRUN + "./create-floats /ramdisks/floats $item_count $num_of_processes $chunk_no")
 CMD_START_EXECUTABLE = Template(CMD_SRUN + "$executable $mode --cad $CAD --ip $ipaddr --port $port +RTS -l-au &")
 

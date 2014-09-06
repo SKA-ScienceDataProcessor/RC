@@ -22,7 +22,7 @@ cd $SLURM_JOB_ID
 export NODEFILE=`generate_pbs_nodefile`
 cat $NODEFILE | uniq > nodes.file ; rm $NODEFILE
 ../dna_cad.py
-ln -f /ramdisks/INPUT.$SLURM_JOB_ID  INPUT
+ln -s /ramdisks/INPUT.$SLURM_JOB_ID  INPUT
 srun --exclusive ../create_floats.py cadfile 
 srun --exclusive ../ddp.py cadfile
 srun --exclusive rm /ramdisks/INPUT.$SLURM_JOB_ID
