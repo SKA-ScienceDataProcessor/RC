@@ -11,7 +11,7 @@ ddp = os.environment["DDP"]
 
 
 
-def my_lines(i):
+def my_lines():
     ip = socket.gethostbyname(socket.gethostname())
     with open(cad_file, "r") as cad:
         lines = []
@@ -25,7 +25,7 @@ def chunk_number(i):
     if i == 0 or i == 1:
         return 0
     else:
-        return i -1
+        return i - 1
 
 
 def chunk_count(i):
