@@ -146,8 +146,7 @@ class DNARunner(object):
     def create_inputs(self, execute):
         """Generate input files and create a link to $HOME.
         """
-        # Number of processes
-        # accurately would be minus 2 but we create it on the collector too
+        # Number of processes accurately would be minus 2 but we create it on the collector too
         # TODO: if there is just one node results are incorrect
         num_of_processes = self.numcores * (len(self.nodes) - 1)
         print "\n==== Create inputs and links: \n"
@@ -165,6 +164,7 @@ class DNARunner(object):
                                                           num_of_processes = num_of_processes,
                                                           chunk_no=chunk_no)
                 self._execute_cmd(cmd_create, execute=execute)
+
             # Create link
             print "\n=== Create link:\n"
             cmd_link = CMD_LN_MINUS_S.substitute(partition=self.partition,
