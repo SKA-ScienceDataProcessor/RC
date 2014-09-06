@@ -151,23 +151,27 @@ class DNARunner(object):
         num_of_processes = self.numcores * (len(self.nodes) - 1) # accurately would be minus 2 but we create it on the collector too
         print "\n==== Create inputs and links: \n"
         for i, node in enumerate(self.nodes):
-            if node == 0:
-                # master node
-                chunk_no = 0
-            else:
-                chunk_no = 12 * i
-            # Write file
-            cmd_create = CMD_CREATE_FLOATS.substitute(partition=self.partition,
-                                                      node=node,
-                                                      item_count=self.vector_len * num_of_processes,
-                                                      num_of_processes = num_of_processes,
-                                                      chunk_no=chunk_no)
-            self._execute_cmd(cmd_create, execute=execute)
+            for core in self.cores:
+                if i == 0:
+                    # master node
+                    chunk_no = 0
+                else:
+                    chunk_no += 1
+
+                # Write file
+                cmd_create = CMD_CREATE_FLOATS.substitute(partition=self.partition,
+                                                          node=node,
+                                                          item_count=self.vector_len * num_of_processes,
+                                                          num_of_processes = num_of_processes,
+                                                          chunk_no=chunk_no)
+                self._execute_cmd(cmd_create, execute=execute)
             # Create link
+            print "\n=== Create link:\n"
             cmd_link = CMD_LN_MINUS_S.substitute(partition=self.partition,
                                                  node=node,
                                                  HOME=os.environ["HOME"])
             self._execute_cmd(cmd_link)
+
 
 
     def run_ddp(self, master, execute):
@@ -221,9 +225,9 @@ class DNARunner(object):
 
 def run_test():
     dna = DNARunner(77777, "tesla", 12, "test.sh")
-    dna.make_dirs()
-    dna.write_CAD()
-    dna.copy_executables()
+    # dna.make_dirs()
+    # dna.write_CAD()
+    # dna.copy_executables()
     dna.create_inputs(execute=False)
     dna.run_ddp(master=False, execute=False)
     dna.run_ddp(master=True, execute=False)
