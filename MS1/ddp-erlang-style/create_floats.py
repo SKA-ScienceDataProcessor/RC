@@ -5,7 +5,7 @@ from dna_lib import *
 from string import Template
 import subprocess
 
-CMD = "./create_floats INPUT $ITEMCOUNT $CHUNKCOUNT $CHUNKNO"
+CMD = "../create_floats INPUT $ITEMCOUNT $CHUNKCOUNT $CHUNKNO"
 DEBUG = True
 
 lines = my_lines()

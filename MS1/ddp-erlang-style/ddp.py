@@ -40,7 +40,7 @@ for i, line in enumerate(my_lines()):
         else:
             subprocess.call(cmd_str, shell=True)
             os.rename(DDP + ".eventlog", "../../eventlog.{0}.{1}".format(get_ip(), port))
-            os._exit(0)
+        os._exit(0)
 
 os.chdir(old_dir)
 
