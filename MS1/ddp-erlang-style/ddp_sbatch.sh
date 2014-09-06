@@ -26,7 +26,7 @@ cd $SLURM_JOB_ID
 cat $NODE_FILE | uniq > nodes.file
 ../dna_cad.py
 ln -s /ramdisks/INPUT.$SLURM_JOB_ID  INPUT
-srun --exclusive ../create_floats.py
+srun --exclusive ../create_floats.py 
 srun --exclusive ../ddp.py
 srun --exclusive rm /ramdisks/INPUT.$SLURM_JOB_ID
 rm INPUT $NODE_FILE
