@@ -14,3 +14,17 @@ def my_lines(ip):
             ip, port = line.split(":")
             if ip == str(ip):
                 line.append(line)
+
+
+def chunk_number(i):
+    if i == 0 or i == 1:
+        return 0
+    else:
+        return i -1
+
+
+def chunk_count(i):
+    with open(cad_file) as cad:
+        for i, l in enumerate(cad):
+            pass
+    return i + 1
