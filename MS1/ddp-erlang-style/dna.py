@@ -147,8 +147,9 @@ class DNARunner(object):
         """Generate input files and create a link to $HOME.
         """
         # Number of processes
+        # accurately would be minus 2 but we create it on the collector too
         # TODO: if there is just one node results are incorrect
-        num_of_processes = self.numcores * (len(self.nodes) - 1) # accurately would be minus 2 but we create it on the collector too
+        num_of_processes = self.numcores * (len(self.nodes) - 1)
         print "\n==== Create inputs and links: \n"
         for i, node in enumerate(self.nodes):
             for core in self.cores:
@@ -157,7 +158,6 @@ class DNARunner(object):
                     chunk_no = 0
                 else:
                     chunk_no += 1
-
                 # Write file
                 cmd_create = CMD_CREATE_FLOATS.substitute(partition=self.partition,
                                                           node=node,
@@ -225,9 +225,9 @@ class DNARunner(object):
 
 def run_test():
     dna = DNARunner(77777, "tesla", 12, "test.sh")
-    # dna.make_dirs()
-    # dna.write_CAD()
-    # dna.copy_executables()
+    dna.make_dirs()
+    dna.write_CAD()
+    dna.copy_executables()
     dna.create_inputs(execute=False)
     dna.run_ddp(master=False, execute=False)
     dna.run_ddp(master=True, execute=False)
