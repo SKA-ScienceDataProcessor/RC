@@ -213,14 +213,10 @@ class DNARunner(object):
 
 
 
-
     def collect_logs(self):
         """Remove input files, executables, and move logs to a proper location.
         """
         pass
-
-
-
 
 
 def run_test():
