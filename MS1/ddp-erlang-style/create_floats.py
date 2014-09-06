@@ -21,4 +21,4 @@ for i, line in enumerate(lines):
     if DEBUG:
         print cmd_str
     else:
-        subprocess.call(cmd_str)
+        subprocess.call(cmd_str, shell=True)
