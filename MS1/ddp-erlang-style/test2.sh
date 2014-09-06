@@ -12,17 +12,18 @@ export DDP_OPTS="-RTS -+RTS -l -au"
 export MIN_PORT=44000
 export NODE_FILE=nodes.txt
 
+export SLURM_JOB_ID=testdir
+mkdir $SLURM_JOB_ID
+
+cd $SLURM_JOB_ID
 cat > $NODE_FILE <<EOF
 localhost
 localhost
 localhost
 localhost
 EOF
-export NODE_FILE
-SLURM_JOB_ID=testdir
 
-mkdir $SLURM_JOB_ID
-cd $SLURM_JOB_ID
+
 # cat $NODE_FILE | uniq > nodes.file
 ../dna_cad.py
 ln -s /ramdisks/INPUT.$SLURM_JOB_ID  INPUT
