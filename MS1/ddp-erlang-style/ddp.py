@@ -34,8 +34,10 @@ for i, line in enumerate(my_lines()):
         if rls[i] == "master":
             time.sleep(5)
             cmd_str = Template(CMD_MASTER).substitute(DDP=DDP, CAD_FILE=CAD_FILE, PORT=port, DDP_OPTS=DDP_OPTS, IP=get_ip())
+            print "Running master:", cmd_str
         else:
             cmd_str = Template(CMD_SLAVE).substitute(DDP=DDP, CAD_FILE=CAD_FILE, PORT=port, DDP_OPTS=DDP_OPTS, IP=get_ip())
+            print "Running slave:", cmd_str
 
         if DEBUG:
             print "*** I'm in :", os.getcwd()
