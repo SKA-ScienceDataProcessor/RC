@@ -195,15 +195,16 @@ def events_dict(logs_folder):
 
     print "smallests ", smallest_s, smallest_ps
 
-    for entry in entries:
-        print "entry before ", entry.to_list()
-        start_ns, start_s, start_ps = starts[entry.log_name]
-        offset = (start_s - smallest_s)*1000000000.0 + (start_ps - smallest_ps)/1000.0 - start_ns
-        print "offset ", offset
-        entry.start = float(entry.start) + offset
-        entry.end = float(entry.end) + offset
-        print "entry after ", entry.to_list()
-        entries_lst.append(entry.to_list())
+    # Adjustements added by Serguey
+    # for entry in entries:
+    #     print "entry before ", entry.to_list()
+    #     start_ns, start_s, start_ps = starts[entry.log_name]
+    #     offset = (start_s - smallest_s)*1000000000.0 + (start_ps - smallest_ps)/1000.0 - start_ns
+    #     print "offset ", offset
+    #     entry.start = float(entry.start) + offset
+    #     entry.end = float(entry.end) + offset
+    #     print "entry after ", entry.to_list()
+    #     entries_lst.append(entry.to_list())
 
     events = unique_events(entries_lst)
     nodes = unique_nodes(entries_lst)
