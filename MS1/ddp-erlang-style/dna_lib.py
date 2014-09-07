@@ -46,7 +46,7 @@ def chunk_numbers():
     if hn is None:
         print "*** ERROR: cannot find host in CAD file. Exiting."
         sys.exit(-1)
-    for i in range(hn, hn + int(PROCS_PER_NODE)):
+    for i in range(hn * int(PROCS_PER_NODE), hn * int(PROCS_PER_NODE) + int(PROCS_PER_NODE)):
         if i <= 1:
             cnum.append(0)
         else:
