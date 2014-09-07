@@ -12,7 +12,6 @@ lines = my_lines()
 myip = get_ip()
 chunks = chunk_numbers()
 
-
 for i, line in enumerate(lines):
     port = int(MIN_PORT) + i + 1
     msg = "PYTHON DEBUG: IP: {0}\tPORT: {1}\tCHUNK NUMBER:{2}\t"

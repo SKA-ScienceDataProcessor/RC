@@ -1,6 +1,7 @@
 __author__ = 'mcsquaredjr'
 
 import os
+import sys
 import socket
 
 CAD_FILE = os.environ["CAD"]
@@ -36,12 +37,15 @@ def host_no():
             if ip_str == ip:
                 return i / int(PROCS_PER_NODE)
             i += 1
+    return None
 
 
 def chunk_numbers():
     cnum = []
     hn = host_no()
-
+    if hn is None:
+        print "*** ERROR: cannot find host in CAD file. Exiting."
+        sys.exit(-1)
     for i in range(hn, hn + int(PROCS_PER_NODE)):
         if i <= 1:
             cnum.append(0)
