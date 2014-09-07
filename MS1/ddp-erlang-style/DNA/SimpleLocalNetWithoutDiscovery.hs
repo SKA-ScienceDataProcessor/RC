@@ -99,6 +99,7 @@ module DNA.SimpleLocalNetWithoutDiscovery
 import System.IO (fixIO)
 import Data.Maybe (catMaybes)
 import Data.Binary (Binary(get, put), getWord8, putWord8)
+import Data.List (nub)
 import Data.Accessor (Accessor, accessor, (^:), (^.))
 import Data.Set (Set)
 import qualified Data.Set as Set (insert, empty, toList, fromList)
@@ -172,7 +173,7 @@ data Backend = Backend {
 
 data BackendState = BackendState {
    _localNodes      :: [Node.LocalNode]
- , _peers           :: Set NodeId
+ , _peers           :: [NodeId]
  ,  discoveryDaemon :: ThreadId
  }
 
@@ -210,7 +211,7 @@ initializeBackend maybeCadFile host port rtable = do
   (_, backendState) <- fixIO $ \ ~(tid, _) -> do
     backendState <- newMVar BackendState
                       { _localNodes      = []
-                      , _peers           = Set.fromList addresses
+                      , _peers           = addresses
                       ,  discoveryDaemon = tid
                       }
     tid' <- forkIO $ peerDiscoveryDaemon peersPreset backendState recv sendp
@@ -246,7 +247,7 @@ apiFindPeers peersPreset sendfn backendState delay = do
   when (not peersPreset) $ do
         sendfn PeerDiscoveryRequest
         threadDelay delay
-  Set.toList . (^. peers) <$> readMVar backendState
+  (^. peers) <$> readMVar backendState
 
 data PeerDiscoveryMsg =
     PeerDiscoveryRequest
@@ -279,7 +280,7 @@ peerDiscoveryDaemon peersPreset backendState recv sendfn
           nodes <- (^. localNodes) <$> readMVar backendState
           forM_ nodes $ sendfn . PeerDiscoveryReply . Node.localNodeId
         PeerDiscoveryReply nid ->
-          modifyMVar_ backendState $ return . (peers ^: Set.insert nid)
+          modifyMVar_ backendState $ return . (peers ^: (nub . (nid:)))
 
 --------------------------------------------------------------------------------
 -- Back-end specific primitives                                               --
@@ -453,5 +454,5 @@ shutdownLogger = do
 localNodes :: Accessor BackendState [Node.LocalNode]
 localNodes = accessor _localNodes (\ns st -> st { _localNodes = ns })
 
-peers :: Accessor BackendState (Set NodeId)
+peers :: Accessor BackendState [NodeId]
 peers = accessor _peers (\ps st -> st { _peers = ps })
