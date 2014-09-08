@@ -43,8 +43,11 @@ for i, line in enumerate(my_lines()):
             print "*** Log name is: ", os.path.split(DDP)[-1] + ".eventlog"
             print "*** Would rename:", "../../eventlog.{0}.{1}".format(get_ip(), port)
         else:
+            print "*** I'm in :", os.getcwd()
+            print "*** Would execute: ", cmd_str
             subprocess.call(cmd_str, shell=True)
             src_name = os.path.split(DDP)[-1] + ".eventlog"
+            print "*** I'm in :", os.getcwd()
             dst_name = "../../eventlog.{0}.{1}".format(get_ip(), port)
             #os.rename(os.path.split(DDP)[-1] + ".eventlog", "../../eventlog.{0}.{1}".format(get_ip(), port))
             os.rename(src_name, dst_name)
