@@ -78,7 +78,8 @@ def all_times(evt_lst, title, uevents, min_port=0, zooming=False):
 
         if not zooming:
             timeScale = 1.0e9
-            process_no = evt[8] - min_port + 1
+            #process_no = evt[8] - min_port + 1
+            process_no = evt[6]
             if len(events) != len(set(events)):
                 if evt[0] == "collection phase":
                     # I don't understand why it escapes the normal flow
@@ -125,17 +126,17 @@ def all_times(evt_lst, title, uevents, min_port=0, zooming=False):
         plt.grid("on")
 
     if not zooming:
-        plt.ylim([0, 120])
-        plt.xlabel("time, ms")
+        plt.ylim([0, 200])
+        plt.xlabel(r"time, $\mu$s")
         plt.ylabel("process number")
         #plt.legend(fontsize=9, fancybox=True, shadow=True, ncol=2, bbox_to_anchor=(0.98, 0.68), loc='best')
-        plt.legend(fontsize=8, fancybox=True, shadow=True, ncol=3, loc='best')
+        plt.legend(fontsize=8, fancybox=True, shadow=True, ncol=1, loc='best')
 
         plt.title(title)
     else:
         plt.axes(ax1)
         plt.ylim([0, 120])
-        plt.xlabel("time, ms")
+        plt.xlabel(r"time, $\mu$s")
         plt.ylabel("node number")
         plt.legend(fontsize=9, fancybox=True, shadow=True, ncol=3, loc='best')
         plt.title(title)
@@ -149,7 +150,7 @@ def all_times(evt_lst, title, uevents, min_port=0, zooming=False):
 
 
 def distribution_plot(evt_lst, min_port):
-    fig = plt.figure(figsize=(10, 15))
+    fig = plt.figure(figsize=(20, 15))
     plt.hold("on")
 
 
@@ -171,14 +172,15 @@ def distribution_plot(evt_lst, min_port):
         plt.grid("on")
         plt.hold("on")
         plt.title(titles[i-1])
-        plt.ylabel("time, ms")
-        plt.xlim([0, 102])
+        plt.ylabel(r"time, $\mu$s")
+        #plt.xlim([0, 102])
         plt.xlabel("process number")
         axes.append(ax)
 
 
     for evt in evt_lst:
-        proc_num = evt[8] - min_port + 1
+        #proc_num = evt[8] - min_port + 1
+        proc_num = evt[6]
         if evt[0] == "collection phase":
             color = [0.5, 0.5, 0.5]
 
@@ -186,13 +188,13 @@ def distribution_plot(evt_lst, min_port):
         elif evt[0] == "compute sends sum":
             color = PALEMAGENTA
             plt.axes(axes[0])
-            plt.bar(proc_num, evt[3], color=color)
+            plt.bar(proc_num, evt[3], color=color, edgecolor="none")
 
 
         elif evt[0] == "generating and sending precomputed vector":
             color = MAGENTA
             plt.axes(axes[1])
-            plt.bar(proc_num, evt[3], color=color)
+            plt.bar(proc_num, evt[3], color=color, edgecolor="none")
 
         elif evt[0] == "master waits for result":
             color = RED
@@ -201,27 +203,27 @@ def distribution_plot(evt_lst, min_port):
         elif evt[0] == "pure computation time":
             color = BLUE
             plt.axes(axes[2])
-            plt.bar(proc_num, evt[3], color=color)
+            plt.bar(proc_num, evt[3], color=color, edgecolor="none")
 
         elif evt[0] == "reading file":
             color = REDDISH
             plt.axes(axes[3])
-            plt.bar(proc_num, evt[3], color=color)
+            plt.bar(proc_num, evt[3], color=color, edgecolor="none")
 
         elif evt[0] == "receiving computed vector":
             color = [0, 0, 0]
             plt.axes(axes[4])
-            plt.bar(proc_num, evt[3], color=color)
+            plt.bar(proc_num, evt[3], color=color, edgecolor="none")
 
         elif evt[0] == "receiving read vector":
             color = YELLOW
             plt.axes(axes[5])
-            plt.bar(proc_num, evt[3], color=color)
+            plt.bar(proc_num, evt[3], color=color, edgecolor="none")
 
         else:
             color = GREEN
             plt.axes(axes[6])
-            plt.bar(proc_num, evt[3], color=color)
+            plt.bar(proc_num, evt[3], color=color, edgecolor="none")
 
 
     #fig.tight_layout()
@@ -276,7 +278,7 @@ def performance_plot(evt_lst, file_size, batch_size, num_nodes):
     plt.xlabel("process number")
     plt.ylabel("GB/s")
     x = range(len(b))
-    plt.bar(x, b, color=REDDISH)
+    plt.bar(x, b, color=REDDISH, edgecolor="none")
     plt.xlim([-1, len(b) + 1])
 
     # Peformance, compute sends sum
@@ -285,7 +287,7 @@ def performance_plot(evt_lst, file_size, batch_size, num_nodes):
     plt.xlabel("process number")
     plt.ylabel("GFLOPS")
     x = range(len(rs))
-    plt.bar(x, rs, color=GREEN)
+    plt.bar(x, rs, color=GREEN, edgecolor="none")
     plt.xlim([-1, len(b) + 1])
 
     # Peformance, pure computation time
@@ -295,7 +297,7 @@ def performance_plot(evt_lst, file_size, batch_size, num_nodes):
     plt.xlabel("process number")
     plt.ylabel("GFLOPS")
     x = range(len(rp))
-    plt.bar(x, rp, color=DARKBLUE)
+    plt.bar(x, rp, color=DARKBLUE, edgecolor="none")
     plt.xlim([-1, len(b) + 1])
 
 
@@ -310,12 +312,13 @@ if __name__ == "__main__":
     #evt_folder = "/Users/serge/Downloads/textualLogs_48nodes"
     #evt_folder = "/Users/serge/Downloads/textualLogs_64nodes"
     #evt_folder = "/Users/serge/Downloads/logs16node-N12_26_08_14"
-    evt_folder = "/Users/serge/Downloads/textualLogs_100nodes_28_08_2014"
+    #evt_folder = "/Users/serge/Downloads/textualLogs_100nodes_28_08_2014"
+    evt_folder = "/Users/serge/Desktop/16node-txt"
     if len(sys.argv) > 1:
         evt_folder = sys.argv[1]
     ed = readlog.events_dict(evt_folder)
     print "Unique events:", ed['events']
-    all_times(ed['list'], "Dot product profiling results, 100-node cluster",
+    all_times(ed['list'], "Dot product profiling results, 16-node cluster. Offset is off.",
               ed["events"], min_port=ed["min_port"], zooming=False)
     distribution_plot(ed['list'], ed["min_port"])
 
@@ -324,7 +327,7 @@ if __name__ == "__main__":
     print "Bandwidth: ", b
     print "Total: ", sumb
 
-    rs, srs, rp, srp = compute_flops(ed["list"], 20447232, 100)
+    rs, srs, rp, srp = compute_flops(ed["list"], 1250000, 100)
 
     print "*** Event: Compute Sends Sum ***"
     print "per node: ", rs
