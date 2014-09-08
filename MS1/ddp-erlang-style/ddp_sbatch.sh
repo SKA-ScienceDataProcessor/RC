@@ -5,8 +5,8 @@
 #SBATCH --partition=tesla
 #SBATCH --time=1:00
 #SBATCH --mem-per-cpu=1000
-#SBATCH --nodes=100    # XXX start with 1
-#SBATCH --tasks=100     # XXX same
+#SBATCH --nodes=4    # XXX start with 1
+#SBATCH --tasks=4     # XXX same
 #SBATCH --qos=gpu0
 
 set -x
@@ -15,8 +15,9 @@ set -e
 export CAD_FILE=CAD_dna.txt
 export ITEMCOUNT=15000000
 export PROCS_PER_NODE=4
+export CAD=`pwd`/$SLURM_JOB_ID/CAD_dna.txt
 export DDP=`pwd`/dist/build/ddp-erlang-style-SIMD-eventlog/ddp-erlang-style-SIMD-eventlog
-export DDP_OPTS="-RTS -+RTS -l -au"
+export DDP_OPTS=" +RTS -l-au"
 export MIN_PORT=44000
 
 export NODE_FILE=`generate_pbs_nodefile`
