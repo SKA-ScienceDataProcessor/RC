@@ -17,20 +17,27 @@ int roundUpDiv(int num, int den)
 // iC = item count, how many objects
 int chunkSize(int cC, int iC, int cN)
 {
+  int r;
+
   if (cN < 1 || cN > cC)
-    return 0;
+    r =0;
   else if (cN > iC/roundUpDiv(iC, cC) )
-    return iC - (cN-1) * roundUpDiv(iC,cC);
+    r = iC - (cN-1) * roundUpDiv(iC,cC);
   else
-    return roundUpDiv(iC,cC);
+    r = roundUpDiv(iC,cC);
+  printf("cC: %d, iC: %d, cN: %d, result: %d\n", cC, iC, cN, r);
+  return r;
 }
 
 int chunkOffset(int cC, int iC, int cN)
 {
+  int r;
   if (cN > cC || cN <1)
-    return -1;
+    r = -1;
   else
-    return (cN-1) * roundUpDiv(iC, cC);
+    r = (cN-1) * roundUpDiv(iC, cC);
+  printf("cC: %d, iC: %d, cN: %d, result: %d\n", cC, iC, cN, r);
+  return r;
 }
 
 int main(int argc, char **arg)
