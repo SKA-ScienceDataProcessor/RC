@@ -6,7 +6,7 @@
 
 
 
-int roundUpDiv(int num, int den)
+long roundUpDiv(long num, long den)
 {
   assert (den != 0);
   return (num + den -1) / den;
@@ -15,7 +15,7 @@ int roundUpDiv(int num, int den)
 // cC = number of chunks, typically number of compute processes
 // cN = chunk number
 // iC = item count, how many objects
-int chunkSize(int cC, int iC, int cN)
+long chunkSize(long cC, long iC, long cN)
 {
   if (cN < 1 || cN > cC)
     return 0;
@@ -25,7 +25,7 @@ int chunkSize(int cC, int iC, int cN)
     return roundUpDiv(iC,cC);
 }
 
-int chunkOffset(int cC, int iC, int cN)
+long chunkOffset(long cC, long iC, long cN)
 {
   if (cN > cC || cN <1)
     return -1;
@@ -37,7 +37,7 @@ int main(int argc, char **arg)
 {
   int fd;
   off_t size, offset;
-  int iC, cN, cC, count;
+  long iC, cN, cC, count;
 
   double d = 1.0;
 
@@ -46,9 +46,9 @@ int main(int argc, char **arg)
     exit(1);
   }
 
-  iC = atoi(arg[2]);  // item count  = number of floats
-  cC = atoi(arg[3]);  // chunk count = number of compute procs
-  cN = atoi(arg[4]);  // chunk number
+  iC = atol(arg[2]);  // item count  = number of floats
+  cC = atol(arg[3]);  // chunk count = number of compute procs
+  cN = atol(arg[4]);  // chunk number
 
   if (cN == 0) {
     fd = open(arg[1], O_CREAT | O_RDWR, 0664);
@@ -64,7 +64,7 @@ int main(int argc, char **arg)
   assert(offset >= 0 && count <= iC);
   assert(size >= 0);
 
-  assert(printf("Writing %d floats of %d (all 1.0) after %d floats to %s.\n", count, iC , chunkOffset(cC, iC, cN), arg[1]) > 0);
+  assert(printf("Writing %ld floats of %ld (all 1.0) after %ld floats to %s.\n", count, iC , chunkOffset(cC, iC, cN), arg[1]) > 0);
   fd = open(arg[1], O_CREAT | O_RDWR, 0664);
   assert (fd > 0);
   for (int i = 0; i < count ; i++) {
