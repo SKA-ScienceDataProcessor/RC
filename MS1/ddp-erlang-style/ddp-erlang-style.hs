@@ -95,14 +95,14 @@ instance Binary CompVec where
 instance NFData CompVec where
         rnf (CompVec p v) = rnf p `seq` rnf v
 
-spawnCChan :: Int -> (Int -> Double) -> ProcessId -> Process()
+spawnCChan :: Int64 -> (Int -> Double) -> ProcessId -> Process()
 spawnCChan n f pid = do
         myPid <- getSelfPid 
-        let vec = S.generate n f
+        let vec = S.generate (fromIntegral n) f
         timePeriod "generating and sending precomputed vector" $ Unsafe.send pid (CompVec myPid $! vec)
 
 
-spawnCompute :: (FilePath, Int, Int, Int, ProcessId) -> Process ()
+spawnCompute :: (FilePath, Int64, Int64, Int64, ProcessId) -> Process ()
 spawnCompute (file, chOffset, chSize, itemCount, collectorPID) = do
         synchronizationPoint
         getSelfPid >>= enableTrace
@@ -180,7 +180,7 @@ master masterOptions backend peers = do
         let crashEnabled = masterOptsCrash masterOptions
         let filePath = masterOptsFilename masterOptions
         let nidToCrash = head allComputeNids
-        let chunkCount = length allComputeNids 
+        let chunkCount = fromIntegral $ length allComputeNids 
         fileStatus <- liftIO $ getFileStatus filePath 
         let itemCount = div (read $ show (fileSize fileStatus)) itemSize
         liftIO . putStrLn $ "itemcount:  " ++  (show itemCount)

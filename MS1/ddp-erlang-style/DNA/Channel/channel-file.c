@@ -20,7 +20,7 @@
    XXX types: buffer size is a ssize_t, not int
 */
 
-void read_data(double *buf, int n, int o, char *p)
+void read_data(double *buf, long n, long o, char *p)
 {
   int fd;
 
@@ -35,11 +35,11 @@ void read_data(double *buf, int n, int o, char *p)
 
 /* Return pointer to data read through mmap.
  */
-double* read_data_mmap(int n, int o, char *p)
+double* read_data_mmap(long n, long o, char *p)
 {
   int fd;
-  int real_size = n * sizeof(double);
-  int read_size;
+  size_t real_size = n * sizeof(double);
+  ssize_t read_size;
   double *mapping;
 
   fd = open(p, O_RDONLY | __O_DIRECT);
@@ -47,7 +47,7 @@ double* read_data_mmap(int n, int o, char *p)
   mapping = (double*)mmap(NULL, real_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   assert(mapping != NULL);
   read_size= pread(fd, (void*)mapping, real_size, o);
-//  printf("mapping %p, n %d, o %d, real_size %d, read_size %d, mapping %p.\n", mapping, n, o, real_size, read_size);
+//  printf("mapping %p, n %ld, o %ld, real_size %ld, read_size %ld.\n", mapping, n, o, real_size, read_size);
   assert(real_size == read_size);
   close(fd);
 
