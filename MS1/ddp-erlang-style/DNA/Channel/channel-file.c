@@ -48,6 +48,10 @@ double* read_data_mmap(long n, long o, char *p)
   assert(mapping != NULL);
   read_size= pread(fd, (void*)mapping, real_size, o);
 //  printf("mapping %p, n %ld, o %ld, real_size %ld, read_size %ld.\n", mapping, n, o, real_size, read_size);
+  if (real_size != read_size) {
+    perror("failure context");
+    printf("failure context: mapping %p, n %ld, o %ld, real_size %ld, read_size %ld.\n", mapping, n, o, real_size, read_size);
+  }
   assert(real_size == read_size);
   close(fd);
 

@@ -2,7 +2,11 @@
 
 module DNA.Channel.File (
           itemSize
-        , readData, readDataMMap, roundUpDiv, chunkOffset, chunkSize, FileVec(..), spawnFChan
+        , requiredAlignmentInItems
+        , readData, readDataMMap, roundUpDiv
+        , chunkOffset, chunkSize
+        , chunkOffsetWithAlignment, chunkSizeWithAlignment
+        , FileVec(..), spawnFChan
         , module Data.Int
         ) where
 
@@ -35,6 +39,12 @@ import Cfg
 itemSize :: Int64
 itemSize = 8
 
+directReadAlignment :: Int64
+directReadAlignment = 4096
+
+requiredAlignmentInItems :: Int64
+requiredAlignmentInItems = div directReadAlignment itemSize
+
 -- divide up a file in chunkCount chunks
 -- functions to read chunkSize * itemSize from a file at offset chunkSize * itemSize
 roundUpDiv :: Int64 -> Int64 -> Int64
@@ -45,12 +55,19 @@ chunkOffset chunkCount itemCount chunkNo
     | chunkNo > chunkCount || chunkNo < 1 = -1
     | otherwise = itemSize * (chunkNo -1 ) * roundUpDiv itemCount chunkCount
 
+chunkOffsetWithAlignment :: Int64 -> Int64 -> Int64 -> Int64 -> Int64
+chunkOffsetWithAlignment alignment chunkCount itemCount chunkNo =
+        alignment * chunkOffset chunkCount (div itemCount alignment) chunkNo
 
 chunkSize :: Int64 -> Int64 -> Int64 -> Int64
 chunkSize cC iC cN
     |  cN < 1 || cN > cC = 0
     |  cN > div iC (roundUpDiv iC cC) = iC - (cN -1) * (roundUpDiv iC cC)
     |  otherwise = roundUpDiv iC cC
+
+chunkSizeWithAlignment :: Int64 -> Int64 -> Int64 -> Int64 -> Int64
+chunkSizeWithAlignment alignment chunkCount itemCount chunkNo =
+        alignment * chunkSize chunkCount (div itemCount alignment) chunkNo
 
 -- read a buffer from a file into pinned memory
 -- arguments: buffer ptr, size, offset, path

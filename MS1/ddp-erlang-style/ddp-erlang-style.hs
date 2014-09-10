@@ -46,6 +46,10 @@ import DNA.SimpleLocalNetWithoutDiscovery
 
 import Cfg (executableName, timePeriod, timePeriodPure, synchronizationPoint)
 
+import Paths_ddp_erlang_style (version)
+
+
+
 data PartialSum = PartialSum ProcessId Double deriving (Show,Typeable,Generic)
 
 instance Binary PartialSum
@@ -139,13 +143,15 @@ masterMonitor collectorPid = do
         -- if we will just return the value, we may stackoverflow on really big number of processes (1e6+).
         -- so we return a value to dispatch later.
         maybeResult <- receiveWait
-                [ match $ \(ProcessMonitorNotification _ pid _) ->
+                [ match $ \(ProcessMonitorNotification _ pid reason) ->
                         if pid == collectorPid
                                 then do
-                                        sayDebug "Collector failure. Master process terminate."
+                                        sayDebug $ "Collector failure "++show reason++". Master process terminate."
                                         terminate
                                 else do
-                                        sayDebug $ printf "[Coordinator] Compute node failure " ++ (show pid)
+                                        case reason of
+                                                DiedNormal -> return ()
+                                                _ ->  sayDebug $ "[Coordinator] Compute node failure " ++ (show pid)++" reason "++show reason
                                         return Nothing
                 , match $ \(Result sum) -> return (Just sum)
                 ]
@@ -177,6 +183,7 @@ master masterOptions backend peers = do
 
         -- Set up scheduling variables
         let allComputeNids = tail peers
+        let alignmentForFileAccess = masterOptsAlignment masterOptions
         let crashEnabled = masterOptsCrash masterOptions
         let filePath = masterOptsFilename masterOptions
         let nidToCrash = head allComputeNids
@@ -185,10 +192,10 @@ master masterOptions backend peers = do
         let itemCount = div (read $ show (fileSize fileStatus)) itemSize
         liftIO . putStrLn $ "itemcount:  " ++  (show itemCount)
 
-        let chunkOffsets = map (chunkOffset chunkCount itemCount) [1..chunkCount]
+        let chunkOffsets = map (chunkOffsetWithAlignment alignmentForFileAccess chunkCount itemCount) [1..chunkCount]
         liftIO . putStrLn $ "Offsets: " ++ show chunkOffsets
         liftIO . putStrLn $ "NodeIds: " ++ show allComputeNids
-        let chunkSizes = map (chunkSize chunkCount itemCount) [1..chunkCount]
+        let chunkSizes = map (chunkSizeWithAlignment alignmentForFileAccess chunkCount itemCount) [1..chunkCount]
         liftIO . putStrLn $ "chunkSizes : " ++  show chunkSizes
 
 
@@ -215,6 +222,7 @@ master masterOptions backend peers = do
 
 main :: IO ()
 main = do
+        putStrLn $ "ddp-elang-style version "++show version
         dnaParseCommandLineAndRun rtable "ddp-erlang-style" master
   where
         rtable :: RemoteTable

@@ -17,6 +17,8 @@ import DNA.SimpleLocalNetWithoutDiscovery
 
 import Options.Applicative
 
+import DNA.Channel.File (requiredAlignmentInItems, Int64)
+
 -- |@Options@ data type. Holds information parsed from command line.
 -- It is a record, main field is optionsRunMode 
 data Options =
@@ -34,6 +36,7 @@ data CommonOpts = CommonOpts {
 data MasterOptions = MasterOptions {
           masterOptsCrash               :: Bool
         , masterOptsFilename            :: String
+        , masterOptsAlignment           :: Int64
         }
         deriving (Show)
 
@@ -49,10 +52,11 @@ optionsParser name = info (helper <*> (subparser (master <> slave)))
                         (info (Master <$> commonOptions <*> masterOptions <*> restParser) (fullDesc <> progDesc "run as master on IP:PORT"))
                 slave = command "slave"
                         (info (Slave <$> commonOptions <*> restParser) (fullDesc <> progDesc "run as slave on IP:PORT"))
+                alignment = option (short 'a' <> long "alignment" <> help "file access alignment" <> value requiredAlignmentInItems)
                 commonOptions = CommonOpts <$> cadFile <*> ip <*> port
                 cadFile = Just <$> strOption (metavar "CAD" <> long "cad" <> help "Filename of cluster architecture description file.")
                         <|> pure Nothing
-                masterOptions = MasterOptions <$> crashOpt <*> filenameOpt
+                masterOptions = MasterOptions <$> crashOpt <*> filenameOpt <*> alignment
                 filenameOpt = strOption (metavar "FILE" <> long "filename" <> short 'f' <> help "Filename to read data from." <> value "float_file.txt")
                 crashOpt = switch (long "crash" <> short 'c' <> help "make one node to crash.")
                 restParser = many (argument str (metavar "ARGS"))

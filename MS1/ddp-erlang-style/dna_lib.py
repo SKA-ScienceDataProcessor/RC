@@ -44,7 +44,7 @@ def chunk_numbers():
     cnum = []
     hn = host_no()
     if hn is None:
-        print "*** ERROR: cannot find host in CAD file. Exiting."
+        print "*** ERROR: cannot find host "+socket.gethostname()+" in CAD file. Exiting."
         sys.exit(-1)
     for i in range(hn * int(PROCS_PER_NODE), hn * int(PROCS_PER_NODE) + int(PROCS_PER_NODE)):
         if i <= 1:
