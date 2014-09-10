@@ -52,7 +52,7 @@ optionsParser name = info (helper <*> (subparser (master <> slave)))
                         (info (Master <$> commonOptions <*> masterOptions <*> restParser) (fullDesc <> progDesc "run as master on IP:PORT"))
                 slave = command "slave"
                         (info (Slave <$> commonOptions <*> restParser) (fullDesc <> progDesc "run as slave on IP:PORT"))
-                alignment = option (short 'a' <> long "alignment" <> help "file access alignment" <> value requiredAlignmentInItems)
+                alignment = option auto (short 'a' <> long "alignment" <> help "file access alignment" <> value requiredAlignmentInItems)
                 commonOptions = CommonOpts <$> cadFile <*> ip <*> port
                 cadFile = Just <$> strOption (metavar "CAD" <> long "cad" <> help "Filename of cluster architecture description file.")
                         <|> pure Nothing
