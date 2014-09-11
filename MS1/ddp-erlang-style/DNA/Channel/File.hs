@@ -16,7 +16,6 @@ import Control.Distributed.Process
 import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
 
 import Control.Monad
-import Control.Monad.Trans
 
 import Data.Binary
 
