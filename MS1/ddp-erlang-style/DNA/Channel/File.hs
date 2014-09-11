@@ -50,10 +50,19 @@ requiredAlignmentInItems = div directReadAlignment itemSize
 roundUpDiv :: Int64 -> Int64 -> Int64
 roundUpDiv a b = - div (-a) b
 
+-- |Helper function to compute (iC*cN+cC-1)/cC without overflow.
+-- The only condition is that cC*cC does not overflow.
+splitMulRoundDiv :: (Integral a, Num a) => a -> a -> a -> a
+splitMulRoundDiv iC cN cC = sum1 + sum2
+        where
+                (iCDivcC, iCModcC) = divMod iC cC
+                sum1 = iCDivcC*cN + div (iCModcC*cN) cC
+                sum2 = div (mod (iCModcC*cN) cC + cC - 1) cC
+
 chunkOffset :: Int64 -> Int64 -> Int64 -> Int64
 chunkOffset chunkCount itemCount chunkNo
-    | chunkNo > chunkCount || chunkNo < 1 = -1
-    | otherwise = itemSize * (chunkNo -1 ) * roundUpDiv itemCount chunkCount
+--    | chunkNo > chunkCount || chunkNo < 1 = -1
+    | otherwise = splitMulRoundDiv itemCount (chunkNo-1) chunkCount
 
 chunkOffsetWithAlignment :: Int64 -> Int64 -> Int64 -> Int64 -> Int64
 chunkOffsetWithAlignment alignment chunkCount itemCount chunkNo =
@@ -62,8 +71,11 @@ chunkOffsetWithAlignment alignment chunkCount itemCount chunkNo =
 chunkSize :: Int64 -> Int64 -> Int64 -> Int64
 chunkSize cC iC cN
     |  cN < 1 || cN > cC = 0
+    | otherwise = chunkOffset cC iC (cN+1) - chunkOffset cC iC cN
+{-
     |  cN > div iC (roundUpDiv iC cC) = iC - (cN -1) * (roundUpDiv iC cC)
     |  otherwise = roundUpDiv iC cC
+-}
 
 chunkSizeWithAlignment :: Int64 -> Int64 -> Int64 -> Int64 -> Int64
 chunkSizeWithAlignment alignment chunkCount itemCount chunkNo =
@@ -85,12 +97,12 @@ readData n o p = do
         MS.unsafeWith mv $ \ptr ->
     -- Here I assume that CDouble and Double are same thing (it is)
     --     -- and blindly cast pointer
-                withCString p (c_read_data (castPtr ptr) (fromIntegral n) (fromIntegral o))
+                withCString p (c_read_data (castPtr ptr) (fromIntegral n) (fromIntegral (itemSize * o)))
         S.unsafeFreeze mv
 
 readDataMMap :: Int64 -> Int64 -> String -> IO (S.Vector Double)
 readDataMMap n o p = do
-        ptr <- withCString p (c_read_data_mmap (fromIntegral n) (fromIntegral o))
+        ptr <- withCString p (c_read_data_mmap (fromIntegral n) (fromIntegral (itemSize * o)))
         fptr <- newForeignPtr_ ptr
         return $ S.unsafeFromForeignPtr0 (castForeignPtr fptr) (fromIntegral n)
 
