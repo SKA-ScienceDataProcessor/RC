@@ -20,5 +20,4 @@ for i, line in enumerate(lines):
     if DEBUG:
         print cmd_str
     else:
-        if i == 0 or i == 11:
-                subprocess.call(cmd_str, shell=True)
+        subprocess.call(cmd_str, shell=True)
