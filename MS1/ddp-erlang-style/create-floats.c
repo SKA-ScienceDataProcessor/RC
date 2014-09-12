@@ -123,6 +123,8 @@ int main(int argc, char **arg)
     fd = open(arg[1], O_CREAT | O_RDWR, 0664);
     assert (fd > 0);
     ftruncate(fd, iC * sizeof(d));
+    sync(fd);
+    close(fd);
     return 0;
   }
 
@@ -145,6 +147,8 @@ int main(int argc, char **arg)
     offset += size_to_write;
     len -= current_len;
   }
+  sync(fd);
+  close(fd);
   return 0;
 }
 
