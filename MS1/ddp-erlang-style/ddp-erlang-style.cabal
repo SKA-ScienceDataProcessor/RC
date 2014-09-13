@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                ddp-erlang-style
-version:             0.1.10.1
+version:             0.1.11.1
 synopsis:            DSL constructions for radio astronomy imaging with a focus on data movement and optimization
 -- description:         
 homepage:            https://github.com/SKA-ScienceDataProcessor/RC
@@ -24,9 +24,9 @@ executable ddp-erlang-style
   build-depends:       base >=4.6, binary, unix, mtl,
                        distributed-process == 0.5.*,
                        distributed-process-platform == 0.1.*,
-                       distributed-process-simplelocalnet,
-                       mmap, network, network-transport, network-transport-tcp, containers, deepseq, optparse-applicative,
-                       transformers, data-accessor, bytestring, network-multicast,
+                       network == 2.4.2.*, network-transport == 0.4.0.*, network-transport-tcp == 0.4.0.* , containers == 0.5.5.*,
+                       deepseq == 1.3.0.*, optparse-applicative == 0.10.*,
+                       transformers == 0.4.1.*, data-accessor == 0.2.2.*, bytestring == 0.10.4.*, network-multicast == 0.0.11.*,
                        vector >= 0.10
 
   ghc-options:         -O2 -threaded
@@ -51,9 +51,9 @@ executable ddp-erlang-style-SIMD
   build-depends:       base >=4.6, binary, unix, mtl,
                        distributed-process == 0.5.*,
                        distributed-process-platform == 0.1.*,
-                       distributed-process-simplelocalnet,
-                       mmap, network, network-transport, network-transport-tcp, containers, deepseq, optparse-applicative,
-                       transformers, data-accessor, bytestring, network-multicast,
+                       network == 2.4.2.*, network-transport == 0.4.0.*, network-transport-tcp == 0.4.0.* , containers == 0.5.5.*,
+                       deepseq == 1.3.0.*, optparse-applicative == 0.10.*,
+                       transformers == 0.4.1.*, data-accessor == 0.2.2.*, bytestring == 0.10.4.*, network-multicast == 0.0.11.*,
                        vector >= 0.10
 
   hs-source-dirs:      ., cfgs/SIMD
@@ -78,10 +78,10 @@ executable ddp-erlang-style-SIMD-eventlog
   build-depends:       base >=4.6, binary, unix, mtl,
                        distributed-process == 0.5.*,
                        distributed-process-platform == 0.1.*,
-                       distributed-process-simplelocalnet,
-                       mmap, network, network-transport, network-transport-tcp, containers, deepseq, time, old-locale, optparse-applicative,
-                       transformers, data-accessor, bytestring, network-multicast,
-                       vector >= 0.10
+                       network == 2.4.2.*, network-transport == 0.4.0.*, network-transport-tcp == 0.4.0.* , containers == 0.5.5.*,
+                       deepseq == 1.3.0.*, optparse-applicative == 0.10.*,
+                       transformers == 0.4.1.*, data-accessor == 0.2.2.*, bytestring == 0.10.4.*, network-multicast == 0.0.11.*,
+                       vector >= 0.10, time == 1.4.2.*, old-locale == 1.0.0.*
 
   hs-source-dirs:      ., cfgs/SIMD-eventlog
 

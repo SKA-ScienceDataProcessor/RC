@@ -13,7 +13,7 @@ DEBUG = False
 
 CMD_MASTER = "$DDP master --cad $CAD_FILE --ip $IP --port $PORT --filename ../../INPUT $DDP_OPTS"
 CMD_SLAVE = "$DDP slave --cad $CAD_FILE --ip $IP --port $PORT $DDP_OPTS"
-CMD_LOG = "ghc-events show $IN > $OUT"
+CMD_LOG = "$GHC_EVENTS show $IN > $OUT"
 
 children = []
 os.makedirs(get_ip())
@@ -39,22 +39,13 @@ for i, line in enumerate(my_lines()):
             cmd_str = Template(CMD_SLAVE).substitute(DDP=DDP, CAD_FILE=CAD_FILE, PORT=port, DDP_OPTS=DDP_OPTS, IP=get_ip())
             print "Running slave:", cmd_str
 
-        if DEBUG:
-            print "*** I'm in :", os.getcwd()
-            print "*** Would execute: ", cmd_str
-            print "*** Log name is: ", os.path.split(DDP)[-1] + ".eventlog"
-            print "*** Would rename:", "../../eventlog.{0}.{1}".format(get_ip(), port)
-        else:
-            print "*** I'm in :", os.getcwd()
-            print "*** Would execute: ", cmd_str
-            subprocess.call(cmd_str, shell=True)
-            src_name = os.path.split(DDP)[-1] + ".eventlog"
-            print "*** I'm in :", os.getcwd()
-            dst_name = "../../eventlog.{0}.{1}".format(get_ip(), port)
-            #os.rename(os.path.split(DDP)[-1] + ".eventlog", "../../eventlog.{0}.{1}".format(get_ip(), port))
-            os.rename(src_name, dst_name)
-            cmd_log = Template(CMD_LOG).substitute(IN=dst_name, OUT=dst_name + ".txt")
-            subprocess.call(cmd_log, shell=True)
+        subprocess.call(cmd_str, shell=True)
+
+        src_name = os.path.split(DDP)[-1] + ".eventlog"
+        dst_name = "../../eventlog.{0}.{1}".format(get_ip(), port)
+        os.rename(src_name, dst_name)
+        cmd_log = Template(CMD_LOG).substitute(GHC_EVENTS=GHC_EVENTS, IN=dst_name, OUT=dst_name + ".txt")
+        subprocess.call(cmd_log, shell=True)
         os._exit(0)
 
 os.chdir(old_dir)

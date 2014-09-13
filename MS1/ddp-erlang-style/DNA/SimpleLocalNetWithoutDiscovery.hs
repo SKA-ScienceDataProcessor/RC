@@ -196,7 +196,6 @@ initializeBackend maybeCadFile host port rtable = do
             Just (host, port) -> (host, port)
             Nothing -> error $ "invalid uri "++show uri
       let hostPorts = map getHostPort $ catMaybes $ map URI.parseURI uriLines
-      putStrLn $ "uriLines "++show uriLines++", host and ports "++show hostPorts
       addresses <- liftM concat $ forM hostPorts $ \(theirHost, theirPort) -> do
             if host == theirHost && port == theirPort
                     then return []
@@ -204,10 +203,9 @@ initializeBackend maybeCadFile host port rtable = do
                             -- passing 0 as a endpointid is a hack. Again, I haven't found any better way.
                             let ep = NT.encodeEndPointAddress theirHost theirPort 0
                             return [NodeId ep]
-      putStrLn $ "addresses "++show addresses
+      --putStrLn $ "addresses "++show (take 3 addresses)
       return (addresses, True)
     Nothing -> return ([], False)
-  putStrLn $ "addresses read: "++show addresses
   (_, backendState) <- fixIO $ \ ~(tid, _) -> do
     backendState <- newMVar BackendState
                       { _localNodes      = []
@@ -216,7 +214,7 @@ initializeBackend maybeCadFile host port rtable = do
                       }
     tid' <- forkIO $ peerDiscoveryDaemon peersPreset backendState recv sendp
     return (tid', backendState)
-  readMVar backendState >>= \bes -> putStrLn ("peers: "++show (_peers bes))
+  -- readMVar backendState >>= \bes -> putStrLn ("peers: "++show (_peers bes))
   case mTransport of
     Left err -> throw err
     Right transport ->

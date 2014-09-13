@@ -9,12 +9,16 @@ NODE_FILE = os.environ["NODE_FILE"]
 PROCS_PER_NODE = os.environ["PROCS_PER_NODE"]
 ITEMCOUNT = os.environ["ITEMCOUNT"]
 DDP = os.environ["DDP"]
+GHC_EVENTS = os.environ["GHC_EVENTS"]
 DDP_OPTS = os.environ["DDP_OPTS"]
 MIN_PORT = os.environ["MIN_PORT"]
-
+RUN_LOCAL = os.environ["RUN_LOCAL"]
 
 def get_ip():
-    return socket.gethostbyname(socket.gethostname())
+    if RUN_LOCAL is None:
+        return socket.gethostbyname(socket.gethostname())
+    else:
+        return "127.0.0.1";
 
 
 def my_lines():
@@ -44,7 +48,7 @@ def chunk_numbers():
     cnum = []
     hn = host_no()
     if hn is None:
-        print "*** ERROR: cannot find host in CAD file. Exiting."
+        print "*** ERROR: cannot find host "+socket.gethostname()+" in CAD file. Exiting."
         sys.exit(-1)
     for i in range(hn * int(PROCS_PER_NODE), hn * int(PROCS_PER_NODE) + int(PROCS_PER_NODE)):
         if i <= 1:

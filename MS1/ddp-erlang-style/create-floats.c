@@ -4,7 +4,8 @@
 #include <unistd.h>
 #include <assert.h>
 
-
+// presently there is no alignment for DIRECT_IO
+// However, direct IO is not available at HPCS
 
 long roundUpDiv(long num, long den)
 {
@@ -17,7 +18,7 @@ long roundUpDiv(long num, long den)
 // iC = item count, how many objects
 long chunkSize(long cC, long iC, long cN)
 {
-  int r;
+  long r;
 
   if (cN < 1 || cN > cC)
     r =0;
@@ -25,63 +26,47 @@ long chunkSize(long cC, long iC, long cN)
     r = iC - (cN-1) * roundUpDiv(iC,cC);
   else
     r = roundUpDiv(iC,cC);
-  printf("cC: %d, iC: %d, cN: %d, result: %d\n", cC, iC, cN, r);
+  //    printf("cC: %ld, iC: %ld, cN: %ld, result: %ld\n", cC, iC, cN, r);
   return r;
 }
 
 long chunkOffset(long cC, long iC, long cN)
 {
-  int r;
+  long r;
   if (cN > cC || cN <1)
     r = -1;
   else
     r = (cN-1) * roundUpDiv(iC, cC);
-  printf("cC: %d, iC: %d, cN: %d, result: %d\n", cC, iC, cN, r);
+  //  printf("cC: %d, iC: %d, cN: %d, result: %d\n", cC, iC, cN, r);
   return r;
 }
-
-#ifdef  LOCAL_TEST
-#define BUF_SIZE        16384
-double buffer [BUF_SIZE];
-#endif
 
 int main(int argc, char **arg)
 {
   int fd;
   off_t size, offset;
-  long iC, cN, cC, count;
-  long len, current_len;
+  long iC, cN, cC, count, i;
+  char *nodeid;
 
   double d = 1.0;
 
-  if (argc != 5) {
-    printf("usage: %s path itemcount processcount chunkno -- write floats to file \"path\" \n", arg[0]);
+  if (argc != 5 && argc != 6) {
+    printf("usage: %s path itemcount processcount chunkno [nodeid] -- write floats to file \"path\" \n", arg[0]);
     exit(1);
   }
 
-  iC = atol(arg[2]);  // item count  = number of floats
+  iC = atol(arg[2]);  // item count  = total number of floats
   cC = atol(arg[3]);  // chunk count = number of compute procs
-  cN = atol(arg[4]);  // chunk number
-
+  cN = atol(arg[4]);  // chunk number 
+  if  (arg[5])
+    nodeid = arg[5];
+  else 
+    nodeid = "<no nodeid>";
+     
   if (cN == 0) {
     fd = open(arg[1], O_CREAT | O_RDWR, 0664);
     assert (fd > 0);
     ftruncate(fd, iC * sizeof(d));
-#ifdef  LOCAL_TEST   // for local testing.
-    len = iC;
-    offset = 0;
-    for (int i = 0; i < BUF_SIZE; i++) {
-      buffer[i] = d;
-    }
-    while (len > 0) {
-      current_len = len > BUF_SIZE ? BUF_SIZE : len;
-      size_t size_to_write = current_len * sizeof(buffer[0]);
-      ssize_t written = pwrite(fd, buffer, size_to_write, offset);
-      assert (size_to_write == written);
-      offset += size_to_write;
-      len -= current_len;
-    }
-#endif
     return 0;
   }
 
@@ -92,15 +77,15 @@ int main(int argc, char **arg)
   assert(offset >= 0 && count <= iC);
   assert(size >= 0);
 
-  printf("Writing %ld floats of %ld (all 1.0) after %ld floats to %s.\n", count, iC , chunkOffset(cC, iC, cN), arg[1]);
-  fd = open(arg[1], O_CREAT | O_RDWR, 0664);
+  printf("[%s] Chunk %ld/%ld: %ld/%ld floats at %ld floats.  bytes: %lld at %lld. file: \"%s\".\n", 
+	 nodeid, cN, cC, count, iC, chunkOffset(cC, iC, cN), size, offset, arg[1]);
+  fd = open(arg[1], O_CREAT | O_RDWR, 0660);
   assert (fd > 0);
-/*
-  for (int i = 0; i < count ; i++) {
-    assert(pwrite(fd, &d, sizeof (d), offset) == sizeof(d));
+  for (i=0; i<count; i++) {
+    assert( sizeof(d) == pwrite(fd, &d, sizeof(d), offset));
     offset += sizeof(d);
   }
-*/
+  
   return 0;
 }
 

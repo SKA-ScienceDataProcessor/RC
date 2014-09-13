@@ -2,7 +2,9 @@
 
 module DNA.Channel.File (
           itemSize
-        , readData, readDataMMap, roundUpDiv, chunkOffset, chunkSize, FileVec(..), spawnFChan
+        , readData, readDataMMap, roundUpDiv
+        , chunkOffset, chunkSize
+        , FileVec(..), spawnFChan
         , module Data.Int
         ) where
 
@@ -12,7 +14,6 @@ import Control.Distributed.Process
 import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
 
 import Control.Monad
-import Control.Monad.Trans
 
 import Data.Binary
 
@@ -32,9 +33,9 @@ import Foreign.C.String
 
 import Cfg
 
+-- XXX Let's have 8 space indents everywhere
 itemSize :: Int64
 itemSize = 8
-
 -- divide up a file in chunkCount chunks
 -- functions to read chunkSize * itemSize from a file at offset chunkSize * itemSize
 roundUpDiv :: Int64 -> Int64 -> Int64
@@ -60,7 +61,7 @@ foreign import ccall unsafe "read_data"
 -- read a buffer from a file into mmapped memory.
 -- arguments: size (num of elements of double type), offset, path
 foreign import ccall unsafe "read_data_mmap"
-    c_read_data_mmap :: CLong -> CLong -> CString -> IO (Ptr CDouble)
+    c_read_data_mmap :: CLong -> CLong -> CString -> CString -> IO (Ptr CDouble)
 
 readData :: Int64 -> Int64 -> String -> IO (S.Vector Double)
 readData n o p = do
@@ -71,9 +72,13 @@ readData n o p = do
                 withCString p (c_read_data (castPtr ptr) (fromIntegral n) (fromIntegral o))
         S.unsafeFreeze mv
 
-readDataMMap :: Int64 -> Int64 -> String -> IO (S.Vector Double)
-readDataMMap n o p = do
-        ptr <- withCString p (c_read_data_mmap (fromIntegral n) (fromIntegral o))
+readDataMMap :: Int64 -> Int64 -> String -> String -> IO (S.Vector Double)
+readDataMMap n o p nodeId = do
+        path <- newCString p
+        nodeStr <- newCString nodeId
+        ptr <-  c_read_data_mmap (fromIntegral n) (fromIntegral o) path nodeStr
+        free path
+        free nodeStr
         fptr <- newForeignPtr_ ptr
         return $ S.unsafeFromForeignPtr0 (castForeignPtr fptr) (fromIntegral n)
 
@@ -96,6 +101,6 @@ instance CD.NFData FileVec where
 spawnFChan :: String -> Int64 -> Int64 -> ProcessId -> Process()
 spawnFChan path cO cS pid = do
         mypid <- getSelfPid
-        iov <- timePeriod "reading file" $ liftIO $ readDataMMap cS cO path
+        iov <- timePeriod "reading file" $ liftIO $ readDataMMap cS cO path (show mypid)
         Unsafe.send pid (FileVec mypid iov)
 

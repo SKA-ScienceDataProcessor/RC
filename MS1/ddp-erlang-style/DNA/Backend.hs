@@ -1,8 +1,8 @@
 -- |Backend.hs
 --
 -- Backend implementation for DNA project.
---
--- Copyright (C) 2014 Braa Research, LLC.
+-- Author: Braam Research, LLC
+-- Copyright (C) 2014 Cambridge University
 
 module DNA.Backend where
 

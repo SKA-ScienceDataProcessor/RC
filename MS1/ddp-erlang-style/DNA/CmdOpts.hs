@@ -17,6 +17,8 @@ import DNA.SimpleLocalNetWithoutDiscovery
 
 import Options.Applicative
 
+import DNA.Channel.File
+
 -- |@Options@ data type. Holds information parsed from command line.
 -- It is a record, main field is optionsRunMode 
 data Options =
