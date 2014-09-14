@@ -83,40 +83,40 @@ def all_times(evt_lst, title, uevents, min_port=0, zooming=False):
             if len(events) != len(set(events)):
                 if evt[0] == "collection phase":
                     # I don't understand why it escapes the normal flow
-                    plt.plot([evt[1]/timeScale, evt[2]/timeScale], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=1.5, label=evt[0])
+                    plt.plot([evt[1]/timeScale, evt[2]/timeScale], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=0.5, label=evt[0])
                 else:
 
-                    plt.plot([evt[1]/timeScale, evt[2]/timeScale], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=1.5)
+                    plt.plot([evt[1]/timeScale, evt[2]/timeScale], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=0.5)
             else:
 
                 if evt[0] == "generating and sending precomputed vector":
                     label = "generating and sending \nprecomputed vector"
                 else:
                     label = evt[0]
-                plt.plot([evt[1]/timeScale, evt[2]/timeScale], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=1.5, label=label)
+                plt.plot([evt[1]/timeScale, evt[2]/timeScale], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=0.5, label=label)
         else:
 
             ax1 = fig.add_subplot(111)
             if len(events) != len(set(events)):
-                ax1.plot([evt[1]/timeScale, evt[2]/timeScale], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=1.5)
+                ax1.plot([evt[1]/timeScale, evt[2]/timeScale], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=0.5)
 
             else:
                 if evt[0] == "generating and sending precomputed vector":
                     label = "generating and sending \nprecomputed vector"
                 else:
                     label = evt[0]
-                ax1.plot([evt[1]/timeScale, evt[2]/timeScale], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=1.5, label=label)
+                ax1.plot([evt[1]/timeScale, evt[2]/timeScale], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=0.5, label=label)
 
             ax2 = plt.axes([.4, .2, .2, .18], axisbg='w')
             if len(events) != len(set(events)):
-                ax2.plot([evt[1]/1e6, evt[2]/1e6], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=1.5)
+                ax2.plot([evt[1]/1e6, evt[2]/1e6], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=0.5)
 
             else:
                 if evt[0] == "generating and sending precomputed vector":
                     label = "generating and sending \nprecomputed vector"
                 else:
                     label = evt[0]
-                ax2.plot([evt[1]/1e6, evt[2]/1e6], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=1.5, label=label)
+                ax2.plot([evt[1]/1e6, evt[2]/1e6], [process_no + 4*shift, process_no + 4*shift], "-", color=color, lw=0.5, label=label)
 
             plt.setp(ax2, xticks=[], yticks=[])
             plt.setp(ax2, ylim=[58, 64])
@@ -126,8 +126,8 @@ def all_times(evt_lst, title, uevents, min_port=0, zooming=False):
         plt.grid("on")
 
     if not zooming:
-        plt.ylim([0, 200])
-        plt.xlabel(r"time, $\mu$s")
+        plt.ylim([0, 50])
+        plt.xlabel(r"time, $\times10^9$ns")
         plt.ylabel("process number")
         #plt.legend(fontsize=9, fancybox=True, shadow=True, ncol=2, bbox_to_anchor=(0.98, 0.68), loc='best')
         plt.legend(fontsize=8, fancybox=True, shadow=True, ncol=1, loc='best')
@@ -164,16 +164,18 @@ def distribution_plot(evt_lst, min_port):
               "reading file",
               "receiving computed vector",
               "receiving read vector",
-              "receiving vectors"]
+              "receiving vectors",
+              "adjusted compute time"]
 
-    for i in range(1, nrows*ncols):
+    for i in range(1, nrows*ncols + 1):
         ax = plt.subplot(ncols, nrows, i)
         plt.subplots_adjust(hspace=0.3, wspace=0.3)
         plt.grid("on")
         plt.hold("on")
         plt.title(titles[i-1])
         plt.ylabel(r"time, $\mu$s")
-        #plt.xlim([0, 102])
+
+        plt.xlim([0, 200])
         plt.xlabel("process number")
         axes.append(ax)
 
@@ -225,6 +227,22 @@ def distribution_plot(evt_lst, min_port):
             plt.axes(axes[6])
             plt.bar(proc_num, evt[3], color=color, edgecolor="none")
 
+    plt.axes(axes[7])
+
+    # Plot adjusted computation time
+    ends = []
+    starts = []
+    proc_nums = []
+
+    for evt in evt_lst:
+        if evt[0] == "pure computation time":
+            proc_nums.append(evt[6])
+            ends.append(evt[2])
+        if evt[0] == "compute sends sum":
+            starts.append(evt[1])
+
+    for i in range(len(starts)):
+        plt.bar(proc_nums[i], (ends[i] - starts[i]) / 1e6, color=DARKBLUE, edgecolor="none")
 
     #fig.tight_layout()
     fig.canvas.draw()
@@ -300,8 +318,6 @@ def performance_plot(evt_lst, file_size, batch_size, num_nodes):
     plt.bar(x, rp, color=DARKBLUE, edgecolor="none")
     plt.xlim([-1, len(b) + 1])
 
-
-
     fig.canvas.draw()
     fig.savefig("performance-{}.pdf".format(num_nodes))
 
@@ -313,12 +329,16 @@ if __name__ == "__main__":
     #evt_folder = "/Users/serge/Downloads/textualLogs_64nodes"
     #evt_folder = "/Users/serge/Downloads/logs16node-N12_26_08_14"
     #evt_folder = "/Users/serge/Downloads/textualLogs_100nodes_28_08_2014"
-    evt_folder = "/Users/serge/Desktop/16node-txt"
+    #evt_folder = "/Users/serge/Desktop/16nodesTue-txt"
+    # evt_folder = "/Users/serge/Desktop/1n12-txt"
+    evt_folder = "/Users/serge/Desktop/650661-16-node-txt"
+
     if len(sys.argv) > 1:
         evt_folder = sys.argv[1]
     ed = readlog.events_dict(evt_folder)
+
     print "Unique events:", ed['events']
-    all_times(ed['list'], "Dot product profiling results, 16-node cluster. Offset is off.",
+    all_times(ed['list'], "Dot product profiling results, 16-node, 12 threads. Adjusted offset.",
               ed["events"], min_port=ed["min_port"], zooming=False)
     distribution_plot(ed['list'], ed["min_port"])
 
@@ -336,5 +356,5 @@ if __name__ == "__main__":
     print "per node: ", rp
     print "total: ", srp
 
-    #  You will need to change he last argument if you have a different number of nodes in the cluster!
+    #  You will need to change the last argument if you have a different number of nodes in the cluster!
     performance_plot(ed["list"], 156, 20447232, 100)

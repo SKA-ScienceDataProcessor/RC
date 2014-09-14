@@ -12,13 +12,10 @@ DDP = os.environ["DDP"]
 GHC_EVENTS = os.environ["GHC_EVENTS"]
 DDP_OPTS = os.environ["DDP_OPTS"]
 MIN_PORT = os.environ["MIN_PORT"]
-RUN_LOCAL = os.environ["RUN_LOCAL"]
+
 
 def get_ip():
-    if RUN_LOCAL is None:
-        return socket.gethostbyname(socket.gethostname())
-    else:
-        return "127.0.0.1";
+    return socket.gethostbyname(socket.gethostname())
 
 
 def my_lines():

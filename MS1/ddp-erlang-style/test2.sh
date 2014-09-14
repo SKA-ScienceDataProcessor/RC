@@ -7,12 +7,11 @@ export GHC_EVENTS=`pwd`/.cabal-sandbox/bin/ghc-events
 export SLURM_JOB_ID=testdir
 export CAD_FILE=`pwd`/$SLURM_JOB_ID/CAD_dna.txt
 export CAD=`pwd`/$SLURM_JOB_ID/CAD_dna.txt
-export DDP=`pwd`/dist/build/ddp-erlang-style-SIMD-eventlog/ddp-erlang-style-SIMD-eventlog
+#export DDP=`pwd`/dist/build/ddp-erlang-style-SIMD-eventlog/ddp-erlang-style-SIMD-eventlog
+export DDP=`pwd`/dist/build/ddp-erlang-style/ddp-erlang-style
 export DDP_OPTS=" +RTS -l-au"
 export MIN_PORT=44000
 export NODE_FILE=nodes.txt
-export RUN_LOCAL="1"
-
 export ITEMCOUNT=1500000
 export PROCS_PER_NODE=4
 

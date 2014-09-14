@@ -44,7 +44,7 @@ class LogEntry(object):
     @property
     def duration(self):
         if (self.end is not None) and (self.start is not None):
-            duration = (int(self.end) - int(self.start)) / 1.0e6
+            duration = (int(self.end) - int(self.start)) / 1.0e6 #microseconds
         else:
             duration = None
         return duration
