@@ -1,7 +1,7 @@
 ---
 layout: page
 permalink: /man/
-title: RC site documentation / instructions
+title: Site Manual
 description: "How to work with the site and how to work the theme"
 tags: [Jekyll, theme, install, setup]
 share: true
@@ -22,7 +22,7 @@ The easiest (but not the best) way to work with the site is editing correspondin
 
 The configuration is kept on the file called `_config.yml`. If you want to change the stucture, add new pages, you will have to modify this file. 
 
-### Adding new pages / Renaming pages in the menu
+### Modifying menu structure
 
 The configuration file has a special section, called links that creates structure in the menu. This section looks like this:
 
@@ -37,6 +37,33 @@ The configuration file has a special section, called links that creates structur
         url: /dev/
       
 If you you want to reference an external web page from the menu add word `external: true` after the link. For more details, see the theme documentation below.
+
+### Adding page
+
+To add a new page, simply create a file called `your_new_page.md` and add the following preamble at the beginning of the page:
+
+---
+layout: page
+permalink: /your_new_page_url/
+title: Page Title
+description: "Radio Cortex Development Page"
+tags: [RC, Development]
+share: true
+---
+
+Don't start page or permalink with underscore.
+
+### Links to downloads
+
+I created a special folder, called `downloads` to keep pdf documents and other binary artifacts (other than executable binaries). Add and push the documents you want to reference from the site and then follow the steps below:
+
+1. Navigate to the folder with the document you want to reference in your browser (make sure you are browsing `gh-pages`
+1. Click on the link in your browser (see the image below)
+1. Press raw button at the right and copy the link called View Raw
+
+![Referencing artifacts](links.png "Links to files in /downloads")
+
+1. Add link to the file, using standard markdown syntax
 
 
 ## General notes and suggestions for customizing **HPSTR**.
