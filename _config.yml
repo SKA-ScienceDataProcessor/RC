@@ -42,7 +42,7 @@ links:
   - title: Documents
     url: ../docs/
   - title: Milestones
-    url: ../milestones
+    url: ../milestones/
     external: true
 
 # http://en.wikipedia.org/wiki/List_of_tz_database_time_zones
