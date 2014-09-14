@@ -156,16 +156,13 @@ import qualified Network.Transport.TCP as NT
 import qualified Network.URI as URI
 import qualified Network.Transport as NT (Transport(..), address)
 import qualified Network.Socket as N (HostName, ServiceName, SockAddr)
-import DNA.SimpleLocalnet.Internal.Multicast (initMulticast)
 
 -- | Local backend
 data Backend = Backend {
     -- | Create a new local node
     newLocalNode :: IO Node.LocalNode
-    -- | @findPeers t@ broadcasts a /who's there?/ message on the local
-    -- network, waits 't' microseconds, and then collects and returns the answers.
-    -- You can use this to dynamically discover peer nodes.
-  , findPeers :: Int -> IO [NodeId]
+    -- | @findPeers returns the list of peers
+  , findPeers :: IO [NodeId]
     -- | Make sure that all log messages are printed by the logger on the
     -- current node
   , redirectLogsHere :: [ProcessId] -> Process ()
@@ -174,15 +171,13 @@ data Backend = Backend {
 data BackendState = BackendState {
    _localNodes      :: [Node.LocalNode]
  , _peers           :: [NodeId]
- ,  discoveryDaemon :: ThreadId
  }
 
 -- | Initialize the backend
 initializeBackend :: Maybe FilePath -> N.HostName -> N.ServiceName -> RemoteTable -> IO Backend
 initializeBackend maybeCadFile host port rtable = do
   mTransport   <- NT.createTransport host port NT.defaultTCPParameters
-  (recv, sendp) <- initMulticast  "224.0.0.99" 9999 1024
-  (addresses, peersPreset) <- case maybeCadFile of
+  addresses <- case maybeCadFile of
     Just cadFile -> do
       text <- readFile cadFile
       let nonEmpty ('#':_) = False
@@ -204,26 +199,21 @@ initializeBackend maybeCadFile host port rtable = do
                             let ep = NT.encodeEndPointAddress theirHost theirPort 0
                             return [NodeId ep]
       --putStrLn $ "addresses "++show (take 3 addresses)
-      return (addresses, True)
-    Nothing -> return ([], False)
-  (_, backendState) <- fixIO $ \ ~(tid, _) -> do
-    backendState <- newMVar BackendState
+      return addresses
+  backendState <- newMVar BackendState
                       { _localNodes      = []
                       , _peers           = addresses
-                      ,  discoveryDaemon = tid
                       }
-    tid' <- forkIO $ peerDiscoveryDaemon peersPreset backendState recv sendp
-    return (tid', backendState)
-  -- readMVar backendState >>= \bes -> putStrLn ("peers: "++show (_peers bes))
+    -- readMVar backendState >>= \bes -> putStrLn ("peers: "++show (_peers bes))
   case mTransport of
     Left err -> throw err
     Right transport ->
       let backend = Backend {
           newLocalNode       = apiNewLocalNode transport rtable backendState
-        , findPeers          = apiFindPeers peersPreset sendp backendState
+        , findPeers          = apiFindPeers backendState
         , redirectLogsHere   = apiRedirectLogsHere backend
         }
-      in return backend
+      in return backend 
 
 -- | Create a new local node
 apiNewLocalNode :: NT.Transport
@@ -236,49 +226,10 @@ apiNewLocalNode transport rtable backendState = do
   return localNode
 
 -- | Peer discovery
-apiFindPeers :: Bool
-             -> (PeerDiscoveryMsg -> IO ())
-             -> MVar BackendState
-             -> Int
+apiFindPeers :: MVar BackendState
              -> IO [NodeId]
-apiFindPeers peersPreset sendfn backendState delay = do
-  when (not peersPreset) $ do
-        sendfn PeerDiscoveryRequest
-        threadDelay delay
+apiFindPeers backendState = do
   (^. peers) <$> readMVar backendState
-
-data PeerDiscoveryMsg =
-    PeerDiscoveryRequest
-  | PeerDiscoveryReply NodeId
-
-instance Binary PeerDiscoveryMsg where
-  put PeerDiscoveryRequest     = putWord8 0
-  put (PeerDiscoveryReply nid) = putWord8 1 >> put nid
-  get = do
-    header <- getWord8
-    case header of
-      0 -> return PeerDiscoveryRequest
-      1 -> PeerDiscoveryReply <$> get
-      _ -> fail "PeerDiscoveryMsg.get: invalid"
-
--- | Respond to peer discovery requests sent by other nodes
-peerDiscoveryDaemon :: Bool
-                    -> MVar BackendState
-                    -> IO (PeerDiscoveryMsg, N.SockAddr)
-                    -> (PeerDiscoveryMsg -> IO ())
-                    -> IO ()
-peerDiscoveryDaemon peersPreset backendState recv sendfn
-  | peersPreset = return ()
-  | otherwise = forever go
-  where
-    go = do
-      (msg, _) <- recv
-      case msg of
-        PeerDiscoveryRequest -> do
-          nodes <- (^. localNodes) <$> readMVar backendState
-          forM_ nodes $ sendfn . PeerDiscoveryReply . Node.localNodeId
-        PeerDiscoveryReply nid ->
-          modifyMVar_ backendState $ return . (peers ^: (nub . (nid:)))
 
 --------------------------------------------------------------------------------
 -- Back-end specific primitives                                               --
@@ -381,7 +332,7 @@ terminateSlave nid = nsendRemote nid "slaveController" SlaveTerminate
 -- | Find slave nodes
 findSlaves :: Backend -> Process [ProcessId]
 findSlaves backend = do
-  nodes <- liftIO $ findPeers backend 1000000
+  nodes <- liftIO $ findPeers backend
   -- Fire off asynchronous requests for the slave controller
 
   bracket
