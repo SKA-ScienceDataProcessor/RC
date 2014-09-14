@@ -11,32 +11,34 @@ share: true
 ---
 
 
-Here is list of module and their purpose. This is current state of package and things will undoubtedly change.
+## Project description: 
 
-#### Module DNA
+provides concise description of the project
 
-Public interface to the DNA. It provide reexports and DSLs for definition of actors and dataflow graph. It’s not complete and export from the internal modules are required so far.
+## TOC: 
 
-#### Module DNA.AST
+recommended for large README files, can reference sections inside the file or point to other sources 
 
-Abstract syntax tree for the functional language. It’s  internal representation which uses De Bruijn indices.
+## What is included: 
 
-#### Module DNA.Actor
+explain project structure, folders layout
 
-Data type for definition of dataflow graph.
+## Examples: 
 
-#### Module DNA.Compiler.Basic
+links to examples showing how the project can be used / integrated with existing code, instructions how to build / run examples
+Link to bug and feature requests: instructions on how to file a bug or request a new feature, typically via GitHub tools
 
-Simple checks for the dataflow graph
 
-#### Module DNA.Compiler.Types
+## Copyright and license: 
 
-Common data type for the compiler. It include monad for error handling and source of fresh names.
+a sentence or two with links to LICENSE and COPYRIGHT files
 
-#### Module DNA.Compiler.Scheduler
 
-Very simple scheduler for dataflow graph.
+## Creators: 
 
-#### Module DNA.Compiler.CH
+list of project contributors
 
-Code generation of for cloud haskell.
+
+##References: 
+
+links to related projects / documents on the web
