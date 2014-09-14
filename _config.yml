@@ -38,9 +38,11 @@ bing_verify:
 # For external links add external: true
 links:
   - title: Download
-    url: /download
+    url: /download/
   - title: Documents
-    url: /docs
+    url: /docs/
+  - title: Milestones
+    url: /milestones
     external: true
 
 # http://en.wikipedia.org/wiki/List_of_tz_database_time_zones
