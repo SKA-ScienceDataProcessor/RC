@@ -11,7 +11,7 @@ share: true
 ---
 
 
-Here is list of module and their purpose. This is current sate of package and things will undoubtedly change.
+Here is list of module and their purpose. This is current state of package and things will undoubtedly change.
 
 #### Module DNA
 
