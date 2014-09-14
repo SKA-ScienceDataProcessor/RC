@@ -11,7 +11,7 @@ owner:
   name:           Radio Cortex Project
   avatar:         avatar.jpg
   bio:            "Radio Cortex Project "
-  email:          you@email.com
+  email:          peter.braam@braamresearch.com
   # Social networking links used in footer. Update and remove as you like.
   twitter:
   facebook:
@@ -23,7 +23,7 @@ owner:
   tumblr:
   # For Google Authorship https://plus.google.com/authorship
   # google plus id, include the '+', eg +mmistakes
-  google_plus:    +yourid
+  google_plus:    peter.braam@braamresearch.com
 
 # Background image to be tiled on all pages
 background:
