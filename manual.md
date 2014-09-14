@@ -35,6 +35,8 @@ The configuration file has a special section, called links that creates structur
         url: /milestones/
       - title: Development
         url: /dev/
+      - title: Manual
+        url: /manual/
 
 If you you want to reference an external web page from the menu add word `external: true` after the link. For more details, see the theme documentation below.
 
