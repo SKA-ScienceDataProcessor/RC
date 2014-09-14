@@ -59,8 +59,9 @@ I created a special folder, called `downloads` to keep pdf documents and other b
 
 1. Navigate to the folder with the document you want to reference in your browser (make sure you are browsing `gh-pages`
 1. Click on the link in your browser (see the image below)
-1. Press raw button at the right and copy the link called View Raw
 ![Referencing artifacts](../images/links.png "Links to files in /downloads")
+1. Copy View Raw link
+![View Raw](../images/links2.png "View Raw")
 1. Add link to the file, using standard markdown syntax
 
 
