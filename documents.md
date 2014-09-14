@@ -1,8 +1,8 @@
 ---
 layout: page
 permalink: /docs/
-title: Theme Setup
-description: "Instructions on how to install and customize the modern Jekyll theme HPSTR."
+title: RC Documentation
+description: "Project documentation"
 tags: [Jekyll, theme, install, setup]
 share: true
 ---
