@@ -20,7 +20,7 @@ The easiest (but not the best) way to work with the site is editing correspondin
 
 ## Configuration
 
-The configuration is kept on the file called `_config.yml`. If you want to change the stucture, add new pages, you will have to modify this file. 
+The configuration is kept in the file called `_config.yml`. If you want to change the stucture, add new pages, you will have to modify this file. 
 
 ### Modifying menu structure
 
