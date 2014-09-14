@@ -40,7 +40,7 @@ links:
   - title: Download
     url: /download/
   - title: Documents
-    url: ../docs/
+    url: /docs/
   - title: Milestones
     url: ../milestones/
     external: true
