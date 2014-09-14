@@ -1,11 +1,45 @@
 ---
 layout: page
 permalink: /_docs/
-title: Theme Setup
-description: "Instructions on how to install and customize the modern Jekyll theme HPSTR."
+title: RC site documentation / instructions
+description: "How to work with the site and how to work the theme"
 tags: [Jekyll, theme, install, setup]
 share: true
 ---
+
+
+This page contains instructions on how to configure the site, how to add new pages, and how to work with markdown.
+
+
+## Preamble 
+
+Everything on this site is created using markdown markup. Markdown documentation is available [here](http://daringfireball.net/projects/markdown/syntax), but it's probably easier to figure out what is going on by simply reading the source of this page. The site is deployed on GitHub and served using GitHub pages. The site uses special branch called `gh-pages`, don't delete anything there unless you know what you are doing.
+
+The easiest (but not the best) way to work with the site is editing corresponding files in GitHub web editor. A better way is to checkout the branch and edit files in your favorite editor. Once changes are made, simply push your commits to GitHub and the site will be updated automatically (it may take a few minutes to see the changes in the browser).
+
+
+## Configuration
+
+The configuration is kept on the file called `_config.yml`. If you want to change the stucture, add new pages, you will have to modify this file. 
+
+### Adding new pages / Renaming pages
+
+The configuration file has a special section, called links that creates structure in the menu. This section looks like this:
+
+    links:
+      - title: Download
+        url: /download/
+      - title: Documents
+        url: /docs/
+      - title: Milestones
+        url: /milestones/
+      - title: Development
+        url: /dev/
+
+If you you want to reference an external web page from the menu add word `external` after the link.
+
+
+
 
 General notes and suggestions for customizing **HPSTR**.
 
