@@ -39,13 +39,23 @@ for i, line in enumerate(my_lines()):
             cmd_str = Template(CMD_SLAVE).substitute(DDP=DDP, CAD_FILE=CAD_FILE, PORT=port, DDP_OPTS=DDP_OPTS, IP=get_ip())
             print "Running slave:", cmd_str
 
-        subprocess.call(cmd_str, shell=True)
+        #subprocess.call(cmd_str, shell=True)
+        code = os.system(cmd_str)
+        if code != 0:
+            print "*** ERROR: calling {0}. Exiting with code {1}.".format(cmd_str, code)
+            sys.exit(-1)
 
         src_name = os.path.split(DDP)[-1] + ".eventlog"
         dst_name = "../../eventlog.{0}.{1}".format(get_ip(), port)
         os.rename(src_name, dst_name)
         cmd_log = Template(CMD_LOG).substitute(GHC_EVENTS=GHC_EVENTS, IN=dst_name, OUT=dst_name + ".txt")
-        subprocess.call(cmd_log, shell=True)
+        #subprocess.call(cmd_log, shell=True)
+        code = os.system(cmd_log)
+        if code != 0:
+            print "*** ERROR: calling {0}. Exiting with code {1}.".format(cmd_log, code)
+            sys.exit(-1)
+
+
         os._exit(0)
 
 os.chdir(old_dir)
