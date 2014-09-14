@@ -61,7 +61,7 @@ I created a special folder, called `downloads` to keep pdf documents and other b
 1. Click on the link in your browser (see the image below)
 1. Press raw button at the right and copy the link called View Raw
 
-![Referencing artifacts](images/links.png "Links to files in /downloads")
+![Referencing artifacts](../images/links.png "Links to files in /downloads")
 
 1. Add link to the file, using standard markdown syntax
 
