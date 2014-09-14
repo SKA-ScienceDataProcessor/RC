@@ -126,7 +126,7 @@ def all_times(evt_lst, title, uevents, min_port=0, zooming=False):
         plt.grid("on")
 
     if not zooming:
-        plt.ylim([0, 50])
+        plt.ylim([0, 25])
         plt.xlabel(r"time, $\times10^9$ns")
         plt.ylabel("process number")
         #plt.legend(fontsize=9, fancybox=True, shadow=True, ncol=2, bbox_to_anchor=(0.98, 0.68), loc='best')
@@ -330,15 +330,15 @@ if __name__ == "__main__":
     #evt_folder = "/Users/serge/Downloads/logs16node-N12_26_08_14"
     #evt_folder = "/Users/serge/Downloads/textualLogs_100nodes_28_08_2014"
     #evt_folder = "/Users/serge/Desktop/16nodesTue-txt"
-    # evt_folder = "/Users/serge/Desktop/1n12-txt"
-    evt_folder = "/Users/serge/Desktop/650661-16-node-txt"
+    evt_folder = "/Users/serge/Desktop/1n12-txt"
+    #evt_folder = "/Users/serge/Desktop/650661-16-node-txt"
 
     if len(sys.argv) > 1:
         evt_folder = sys.argv[1]
     ed = readlog.events_dict(evt_folder)
 
     print "Unique events:", ed['events']
-    all_times(ed['list'], "Dot product profiling results, 16-node, 12 threads. Adjusted offset.",
+    all_times(ed['list'], "Dot product profiling results, 1-node, 12 threads. No offset.",
               ed["events"], min_port=ed["min_port"], zooming=False)
     distribution_plot(ed['list'], ed["min_port"])
 

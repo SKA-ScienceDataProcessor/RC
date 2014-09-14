@@ -183,7 +183,7 @@ def list_logs(folder_name, pattern="eventlog"):
 
 
 
-def events_dict(logs_folder, offset=True):
+def events_dict(logs_folder, offset=False):
     """Process all logs in logs_folder and return dictionary with keys:
         'list' list of all event log entries
         'np_array' abridged list converted to numpy array, all values are numerical
