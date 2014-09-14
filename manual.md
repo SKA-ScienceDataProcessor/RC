@@ -36,22 +36,23 @@ The configuration file has a special section, called links that creates structur
       - title: Development
         url: /dev/
       
-If you you want to reference an external web page from the menu add word `external: true` after the link. For more details, see the theme documentation below.
+If you want to reference an external web page from the menu add word `external: true` after the link. For more details, see the theme documentation below.
 
 ### Adding page
 
 To add a new page, simply create a file called `your_new_page.md` and add the following preamble at the beginning of the page:
 
----
-layout: page
-permalink: /your_new_page_url/
-title: Page Title
-description: "Radio Cortex Development Page"
-tags: [RC, Development]
-share: true
----
+    ---
+    layout: page
+    permalink: /your_new_page_url/
+    title: Page Title
+    description: "Radio Cortex Development Page"
+    tags: [RC, Development]
+    share: true
+    ---
 
-Don't start page or permalink with underscore.
+**Pro-tip:** Don't start page or permalink with underscore.
+{: .notice}
 
 ### Links to downloads
 
