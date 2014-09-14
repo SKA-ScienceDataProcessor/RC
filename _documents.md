@@ -1,6 +1,6 @@
 ---
 layout: page
-permalink: /_docs/
+permalink: /manual/
 title: RC site documentation / instructions
 description: "How to work with the site and how to work the theme"
 tags: [Jekyll, theme, install, setup]
@@ -22,7 +22,7 @@ The easiest (but not the best) way to work with the site is editing correspondin
 
 The configuration is kept on the file called `_config.yml`. If you want to change the stucture, add new pages, you will have to modify this file. 
 
-### Adding new pages / Renaming pages
+### Adding new pages / Renaming pages in the menu
 
 The configuration file has a special section, called links that creates structure in the menu. This section looks like this:
 
@@ -36,14 +36,12 @@ The configuration file has a special section, called links that creates structur
       - title: Development
         url: /dev/
 
-If you you want to reference an external web page from the menu add word `external` after the link.
+If you you want to reference an external web page from the menu add word `external: true` after the link. For more details, see the theme documentation below.
 
 
+## General notes and suggestions for customizing **HPSTR**.
 
-
-General notes and suggestions for customizing **HPSTR**.
-
-## Basic Setup for a new Jekyll site
+### Basic Setup for a new Jekyll site
 
 1. [Install Bundler](http://bundler.io) `gem install bundler` and then install [Jekyll](http://jekyllrb.com) and all dependencies `bundle install`.
 2. Fork the [HPSTR Jekyll Theme repo](https://github.com/mmistakes/hpstr-jekyll-theme/fork).
