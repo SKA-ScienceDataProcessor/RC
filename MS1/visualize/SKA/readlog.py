@@ -44,7 +44,7 @@ class LogEntry(object):
     @property
     def duration(self):
         if (self.end is not None) and (self.start is not None):
-            duration = (int(self.end) - int(self.start)) / 1.0e6
+            duration = (int(self.end) - int(self.start)) / 1.0e6 #microseconds
         else:
             duration = None
         return duration
@@ -183,7 +183,7 @@ def list_logs(folder_name, pattern="eventlog"):
 
 
 
-def events_dict(logs_folder, offset=True):
+def events_dict(logs_folder, offset=False):
     """Process all logs in logs_folder and return dictionary with keys:
         'list' list of all event log entries
         'np_array' abridged list converted to numpy array, all values are numerical
