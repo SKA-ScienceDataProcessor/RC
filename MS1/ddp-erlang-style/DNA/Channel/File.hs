@@ -22,7 +22,6 @@ import GHC.Generics (Generic)
 import Data.Typeable
 
 import Data.Int (Int64)
-import Data.Vector.Binary ()
 
 import qualified Data.Vector.Storable as S
 import qualified Data.Vector.Storable.Mutable as MS
@@ -84,11 +83,16 @@ readDataMMap n o p nodeId = do
         return $ S.unsafeFromForeignPtr0 (castForeignPtr fptr) (fromIntegral n)
 
 
+instance (S.Storable e, Binary e) => Binary (S.Vector e) where
+        put vec = put (S.toList vec)
+        get = get >>= (return . S.fromList)
 
-data FileVec = FileVec ProcessId (S.Vector Double)
-             deriving (Eq, Show, Typeable, Generic)
+
+data FileVec = FileVec ProcessId (S.Vector Double) deriving (Eq, Show, Typeable, Generic)
 
 instance Binary FileVec where
+        put (FileVec pid vec) = put pid >> put vec
+        get = do { pid <- get; vec <- get; return (FileVec pid vec)}
 
 instance CD.NFData FileVec where
         rnf (FileVec !procId !vec) = CD.rnf procId `seq` CD.rnf vec `seq` ()
@@ -99,3 +103,4 @@ spawnFChan path cO cS pid = do
         mypid <- getSelfPid
         iov <- timePeriod "reading file" $ liftIO $ readDataMMap cS cO path (show mypid)
         Unsafe.send pid (FileVec mypid iov)
+
