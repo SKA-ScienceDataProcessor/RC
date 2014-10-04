@@ -67,13 +67,13 @@ newtype CAD = CAD [NodeId]
 
 
 -- | Split vector into set of slices.
-scatterShape :: Int -> Int64 -> [(Int64,Int64)]
+scatterShape :: Int64 -> Int64 -> [(Int64,Int64)]
 scatterShape n size
   = zipWith (,) chunkOffs chunkSizes
   where
     (chunk,rest) = size `divMod` n
-    extra        = replicate rest 1 ++ repeat 0
-    chunkSizes   = zipWith (+) (replicate n chunk) extra
+    extra        = replicate (fromIntegral rest) 1 ++ repeat 0
+    chunkSizes   = zipWith (+) (replicate (fromIntegral n) chunk) extra
     chunkOffs    = scanl (+) 0 chunkSizes
 
 
@@ -156,7 +156,7 @@ ddpDotProduct cad = do
   S (S size) <- expect :: Process (S (S Int64)) -- For simplicity let get vector size externally.
   -- Divide work between child processes
   let n      = length cad
-      slices = scatterShape n size
+      slices = scatterShape (fromIntegral n) size
   -- Start up N worker processes one for every node in CAD. This
   -- process will act as collector.
   pids <- forM (cad `zip` slices) $ \(nid, slice) -> do
@@ -170,7 +170,7 @@ ddpDotProduct cad = do
       loop k !acc = do
         x <- expect :: Process Double
         loop (k-1) (acc + x) 
-  res <- loop n
+  res <- loop n 0
   --
   send parent res
 
