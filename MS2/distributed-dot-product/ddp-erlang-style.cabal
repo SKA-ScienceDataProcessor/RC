@@ -97,8 +97,6 @@ executable ddp-erlang-style-SIMD
     DNA.SimpleLocalNetWithoutDiscovery
     DNA.SimpleLocalnet.Internal.Multicast
   c-sources:           DNA/Channel/channel-file.c
-  default-extensions:  ForeignFunctionInterface
-
 executable ddp-erlang-style-SIMD-eventlog
   if flag(disableSIMD)
     Buildable: False
@@ -139,7 +137,6 @@ executable ddp-erlang-style-SIMD-eventlog
     DNA.SimpleLocalnet.Internal.Multicast
   c-sources:
     DNA/Channel/channel-file.c
-  default-extensions:  ForeignFunctionInterface
 
 
 -- test suite to read files.
@@ -206,4 +203,3 @@ executable ddp-new-variant
     DNA.SimpleLocalNetWithoutDiscovery
     DNA.SimpleLocalnet.Internal.Multicast
   c-sources:           DNA/Channel/channel-file.c
-  default-extensions:  ForeignFunctionInterface
