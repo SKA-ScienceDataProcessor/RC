@@ -5,11 +5,10 @@ module DNA.Run where
 
 import Control.Concurrent
 import Control.Distributed.Process
-import Options.Applicative
-import System.Environment (getProgName)
 
 import DNA.SimpleLocalNetWithoutDiscovery
 import DNA.CmdOpts
+
 
 -- | Parse command line option and start program
 dnaParseCommandLineAndRun :: RemoteTable -> (MasterOptions -> Backend -> [NodeId] -> Process ()) -> IO ()

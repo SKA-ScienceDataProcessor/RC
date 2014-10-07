@@ -10,13 +10,8 @@ module DNA.CmdOpts (
     , dnaParseCommandLineOpts
     ) where
 
-import Control.Concurrent
-import Control.Distributed.Process
 import Options.Applicative
 import System.Environment (getProgName)
-
-import DNA.SimpleLocalNetWithoutDiscovery
-import DNA.Channel.File
 
 
 

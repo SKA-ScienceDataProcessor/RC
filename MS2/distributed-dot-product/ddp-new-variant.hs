@@ -4,29 +4,16 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module Main(main) where
 
-import GHC.Generics (Generic)
-import Data.Typeable
-import Control.DeepSeq
 import Control.Monad
-import System.Posix.Files
-import System.Environment (getArgs)
-import Control.Concurrent (threadDelay)
 import Control.Distributed.Process hiding (say)
 import Control.Distributed.Process.Closure
---import Control.Distributed.Process.Backend.SimpleLocalnet
-import Control.Distributed.Process.Node (initRemoteTable)
-import Control.Distributed.Process.Platform (resolve)
-import qualified Control.Distributed.Process.Platform.Service.SystemLog as Log
 import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
-import qualified Data.Vector.Storable as S
-import Text.Printf
-import Control.Distributed.Process.Debug
-import qualified Control.Distributed.Process.Platform.Time as Time
-import qualified Control.Distributed.Process.Platform.Timer as Timer
+
+import Data.Binary   (Binary)
 import Data.Int
-import Data.Binary
-import Data.Vector.Binary
-import System.IO
+import Data.Typeable (Typeable)
+import qualified Data.Vector.Storable as S
+import GHC.Generics  (Generic)
 
 import DNA.Channel.File (readDataMMap)
 import DNA.Logging
