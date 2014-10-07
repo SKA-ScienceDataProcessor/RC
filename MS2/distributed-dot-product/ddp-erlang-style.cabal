@@ -82,10 +82,9 @@ executable ddp-new-variant
   main-is:             ddp-new-variant.hs
   Other-modules:
     DNA.Channel.File
-    DNA.Message
     DNA.Common
-    DNA.Backend
     DNA.CmdOpts
     DNA.SimpleLocalNetWithoutDiscovery
     DNA.SimpleLocalnet.Internal.Multicast
-  c-sources:           DNA/Channel/channel-file.c
+  c-sources:
+    DNA/Channel/channel-file.c
