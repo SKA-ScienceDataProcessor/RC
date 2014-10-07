@@ -164,7 +164,5 @@ ddpDotProduct cad = do
 
 
 
-
 main :: IO ()
-main = do
-  return ()
+main = dnaRun __remoteTable undefined
