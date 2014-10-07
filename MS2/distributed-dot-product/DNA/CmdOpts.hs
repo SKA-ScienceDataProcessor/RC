@@ -4,28 +4,30 @@
 --
 -- Copyright (C) 2014 Braa Research, LLC.
 module DNA.CmdOpts (
-          Options(..)
-        , MasterOptions(..)
-        , dnaParseCommandLineOpts
-        , dnaParseCommandLineAndRun
-        ) where
+      Options(..)
+    , MasterOptions(..)
+    , CommonOpts(..)
+    , dnaParseCommandLineOpts
+    , dnaParseCommandLineAndRun
+    ) where
 
 import Control.Concurrent
 import Control.Distributed.Process
-import DNA.SimpleLocalNetWithoutDiscovery
-
 import Options.Applicative
+import System.Environment (getProgName)
 
+import DNA.SimpleLocalNetWithoutDiscovery
 import DNA.Channel.File
 
 
--- | @Options@ data type. Holds information parsed from command line.
---   It is a record, main field is optionsRunMode
+
+-- | Command line options for a program.
 data Options
     = Master  CommonOpts      MasterOptions   [String]
     | Slave   CommonOpts      [String]
     deriving (Show)
 
+-- | Options common between slave and master.
 data CommonOpts = CommonOpts
     { commonOptsCADFileName         :: Maybe String
     , commonOptsHost                :: String
@@ -33,6 +35,7 @@ data CommonOpts = CommonOpts
     }
     deriving (Show)
 
+-- | Master-specific options
 data MasterOptions = MasterOptions
     { masterOptsCrash               :: Bool
     , masterOptsFilename            :: String
@@ -80,15 +83,16 @@ optionsParser name =
 
 -- | An interface to parse command line options. Returns options
 --   parsed as data type @Options@.
-dnaParseCommandLineOpts :: String -> IO Options
-dnaParseCommandLineOpts progName =
+dnaParseCommandLineOpts :: IO Options
+dnaParseCommandLineOpts =
+    progName <- getProgName
     execParser $ optionsParser progName
 
 
 -- | Parse command line option and start program
-dnaParseCommandLineAndRun :: RemoteTable -> String -> (MasterOptions -> Backend -> [NodeId] -> Process ()) -> IO ()
-dnaParseCommandLineAndRun remoteTable progName master = do
-    options <- dnaParseCommandLineOpts progName
+dnaParseCommandLineAndRun :: RemoteTable -> (MasterOptions -> Backend -> [NodeId] -> Process ()) -> IO ()
+dnaParseCommandLineAndRun remoteTable master = do
+    options <- dnaParseCommandLineOpts
     case options of
         Master (CommonOpts cadFile ip port) masterOptions _ -> do
             backend <- initializeBackend cadFile ip port remoteTable
