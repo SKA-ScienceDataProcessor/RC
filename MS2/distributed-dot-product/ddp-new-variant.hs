@@ -29,7 +29,8 @@ import Data.Vector.Binary
 import System.IO
 
 import DNA.Channel.File (readDataMMap)
-
+import DNA.Logging
+import DNA.Run
 
 
 ----------------------------------------------------------------

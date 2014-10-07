@@ -8,7 +8,6 @@ module DNA.CmdOpts (
     , MasterOptions(..)
     , CommonOpts(..)
     , dnaParseCommandLineOpts
-    , dnaParseCommandLineAndRun
     ) where
 
 import Control.Concurrent
@@ -23,8 +22,8 @@ import DNA.Channel.File
 
 -- | Command line options for a program.
 data Options
-    = Master  CommonOpts      MasterOptions   [String]
-    | Slave   CommonOpts      [String]
+    = Master  CommonOpts MasterOptions
+    | Slave   CommonOpts
     deriving (Show)
 
 -- | Options common between slave and master.
@@ -53,11 +52,11 @@ optionsParser name =
          )
   where
     master = command "master"
-           $ info (Master <$> commonOptions <*> masterOptions <*> restParser)
+           $ info (Master <$> commonOptions <*> masterOptions)
                   (fullDesc <> progDesc "run as master on IP:PORT")
     slave = command "slave"
-          $ info (Slave <$> commonOptions <*> restParser)
-                 (fullDesc <> progDesc "run as slave on IP:PORT"))
+          $ info (Slave <$> commonOptions)
+                 (fullDesc <> progDesc "run as slave on IP:PORT")
     masterOptions = MasterOptions <$> crashOpt <*> filenameOpt
     commonOptions = CommonOpts <$> cadFile <*> ip <*> port
     cadFile = optional $ strOption ( metavar "CAD"
@@ -84,20 +83,6 @@ optionsParser name =
 -- | An interface to parse command line options. Returns options
 --   parsed as data type @Options@.
 dnaParseCommandLineOpts :: IO Options
-dnaParseCommandLineOpts =
+dnaParseCommandLineOpts = do
     progName <- getProgName
     execParser $ optionsParser progName
-
-
--- | Parse command line option and start program
-dnaParseCommandLineAndRun :: RemoteTable -> (MasterOptions -> Backend -> [NodeId] -> Process ()) -> IO ()
-dnaParseCommandLineAndRun remoteTable master = do
-    options <- dnaParseCommandLineOpts
-    case options of
-        Master (CommonOpts cadFile ip port) masterOptions _ -> do
-            backend <- initializeBackend cadFile ip port remoteTable
-            startMaster backend (master masterOptions backend)
-            liftIO $ threadDelay 100
-        Slave (CommonOpts cadFile ip port) _ -> do
-            backend <- initializeBackend cadFile ip port remoteTable
-            startSlave backend
