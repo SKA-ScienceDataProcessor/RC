@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module Main(main) where
 
+import Control.Applicative
 import Control.Monad
 import Control.Distributed.Process hiding (say)
 import Control.Distributed.Process.Closure
@@ -70,35 +71,12 @@ remotable [ 'ddpComputeVector
           ]
 
 
--- | Actor for calculating dot product 
+-- | Actor for calculating dot product
 ddpDotProduct :: Process ()
 ddpDotProduct = startProcess $ \nodes (fname::String,size::Int64) -> do
-    return ()
-  -- -- PID of master
-  -- me            <- getSelfPid
-  -- Master parent <- expect
-  -- -- Get function parameters
-  -- S fname    <- expect :: Process (S FilePath)
-  -- S (S size) <- expect :: Process (S (S Int64)) -- For simplicity let get vector size externally.
-  -- -- Divide work between child processes
-  -- let n      = length cad
-  --     slices = scatterShape (fromIntegral n) size
-  -- -- Start up N worker processes one for every node in CAD. This
-  -- -- process will act as collector.
-  -- pids <- forM (cad `zip` slices) $ \(nid, slice) -> do
-  --   pid <- spawn nid $ $(mkStaticClosure 'ddpProductSlice)
-  --   send pid (Master me)
-  --   send pid (S fname)
-  --   send pid (S (S slice))
-  -- -- Collect data from workers. Here we assume that nor workers nor
-  -- -- nodes do not crash.
-  -- let loop 0 !acc = return acc
-  --     loop k !acc = do
-  --       x <- expect :: Process Double
-  --       loop (k-1) (acc + x) 
-  -- res <- loop n 0
-  -- --
-  -- send parent res
+    partials <- forkGroup nodes $(mkStaticClosure 'ddpProductSlice)
+                  ((,) <$> same fname <*> scatter (\n -> scatterShape (fromIntegral n)) size)
+    gather partials (+) (0 :: Double)
 
 
 
