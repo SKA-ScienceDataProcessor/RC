@@ -80,6 +80,7 @@ executable ddp-new-variant
     vector >= 0.10
   main-is:             ddp-new-variant.hs
   Other-modules:
+    DNA
     DNA.Channel.File
     DNA.Common
     DNA.CmdOpts
