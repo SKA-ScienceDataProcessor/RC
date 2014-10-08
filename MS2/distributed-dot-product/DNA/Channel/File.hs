@@ -32,7 +32,7 @@ import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.C.String
 
-import Cfg
+
 
 -- XXX Let's have 8 space indents everywhere
 itemSize :: Int64
@@ -97,5 +97,5 @@ instance CD.NFData FileVec where
 spawnFChan :: String -> Int64 -> Int64 -> ProcessId -> Process()
 spawnFChan path cO cS pid = do
         mypid <- getSelfPid
-        iov <- timePeriod "reading file" $ liftIO $ readDataMMap cS cO path (show mypid)
+        iov   <- liftIO $ readDataMMap cS cO path (show mypid)
         Unsafe.send pid (FileVec mypid iov)

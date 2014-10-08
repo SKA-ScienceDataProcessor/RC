@@ -96,20 +96,16 @@ module DNA.SimpleLocalNetWithoutDiscovery
   , startMaster
   ) where
 
-import System.IO (fixIO)
 import Data.Maybe (catMaybes)
 import Data.Binary (Binary(get, put), getWord8, putWord8)
-import Data.List (nub)
 import Data.Accessor (Accessor, accessor, (^:), (^.))
-import Data.Set (Set)
-import qualified Data.Set as Set (insert, empty, toList, fromList)
 import Data.Foldable (forM_)
 import Data.Typeable (Typeable)
 import Control.Applicative ((<$>))
 import Control.Exception (throw)
-import Control.Monad (forever, replicateM, replicateM_, forM, liftM, when)
+import Control.Monad (replicateM, replicateM_, forM, liftM)
 import Control.Monad.IO.Class (liftIO)
-import Control.Concurrent (forkIO, threadDelay, ThreadId)
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, readMVar, modifyMVar_)
 import Control.Distributed.Process
   ( RemoteTable
@@ -144,7 +140,6 @@ import Control.Distributed.Process
 import qualified Control.Distributed.Process.Node as Node
   ( LocalNode
   , newLocalNode
-  , localNodeId
   , runProcess
   )
 import qualified Network.Socket as N
@@ -154,8 +149,8 @@ import qualified Network.Transport.TCP as NT
   , encodeEndPointAddress
   )
 import qualified Network.URI as URI
-import qualified Network.Transport as NT (Transport(..), address)
-import qualified Network.Socket as N (HostName, ServiceName, SockAddr)
+import qualified Network.Transport as NT (Transport(..))
+
 
 -- | Local backend
 data Backend = Backend {

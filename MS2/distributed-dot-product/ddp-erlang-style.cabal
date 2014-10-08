@@ -78,14 +78,12 @@ executable ddp-new-variant
     network-multicast == 0.0.11.*,
     vector-binary-instances >= 0.2.1,
     vector >= 0.10
-  hs-source-dirs:      ., cfgs/simple
   main-is:             ddp-new-variant.hs
   Other-modules:
     DNA.Channel.File
-    DNA.Message
     DNA.Common
-    DNA.Backend
     DNA.CmdOpts
     DNA.SimpleLocalNetWithoutDiscovery
     DNA.SimpleLocalnet.Internal.Multicast
-  c-sources:           DNA/Channel/channel-file.c
+  c-sources:
+    DNA/Channel/channel-file.c
