@@ -8,6 +8,8 @@ module DNA where
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Trans.State.Strict
+import Control.Monad.IO.Class
 import Control.Distributed.Process hiding (say)
 import Control.Distributed.Process.Closure
 import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
@@ -16,7 +18,8 @@ import Control.Distributed.Process.Serializable (Serializable)
 import Data.Binary   (Binary)
 import Data.Int
 import Data.Typeable (Typeable)
-import qualified Data.Vector.Storable as S
+import qualified Data.Set        as Set
+import qualified Data.Map.Strict as Map
 import GHC.Generics  (Generic)
 
 import DNA.Logging
@@ -24,14 +27,31 @@ import DNA.Run
 
 
 ----------------------------------------------------------------
--- Data types and helpers
+-- Monad for building programs and data types
 ----------------------------------------------------------------
 
--- | Parameters for a subprocess. If process require more than one
---   parameter it's sent as tuple if it doesn't require parameters ()
---   is sent.
-newtype Param a = Param a
-                  deriving (Show,Eq,Typeable,Binary)
+-- | Monad for defining DNA programs
+newtype DNA a = DNA (StateT S Process a)
+
+-- | State of DNA program. We track PIDs of all spawned processes.
+data S = S
+    -- Counter for key for sets of pids that may die unexpectedly
+    -- without causeing fatal error .
+    !Int
+    -- PIDs for which crashing is fatal error
+    (Set.Set ProcessId)
+    -- For procces which are allowed to crash we have to monitor their
+    -- state becasue we need it to collect their results.
+    (Map.Map Int (Map.Map ProcessId ProcState))
+
+-- | State of process
+data ProcState
+    = Running    -- ^ Process still running
+    | Completed  -- ^ Process terminated normally
+    | Crashed    -- ^ Process terminated abnormally
+
+-- | Key for process map
+type GroupKey = Int
 
 
 -- | Normally subprocess will only return value once. Fork* function
@@ -47,7 +67,30 @@ newtype Param a = Param a
 --          we can detect if we do not await for promise. In this case
 --          child process will be termintaed forcefully when parent
 --          dies.
-data Promise a = Promise ProcessId (ReceivePort a)
+newtype Promise a = Promise (ReceivePort a)
+
+
+-- | Set of values which is produces by group of processes which
+--   execute same code.
+data Group a = Group
+    !GroupKey        -- Key in map of processes
+    (ReceivePort a)  -- Port for reading data from
+
+
+
+-- | Parameters for a subprocess. If process require more than one
+--   parameter it's sent as tuple if it doesn't require parameters ()
+--   is sent.
+newtype Param a = Param a
+                  deriving (Show,Eq,Typeable,Binary)
+
+
+
+----------------------------------------------------------------
+-- Data types and helpers
+----------------------------------------------------------------
+
+
 
 
 -- | Await result from promise. Function will block.
@@ -70,16 +113,6 @@ await p@(Promise _ ch) = do
               _          -> terminate
         ]
 
--- | Cluster architecture description. Currently it's simply list of
---   nodes process can use.
-newtype CAD = CAD [NodeId]
-              deriving (Show,Eq,Typeable,Binary)
-
-
-
--- | Set of values which is produces by group of processes which
---   execute same code.
-data Group a = Group !Int (ReceivePort a)
 
 gather :: Group a -> (a -> a -> a) -> a -> Process a
 gather (Group n0 ch) op = loop n0
@@ -153,6 +186,7 @@ startProcess action = do
     b       <- action nodes a
     sendChan sendCh b
 
+
 -- | Fork process on local node
 forkLocal :: (Serializable a, Serializable b)
           => [NodeId]           -- ^ List of nodes process allowed to use
@@ -167,7 +201,6 @@ forkLocal nodes child a = do
     send pid (CAD nodes)
     send pid (Param a)
     return $ Promise me chRecv
-
 
 
 -- | Fork process on remote node
@@ -185,6 +218,7 @@ forkRemote nodes nid child a = do
     send pid (CAD nodes)
     send pid (Param a)
     return $ Promise me chRecv
+
 
 -- | Create group of nodes
 forkGroup :: (Serializable a, Serializable b)
