@@ -19,6 +19,7 @@ import Control.Distributed.Process.Serializable (Serializable)
 import Data.Binary   (Binary)
 import Data.Int
 import Data.Typeable (Typeable)
+import Data.Monoid   (Monoid(..))
 import qualified Data.Set        as Set
 import qualified Data.Map.Strict as Map
 import GHC.Generics  (Generic)
@@ -33,7 +34,7 @@ import DNA.Run
 
 -- | Monad for defining DNA programs
 newtype DNA a = DNA (StateT S Process a)
-                deriving (Functor,Applicative,Monad)
+                deriving (Functor,Applicative,Monad,MonadIO)
 
 -- | ID of group of processes
 type GroupID = Int
@@ -53,6 +54,12 @@ data S = S
 
 liftP :: Process a -> DNA a
 liftP = DNA . lift
+
+getNCrashed :: GroupID -> DNA Int
+getNCrashed gid = DNA $ do
+  st <- get
+  return $ stGroupFailures st Map.! gid
+
 
 -- | Cluster architecture description. Currently it's simply list of
 --   nodes process can use.
@@ -163,19 +170,28 @@ getval ch = do
 --          some processes we may want to use different strategy.
 --          We need to keep some data about known childs etc.
 await :: Serializable a => Promise a -> DNA a
-await p@(Promise ch) =
-    getval ch
+await (Promise ch) = getval ch
 
 
+-- | Gather all results from child processes.
 gather :: Group a -> (a -> a -> a) -> a -> DNA a
-gather (Group gType ch) op a0 = do
-    loop a0
+gather (Group gType ch) op = case gType of
+    Reliable n     -> loopR n
+    FailOut  n gid -> loopF gid n
   where
-    loop !a = case gType of
-        Reliable 0 -> return a
-        Reliable n -> do a' <- getval ch
-                         loop (op a a')
-        _ -> error "Not implemented"
+    -- Reliable subprocesses
+    loopR n a
+        | n <= 0    = return a
+        | otherwise = do a' <- getval ch
+                         loopR (n-1) (op a a')
+    -- Fail-out
+    loopF gid n a = do
+        nCrash <- getNCrashed gid
+        case n <= nCrash of
+          True  -> return a
+          False -> do a' <- getval ch
+                      loopF gid (n-1) (op a a')
+
 
 -- | Very important question is how to pass parameters to multiple
 --   childs. We have two primary way to divide data.
@@ -223,76 +239,83 @@ scatter f a = Scatter (\n -> f n a)
 -- Starting of child processes
 ----------------------------------------------------------------
 
+-- | Actor which receive messages of type @a@ and produce result of
+--   type @b@. It's phantom-typed and could only be constructed by
+--   'startProcess' which ensures that types are indeed correct.
+newtype Actor a b = Actor (DNA ())
+                    deriving (Typeable)
 
 -- | Start process.
 startProcess
     :: (Serializable a, Serializable b)
-    => ([NodeId] -> a -> Process b)
-    -> Process ()
-startProcess action = do
-    sendCh  <- expect
-    nodes   <- expect
-    Param a <- expect
+    => ([NodeId] -> a -> DNA b)
+    -> Actor a b
+startProcess action = Actor $ do
+    sendCh  <- liftP expect
+    nodes   <- liftP expect
+    Param a <- liftP expect
     b       <- action nodes a
-    sendChan sendCh b
+    liftP $ sendChan sendCh b
+
+-- | Start execution of process
+runActor :: Actor a b -> Process ()
+runActor (Actor (DNA dna)) = evalStateT dna (S 0 mempty mempty mempty)
+
+spawnActor :: NodeId -> Closure (Actor a b) -> Process ProcessId
+spawnActor = undefined
 
 
 -- | Fork process on local node
 forkLocal :: (Serializable a, Serializable b)
           => [NodeId]           -- ^ List of nodes process allowed to use
-          -> Process ()         -- ^ Process command
+          -> Actor a b          -- ^ Process command
           -> a                  -- ^ Parameters to process
-          -> Process (Promise b)
-forkLocal nodes child a = do
-    undefined
-{-
-    me  <- getSelfPid
-    pid <- spawnLocal $ link me >> child
-    (chSend,chRecv) <- newChan
-    send pid chSend
-    send pid (CAD nodes)
-    send pid (Param a)
-    return $ Promise me chRecv
--}
+          -> DNA (Promise b)
+forkLocal nodes actor a = do
+    me  <- liftP getSelfPid
+    pid <- liftP $ spawnLocal $ link me >> runActor actor
+    -- FIXME: add PID
+    (chSend,chRecv) <- liftP $ newChan
+    liftP $ do send pid chSend
+               send pid (CAD nodes)
+               send pid (Param a)
+    return $ Promise chRecv
+
 
 -- | Fork process on remote node
 forkRemote :: (Serializable a, Serializable b)
            => [NodeId]             -- ^ List of nodes process allowed to use
            -> NodeId               -- ^ Node to spawn on
-           -> Closure (Process ()) -- ^ Sub process command
+           -> Closure (Actor a b)  -- ^ Sub process command
            -> a                    -- ^ Parameters sent to process
-           -> Process (Promise b)
-forkRemote nodes nid child a = do
-    undefined
-{-
-    me <- getSelfPid
-    (pid,_) <- spawnSupervised nid child
-    (chSend,chRecv) <- newChan
-    send pid chSend
-    send pid (CAD nodes)
-    send pid (Param a)
-    return $ Promise me chRecv
--}
+           -> DNA (Promise b)
+forkRemote nodes nid actor a = do
+    pid <- liftP $ spawnActor nid actor
+    -- FIXME: add PID
+    (chSend,chRecv) <- liftP $ newChan
+    liftP $ do send pid chSend
+               send pid (CAD nodes)
+               send pid (Param a)
+    return $ Promise chRecv
+
 
 -- | Create group of nodes
 forkGroup :: (Serializable a, Serializable b)
           => [NodeId]
-          -> Closure (Process ())
+          -> Closure (Actor a b)
           -> Scatter a
-          -> Process (Group b)
-forkGroup nodes child scat = do
-    undefined
-{-
+          -> DNA (Group b)
+forkGroup nodes actor scat = do
     when (null nodes) $
         error "Empty list of nodes"
     let n  = length nodes
         xs = runScatter n scat
-    (chSend,chRecv) <- newChan
+    (chSend,chRecv) <- liftP $ newChan
     pids <- forM_ (nodes `zip` xs) $ \(nid,a) -> do
-        (pid,_) <- spawnSupervised nid child
-        send pid chSend
-        send pid (CAD [])       -- FIXME: How to allow children
-        send pid (Param a)
-    undefined
---    return $ Group n chRecv
--}
+        pid <- liftP $ spawnActor nid actor
+        liftP $ do send pid chSend
+                   send pid (CAD [])       -- FIXME: How to allow children
+                   send pid (Param a)
+    -- FIXME: register pids
+    return $ Group (Reliable n) chRecv
+
