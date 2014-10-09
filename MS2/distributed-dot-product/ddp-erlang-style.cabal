@@ -64,6 +64,7 @@ executable ddp-new-variant
     binary,
     unix,
     mtl,
+    distributed-static,
     distributed-process == 0.5.*,
     distributed-process-platform == 0.1.*,
     network == 2.4.2.*,

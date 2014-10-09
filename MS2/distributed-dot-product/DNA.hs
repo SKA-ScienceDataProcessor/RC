@@ -11,6 +11,7 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict
 import Control.Monad.IO.Class
+import Control.Distributed.Static (closureApply)
 import Control.Distributed.Process hiding (say)
 import Control.Distributed.Process.Closure
 import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
@@ -261,8 +262,14 @@ startProcess action = Actor $ do
 runActor :: Actor a b -> Process ()
 runActor (Actor (DNA dna)) = evalStateT dna (S 0 mempty mempty mempty)
 
-spawnActor :: NodeId -> Closure (Actor a b) -> Process ProcessId
-spawnActor = undefined
+remotable [ 'runActor ]
+
+spawnActor :: (Typeable a, Typeable b)
+           => NodeId -> Closure (Actor a b) -> Process ProcessId
+spawnActor nid actor = do
+    (pid,_) <- spawnSupervised nid
+             $ $(mkStaticClosure 'runActor) `closureApply` actor
+    return pid
 
 
 -- | Fork process on local node
