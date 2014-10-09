@@ -22,8 +22,7 @@ import GHC.Generics  (Generic)
 import DNA.Channel.File (readDataMMap)
 import DNA.Logging
 import DNA.Run
-import DNA hiding (__remoteTable)
-import qualified DNA 
+import DNA
 
 
 -- | Split vector into set of slices.

@@ -83,6 +83,8 @@ executable ddp-new-variant
   Other-modules:
     DNA
     DNA.Channel.File
+    DNA.DNA
+    DNA.Types
     DNA.Common
     DNA.CmdOpts
     DNA.SimpleLocalNetWithoutDiscovery

@@ -11,7 +11,7 @@ import Control.Distributed.Process.Node (initRemoteTable)
 
 import DNA.SimpleLocalNetWithoutDiscovery
 import DNA.CmdOpts
-
+import qualified DNA.DNA as DNA
 
 -- | Parse command line option and start program
 dnaRun :: (RemoteTable -> RemoteTable)
@@ -19,7 +19,7 @@ dnaRun :: (RemoteTable -> RemoteTable)
        -> IO ()
 dnaRun remoteTable master = do
     options <- dnaParseCommandLineOpts
-    let rtable = remoteTable initRemoteTable
+    let rtable = (remoteTable . DNA.__remoteTable) initRemoteTable
     case options of
         Master (CommonOpts cadFile ip port) masterOptions -> do
             backend <- initializeBackend cadFile ip port rtable
