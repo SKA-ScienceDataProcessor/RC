@@ -8,6 +8,7 @@ module DNA where
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict
 import Control.Monad.IO.Class
 import Control.Distributed.Process hiding (say)
@@ -32,26 +33,31 @@ import DNA.Run
 
 -- | Monad for defining DNA programs
 newtype DNA a = DNA (StateT S Process a)
+                deriving (Functor,Applicative,Monad)
+
+-- | ID of group of processes
+type GroupID = Int
 
 -- | State of DNA program. We track PIDs of all spawned processes.
 data S = S
-    -- Counter for key for sets of pids that may die unexpectedly
-    -- without causeing fatal error .
-    !Int
-    -- PIDs for which crashing is fatal error
-    (Set.Set ProcessId)
-    -- For procces which are allowed to crash we have to monitor their
-    -- state becasue we need it to collect their results.
-    (Map.Map Int (Map.Map ProcessId ProcState))
+    { stCounter :: !Int
+    -- ^ Counter for obtaining unique keys
+    , stPIDS    :: !(Set.Set ProcessId)
+    -- ^ PIDs for which crashing is fatal error
+    , stGroups  :: !(Map.Map ProcessId GroupID)
+    -- ^ PIDs for which crashing is not fatal error. Thus we have to
+    --   track state
+    , stGroupFailures :: !(Map.Map GroupID Int)
+    -- ^ Number of failures for given process group
+    }
 
--- | State of process
-data ProcState
-    = Running    -- ^ Process still running
-    | Completed  -- ^ Process terminated normally
-    | Crashed    -- ^ Process terminated abnormally
+liftP :: Process a -> DNA a
+liftP = DNA . lift
 
--- | Key for process map
-type GroupKey = Int
+-- | Cluster architecture description. Currently it's simply list of
+--   nodes process can use.
+newtype CAD = CAD [NodeId]
+              deriving (Show,Eq,Typeable,Binary)
 
 
 -- | Normally subprocess will only return value once. Fork* function
@@ -73,9 +79,18 @@ newtype Promise a = Promise (ReceivePort a)
 -- | Set of values which is produces by group of processes which
 --   execute same code.
 data Group a = Group
-    !GroupKey        -- Key in map of processes
+    !GroupType       -- Type of group of processes
     (ReceivePort a)  -- Port for reading data from
 
+
+-- | Type of group 
+data GroupType
+    -- | Child processes' crashes are fatal. Fields are number of
+    --   pending results.
+    = Reliable !Int
+    -- | Children may crash and we simply discard their results.
+    --   Fields are 
+    | FailOut  !Int !GroupID
 
 
 -- | Parameters for a subprocess. If process require more than one
@@ -91,6 +106,52 @@ newtype Param a = Param a
 ----------------------------------------------------------------
 
 
+-- Process termination
+data ProcTerm
+    = TermOK    ProcessId
+    | Crashed   ProcessId
+
+
+
+-- Wait for data from channel. We may receive message about process
+-- termination instead
+waitForChan :: ReceivePort a -> Process (Either ProcTerm a)
+waitForChan ch = receiveWait
+    [ matchChan ch (return . Right)
+    , match $ \(ProcessMonitorNotification _ pid reason) ->
+        case reason of
+          DiedNormal -> return $ Left $ TermOK pid
+          _          -> return $ Left $ Crashed pid
+    ]
+
+
+-- Handle process termination message
+handleTermination :: ProcTerm -> DNA ()
+handleTermination (TermOK pid) = DNA $ do
+    -- We simply delete PID from every list of running processes if it
+    -- terminates normally.
+    st <- get
+    put $! st { stPIDS   = Set.delete pid (stPIDS st)
+              , stGroups = Map.delete pid (stGroups st)
+              }
+handleTermination (Crashed pid) = DNA $ do
+    -- If process is allowed to termiante we update number of failures
+    -- for curresponding group. Otherwise we just die violently.
+    st <- get
+    case Map.lookup pid (stGroups st) of
+      Just gid -> put $! st
+                    { stGroups = Map.delete pid (stGroups st)
+                    , stGroupFailures = Map.adjust (+1) gid (stGroupFailures st)
+                    }
+      Nothing -> lift terminate
+
+
+getval :: ReceivePort a -> DNA a
+getval ch = do
+    ea <- liftP $ waitForChan ch
+    case ea of
+        Left  t -> handleTermination t >> getval ch
+        Right a -> return a
 
 
 -- | Await result from promise. Function will block.
@@ -101,31 +162,20 @@ newtype Param a = Param a
 --   FIXME: Currently we terminate when child dies abnormally. But for
 --          some processes we may want to use different strategy.
 --          We need to keep some data about known childs etc.
-await :: Serializable a => Promise a -> Process a
-await p@(Promise _ ch) = do
-    -- Here we wait for either value from channel or for message that
-    -- child died.
-    receiveWait
-        [ matchChan ch return
-        , match $ \(ProcessMonitorNotification _ _ reason) ->
-            case reason of
-              DiedNormal -> await p
-              _          -> terminate
-        ]
+await :: Serializable a => Promise a -> DNA a
+await p@(Promise ch) =
+    getval ch
 
 
-gather :: Group a -> (a -> a -> a) -> a -> Process a
-gather (Group n0 ch) op = loop n0
+gather :: Group a -> (a -> a -> a) -> a -> DNA a
+gather (Group gType ch) op a0 = do
+    loop a0
   where
-    loop 0 a = return a
-    loop n !a0 = do
-        receiveWait
-            [ matchChan ch $ \a -> loop (n - 1) (op a0 a)
-            , match $ \(ProcessMonitorNotification _ _ reason) ->
-                case reason of
-                  DiedNormal -> loop n a0
-                  _          -> terminate
-            ]
+    loop !a = case gType of
+        Reliable 0 -> return a
+        Reliable n -> do a' <- getval ch
+                         loop (op a a')
+        _ -> error "Not implemented"
 
 -- | Very important question is how to pass parameters to multiple
 --   childs. We have two primary way to divide data.
@@ -194,6 +244,8 @@ forkLocal :: (Serializable a, Serializable b)
           -> a                  -- ^ Parameters to process
           -> Process (Promise b)
 forkLocal nodes child a = do
+    undefined
+{-
     me  <- getSelfPid
     pid <- spawnLocal $ link me >> child
     (chSend,chRecv) <- newChan
@@ -201,7 +253,7 @@ forkLocal nodes child a = do
     send pid (CAD nodes)
     send pid (Param a)
     return $ Promise me chRecv
-
+-}
 
 -- | Fork process on remote node
 forkRemote :: (Serializable a, Serializable b)
@@ -211,6 +263,8 @@ forkRemote :: (Serializable a, Serializable b)
            -> a                    -- ^ Parameters sent to process
            -> Process (Promise b)
 forkRemote nodes nid child a = do
+    undefined
+{-
     me <- getSelfPid
     (pid,_) <- spawnSupervised nid child
     (chSend,chRecv) <- newChan
@@ -218,7 +272,7 @@ forkRemote nodes nid child a = do
     send pid (CAD nodes)
     send pid (Param a)
     return $ Promise me chRecv
-
+-}
 
 -- | Create group of nodes
 forkGroup :: (Serializable a, Serializable b)
@@ -227,6 +281,8 @@ forkGroup :: (Serializable a, Serializable b)
           -> Scatter a
           -> Process (Group b)
 forkGroup nodes child scat = do
+    undefined
+{-
     when (null nodes) $
         error "Empty list of nodes"
     let n  = length nodes
@@ -237,4 +293,6 @@ forkGroup nodes child scat = do
         send pid chSend
         send pid (CAD [])       -- FIXME: How to allow children
         send pid (Param a)
-    return $ Group n chRecv
+    undefined
+--    return $ Group n chRecv
+-}
