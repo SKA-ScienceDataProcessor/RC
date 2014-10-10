@@ -18,6 +18,7 @@ module DNA (
       -- * Spawning of actors
     , Actor
     , actor
+    , eval
     , forkLocal
     , forkRemote
     , forkGroup

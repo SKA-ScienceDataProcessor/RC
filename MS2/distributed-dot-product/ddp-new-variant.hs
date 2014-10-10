@@ -82,4 +82,6 @@ ddpDotProduct = actor $ \(fname,size) -> do
 
 
 main :: IO ()
-main = dnaRun __remoteTable undefined
+main = dnaRun __remoteTable $ do
+    b <- eval ddpDotProduct ("file.dat",1000000)
+    liftIO $ print b

@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -29,6 +30,7 @@ module DNA.DNA (
     , actor
     , runActor
     , spawnActor
+    , eval
     , forkLocal
     , forkRemote
     , forkGroup
@@ -311,6 +313,20 @@ spawnActor nid child = do
              $ $(mkStaticClosure 'runActor) `closureApply` child
     return pid
 
+
+-- | Evaluate actor in the same thread
+eval :: (Serializable a, Serializable b) => Actor a b
+     -> a
+     -> DNA b
+eval (Actor dna) a = do
+    -- FIXME this is rather ugly. We don't need to go though sending
+    --       messages to self nor new need to send result though channel
+    (chSend,chRecv) <- liftP $ newChan
+    me <- liftP getSelfPid
+    liftP $ do send me chSend
+               send me (Param a)
+    dna
+    liftP $ receiveChan chRecv
 
 -- | Fork process on local node
 forkLocal :: (Serializable a, Serializable b)
