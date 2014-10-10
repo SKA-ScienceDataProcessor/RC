@@ -15,9 +15,9 @@ category:            Concurrency
 build-type:          Simple
 cabal-version:       >=1.20
 
-extra-source-files:  create-floats.c, create_floats.py,
-                     build.sh, clean.sh,
-                     ddp.py, dna_cad.py, dna_lib.py
+--extra-source-files:  create-floats.c, create_floats.py,
+--                     build.sh, clean.sh,
+--                     ddp.py, dna_cad.py, dna_lib.py
 
 Flag disableSIMD
   description:       Disables ddp-erland-style-SIMD and ddp-erlang-style-SIMD-eventlog executables for faster compilation.
@@ -25,69 +25,58 @@ Flag disableSIMD
 
 
 ----------------------------------------------------------------
--- test suite to read files.
-test-suite test-read
-  type:                exitcode-stdio-1.0
+library
   default-language:    Haskell2010
-  main-is:             tests/test-read.hs
+  ghc-options:         -O2 -Wall -threaded
   build-depends:
-    base >=4.6,
+    base         >=4.6,
+    bytestring   >= 0.10, 
     binary,
-    unix,
-    mtl,
-    distributed-process == 0.5.*,
+    containers   >= 0.5,
+    deepseq      >= 1.3,
+    transformers >= 0.4.1,
+    distributed-static,
+    distributed-process          == 0.5.*,
     distributed-process-platform == 0.1.*,
-    distributed-process-simplelocalnet,
-    mmap,
-    network,
-    network-transport,
-    network-transport-tcp,
-    containers,
-    deepseq,
-    time,
-    old-locale,
-    optparse-applicative,
-    transformers,
-    data-accessor,
-    bytestring,
-    network-multicast,
-    vector >= 0.10,
-    HUnit,
-    QuickCheck
+    network               == 2.4.2.*,
+    network-multicast     == 0.0.11.*,
+    network-transport     == 0.4.0.*,
+    network-transport-tcp == 0.4.0.*,
+    optparse-applicative  == 0.10.*,
+    data-accessor         == 0.2.2.*
+  Exposed-modules:
+    DNA
+    DNA.DNA
+    DNA.Types
+    DNA.Run
+    DNA.Logging
+    DNA.Common
+    DNA.CmdOpts
+    DNA.SimpleLocalNetWithoutDiscovery
+    DNA.SimpleLocalnet.Internal.Multicast
 
 ----------------------------------------------------------------
 executable ddp-new-variant
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded
+  Hs-source-dirs:      exe
   build-depends:
     base >=4.6,
+    ddp-erlang-style,
     binary,
+    deepseq,
     unix,
-    mtl,
     distributed-static,
     distributed-process == 0.5.*,
     distributed-process-platform == 0.1.*,
-    network == 2.4.2.*,
-    network-transport == 0.4.0.*,
-    network-transport-tcp == 0.4.0.*,
     containers == 0.5.5.*,
-    deepseq == 1.3.0.*,
-    optparse-applicative == 0.10.*,
     transformers == 0.4.1.*,
-    data-accessor == 0.2.2.*,
-    bytestring == 0.10.4.*, 
-    network-multicast == 0.0.11.*,
+    bytestring              == 0.10.4.*, 
+    network-multicast       == 0.0.11.*,
     vector-binary-instances >= 0.2.1,
     vector >= 0.10
   main-is:             ddp-new-variant.hs
   Other-modules:
-    DNA
     DNA.Channel.File
-    DNA.DNA
-    DNA.Types
-    DNA.Common
-    DNA.CmdOpts
-    DNA.SimpleLocalNetWithoutDiscovery
-    DNA.SimpleLocalnet.Internal.Multicast
   c-sources:
-    DNA/Channel/channel-file.c
+    cbits/channel-file.c
