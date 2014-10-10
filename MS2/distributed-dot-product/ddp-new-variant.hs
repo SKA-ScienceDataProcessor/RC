@@ -8,7 +8,7 @@ module Main(main) where
 
 import Control.Applicative
 import Control.Monad
-import Control.Distributed.Process hiding (say)
+import Control.Distributed.Process
 import Control.Distributed.Process.Closure
 import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
 import Control.Distributed.Process.Serializable (Serializable)
@@ -46,7 +46,7 @@ scatterShape n size
 
 -- | Compute vector and send it back to master using unsafe send.
 ddpComputeVector :: Actor (Int64,Int64) (S.Vector Double)
-ddpComputeVector = actor $ \(off,n) ->
+ddpComputeVector = actor $ \(off,n) -> do
     return $ S.generate (fromIntegral n)
                (\i -> fromIntegral (fromIntegral i + fromIntegral off))
 
