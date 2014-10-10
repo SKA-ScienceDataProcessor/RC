@@ -32,6 +32,8 @@ module DNA.DNA (
     , forkLocal
     , forkRemote
     , forkGroup
+    , forkGroupFailout
+      -- * CH
     , __remoteTable
     ) where
 
@@ -104,6 +106,11 @@ registerPID pid = DNA $ do
   st <- get
   put $! st { stPIDS = Set.insert pid (stPIDS st) }
 
+freshGID :: DNA GroupID
+freshGID = DNA $ do
+  st <- get
+  put $ st { stCounter = stCounter st + 1 }
+  return $ stCounter st
 
 
 ----------------------------------------------------------------
@@ -362,3 +369,29 @@ forkGroup nodes child scat = do
                    send pid (Param a)
         registerPID pid
     return $ Group (Reliable n) chRecv
+
+
+-- | Create group of nodes and allow failout
+--
+--   FIXME: at the moment child processes are not allowed to spawn
+--          code on remote nodes.
+forkGroupFailout
+    :: (Serializable a, Serializable b)
+    => [NodeId]                 -- ^ List of nodes to spawn on
+    -> Closure (Actor a b)      -- ^ Actor
+    -> Scatter a                -- ^ Parameters to actors.
+    -> DNA (Group b)
+forkGroupFailout nodes child scat = do
+    when (null nodes) $
+        error "Empty list of nodes"
+    let n  = length nodes
+        xs = runScatter n scat
+    (chSend,chRecv) <- liftP $ newChan
+    forM_ (nodes `zip` xs) $ \(nid,a) -> do
+        pid <- liftP $ spawnActor nid child
+        liftP $ do send pid chSend
+                   send pid (CAD [])       -- FIXME: How to allow children??
+                   send pid (Param a)
+        registerPID pid
+    gid <- freshGID
+    return $ Group (FailOut n gid) chRecv

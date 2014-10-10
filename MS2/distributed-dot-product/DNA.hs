@@ -21,6 +21,7 @@ module DNA (
     , forkLocal
     , forkRemote
     , forkGroup
+    , forkGroupFailout
       -- * Running program
     , dnaRun  
     ) where
