@@ -46,19 +46,19 @@ scatterShape n size
 
 -- | Compute vector and send it back to master using unsafe send.
 ddpComputeVector :: Actor (Int64,Int64) (S.Vector Double)
-ddpComputeVector = startProcess $ \_ (off,n) ->
+ddpComputeVector = actor $ \(off,n) ->
     return $ S.generate (fromIntegral n)
                (\i -> fromIntegral (fromIntegral i + fromIntegral off))
 
 -- | Read vector slice from the data file.
 ddpReadVector :: Actor (String,(Int64,Int64)) (S.Vector Double)
-ddpReadVector = startProcess $ \_ (fname, (off,n)) -> do
+ddpReadVector = actor $ \(fname, (off,n)) -> do
     liftIO $ readDataMMap n off fname "FIXME"
 
 
 -- | Caclculate dot product of slice of vector
 ddpProductSlice :: Actor (String,(Int64,Int64)) Double
-ddpProductSlice = startProcess $ \_ (fname, slice) -> do
+ddpProductSlice = actor $ \(fname, slice) -> do
     futVA <- forkLocal [] ddpComputeVector slice
     futVB <- forkLocal [] ddpReadVector (fname :: String, slice :: (Int64,Int64))
     va <- await futVA
@@ -73,7 +73,8 @@ remotable [ 'ddpComputeVector
 
 -- | Actor for calculating dot product
 ddpDotProduct :: Actor (String,Int64) Double
-ddpDotProduct = startProcess $ \nodes (fname,size) -> do
+ddpDotProduct = actor $ \(fname,size) -> do
+    nodes    <- getNodes
     partials <- forkGroup nodes $(mkStaticClosure 'ddpProductSlice)
                   ((,) <$> same fname <*> scatter (\n -> scatterShape (fromIntegral n)) size)
     gather partials (+) 0

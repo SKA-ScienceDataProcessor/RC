@@ -5,26 +5,22 @@ module DNA.Run (
     dnaRun
   ) where
 
-import Control.Concurrent
 import Control.Distributed.Process
 import Control.Distributed.Process.Node (initRemoteTable)
 
 import DNA.SimpleLocalNetWithoutDiscovery
 import DNA.CmdOpts
-import qualified DNA.DNA as DNA
+import DNA.DNA
 
 -- | Parse command line option and start program
-dnaRun :: (RemoteTable -> RemoteTable)
-       -> (MasterOptions -> Backend -> [NodeId] -> Process ())
-       -> IO ()
-dnaRun remoteTable master = do
+dnaRun :: (RemoteTable -> RemoteTable) -> DNA () -> IO ()
+dnaRun remoteTable dna = do
     options <- dnaParseCommandLineOpts
-    let rtable = (remoteTable . DNA.__remoteTable) initRemoteTable
+    let rtable = (remoteTable . __remoteTable) initRemoteTable
     case options of
         Master (CommonOpts cadFile ip port) masterOptions -> do
             backend <- initializeBackend cadFile ip port rtable
-            startMaster backend (master masterOptions backend)
-            liftIO $ threadDelay 100
+            startMaster backend $ \nodes -> runDNA nodes dna
         Slave (CommonOpts cadFile ip port) -> do
             backend <- initializeBackend cadFile ip port rtable
             startSlave backend
