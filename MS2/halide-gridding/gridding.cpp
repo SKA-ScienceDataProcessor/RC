@@ -6,12 +6,41 @@ using namespace Halide;
 int main(int argc, char **argv) {
     ImageParam UVW(Float(64), 2);    // second dimension is used for U, V and W parts. So it should be Nx3 sized.
 
+    // Constant supersample factor.
+    Expr supersampleFactor = 8;
+
+    // The Omega - telescope view angle.
+    Expr Omega = pi/2;
+
+    // Two two dimensional images for prolate spheroidal wave function.
+    // For real and imaginary parts.
+    ImageParam PSWFReal(Float(64),2);
+    ImageParam PSWFImag(Float(64),2);
+
+    // Iterator within UVW triples.
     RDom uvwRange (0, UVW.width());
 
+    // fetch the values.
     Expr U = UVW(uvwRange.x,0);
     Expr V = UVW(uvwRange.x,1);
     Expr W = UVW(uvwRange.x,2);
 
+    Expr intU = cast<int>U;
+    Expr intV = case<int>V;
+
+    Expr supersampleU = cast<int>(supersampleFactor*(U - intU));
+    Expr supersampleV = cast<int>(supersampleFactor*(V - intV));
+
+    // Computation of kernel width.
+    Expr onePercent = 0.01;
+    Expr wOmegaBy2 = W*Omega/2;
+    Expr GKernelWidth = sqrt(wOmegaBy2*(wOmegaBy2 + pi*onePercent/sqrt(w)));
+    Expr GKernelWidthInt = cast<int>(GKernelWidth+0.5);
+
+    // Range over kernel space. It is two dimensional, to account for U and V.
+    RDom GUVRange (-GKernelWidthInt, GKernelWidthInt+1, -GKernelWidthInt, GKernelWidthInt+1);
+
+    // The 
 
 #if 0
     Param<float> r_sigma("r_sigma");
