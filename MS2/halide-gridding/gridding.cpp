@@ -1,10 +1,13 @@
+// Gridding algoithm, adopted from bilateral_grid demo app.
+// There's nothing left from bilateral_grid except ideas and typical Halide idioms.
+
 #include "Halide.h"
 #include <stdio.h>
 
 using namespace Halide;
 
 int main(int argc, char **argv) {
-    ImageParam UVW(Float(64), 2);    // second dimension is used for U, V and W parts. So it should be Nx3 sized.
+    ImageParam UVW(Float(64), 4);    // second dimension is used for U, V and W parts. So it should be Nx3 sized.
 
     // Constant supersample factor.
     Expr supersampleFactor = 8;
@@ -12,18 +15,34 @@ int main(int argc, char **argv) {
     // The Omega - telescope view angle.
     Expr Omega = pi/2;
 
-    // Two two dimensional images for prolate spheroidal wave function.
-    // For real and imaginary parts.
-    ImageParam PSWFReal(Float(64),2);
-    ImageParam PSWFImag(Float(64),2);
+    // Two dimensional image for prolate spheroidal wave function. Last dimension is fixed to 2.
+    ImageParam PSWF(Float(64),3);
+
+    Var pswfKernelHalf("pswfKernelHalf");
+
+    // pswf kernel image height and width are odd, 2N+1. To recover the half, and not to overflow image bounds,
+    // we first subtract 1 and only then divide by 2. It have to work for 2N+1 and is safe for even values.
+    // (albeit incorrect).
+    pswfKernelHalf = (PSWF.extent(0)-1) / 2;
 
     // Iterator within UVW triples.
-    RDom uvwRange (0, UVW.width());
+    RDom uvwRange (0, UVW.extent(0), 0, UVW.extent(1), 0, UVW.extent(2));
+
+    Var timestep("timestep");
+    Var baseline("baseline");
+    Var channel("channel");
+
+    baseline = uvwRange.x;
+    timestep = uvmRange.y;
+    timestep = uvwRange.z;
 
     // fetch the values.
-    Expr U = UVW(uvwRange.x,0);
-    Expr V = UVW(uvwRange.x,1);
-    Expr W = UVW(uvwRange.x,2);
+    Var U("U");
+    U = UVW(baseline, timestep, channel, 0);
+    Var V("V");
+    V = UVW(baseline, timestep, channel, 1);
+    Var W("W");
+    W = UVW(baseline, timestep, channel, 2);
 
     Expr intU = cast<int>U;
     Expr intV = case<int>V;
@@ -40,86 +59,38 @@ int main(int argc, char **argv) {
     // Range over kernel space. It is two dimensional, to account for U and V.
     RDom GUVRange (-GKernelWidthInt, GKernelWidthInt+1, -GKernelWidthInt, GKernelWidthInt+1);
 
-    // The 
+    Var GU("GU");
+    Var GV("GV");
 
-#if 0
-    Param<float> r_sigma("r_sigma");
-    int s_sigma = atoi(argv[1]);
-    Var x("x"), y("y"), z("z"), c("c");
+    GU = GUVRange.x;
+    GV = GUVRange.y;
 
-    // Add a boundary condition
-    Func clamped("clamped");
-    clamped(x, y) = input(clamp(x, 0, input.width()-1),
-                          clamp(y, 0, input.height()-1));
+    // Range over PSWF space.
+    RDom pswfRange(-pswfKernelHalf, pswfKernelHalf+1, -pswfKernelHalf, pswfKernelHalf+1);
 
-    // Construct the bilateral grid
-    RDom r(0, s_sigma, 0, s_sigma);
-    Expr val = clamped(x * s_sigma + r.x - s_sigma/2, y * s_sigma + r.y - s_sigma/2);
-    val = clamp(val, 0.0f, 1.0f);
-    Expr zi = cast<int>(val * (1.0f/r_sigma) + 0.5f);
-    Func histogram("histogram");
-    histogram(x, y, z, c) = 0.0f;
-    histogram(x, y, zi, c) += select(c == 0, val, 1.0f);
+    Var PSWFU("PSWFU");
+    Var PSWFV("PSWFV");
 
-    // Blur the grid using a five-tap filter
-    Func blurx("blurx"), blury("blury"), blurz("blurz");
-    blurz(x, y, z, c) = (histogram(x, y, z-2, c) +
-                         histogram(x, y, z-1, c)*4 +
-                         histogram(x, y, z  , c)*6 +
-                         histogram(x, y, z+1, c)*4 +
-                         histogram(x, y, z+2, c));
-    blurx(x, y, z, c) = (blurz(x-2, y, z, c) +
-                         blurz(x-1, y, z, c)*4 +
-                         blurz(x  , y, z, c)*6 +
-                         blurz(x+1, y, z, c)*4 +
-                         blurz(x+2, y, z, c));
-    blury(x, y, z, c) = (blurx(x, y-2, z, c) +
-                         blurx(x, y-1, z, c)*4 +
-                         blurx(x, y  , z, c)*6 +
-                         blurx(x, y+1, z, c)*4 +
-                         blurx(x, y+2, z, c));
+    PSWFU = pswfRange.x;
+    PSWFV = pswfRange.y;
 
-    // Take trilinear samples to compute the output
-    val = clamp(input(x, y), 0.0f, 1.0f);
-    Expr zv = val * (1.0f/r_sigma);
-    zi = cast<int>(zv);
-    Expr zf = zv - zi;
-    Expr xf = cast<float>(x % s_sigma) / s_sigma;
-    Expr yf = cast<float>(y % s_sigma) / s_sigma;
-    Expr xi = x/s_sigma;
-    Expr yi = y/s_sigma;
-    Func interpolated("interpolated");
-    interpolated(x, y, c) =
-        lerp(lerp(lerp(blury(xi, yi, zi, c), blury(xi+1, yi, zi, c), xf),
-                  lerp(blury(xi, yi+1, zi, c), blury(xi+1, yi+1, zi, c), xf), yf),
-             lerp(lerp(blury(xi, yi, zi+1, c), blury(xi+1, yi, zi+1, c), xf),
-                  lerp(blury(xi, yi+1, zi+1, c), blury(xi+1, yi+1, zi+1, c), xf), yf), zf);
+    // The G kernel.
+    Func G("G");
 
-    // Normalize
-    Func bilateral_grid("bilateral_grid");
-    bilateral_grid(x, y) = interpolated(x, y, 0)/interpolated(x, y, 1);
+    // !!! XXX FIXME !!! XXX FIXME
+    G(GU,GV) = 1-G*0.01-U*0.01;
 
-    Target target = get_target_from_environment();
-    if (target.has_gpu_feature()) {
-        histogram.compute_root().reorder(c, z, x, y).gpu_tile(x, y, 8, 8);
-        histogram.update().reorder(c, r.x, r.y, x, y).gpu_tile(x, y, 8, 8).unroll(c);
-        blurx.compute_root().gpu_tile(x, y, z, 16, 16, 1);
-        blury.compute_root().gpu_tile(x, y, z, 16, 16, 1);
-        blurz.compute_root().gpu_tile(x, y, z, 8, 8, 4);
-        bilateral_grid.compute_root().gpu_tile(x, y, s_sigma, s_sigma);
-    } else {
+    // The computation of the result.
+    Func result("result");
+    var rU("rU");
+    Var rV("rV");
 
-        // CPU schedule
-        histogram.compute_at(blurz, y);
-        histogram.update().reorder(c, r.x, r.y, x, y).unroll(c);
-        blurz.compute_root().reorder(c, z, x, y).parallel(y).vectorize(x, 4).unroll(c);
-        blurx.compute_root().reorder(c, x, y, z).parallel(z).vectorize(x, 4).unroll(c);
-        blury.compute_root().reorder(c, x, y, z).parallel(z).vectorize(x, 4).unroll(c);
-        bilateral_grid.compute_root().parallel(y).vectorize(x, 4);
-    }
-    
-    bilateral_grid.compile_to_file("bilateral_grid", r_sigma, input, target);
-#endif
+    // computing the result
+    rU = intU + GU+PSWFU;
+    rU = intV + GV+PSWFV;
+
+    result(rU, rV) = 0.0;
+    result(rU, rV) += PSWF(PSWFU, PSWFV)*G(GU,GV); // This product can be cached. We also can drop assignment to zero and only update image.
 
     return 0;
 }
