@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
     G(GU,GV) = 1-G*0.01-U*0.01;
 
     // The computation of the result.
-    Func result("result");
+    Func gridding("gridding");
     var rU("rU");
     Var rV("rV");
 
@@ -89,8 +89,11 @@ int main(int argc, char **argv) {
     rU = intU + GU+PSWFU;
     rU = intV + GV+PSWFV;
 
-    result(rU, rV) = 0.0;
-    result(rU, rV) += PSWF(PSWFU, PSWFV)*G(GU,GV); // This product can be cached. We also can drop assignment to zero and only update image.
+    gridding(rU, rV) = 0.0;
+    gridding(rU, rV) += PSWF(PSWFU, PSWFV)*G(GU,GV); // This product can be cached. We also can drop assignment to zero and only update image.
+
+    Target compile_target = get_target_from_environment();
+    gridding.compile_to_file("gridding_compiled", UVW, PSWF, compile_target);
 
     return 0;
 }
