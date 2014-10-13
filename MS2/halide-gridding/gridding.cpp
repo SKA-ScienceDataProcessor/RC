@@ -80,11 +80,16 @@ int main(int argc, char **argv) {
     PSWFU = pswfRange.x;
     PSWFV = pswfRange.y;
 
+    // The expression of G.
+    Func GExpr("GExpr");
+    Var u("u"), v("v");
+    GExpr(u,v) = 1 - u*0.01 - v*0.01;
+
     // The G kernel.
     Func G("G");
 
     // !!! XXX FIXME !!! XXX FIXME
-    G(GU,GV) = 1-GU*0.01-GV*0.01;
+    G(u,v) = 1-u*0.01-v*0.01;
 
     // The computation of the result.
     Func gridding("gridding");
