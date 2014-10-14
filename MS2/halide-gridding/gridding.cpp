@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
 
     baseline = uvwRange.x;
     timestep = uvwRange.y;
-    timestep = uvwRange.z;
+    channel  = uvwRange.z;
 
     // fetch the values.
     Expr U("U");
@@ -81,30 +81,24 @@ int main(int argc, char **argv) {
     PSWFV = pswfRange.y;
 
     // The expression of G.
-    Func GExpr("GExpr");
+    Func G("GExpr");
     Var u("u"), v("v");
-    GExpr(u,v) = 1 - u*0.01 - v*0.01;
-
-    // The G kernel.
-    Func G("G");
-
-    // !!! XXX FIXME !!! XXX FIXME
-    G(u,v) = 1-u*0.01-v*0.01;
+    G(u,v) = 1 - u*0.01 - v*0.01;
 
     // The computation of the result.
     Func gridding("gridding");
-    Expr rU("rU");
-    Expr rV("rV");
+    Var rU("rU");
+    Var rV("rV");
 
     // computing the result
-    rU = intU + GU+PSWFU;
-    rU = intV + GV+PSWFV;
+    //rU = intU + GU+PSWFU;
+    //rU = intV + GV+PSWFV;
 
     gridding(rU, rV) = 0.0;
-    gridding(rU, rV) += PSWF(PSWFU, PSWFV)*G(GU,GV); // This product can be cached. We also can drop assignment to zero and only update image.
+    gridding(clamp(intU+GU, 0, 1000), clamp(intV+GV, 0, 1000)) += G(GU,GV); //PSWF(pswfRange.x, pswfRange.y)*G(GUVRange.x,GUVRange.y); // This product can be cached. We also can drop assignment to zero and only update image.
 
     Target compile_target = get_target_from_environment();
-    gridding.compile_to_file("gridding_compiled", UVW, PSWF, compile_target);
+    gridding.compile_to_file("gridding_compiled", UVW, compile_target);
 
     return 0;
 }
