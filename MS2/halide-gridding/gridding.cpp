@@ -94,11 +94,15 @@ int main(int argc, char **argv) {
     //rU = intU + GU+PSWFU;
     //rU = intV + GV+PSWFV;
 
+    RDom griddingPoint (intU-GKernelWidthInt, intU+GKernelWidthInt+1, intV - GKernelWidthInt, intV+GKernelWidthInt+1);
+
     gridding(rU, rV) = 0.0;
-    gridding(clamp(intU+GU, 0, 1000), clamp(intV+GV, 0, 1000)) += G(GU,GV); //PSWF(pswfRange.x, pswfRange.y)*G(GUVRange.x,GUVRange.y); // This product can be cached. We also can drop assignment to zero and only update image.
+    gridding(griddingPoint.x, griddingPoint.y) += G(griddingPoint.x-intU, griddingPoint.y-intV); //PSWF(pswfRange.x, pswfRange.y)*G(GUVRange.x,GUVRange.y); // This product can be cached. We also can drop assignment to zero and only update image.
 
     Target compile_target = get_target_from_environment();
-    gridding.compile_to_file("gridding_compiled", UVW, compile_target);
+    std::vector<Halide::Argument> compile_args;
+    compile_args.push_back(UVW);
+    gridding.compile_to_c("gridding_compiled.c", compile_args);
 
     return 0;
 }
