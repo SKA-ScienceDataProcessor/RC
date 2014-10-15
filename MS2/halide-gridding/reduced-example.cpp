@@ -47,7 +47,8 @@ int main(int argc, char **argv) {
     low = CenterX - Width;
     high = CenterX + Width;
 
-    result(x) = select(x >= low && x <= high, 1/sqrt(1+sqr(Z)+sqr(Coord-x)), 0);
+//    result(x) = cast<double>(0.0);
+    result(x) += select(x >= low && x <= high, 1/sqrt(1+sqr(Z)+sqr(Coord-x)), 0);
 
     Target compile_target = get_target_from_environment();
     std::vector<Halide::Argument> compile_args;
