@@ -1,4 +1,4 @@
-HALIDE_PATH = ../../../halide
+HALIDE_PATH = ../../../../halide
 
 HALIDE_BIN = $(HALIDE_PATH)/bin
 HALIDE_LIB_PATH = $(HALIDE_BIN)

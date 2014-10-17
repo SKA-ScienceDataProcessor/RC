@@ -11,8 +11,8 @@ template<typename T>
 void gridding_func_simple(std::string typeName) {
     int Tbits = sizeof(T) * 8;
     ImageParam UVW(Float(Tbits), 4, "UVW");
-    ImageParam visibilities(Float(Tbits), 4, "visibilities");
-    ImageParam support(Float (Tbits), 4, "supportSimple");       // 
+    ImageParam visibilities(Float(Tbits), 4, "visibilities");   // baseline, channel, timestep, polarization fuzed withcomplex number.
+    ImageParam support(Float (Tbits), 4, "supportSimple");      // baseline, u,v and two values of complex number.
     ImageParam supportSize(Int(32), 1, "supportSize");
 
     RDom uvwRange (0, UVW.extent(0), 0, UVW.extent(1), 0, UVW.extent(2));
@@ -46,15 +46,23 @@ void gridding_func_simple(std::string typeName) {
 
     Func result("result");
 
+    // the weight of support changes with method.
+    Expr weightr("weightr"), weighti("weighti");;
+    weightr = support(baseline, convRange.x+supportWidthHalf, convRange.y+supportWidthHalf, 0);
+    weighti = support(baseline, convRange.x+supportWidthHalf, convRange.y+supportWidthHalf, 1);
+
     RDom polarizations(0,4);
 
-    Expr visibility("silibility");
-    visibility = visibilities(baseline, timestep, channel,polarizations.x);
+    Expr visibilityr("silibilityr"), visibilityi("visibilityi");
+    visibilityr = visibilities(baseline, timestep, channel,polarizations.x*2);
+    visibilityi = visibilities(baseline, timestep, channel,polarizations.x*2);
 
     Var u("u"), v("v"), pol("pol");
 
-    result(u, v, pol)  = 0.0;
-    result(u, v, pol) += 1.0;
+    result(u, v, pol, 0)  = 0.0;
+    result(u, v, pol, 1)  = 0.0;
+    result(u, v, pol, 0) += select(u > 0, weightr*visibilityr, 0.0);;
+    result(u, v, pol, 1) += select(u > 0, weighti*visibilityi, 0.0);;
 
     Target compile_target = get_target_from_environment();
     std::vector<Halide::Argument> compile_args;
