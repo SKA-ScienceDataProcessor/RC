@@ -14,41 +14,34 @@ int main(int argc, char **argv) {
     // Iterator within UVW triples.
     RDom coordsRange (0, Coords.extent(0));
 
-    Expr coordIndex("coordIndex");
+    Func spritePixel("spritePixel");
 
-    coordIndex = coordsRange.x;
+    Var spriteCoordIndex("spriteCoordIndex"), spriteImageIndex("spriteImageIndex");
 
-    // fetch the values.
-    Expr Coord("Coord"), Z("Z");
-    Coord = Coords(coordIndex, 0);
-    Z = Coords(coordIndex, 1);
+    Expr spriteWidth("spriteWidth"), spriteCoord("spriteCoord"), spriteZ("spriteZ");
 
-    Expr CenterX = cast<int>(Coord);
+    spriteZ = Coords(spriteCoordIndex, 1);
+    spriteCoord = Coords(spriteCoordIndex, 0);
 
-    Expr Width = cast<int>(sqrt(1+Z*Z));        // just an example.
+    spriteWidth = cast<int>(sqrt(1+spriteZ*spriteZ));
 
-    RDom spriteRange(-Width, 2*Width+1);          // the sprite size.
-
-    Var x;
-    Var z;
-
-//    Func sprite("sprite");
-//    sprite(x) = 1/sqrt(1+Z*Z+x*x);
+    spritePixel(spriteCoordIndex, spriteImageIndex) =
+        select(spriteImageIndex >= spriteCoord-spriteWidth
+               && spriteImageIndex <= spriteCoord+spriteWidth,
+               1/sqrt(1+spriteZ*spriteZ+(spriteCoord-spriteImageIndex)*(spriteCoord-spriteImageIndex)),
+               cast<double>(0.0));
 
     Func result("result");
 
+    Var x("x");
+
+    Expr y("y");
+    y = coordsRange.x;
+
     result(x) = cast<double>(0.0);
-//    result(CenterX+spriteRange.x) += sprite(Coord-CenterX+spriteRange.x); // the "call" of sprite does not work.
-#define sqr(x) ((x)*(x))
-//    result(CenterX+spriteRange.x) += 1/sqrt(1+sqr(Coord-CenterX+spriteRange.x) + sqr(Z));
-    Expr low("low");
-    Expr high("high");
+    result(x) += spritePixel(y, x);
 
-    low = CenterX - Width;
-    high = CenterX + Width;
-
-//    result(x) = cast<double>(0.0);
-    result(x) += select(x >= low && x <= high, 1/sqrt(1+sqr(Z)+sqr(Coord-x)), 0);
+    result.update().reorder(x, coordsRange.x);
 
     Target compile_target = get_target_from_environment();
     std::vector<Halide::Argument> compile_args;
