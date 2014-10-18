@@ -17,24 +17,20 @@ void gridding_func_simple(std::string typeName) {
 
     RDom uvwRange (0, UVW.extent(0), 0, UVW.extent(1), 0, UVW.extent(2));
 
-    Expr timestep("timestep");
-    Expr baseline("baseline");
-    Expr channel("channel");
-
-    baseline = uvwRange.x;
-    timestep = uvwRange.y;
-    channel  = uvwRange.z;
+    Var baseline("baseline"), timestep("timestep"), channel("channel");
 
     // fetch the values.
-    Expr U("U");
-    U = UVW(baseline, timestep, channel, 0);
-    Expr V("V");
-    V = UVW(baseline, timestep, channel, 1);
-    Expr W("W");
-    W = UVW(baseline, timestep, channel, 2);
+    Func U("U");
+    U(baseline, timestep, channel) = UVW(baseline, timestep, channel, 0);
+    Func V("V");
+    V(baseline, timestep, channel) = UVW(baseline, timestep, channel, 1);
+    Func W("W");
+    W(baseline, timestep, channel) = UVW(baseline, timestep, channel, 2);
 
-    Expr intU = cast<int>(U);
-    Expr intV = cast<int>(V);
+    Func intU;
+    intU(baseline, timestep, channel) = cast<int>(U(timestep, baseline, channel));
+    Func intV;
+    intV(baseline, timestep, channel) = cast<int>(V(timestep, baseline, channel));
 
     Func supportWidth("supportWidth");
     Var x("x");
@@ -47,28 +43,42 @@ void gridding_func_simple(std::string typeName) {
 
     Func result("result");
 
-    // the weight of support changes with method.
+    // the weight of support changes with method - method here is SIMPLE..
     Func weightr("weightr"), weighti("weighti");;
     Var weightBaseline("weightBaseline"), cu("cu"), u("u"), cv("cv"), v("v");
     weightr(weightBaseline, cu, cv, u, v) =
         select(abs(cv-v) <= supportWidth(weightBaseline) && abs(cu-u) <= supportWidth(weightBaseline),
-                support(weightBaseline, cu-u+supportWidthHalf(weightBaseline), cv-v+supportWidthHalf(weightBaseline), 0),
+                support(weightBaseline, cu-u+supportWidth(weightBaseline)/2, cv-v+supportWidth(weightBaseline)/2, 0),
                 0.0);
     weighti(weightBaseline, cu, cv, u, v) =
+        weightr(weightBaseline, cu, cv, u, v);
+/*
         select(abs(cv-v) <= supportWidth(weightBaseline) && abs(cu-u) <= supportWidth(weightBaseline),
                 support(weightBaseline, cu-u+supportWidthHalf(weightBaseline), cv-v+supportWidthHalf(weightBaseline), 1),
                 0.0);
+*/
 
     RDom polarizations(0,4);
 
-    Expr visibilityr("silibilityr"), visibilityi("visibilityi");
-    visibilityr = visibilities(baseline, timestep, channel,polarizations.x*2);
-    visibilityi = visibilities(baseline, timestep, channel,polarizations.x*2+1);
+    Var polarization("polarization");
+
+    Func visibilityr("silibilityr"), visibilityi("visibilityi");
+    visibilityr(baseline, timestep, channel, polarization) = visibilities(baseline, timestep, channel,polarization*2);
+    visibilityi(baseline, timestep, channel, polarization) = visibilities(baseline, timestep, channel,polarization*2+1);
 
     Var pol("pol");
 
+    Expr baselineR("baselineR"), timestepR("timestepR"), channelR("channelR");
+
+    baselineR = uvwRange.x;
+    timestepR = uvwRange.y;
+    channelR = uvwRange.z;
+
+    // four dimensional result.
+    // dimensions are: u, v, polarizations (XX,XY,YX, and YY, four total) and real and imaginary values of complex number.
+    // so you should reaalize result as this: result.realize(MAX_U, MAX_V, 4, 2);
     result(u, v, pol, x)  = 0.0;
-    result(u, v, pol, 0) += select(u > 0, weightr(baseline, intU, intV,u,v) *visibilityr, 0.0);;
+    result(u, v, pol, 0) += weightr(baselineR, intU(baselineR, timestepR, channelR), intV(baselineR, timestepR, channelR),u,v) *visibilityr(baselineR, timestepR, channelR, pol);
 //    result(u, v, pol, 1) += select(u > 0, weighti*visibilityi, 0.0);;
 
     Target compile_target = get_target_from_environment();
