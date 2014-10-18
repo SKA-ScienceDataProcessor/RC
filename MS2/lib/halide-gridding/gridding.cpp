@@ -36,33 +36,40 @@ void gridding_func_simple(std::string typeName) {
     Expr intU = cast<int>(U);
     Expr intV = cast<int>(V);
 
-    Expr supportWidth("supportWidth");
-    supportWidth = supportSize(baseline);
+    Func supportWidth("supportWidth");
+    Var x("x");
+    supportWidth(x) = supportSize(x);
 
-    Expr supportWidthHalf("supportWidthHalf");
-    supportWidthHalf = supportWidth/2;
+    Func supportWidthHalf("supportWidthHalf");
+    supportWidthHalf(x) = supportWidth(x)/2;
 
     RDom convRange(-supportWidthHalf, supportWidth, -supportWidthHalf, supportWidth);
 
     Func result("result");
 
     // the weight of support changes with method.
-    Expr weightr("weightr"), weighti("weighti");;
-    weightr = support(baseline, convRange.x+supportWidthHalf, convRange.y+supportWidthHalf, 0);
-    weighti = support(baseline, convRange.x+supportWidthHalf, convRange.y+supportWidthHalf, 1);
+    Func weightr("weightr"), weighti("weighti");;
+    Var weightBaseline("weightBaseline"), cu("cu"), u("u"), cv("cv"), v("v");
+    weightr(weightBaseline, cu, cv, u, v) =
+        select(abs(cv-v) <= supportWidth(weightBaseline) && abs(cu-u) <= supportWidth(weightBaseline),
+                support(weightBaseline, cu-u+supportWidthHalf(weightBaseline), cv-v+supportWidthHalf(weightBaseline), 0),
+                0.0);
+    weighti(weightBaseline, cu, cv, u, v) =
+        select(abs(cv-v) <= supportWidth(weightBaseline) && abs(cu-u) <= supportWidth(weightBaseline),
+                support(weightBaseline, cu-u+supportWidthHalf(weightBaseline), cv-v+supportWidthHalf(weightBaseline), 1),
+                0.0);
 
     RDom polarizations(0,4);
 
     Expr visibilityr("silibilityr"), visibilityi("visibilityi");
     visibilityr = visibilities(baseline, timestep, channel,polarizations.x*2);
-    visibilityi = visibilities(baseline, timestep, channel,polarizations.x*2);
+    visibilityi = visibilities(baseline, timestep, channel,polarizations.x*2+1);
 
-    Var u("u"), v("v"), pol("pol");
+    Var pol("pol");
 
-    result(u, v, pol, 0)  = 0.0;
-    result(u, v, pol, 1)  = 0.0;
-    result(u, v, pol, 0) += select(u > 0, weightr*visibilityr, 0.0);;
-    result(u, v, pol, 1) += select(u > 0, weighti*visibilityi, 0.0);;
+    result(u, v, pol, x)  = 0.0;
+    result(u, v, pol, 0) += select(u > 0, weightr(baseline, intU, intV,u,v) *visibilityr, 0.0);;
+//    result(u, v, pol, 1) += select(u > 0, weighti*visibilityi, 0.0);;
 
     Target compile_target = get_target_from_environment();
     std::vector<Halide::Argument> compile_args;
