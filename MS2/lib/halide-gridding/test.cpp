@@ -4,45 +4,61 @@
 #include <sys/time.h>
 
 extern "C" {
-  #include "bilateral_grid.h"
+  #include "griddingSimplefloat.h"
 }
 
 #include <static_image.h>
 #include <image_io.h>
 
+static void testGriddingSimpleConformance(void) {
+    int nBaselines = 2;
+    int nChannels = 1;
+    int nTimesteps = 1;
+    Image<float> UVWTriples(nBaselines, nChannels, nTimesteps, 3);
+    Image<float> visibilities(nBaselines, nChannels, nTimesteps, 8);
+    Image<float> support(nBaselines, 3, 3, 2);
+    Image<int> supportSize(nBaselines, 1);
+
+    // setting up UVW triples.
+    UVWTriples(0,0,0,0) =  10.1; UVWTriples(0,0,0,1) =  11.1; UVWTriples(0,0,0,2) =  12.2;
+    UVWTriples(1,0,0,0) = 110.1; UVWTriples(1,0,0,1) = 111.1; UVWTriples(1,0,0,2) = 112.2;
+
+    // setting up visibilities.
+    // the last dimension is complex pair * polarization.
+    visibilities(0,0,0,0) = 0.1; visibilities(0,0,0,1) = 0.2; visibilities(0,0,0,2) = 0.3; visibilities(0,0,0,3) = 0.4;
+    visibilities(0,0,0,5) = 0.5; visibilities(0,0,0,6) = 0.6; visibilities(0,0,0,7) = 0.7; visibilities(0,0,0,8) = 0.8;
+    visibilities(1,0,0,0) = 0.1; visibilities(1,0,0,1) = 0.2; visibilities(1,0,0,2) = 0.3; visibilities(1,0,0,3) = 0.4;
+    visibilities(1,0,0,5) = 0.5; visibilities(1,0,0,6) = 0.6; visibilities(1,0,0,7) = 0.7; visibilities(1,0,0,8) = 0.8;
+
+    // setting up support sizes:
+    supportSize(0) = 1;
+    supportSize(1) = 3;
+
+    // Setting up support.
+    // baseline 0 - size 1, single element should be set.
+    support(0,0,0,0) = 0.5; support(0,0,0,1) = -1;
+
+    support(1,0,0,0) = 1; support(0,0,0,1) = -1;
+    support(1,0,1,0) = 2; support(0,0,0,1) = -2;
+    support(1,0,2,0) = 3; support(0,0,0,1) = -3;
+    support(1,1,0,0) = 4; support(0,1,0,1) = -4;
+    support(1,1,1,0) = 5; support(0,1,1,1) = -5;
+    support(1,1,2,0) = 6; support(0,1,2,1) = -6;
+    support(1,2,0,0) = 7; support(0,2,0,1) = -7;
+    support(1,2,1,0) = 8; support(0,2,1,1) = -8;
+    support(1,2,2,0) = 9; support(0,2,2,1) = -9;
+
+    // execute the algorithm.
+    Image<float> result(200, 200, 4, 2);
+
+    int errCode = griddingSimplefloat(UVWTriples, visibilities, support, supportSize, result);
+    printf("execution error code %d.\n",errCode);
+} /* testGriddingSimpleConformance */
+
+
 int main(int argc, char **argv) {
 
-    if (argc < 4) {
-        printf("Usage: ./filter input.png output.png range_sigma\n"
-               "e.g. ./filter input.png output.png 0.1\n");
-        return 0;
-    }
-
-    Image<float> input = load<float>(argv[1]);
-    Image<float> output(input.width(), input.height(), 1);
-
-    bilateral_grid(atof(argv[3]), input, output);
-
-#if 1
-    // Timing code
-    timeval t1, t2;
-    double min_t = 1e10f;
-    for (int j = 0; j < 10; j++) {
-        gettimeofday(&t1, NULL);
-        for (int i = 0; i < 10; i++) {
-            bilateral_grid(atof(argv[3]), input, output);
-        }
-        gettimeofday(&t2, NULL);
-        double t = (t2.tv_sec - t1.tv_sec)*1000.0 + (t2.tv_usec - t1.tv_usec)/1000.0;
-        if (t < min_t) {
-            min_t = t;
-        }
-    }
-
-    printf("Time: %fms\n", min_t/10);
-#endif
-
-    save(output, argv[2]);
+    testGriddingSimpleConformance();
 
     return 0;
 }

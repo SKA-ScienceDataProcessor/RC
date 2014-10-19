@@ -10,8 +10,8 @@ using namespace Halide;
 template<typename T>
 void gridding_func_simple(std::string typeName) {
     int Tbits = sizeof(T) * 8;
-    ImageParam UVW(Float(Tbits), 4, "UVW");
-    ImageParam visibilities(Float(Tbits), 4, "visibilities");   // baseline, channel, timestep, polarization fuzed withcomplex number.
+    ImageParam UVW(Float(Tbits), 4, "UVW");     // baseline, channel, timestep, UVW triples.
+    ImageParam visibilities(Float(Tbits), 4, "visibilities");   // baseline, channel, timestep, polarization fuzed with complex number.
     ImageParam support(Float (Tbits), 4, "supportSimple");      // baseline, u,v and two values of complex number.
     ImageParam supportSize(Int(32), 1, "supportSize");
 
@@ -41,7 +41,9 @@ void gridding_func_simple(std::string typeName) {
 
     RDom convRange(-supportWidthHalf, supportWidth, -supportWidthHalf, supportWidth);
 
-    Func result("result");
+    std::string resultName = "griddingSimple"+typeName;
+
+    Func result(resultName);
 
     // the weight of support changes with method - method here is SIMPLE..
     Func weightr("weightr"), weighti("weighti");;
@@ -88,7 +90,7 @@ void gridding_func_simple(std::string typeName) {
     compile_args.push_back(visibilities);
     compile_args.push_back(support);
     compile_args.push_back(supportSize);
-    result.compile_to_c("gridding_compiled.c", compile_args);
+    result.compile_to_file(resultName, compile_args);
 
 } /* gridding_func_simple */
 

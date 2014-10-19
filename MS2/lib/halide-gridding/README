@@ -1,1 +1,22 @@
-Not yet done.
+Gridding expressed in Halide
+============================
+
+A gridding implementation in Halide.
+
+Files:
+  * README - this file.
+  * gridding.cpp - a Halide expression of various gridding algorithms. Right now it consists only of SIMPLE algorithm
+    It is compiled to executable and that executable produces algorithms to be run.
+  * Makefile - default target is to create gridding algorithms implementations. Other targets:
+     * ...
+  * test.cpp - conformance tests for gridding algorithms. Checks that algorithms do what they should.
+  * performance.cpp - performance tests (TBD).
+
+
+Noticeable Halide quirks
+========================
+
+  * Halide supports images with dimensions up to 4 (x,y,z,w). You have to reduce dimensionality of
+    arrays to 4. For example, visibilities array has dimensionality of 4, while in Romein code it is
+    5-dimensional.
+
