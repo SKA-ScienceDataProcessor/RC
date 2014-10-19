@@ -48,15 +48,16 @@ void gridding_func_simple(std::string typeName) {
     Var weightBaseline("weightBaseline"), cu("cu"), u("u"), cv("cv"), v("v");
     weightr(weightBaseline, cu, cv, u, v) =
         select(abs(cv-v) <= supportWidth(weightBaseline) && abs(cu-u) <= supportWidth(weightBaseline),
-                support(weightBaseline, cu-u+supportWidth(weightBaseline)/2, cv-v+supportWidth(weightBaseline)/2, 0),
-                0.0);
+                support(weightBaseline,
+                        clamp(cu-u+supportWidth(weightBaseline)/2, 0, support.extent(1)),
+                        clamp(cv-v+supportWidth(weightBaseline)/2, 0, support.extent(2)), 0),
+                (T)0.0);
     weighti(weightBaseline, cu, cv, u, v) =
-        weightr(weightBaseline, cu, cv, u, v);
-/*
         select(abs(cv-v) <= supportWidth(weightBaseline) && abs(cu-u) <= supportWidth(weightBaseline),
-                support(weightBaseline, cu-u+supportWidthHalf(weightBaseline), cv-v+supportWidthHalf(weightBaseline), 1),
-                0.0);
-*/
+                support(weightBaseline,
+                        clamp(cu-u+supportWidth(weightBaseline)/2, 0, support.extent(1)),
+                        clamp(cv-v+supportWidth(weightBaseline)/2, 0, support.extent(2)), 1),
+                (T)0.0);
 
     RDom polarizations(0,4);
 
@@ -77,7 +78,7 @@ void gridding_func_simple(std::string typeName) {
     // four dimensional result.
     // dimensions are: u, v, polarizations (XX,XY,YX, and YY, four total) and real and imaginary values of complex number.
     // so you should reaalize result as this: result.realize(MAX_U, MAX_V, 4, 2);
-    result(u, v, pol, x)  = 0.0;
+    result(u, v, pol, x)  = (T)0.0;
     result(u, v, pol, 0) += weightr(baselineR, intU(baselineR, timestepR, channelR), intV(baselineR, timestepR, channelR),u,v) *visibilityr(baselineR, timestepR, channelR, pol);
 //    result(u, v, pol, 1) += select(u > 0, weighti*visibilityi, 0.0);;
 
