@@ -2,7 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveDataTypeable, DeriveFunctor #-}
+{-# LANGUAGE DeriveDataTypeable, DeriveFunctor, DeriveGeneric #-}
 {-# LANGUAGE GADTs #-}
 -- | DNA monad and helper functions
 module DNA.DNA (
@@ -107,6 +107,10 @@ getMonitor = DNA ask
 --          child process will be termintaed forcefully when parent
 --          dies.
 data Promise a = Promise ProcessId (SendPort (SendPort a))
+                 deriving (Typeable,Generic)
+
+instance (Typeable a, Binary a) => Binary (Promise a)
+
 
 -- | Await result from promise. Function will block.
 --
@@ -139,6 +143,9 @@ data Group a = Group
     -- Number of elements. Could be different from length of worker processes
     [SendPort (SendPort a)]
     -- Port to send destinations to
+    deriving (Typeable,Generic)
+
+instance (Typeable a, Binary a) => Binary (Group a)
 
 
 -- | Gather all results from child processes.
