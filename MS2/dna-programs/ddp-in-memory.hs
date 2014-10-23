@@ -1,16 +1,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 module Main(main) where
 
 import Control.Applicative
 import Control.Monad
-import Control.Monad.IO.Class
-import Control.Distributed.Process.Closure (mkStaticClosure,remotable)
-
 import Data.Int
 import qualified Data.Vector.Storable as S
 

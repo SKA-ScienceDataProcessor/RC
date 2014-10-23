@@ -71,8 +71,6 @@ executable ddp-in-memory
   build-depends:
     base >=4.6,
     ddp-erlang-style,
-    distributed-process == 0.5.*,
-    transformers == 0.4.1.*,
     vector >= 0.10
 
 executable ddp-in-memory-collector
@@ -83,6 +81,4 @@ executable ddp-in-memory-collector
   build-depends:
     base >=4.6,
     ddp-erlang-style,
-    distributed-process == 0.5.*,
-    transformers == 0.4.1.*,
     vector >= 0.10

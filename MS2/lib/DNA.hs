@@ -24,10 +24,15 @@ module DNA (
     , forkGroup
     , forkGroupFailout
       -- * Running program
-    , dnaRun  
+    , dnaRun
+      -- * Reexports
+    , MonadIO(..)
+    , mkStaticClosure
+    , remotable
     ) where
 
 import Control.Monad.IO.Class
+import Control.Distributed.Process.Closure (mkStaticClosure,remotable)
 
 import DNA.Logging
 import DNA.Run
