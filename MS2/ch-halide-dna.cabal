@@ -71,16 +71,8 @@ executable ddp-in-memory
   build-depends:
     base >=4.6,
     ddp-erlang-style,
-    binary,
-    deepseq,
-    unix,
-    distributed-static,
     distributed-process == 0.5.*,
-    distributed-process-platform == 0.1.*,
-    containers == 0.5.5.*,
     transformers == 0.4.1.*,
-    bytestring              == 0.10.4.*, 
-    network-multicast       == 0.0.11.*,
     vector >= 0.10
 
 executable test
