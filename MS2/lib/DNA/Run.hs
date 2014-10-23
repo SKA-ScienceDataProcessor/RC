@@ -11,6 +11,7 @@ import Control.Distributed.Process.Node (initRemoteTable)
 import DNA.SimpleLocalNetWithoutDiscovery
 import DNA.CmdOpts
 import DNA.DNA
+import DNA.Monitor
 
 -- | Parse command line option and start program
 dnaRun :: (RemoteTable -> RemoteTable) -> DNA () -> IO ()
@@ -20,7 +21,9 @@ dnaRun remoteTable dna = do
     case options of
         Master (CommonOpts cadFile ip port) masterOptions -> do
             backend <- initializeBackend cadFile ip port rtable
-            startMaster backend $ \nodes -> runDNA nodes dna
+            startMaster backend $ \nodes -> do
+                mon <- runMonitor
+                runDNA mon nodes dna
         Slave (CommonOpts cadFile ip port) -> do
             backend <- initializeBackend cadFile ip port rtable
             startSlave backend

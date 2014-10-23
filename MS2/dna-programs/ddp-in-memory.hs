@@ -1,27 +1,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 module Main(main) where
 
 import Control.Applicative
 import Control.Monad
-import Control.Distributed.Process
-import Control.Distributed.Process.Closure
-import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
-import Control.Distributed.Process.Serializable (Serializable)
-
-import Data.Binary   (Binary)
 import Data.Int
-import Data.Typeable (Typeable)
 import qualified Data.Vector.Storable as S
-import GHC.Generics  (Generic)
 
 import DNA.Channel.File (readDataMMap)
-import DNA.Logging
-import DNA.Run
 import DNA
 
 
