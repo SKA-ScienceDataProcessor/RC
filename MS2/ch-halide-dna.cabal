@@ -75,6 +75,19 @@ executable ddp-in-memory
     transformers == 0.4.1.*,
     vector >= 0.10
 
+executable ddp-in-memory-collector
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded
+  Hs-source-dirs:      dna-programs
+  main-is:             ddp-in-memory-collector.hs
+  build-depends:
+    base >=4.6,
+    ddp-erlang-style,
+    distributed-process == 0.5.*,
+    transformers == 0.4.1.*,
+    vector >= 0.10
+
+
 executable test
   default-language: Haskell2010
   main-is: test.hs
