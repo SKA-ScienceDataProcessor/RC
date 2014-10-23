@@ -52,6 +52,7 @@ library
     DNA.DNA
     DNA.Types
     DNA.Run
+    DNA.Monitor
     DNA.Logging
     DNA.Channel.File
     DNA.Common
@@ -81,3 +82,9 @@ executable ddp-in-memory
     bytestring              == 0.10.4.*, 
     network-multicast       == 0.0.11.*,
     vector >= 0.10
+
+executable test
+  default-language: Haskell2010
+  main-is: test.hs
+  build-depends:
+    base, transformers, distributed-process, distributed-process-simplelocalnet

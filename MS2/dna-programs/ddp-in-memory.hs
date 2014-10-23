@@ -8,6 +8,7 @@ module Main(main) where
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Distributed.Process
 import Control.Distributed.Process.Closure
 import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe

@@ -9,7 +9,9 @@ import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
 
 
-
+-- | Newtype wrapper for sending parent process
+newtype Parent = Parent ProcessId
+              deriving (Show,Eq,Typeable,Binary)
 
 -- | Cluster architecture description. Currently it's simply list of
 --   nodes process can use.
@@ -21,3 +23,7 @@ newtype CAD = CAD [NodeId]
 --   is sent.
 newtype Param a = Param a
                   deriving (Show,Eq,Typeable,Binary)
+
+-- | ID of group of processes
+newtype GroupID = GroupID Int
+                deriving (Show,Eq,Ord,Typeable,Binary)
