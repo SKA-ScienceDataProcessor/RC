@@ -10,11 +10,11 @@ HALIDE_SUPPORT_INCLUDE = $(HALIDE_PATH)/apps/support
 run_conformance: test
 	./test
 
-test: test.cpp griddingSimplefloat.h griddingSimplefloat.o
-	g++ -O3 -o test -I$(HALIDE_INCLUDE) -I$(HALIDE_SUPPORT_INCLUDE) test.cpp griddingSimplefloat.o $(HALIDE_LIB) -lpthread -ldl
+test: test.cpp griddingSimple_float.h griddingSimple_float.o
+	g++ -O3 -o test -I$(HALIDE_INCLUDE) -I$(HALIDE_SUPPORT_INCLUDE) test.cpp griddingSimple_float.o $(HALIDE_LIB) -lpthread -ldl
 
-griddingSimplefloat.h griddingSimplefloat.o: gridding
-	./gridding
+griddingSimple_float.h griddingSimple_float.o: gridding
+	HL_DEBUG_CODEGEN=1 ./gridding
 
 reduced-example-compiled.c: reduced-example
 	./reduced-example
@@ -23,7 +23,7 @@ gridding: gridding.cpp
 	g++ -o gridding gridding.cpp -I$(HALIDE_INCLUDE) -ldl -lpthread $(HALIDE_LIB) ${shell llvm-config --ldflags}
 
 clean:
-	rm -f gridding gridding_compiled*
+	rm -f gridding griddingSimple_**
 
 reduced-example: reduced-example.cpp
 	g++ -o reduced-example reduced-example.cpp -I$(HALIDE_INCLUDE) -ldl -lpthread $(HALIDE_LIB) ${shell llvm-config --ldflags}

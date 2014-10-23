@@ -4,7 +4,7 @@
 #include <sys/time.h>
 
 extern "C" {
-  #include "griddingSimplefloat.h"
+  #include "griddingSimple_float.h"
 }
 
 #include <static_image.h>
@@ -51,7 +51,7 @@ static void testGriddingSimpleConformance(void) {
     // execute the algorithm.
     Image<float> result(200, 200, 4, 2);
 
-    int errCode = griddingSimplefloat(UVWTriples, visibilities, support, supportSize, result);
+    int errCode = griddingSimple_float(UVWTriples, visibilities, support, supportSize, result);
     printf("execution error code %d.\n",errCode);
 } /* testGriddingSimpleConformance */
 

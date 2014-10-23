@@ -10,9 +10,9 @@ using namespace Halide;
 template<typename T>
 void gridding_func_simple(std::string typeName) {
     int Tbits = sizeof(T) * 8;
-    ImageParam UVW(Float(Tbits), 4, "UVW");     // baseline, channel, timestep, UVW triples.
-    ImageParam visibilities(Float(Tbits), 4, "visibilities");   // baseline, channel, timestep, polarization fuzed with complex number.
-    ImageParam support(Float (Tbits), 4, "supportSimple");      // baseline, u,v and two values of complex number.
+    ImageParam UVW(Halide::type_of<T>(), 4, "UVW");     // baseline, channel, timestep, UVW triples.
+    ImageParam visibilities(Halide::type_of<T>(), 4, "visibilities");   // baseline, channel, timestep, polarization fuzed with complex number.
+    ImageParam support(Halide::type_of<T>(), 4, "supportSimple");      // baseline, u,v and two values of complex number.
     ImageParam supportSize(Int(32), 1, "supportSize");
 
     RDom uvwRange (0, UVW.extent(0), 0, UVW.extent(1), 0, UVW.extent(2));
@@ -24,13 +24,11 @@ void gridding_func_simple(std::string typeName) {
     U(baseline, timestep, channel) = UVW(baseline, timestep, channel, 0);
     Func V("V");
     V(baseline, timestep, channel) = UVW(baseline, timestep, channel, 1);
-    Func W("W");
-    W(baseline, timestep, channel) = UVW(baseline, timestep, channel, 2);
 
     Func intU;
-    intU(baseline, timestep, channel) = cast<int>(U(timestep, baseline, channel));
+    intU(baseline, timestep, channel) = cast<int>(U(baseline, timestep, channel));
     Func intV;
-    intV(baseline, timestep, channel) = cast<int>(V(timestep, baseline, channel));
+    intV(baseline, timestep, channel) = cast<int>(V(baseline, timestep, channel));
 
     Func supportWidth("supportWidth");
     Var x("x");
@@ -39,9 +37,7 @@ void gridding_func_simple(std::string typeName) {
     Func supportWidthHalf("supportWidthHalf");
     supportWidthHalf(x) = supportWidth(x)/2;
 
-    RDom convRange(-supportWidthHalf, supportWidth, -supportWidthHalf, supportWidth);
-
-    std::string resultName = "griddingSimple"+typeName;
+    std::string resultName = "griddingSimple_"+typeName;
 
     Func result(resultName);
 
@@ -51,14 +47,14 @@ void gridding_func_simple(std::string typeName) {
     weightr(weightBaseline, cu, cv, u, v) =
         select(abs(cv-v) <= supportWidth(weightBaseline) && abs(cu-u) <= supportWidth(weightBaseline),
                 support(weightBaseline,
-                        clamp(cu-u+supportWidth(weightBaseline)/2, 0, support.extent(1)),
-                        clamp(cv-v+supportWidth(weightBaseline)/2, 0, support.extent(2)), 0),
+                        clamp(cu-u+supportWidth(weightBaseline)/2, 0, support.extent(1)-1),
+                        clamp(cv-v+supportWidth(weightBaseline)/2, 0, support.extent(2)-1), 0),
                 (T)0.0);
     weighti(weightBaseline, cu, cv, u, v) =
         select(abs(cv-v) <= supportWidth(weightBaseline) && abs(cu-u) <= supportWidth(weightBaseline),
                 support(weightBaseline,
-                        clamp(cu-u+supportWidth(weightBaseline)/2, 0, support.extent(1)),
-                        clamp(cv-v+supportWidth(weightBaseline)/2, 0, support.extent(2)), 1),
+                        clamp(cu-u+supportWidth(weightBaseline)/2, 0, support.extent(1)-1),
+                        clamp(cv-v+supportWidth(weightBaseline)/2, 0, support.extent(2)-1), 1),
                 (T)0.0);
 
     RDom polarizations(0,4);
@@ -66,8 +62,8 @@ void gridding_func_simple(std::string typeName) {
     Var polarization("polarization");
 
     Func visibilityr("silibilityr"), visibilityi("visibilityi");
-    visibilityr(baseline, timestep, channel, polarization) = visibilities(baseline, timestep, channel,polarization*2);
-    visibilityi(baseline, timestep, channel, polarization) = visibilities(baseline, timestep, channel,polarization*2+1);
+    visibilityr(baseline, timestep, channel, polarization) = visibilities(baseline, timestep, channel, polarization*2);
+    visibilityi(baseline, timestep, channel, polarization) = visibilities(baseline, timestep, channel, polarization*2+1);
 
     Var pol("pol");
 
@@ -81,8 +77,9 @@ void gridding_func_simple(std::string typeName) {
     // dimensions are: u, v, polarizations (XX,XY,YX, and YY, four total) and real and imaginary values of complex number.
     // so you should reaalize result as this: result.realize(MAX_U, MAX_V, 4, 2);
     result(u, v, pol, x)  = (T)0.0;
-    result(u, v, pol, 0) += weightr(baselineR, intU(baselineR, timestepR, channelR), intV(baselineR, timestepR, channelR),u,v) *visibilityr(baselineR, timestepR, channelR, pol);
-//    result(u, v, pol, 1) += select(u > 0, weighti*visibilityi, 0.0);;
+    result(u, v, pol, 0) +=
+          weightr(baselineR, intU(baselineR, timestepR, channelR), intV(baselineR, timestepR, channelR),u,v)
+        * visibilityr(baselineR, timestepR, channelR, pol);
 
     Target compile_target = get_target_from_environment();
     std::vector<Halide::Argument> compile_args;
@@ -91,6 +88,7 @@ void gridding_func_simple(std::string typeName) {
     compile_args.push_back(support);
     compile_args.push_back(supportSize);
     result.compile_to_file(resultName, compile_args);
+    result.compile_to_c(resultName+".cpp", compile_args);
 
 } /* gridding_func_simple */
 
