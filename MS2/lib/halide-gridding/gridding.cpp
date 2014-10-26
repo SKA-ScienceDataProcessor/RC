@@ -45,16 +45,16 @@ void gridding_func_simple(std::string typeName) {
     Func weightr("weightr"), weighti("weighti");;
     Var weightBaseline("weightBaseline"), cu("cu"), u("u"), cv("cv"), v("v");
     weightr(weightBaseline, cu, cv, u, v) =
-        select(abs(cv-v) <= supportWidth(weightBaseline) && abs(cu-u) <= supportWidth(weightBaseline),
+        select(abs(cv-v) <= supportWidthHalf(weightBaseline) && abs(cu-u) <= supportWidthHalf(weightBaseline),
                 support(weightBaseline,
-                        clamp(cu-u+supportWidth(weightBaseline)/2, 0, support.extent(1)-1),
-                        clamp(cv-v+supportWidth(weightBaseline)/2, 0, support.extent(2)-1), 0),
+                        clamp(cu-u+supportWidthHalf(weightBaseline), 0, support.extent(1)-1),
+                        clamp(cv-v+supportWidthHalf(weightBaseline), 0, support.extent(2)-1), 0),
                 (T)0.0);
     weighti(weightBaseline, cu, cv, u, v) =
-        select(abs(cv-v) <= supportWidth(weightBaseline) && abs(cu-u) <= supportWidth(weightBaseline),
+        select(abs(cv-v) <= supportWidthHalf(weightBaseline) && abs(cu-u) <= supportWidthHalf(weightBaseline),
                 support(weightBaseline,
-                        clamp(cu-u+supportWidth(weightBaseline)/2, 0, support.extent(1)-1),
-                        clamp(cv-v+supportWidth(weightBaseline)/2, 0, support.extent(2)-1), 1),
+                        clamp(cu-u+supportWidthHalf(weightBaseline), 0, support.extent(1)-1),
+                        clamp(cv-v+supportWidthHalf(weightBaseline), 0, support.extent(2)-1), 1),
                 (T)0.0);
 
     RDom polarizations(0,4);
@@ -80,6 +80,9 @@ void gridding_func_simple(std::string typeName) {
     result(u, v, pol, 0) +=
           weightr(baselineR, intU(baselineR, timestepR, channelR), intV(baselineR, timestepR, channelR),u,v)
         * visibilityr(baselineR, timestepR, channelR, pol);
+    result(u, v, pol, 1) +=
+          weighti(baselineR, intU(baselineR, timestepR, channelR), intV(baselineR, timestepR, channelR),u,v)
+        * visibilityi(baselineR, timestepR, channelR, pol);
 
     Target compile_target = get_target_from_environment();
     std::vector<Halide::Argument> compile_args;

@@ -20,8 +20,9 @@ static void testGriddingSimpleConformance(void) {
     Image<int> supportSize(nBaselines, 1);
 
     // setting up UVW triples.
-    UVWTriples(0,0,0,0) =  10.1; UVWTriples(0,0,0,1) =  11.1; UVWTriples(0,0,0,2) =  12.2;
-    UVWTriples(1,0,0,0) = 110.1; UVWTriples(1,0,0,1) = 111.1; UVWTriples(1,0,0,2) = 112.2;
+    // center is at (5,6), width 1.
+    UVWTriples(0,0,0,0) =   5.1; UVWTriples(0,0,0,1) =   6.1; UVWTriples(0,0,0,2) =   7.2;
+    UVWTriples(1,0,0,0) =  12.1; UVWTriples(1,0,0,1) =  13.1; UVWTriples(1,0,0,2) =  14.2;
 
     // setting up visibilities.
     // the last dimension is complex pair * polarization.
@@ -49,10 +50,30 @@ static void testGriddingSimpleConformance(void) {
     support(1,2,2,0) = 9; support(0,2,2,1) = -9;
 
     // execute the algorithm.
-    Image<float> result(200, 200, 4, 2);
+    Image<float> result(20, 20, 4, 2);
 
     int errCode = griddingSimple_float(UVWTriples, visibilities, support, supportSize, result);
     printf("execution error code %d.\n",errCode);
+    if (errCode == 0) {
+        int i,j,k;
+        printf("Result:\n");
+        for (i=0;i<result.extent(0);i++) {
+            for (j=0;j<result.extent(1);j++) {
+                for (k=0;k<result.extent(2);k++) {
+                    bool correct = false;
+                    if (i == 5 && j == 6) {
+                       correct = result(i,j,k,0) == visibilities(0,0,0,k*2)*support(0,0,0,0)
+                               && result(i,j,k,1) == visibilities(0,0,0,k*2+1)*support(0,0,0,1);
+                    } else {
+                       correct = result(i,j,k,0) == 0 && result(i,j,k,1) == 0;
+                    }
+                    if (!correct) {
+                        printf("    incorrect result(%3d, %3d, %3d) = (%f, %f)\n", i, j, k, result(i,j,k,0), result(i,j,k,1));
+                    }
+                }
+            }
+        }
+    }
 } /* testGriddingSimpleConformance */
 
 
