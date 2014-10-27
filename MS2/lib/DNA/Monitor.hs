@@ -23,6 +23,11 @@
 --        send message to a process and require it to receive it. This
 --        way if we get notification that tell that process is unknown
 --        we know that it crashed.
+--
+-- FIXME: Main scheduler should live here as well because we need to
+--        return nodes to parent even if process died (and node is
+--        still alive). Parent doesn't monitor child so it doesn't
+--        know their status.
 module DNA.Monitor (
       -- * Monitor API
       Monitor
