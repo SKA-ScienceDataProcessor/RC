@@ -12,24 +12,23 @@ extern "C" {
 
 static void testGriddingSimpleConformance(void) {
     int nBaselines = 2;
-    int nChannels = 1;
     int nTimesteps = 1;
-    Image<float> UVWTriples(nBaselines, nChannels, nTimesteps, 3);
-    Image<float> visibilities(nBaselines, nChannels, nTimesteps, 8);
+    Image<float> UVWTriples(nBaselines, nTimesteps, 3);
+    Image<float> visibilities(nBaselines, nTimesteps, 8);
     Image<float> support(nBaselines, 3, 3, 2);
     Image<int> supportSize(nBaselines, 1);
 
     // setting up UVW triples.
     // center is at (5,6), width 1.
-    UVWTriples(0,0,0,0) =   5.1; UVWTriples(0,0,0,1) =   6.1; UVWTriples(0,0,0,2) =   7.2;
-    UVWTriples(1,0,0,0) =  12.1; UVWTriples(1,0,0,1) =  13.1; UVWTriples(1,0,0,2) =  14.2;
+    UVWTriples(0,0,0) =   5.1; UVWTriples(0,0,1) =   6.1; UVWTriples(0,0,2) =   7.2;
+    UVWTriples(1,0,0) =  12.1; UVWTriples(1,0,1) =  13.1; UVWTriples(1,0,2) =  14.2;
 
     // setting up visibilities.
     // the last dimension is complex pair * polarization.
-    visibilities(0,0,0,0) = 0.1; visibilities(0,0,0,1) = 0.2; visibilities(0,0,0,2) = 0.3; visibilities(0,0,0,3) = 0.4;
-    visibilities(0,0,0,4) = 0.5; visibilities(0,0,0,5) = 0.6; visibilities(0,0,0,6) = 0.7; visibilities(0,0,0,7) = 0.8;
-    visibilities(1,0,0,0) = 0.1; visibilities(1,0,0,1) = 0.2; visibilities(1,0,0,2) = 0.3; visibilities(1,0,0,3) = 0.4;
-    visibilities(1,0,0,4) = 0.5; visibilities(1,0,0,5) = 0.6; visibilities(1,0,0,6) = 0.7; visibilities(1,0,0,7) = 0.8;
+    visibilities(0,0,0) = 0.1; visibilities(0,0,1) = 0.2; visibilities(0,0,2) = 0.3; visibilities(0,0,3) = 0.4;
+    visibilities(0,0,4) = 0.5; visibilities(0,0,5) = 0.6; visibilities(0,0,6) = 0.7; visibilities(0,0,7) = 0.8;
+    visibilities(1,0,0) = 0.1; visibilities(1,0,1) = 0.2; visibilities(1,0,2) = 0.3; visibilities(1,0,3) = 0.4;
+    visibilities(1,0,4) = 0.5; visibilities(1,0,5) = 0.6; visibilities(1,0,6) = 0.7; visibilities(1,0,7) = 0.8;
 
     // setting up support sizes:
     supportSize(0) = 1;
@@ -64,11 +63,11 @@ static void testGriddingSimpleConformance(void) {
                     bool correct = false;
                     float expected1 = 0.0, expected2 = 0.0;
                     if (i == 5 && j == 6) {
-                       expected1 = visibilities(0,0,0,k*2)*support(0,0,0,0);
-                       expected2 = visibilities(0,0,0,k*2+1)*support(0,0,0,1);
+                       expected1 = visibilities(0,0,k*2)*support(0,0,0,0);
+                       expected2 = visibilities(0,0,k*2+1)*support(0,0,0,1);
                     } else if ( i >= 11 && i <= 13 && j >= 12 && j <= 14) {
-                       expected1 = visibilities(1,0,0,k*2)*support(1,i-11,j-12,0);
-                       expected2 = visibilities(1,0,0,k*2+1)*support(1,i-11,j-12,1);
+                       expected1 = visibilities(1,0,k*2)*support(1,i-11,j-12,0);
+                       expected2 = visibilities(1,0,k*2+1)*support(1,i-11,j-12,1);
                     }
                     correct = result(i,j,k,0) == expected1 && result(i,j,k,1) == expected2;
                     if (!correct) {

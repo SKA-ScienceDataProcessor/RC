@@ -10,25 +10,25 @@ using namespace Halide;
 template<typename T>
 void gridding_func_simple(std::string typeName) {
     int Tbits = sizeof(T) * 8;
-    ImageParam UVW(Halide::type_of<T>(), 4, "UVW");     // baseline, channel, timestep, UVW triples.
-    ImageParam visibilities(Halide::type_of<T>(), 4, "visibilities");   // baseline, channel, timestep, polarization fuzed with complex number.
+    ImageParam UVW(Halide::type_of<T>(), 3, "UVW");     // baseline, timestep, UVW triples.
+    ImageParam visibilities(Halide::type_of<T>(), 3, "visibilities");   // baseline, timestep, polarization fuzed with complex number.
     ImageParam support(Halide::type_of<T>(), 4, "supportSimple");      // baseline, u,v and two values of complex number.
     ImageParam supportSize(Int(32), 1, "supportSize");
 
-    RDom uvwRange (0, UVW.extent(0), 0, UVW.extent(1), 0, UVW.extent(2));
+    RDom uvwRange (0, UVW.extent(0), 0, UVW.extent(1));
 
-    Var baseline("baseline"), timestep("timestep"), channel("channel");
+    Var baseline("baseline"), timestep("timestep");
 
     // fetch the values.
     Func U("U");
-    U(baseline, timestep, channel) = UVW(baseline, timestep, channel, 0);
+    U(baseline, timestep) = UVW(baseline, timestep, 0);
     Func V("V");
-    V(baseline, timestep, channel) = UVW(baseline, timestep, channel, 1);
+    V(baseline, timestep) = UVW(baseline, timestep, 1);
 
     Func intU;
-    intU(baseline, timestep, channel) = cast<int>(U(baseline, timestep, channel));
+    intU(baseline, timestep) = cast<int>(U(baseline, timestep));
     Func intV;
-    intV(baseline, timestep, channel) = cast<int>(V(baseline, timestep, channel));
+    intV(baseline, timestep) = cast<int>(V(baseline, timestep));
 
     Func supportWidth("supportWidth");
     Var x("x");
@@ -62,27 +62,26 @@ void gridding_func_simple(std::string typeName) {
     Var polarization("polarization");
 
     Func visibilityr("silibilityr"), visibilityi("visibilityi");
-    visibilityr(baseline, timestep, channel, polarization) = visibilities(baseline, timestep, channel, polarization*2);
-    visibilityi(baseline, timestep, channel, polarization) = visibilities(baseline, timestep, channel, polarization*2+1);
+    visibilityr(baseline, timestep, polarization) = visibilities(baseline, timestep, polarization*2);
+    visibilityi(baseline, timestep, polarization) = visibilities(baseline, timestep, polarization*2+1);
 
     Var pol("pol");
 
-    Expr baselineR("baselineR"), timestepR("timestepR"), channelR("channelR");
+    Expr baselineR("baselineR"), timestepR("timestepR");
 
     baselineR = uvwRange.x;
     timestepR = uvwRange.y;
-    channelR = uvwRange.z;
 
     // four dimensional result.
     // dimensions are: u, v, polarizations (XX,XY,YX, and YY, four total) and real and imaginary values of complex number.
     // so you should reaalize result as this: result.realize(MAX_U, MAX_V, 4, 2);
     result(u, v, pol, x)  = (T)0.0;
     result(u, v, pol, 0) +=
-          weightr(baselineR, intU(baselineR, timestepR, channelR), intV(baselineR, timestepR, channelR),u,v)
-        * visibilityr(baselineR, timestepR, channelR, pol);
+          weightr(baselineR, intU(baselineR, timestepR), intV(baselineR, timestepR),u,v)
+        * visibilityr(baselineR, timestepR, pol);
     result(u, v, pol, 1) +=
-          weighti(baselineR, intU(baselineR, timestepR, channelR), intV(baselineR, timestepR, channelR),u,v)
-        * visibilityi(baselineR, timestepR, channelR, pol);
+          weighti(baselineR, intU(baselineR, timestepR), intV(baselineR, timestepR),u,v)
+        * visibilityi(baselineR, timestepR, pol);
 
     Target compile_target = get_target_from_environment();
     std::vector<Halide::Argument> compile_args;
