@@ -7,14 +7,20 @@ HALIDE_LIB = $(HALIDE_LIB_PATH)/libHalide.a
 HALIDE_INCLUDE = $(HALIDE_PATH)/include
 HALIDE_SUPPORT_INCLUDE = $(HALIDE_PATH)/apps/support
 
+run_performance: test_performance
+	HL_NUM_THREADS=8 ./test_performance
+
 run_conformance: test_conformance
 	./test_conformance
 
 test_conformance: test_conformance.cpp griddingSimple_float.h griddingSimple_float.o
 	g++ -O3 -o test_conformance -I$(HALIDE_INCLUDE) -I$(HALIDE_SUPPORT_INCLUDE) test_conformance.cpp griddingSimple_float.o $(HALIDE_LIB) -lpthread -ldl
 
+test_performance: test_performance.cpp griddingSimple_float.h griddingSimple_float.o
+	g++ -O3 -o test_performance -I$(HALIDE_INCLUDE) -I$(HALIDE_SUPPORT_INCLUDE) test_performance.cpp griddingSimple_float.o $(HALIDE_LIB) -lpthread -ldl
+
 griddingSimple_float.h griddingSimple_float.o: gridding
-	HL_DEBUG_CODEGEN=1 ./gridding
+	./gridding
 
 reduced-example-compiled.c: reduced-example
 	./reduced-example

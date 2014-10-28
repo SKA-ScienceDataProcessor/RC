@@ -83,6 +83,27 @@ void gridding_func_simple(std::string typeName) {
           weighti(baselineR, intU(baselineR, timestepR), intV(baselineR, timestepR),u,v)
         * visibilityi(baselineR, timestepR, pol);
 
+    // no optimizations: 483K FLOPS
+
+    // This reordering boosts to 727K FLOPS
+    result.update().reorder(u,v, uvwRange.x, uvwRange.y);
+
+    // // tile the U and V into small window that fits the cache. Performance is 727K FLOPS
+    // Var Uinner, Uouter, Vinner, Vouter;
+    // result.tile(u, v, Uouter, Vouter, Uinner, Vinner, 16, 16);
+
+    // // vectorizing Vinner. Performance  717K FLOPS
+    // result.vectorize(Vinner);
+
+    // Different split and vectorization combined with unrolling. 716K FLOPS
+    Var Uinner, Uouter, Vinner, Vouter, UVTileIndex;
+    result
+        .compute_root()
+        .tile(u, v, Uouter, Vouter, Uinner, Vinner, 8, 32)
+        .unroll(Uinner)
+        .vectorize(Vinner)
+        .parallel(Uouter);
+
     Target compile_target = get_target_from_environment();
     std::vector<Halide::Argument> compile_args;
     compile_args.push_back(UVW);
@@ -90,7 +111,7 @@ void gridding_func_simple(std::string typeName) {
     compile_args.push_back(support);
     compile_args.push_back(supportSize);
     result.compile_to_file(resultName, compile_args);
-    result.compile_to_c(resultName+".cpp", compile_args);
+//    result.compile_to_c(resultName+".cpp", compile_args);
 
 } /* gridding_func_simple */
 
