@@ -11,6 +11,12 @@ extern "C" {
 #include <static_image.h>
 #include <image_io.h>
 
+static double get_s(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (double)tv.tv_sec + 1.0e-6*tv.tv_usec;
+} /* get_s */
+
 static void testGriddingSimpleConformance(void) {
     int nBaselines = 10;
     int nTimesteps = 100;
@@ -59,18 +65,17 @@ static void testGriddingSimpleConformance(void) {
     Image<float> result(resultWidthHeight, resultWidthHeight, 4, 2);
 
     printf("Starting.\n");
-    clock_t runtime = 0;
-    runtime -= clock();
+    double runtime = 0;
+    runtime -= get_s();
     int errCode = griddingSimple_float(UVWTriples, visibilities, support, supportSize, result);
-    runtime += clock();
-    double runtimeSec = ((double)runtime)/CLOCKS_PER_SEC;
+    runtime += get_s();
     double flopCount = nBaselines;      // we run across all baselines.
     flopCount *= nTimesteps;            // and also across all timesteps.
     flopCount *= maxSupportSize*maxSupportSize; // for each baseline, timestep pair we perform gridding with square support 
     flopCount *= 8*2;   // 4 polarizations, each is complex. We multiply and add.
     printf("execution error code %d.\n",errCode);
-    printf("time to execute %lf s.\n", runtimeSec);
-    printf("FLOPS %lf.\n", flopCount/runtimeSec);
+    printf("time to execute %lf s.\n", runtime);
+    printf("FLOPS %lf.\n", flopCount/runtime);
 } /* testGriddingSimpleConformance */
 
 

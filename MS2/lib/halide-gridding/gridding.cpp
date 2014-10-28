@@ -85,6 +85,7 @@ void gridding_func_simple(std::string typeName) {
 
     // no optimizations: 483K FLOPS
 
+#if 0
     // This reordering boosts to 727K FLOPS
     result.update().reorder(u,v, uvwRange.x, uvwRange.y);
 
@@ -96,13 +97,24 @@ void gridding_func_simple(std::string typeName) {
     // result.vectorize(Vinner);
 
     // Different split and vectorization combined with unrolling. 716K FLOPS
-    Var Uinner, Uouter, Vinner, Vouter, UVTileIndex;
+    // For now I consider this futile.
+    Var VPolFused, VPolComplexFused, Uinner, Uouter, Vinner, Vouter, UVTileIndex;
     result
-        .compute_root()
-        .tile(u, v, Uouter, Vouter, Uinner, Vinner, 8, 32)
+        .fuse(v, pol, VPolFused)
+        .fuse(VPolFused, x, VPolComplexFused)
+        .tile(u, VPolComplexFused, Uouter, Vouter, Uinner, Vinner, 4, 64)
         .unroll(Uinner)
         .vectorize(Vinner)
         .parallel(Uouter);
+#else
+    Var uOuter, uInner;
+    result
+        .parallel(u, 64);
+    result.update(0)
+        .parallel(u, 64);
+    result.update(1)
+        .parallel(u, 64);
+#endif
 
     Target compile_target = get_target_from_environment();
     std::vector<Halide::Argument> compile_args;
