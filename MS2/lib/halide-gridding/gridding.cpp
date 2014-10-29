@@ -42,28 +42,21 @@ void gridding_func_simple(std::string typeName) {
     Func result(resultName);
 
     // the weight of support changes with method - method here is SIMPLE..
-    Func weightr("weightr"), weighti("weighti");;
+    Func weight("weightr");
     Var weightBaseline("weightBaseline"), cu("cu"), u("u"), cv("cv"), v("v");
-    weightr(weightBaseline, cu, cv, u, v) =
+    weight(weightBaseline, cu, cv, u, v, x) =
         select(abs(cv-v) <= supportWidthHalf(weightBaseline) && abs(cu-u) <= supportWidthHalf(weightBaseline),
                 support(weightBaseline,
                         clamp(u-cu+supportWidthHalf(weightBaseline), 0, support.extent(1)-1),
-                        clamp(v-cv+supportWidthHalf(weightBaseline), 0, support.extent(2)-1), 0),
-                (T)0.0);
-    weighti(weightBaseline, cu, cv, u, v) =
-        select(abs(cv-v) <= supportWidthHalf(weightBaseline) && abs(cu-u) <= supportWidthHalf(weightBaseline),
-                support(weightBaseline,
-                        clamp(u-cu+supportWidthHalf(weightBaseline), 0, support.extent(1)-1),
-                        clamp(v-cv+supportWidthHalf(weightBaseline), 0, support.extent(2)-1), 1),
+                        clamp(v-cv+supportWidthHalf(weightBaseline), 0, support.extent(2)-1), x),
                 (T)0.0);
 
     RDom polarizations(0,4);
 
     Var polarization("polarization");
 
-    Func visibilityr("silibilityr"), visibilityi("visibilityi");
-    visibilityr(baseline, timestep, polarization) = visibilities(baseline, timestep, polarization*2);
-    visibilityi(baseline, timestep, polarization) = visibilities(baseline, timestep, polarization*2+1);
+    Func visibility("silibilityr");
+    visibility(baseline, timestep, polarization, x) = visibilities(baseline, timestep, polarization*2+x);
 
     Var pol("pol");
 
@@ -76,45 +69,22 @@ void gridding_func_simple(std::string typeName) {
     // dimensions are: u, v, polarizations (XX,XY,YX, and YY, four total) and real and imaginary values of complex number.
     // so you should reaalize result as this: result.realize(MAX_U, MAX_V, 4, 2);
     result(u, v, pol, x)  = (T)0.0;
-    result(u, v, pol, 0) +=
-          weightr(baselineR, intU(baselineR, timestepR), intV(baselineR, timestepR),u,v)
-        * visibilityr(baselineR, timestepR, pol);
-    result(u, v, pol, 1) +=
-          weighti(baselineR, intU(baselineR, timestepR), intV(baselineR, timestepR),u,v)
-        * visibilityi(baselineR, timestepR, pol);
+    result(u, v, pol, x) +=
+          weight(baselineR, intU(baselineR, timestepR), intV(baselineR, timestepR),u,v, x)
+        * visibility(baselineR, timestepR, pol, x);
+
+    result.bound(x, 0, 2);
+    result.bound(pol, 0, 4);
 
     // no optimizations: 483K FLOPS
 
-#if 0
-    // This reordering boosts to 727K FLOPS
-    result.update().reorder(u,v, uvwRange.x, uvwRange.y);
-
-    // // tile the U and V into small window that fits the cache. Performance is 727K FLOPS
-    // Var Uinner, Uouter, Vinner, Vouter;
-    // result.tile(u, v, Uouter, Vouter, Uinner, Vinner, 16, 16);
-
-    // // vectorizing Vinner. Performance  717K FLOPS
-    // result.vectorize(Vinner);
-
-    // Different split and vectorization combined with unrolling. 716K FLOPS
-    // For now I consider this futile.
-    Var VPolFused, VPolComplexFused, Uinner, Uouter, Vinner, Vouter, UVTileIndex;
-    result
-        .fuse(v, pol, VPolFused)
-        .fuse(VPolFused, x, VPolComplexFused)
-        .tile(u, VPolComplexFused, Uouter, Vouter, Uinner, Vinner, 4, 64)
-        .unroll(Uinner)
-        .vectorize(Vinner)
-        .parallel(Uouter);
-#else
-    Var uOuter, uInner;
-    result
-        .parallel(u, 64);
+    // This optimization: 4.84MFLOPS
+    Var polXFused;
     result.update(0)
-        .parallel(u, 64);
-    result.update(1)
-        .parallel(u, 64);
-#endif
+        .fuse(x, pol, polXFused)
+        .vectorize(polXFused)
+        .parallel(v, 64);
+    result.compile_to_lowered_stmt("gridding.html", HTML);
 
     Target compile_target = get_target_from_environment();
     std::vector<Halide::Argument> compile_args;
