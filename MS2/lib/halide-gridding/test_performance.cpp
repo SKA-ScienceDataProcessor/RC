@@ -17,16 +17,89 @@ static double get_s(void) {
     return (double)tv.tv_sec + 1.0e-6*tv.tv_usec;
 } /* get_s */
 
+static inline int max(int a, int b) { return a < b ? b : a; }
+static inline int min(int a, int b) { return a > b ? b : a; }
+
+static void simpleGriddingLoop(Image<float> &UVWTriples,
+    Image<float> &visibilities, Image<float> &support,
+    Image<int> &supportSize, Image<float> &result) {
+    int bl, ts;
+    int u, v;
+    int uStep = 8, vStep = 32;
+    float *resultBuffer = &result(0,0,0,0);
+    for (u = 0; u < result.extent(0); u++) {
+        for(v = 0; v < result.extent(1); v++) {
+            int pol;
+            for (pol = 0; pol < 4; pol++) {
+                result(u,v,pol,0) = 0.0;
+                result(u,v,pol,1) = 0.0;
+            }
+        }
+    }
+    // cutting image into parts that fit into cache.
+    for (u = 0; u<result.extent(0); u+= uStep) {
+        for (v = 0; v < result.extent(1); v+= vStep) {
+            // then for each that part we walk along all points.
+            for (bl = 0; bl < UVWTriples.extent(0); bl++) {
+               int widthHalf = supportSize(bl)/2;
+               for (ts = 0; ts < UVWTriples.extent(1); ts++) {
+                   int U = UVWTriples(bl, ts, 0);
+                   if (U + widthHalf < u || U-widthHalf >= u+uStep)
+                       continue;
+                   int V = UVWTriples(bl, ts, 1);
+                   if (V + widthHalf < v || V-widthHalf >= v+vStep)
+                       continue;
+                   int uInner, vInner;
+                   for (uInner = max(u,U-widthHalf); uInner <= min(u+uStep-1, U+widthHalf); uInner++) {
+                       for (vInner = max(v,V-widthHalf); vInner <= min(v+vStep-1, V+widthHalf); vInner++) {
+                           int x = uInner - (U-widthHalf);
+                           int y = vInner - (V-widthHalf);
+                           float supR = support(bl, x, y, 0);
+                           float supI = support(bl, x, y, 1);
+                           int pol;
+                           for (pol=0;pol<4;pol++) {
+                               result(uInner, vInner, pol, 0) += supR * visibilities(bl, ts, pol*2) ;
+                               result(uInner, vInner, pol, 1) += supR * visibilities(bl, ts, pol*2+1) ;
+                           }
+                       }
+                   }
+               }
+            }
+        }
+    }
+} /* simpleGriddingLoop */
+
+static bool resultsEqual(Image<float> &result1, Image<float> &result2) {
+    int diffCount = 0;
+    for (int u=0;u<result1.extent(0);u++) {
+        for (int v=0;v<result1.extent(1);v++) {
+            for (int pol=0;pol<result1.extent(2);pol++) {
+                for (int i=0;i<result1.extent(3);i++) {
+                    bool neq = result1(u,v,pol,i) != result2(u,v,pol,i);
+                    if (neq) {
+                        printf("difference at (%d, %d, %d, %d), %f != %f.\n",u,v,pol,i,result1(u,v,pol,i), result2(u,v,pol,i));
+                        diffCount ++;
+                        if (diffCount > 10)
+                            return false;
+                    }
+                }
+            }
+        }
+    }
+    return diffCount == 0;
+} /* resultsEqual */
+
+
 static void testGriddingSimpleConformance(void) {
     int nBaselines = 10;
-    int nTimesteps = 100;
+    int nTimesteps = 10;
     int maxSupportSize = 101;
     int resultWidthHeight = 2048;
     int bl, ts, i, j;
     Image<float> UVWTriples(nBaselines, nTimesteps, 3);
     Image<float> visibilities(nBaselines, nTimesteps, 8);
     Image<float> support(nBaselines, maxSupportSize, maxSupportSize, 2);
-    Image<int> supportSize(nBaselines, 1);
+    Image<int> supportSize(nBaselines);
 
     // looping over baselines and set support sizes, etc.
     for (bl = 0; bl < nBaselines; bl++) {
@@ -75,6 +148,15 @@ static void testGriddingSimpleConformance(void) {
     flopCount *= 8*2;   // 4 polarizations, each is complex. We multiply and add.
     printf("execution error code %d.\n",errCode);
     printf("time to execute %lf s.\n", runtime);
+    printf("FLOPS %lf.\n", flopCount/runtime);
+    runtime = 0;
+    Image<float> result2(resultWidthHeight, resultWidthHeight, 4, 2);
+    runtime -= get_s();
+    simpleGriddingLoop(UVWTriples, visibilities, support, supportSize, result2);
+    runtime += get_s();
+    if (!resultsEqual(result, result2))
+        printf("results are different, all bets are off.\n");
+    printf("time to execute hand made loop %lf s.\n", runtime);
     printf("FLOPS %lf.\n", flopCount/runtime);
 } /* testGriddingSimpleConformance */
 
