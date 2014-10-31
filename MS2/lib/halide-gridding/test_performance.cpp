@@ -75,9 +75,13 @@ static bool resultsEqual(Image<float> &result1, Image<float> &result2) {
         for (int v=0;v<result1.extent(1);v++) {
             for (int pol=0;pol<result1.extent(2);pol++) {
                 for (int i=0;i<result1.extent(3);i++) {
-                    bool neq = result1(u,v,pol,i) != result2(u,v,pol,i);
+                    float a = result1(u,v,pol,i);
+                    float b = result2(u,v,pol,i);
+                    float diff = abs(a - b);
+                    float m = abs(a) < abs(b) ? abs(b) : abs(a);
+                    bool neq = diff > m*0.000000001;
                     if (neq) {
-                        printf("difference at (%d, %d, %d, %d), %f != %f.\n",u,v,pol,i,result1(u,v,pol,i), result2(u,v,pol,i));
+                        printf("difference at (%d, %d, %d, %d), %f != %f.\n", u, v, pol, i, a, b);
                         diffCount ++;
                         if (diffCount > 10)
                             return false;
@@ -92,7 +96,7 @@ static bool resultsEqual(Image<float> &result1, Image<float> &result2) {
 
 static void testGriddingSimpleConformance(void) {
     int nBaselines = 10;
-    int nTimesteps = 10;
+    int nTimesteps = 100;
     int maxSupportSize = 101;
     int resultWidthHeight = 2048;
     int bl, ts, i, j;
