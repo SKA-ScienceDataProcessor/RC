@@ -3,7 +3,6 @@
 module DNA (
       -- * DNA monad
       DNA
-    , MonadIO(..)
     , liftP
     , getNodes
       -- * Promises
