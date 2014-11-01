@@ -67,6 +67,9 @@ import DNA.Monitor
 ----------------------------------------------------------------
 
 -- | Monad for defining DNA programs
+--
+-- We use channels as main medium of communications and @send\/expect@
+-- are used for sending service messages.
 newtype DNA a = DNA (ReaderT Monitor (StateT [NodeId] Process) a)
                 deriving (Functor,Applicative,Monad,MonadIO)
 
@@ -93,19 +96,13 @@ getMonitor = DNA ask
 -- Promises
 ----------------------------------------------------------------
 
--- | Normally subprocess will only return value once. Fork* function
---   return promise which is hadle for obtaining result of
---   computation.
+-- | Handle for obtaining result from process. Such handles are
+--   returned by fork* functions
 --
---   We use cloud haskell channels for commutincations instead of
---   send\/expect because this way we cannot mix up messages from
---   different sources.
---
---   FIXME: If we await more than once we await more than once we wll
---          deadlock and we have no way to detect such behaviour. Nor
---          we can detect if we do not await for promise. In this case
---          child process will be termintaed forcefully when parent
---          dies.
+--   FIXME: If we await more than once then second call will block
+--          indefinitely. wihout any way to detect deadlock. Since
+--          promises are serailizable we can obtain such deadlocks
+--          between different processes.
 data Promise a = Promise ProcessId (SendPort (SendPort a))
                  deriving (Typeable,Generic)
 
@@ -120,8 +117,8 @@ await :: Serializable a => Promise a -> DNA a
 await (Promise pid ch) = do
     -- Ask monitor for status of process. It will not respond if
     -- process terminated normally
-    mon             <- getMonitor
-    chFail          <- liftP $ waitForProcess mon pid
+    mon    <- getMonitor
+    chFail <- liftP $ waitForProcess mon pid
     -- Send channel for sending result to remote process
     liftP $ do (chSend,chRecv) <- newChan
                sendChan ch chSend
