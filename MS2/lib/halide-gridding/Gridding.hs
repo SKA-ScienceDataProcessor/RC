@@ -9,13 +9,20 @@
 module Gridding
         ( GriddingMode(..)
         , GriddingInput
+        , readGriddingData
         ) where
 
-import Control.Exception
+import Data.Binary
+import Data.Binary.Get
+
+import qualified Data.ByteString.Lazy as BL
+
+import Data.Int
 
 import Foreign.Ptr
 
 import System.IO
+import System.IO.Error
 
 -- |Opaque data type to type pointers to Halide images.
 data HalideImage a
@@ -30,8 +37,8 @@ data GriddingMode = GriddingSimple | GriddingInterpolate | GriddingOversample | 
 -- |Gridding input. Opaque to the user.
 data GriddingInput = GriddingInput {
           griddingInputMode             :: GriddingMode -- defines presence and structure of supports.
-        , griddingInputUVW              :: HalideImage Float
-        , griddingInputVisibilities     :: HalideImage Float
+        , griddingInputUVW              :: HalideImagePtr Float
+        , griddingInputVisibilities     :: HalideImagePtr Float
         , griddingSupports              :: Maybe (HalideImage Float)
         }
 
@@ -47,10 +54,29 @@ foreign import ccall "halideFloatImage3D" halideFloatImage3D :: Int -> Int -> In
 -- |Allocating 4D image.
 foreign import ccall "halideFloatImage4D" halideFloatImage4D :: Int -> Int -> Int -> Int -> IO (HalideImagePtr Float)
 
+-- |Get the size of Halide image, in bytes.
+foreign import ccall "halideFloatImageDataSize" halideFloatImageDataSize :: HalideImagePtr Float -> IO Int64
+
+-- |Read Int64 from file.
+readInt64 :: Handle -> IO Int64
+readInt64 h = do
+        bytes <- BL.hGet h 8
+        return $ runGet get bytes
 
 -- |Read input parameters from file.
 -- During this we allocate all necessary Halide images.
-readGriddingData :: GriddingMode -> FilePath -> IO GriddingInput
-readGriddingData mode filePath = do
-        bracket (openBinaryFile filePath ReadMode) hClose $ \h -> do
-                error "readGriddingData is not yet done!"
+readGriddingData :: GriddingMode -> FilePath -> IO (Maybe GriddingInput)
+readGriddingData mode filePath = flip catchIOError (const $ return Nothing) $ do
+        h <- openBinaryFile filePath ReadMode
+        flip catchIOError (const $ hClose h >> return Nothing) $ do
+                baselines <- readInt64 h
+                timesteps <- readInt64 h
+                uvwImage <- halideFloatImage3D (fromIntegral baselines) (fromIntegral timesteps) 3
+                visibilities <- halideFloatImage3D (fromIntegral baselines) (fromIntegral timesteps) 8
+                error "reading is not done!"
+                return $ Just $ GriddingInput {
+                          griddingInputMode = mode
+                        , griddingInputUVW = uvwImage
+                        , griddingInputVisibilities = visibilities
+                        , griddingSupports = Nothing
+                        }

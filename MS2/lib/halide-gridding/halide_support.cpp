@@ -24,3 +24,12 @@ extern "C" Image<float> * halideFloatImage3D(int extent1, int extent2, int exten
 extern "C" Image<float> * halideFloatImage4D(int extent1, int extent2, int extent3, int extent4) {
         return new Image<float>(extent1, extent2, extent3, extent4);
 } /* halideFloatImage4D */
+
+extern "C" int64_t halideFloatImageDataSize (Image<float> *img) {
+        buffer_t *info = (*img);
+        int64_t size = info -> elem_size;
+        for (int i=0;i<4;i++)
+                if (info->extent[i] != 0)
+                        size *= info->extent[i];
+        return size;
+} /* halideFloatImageDataSize */
