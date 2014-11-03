@@ -63,6 +63,19 @@ readInt64 h = do
         bytes <- BL.hGet h 8
         return $ runGet get bytes
 
+-- |Seeking the beginning of 4096 page.
+seekPageBegin :: [Int64] -> Handle -> IO ()
+seekPageBegin chunksSizes handle = do
+        let     toPage x = div (x + 4095) 4096
+        let     chunksPages = map toPage chunksSizes
+        let     page = sum chunksPages + 1
+        hSeek handle AbsoluteSeek (fromIntegral page * 4096)
+
+readImageContent :: [Int64] -> Handle -> HalideImagePtr Float -> IO [Int64]
+readImageContent sizes handle image = do
+        error "read image!!!"
+
+
 -- |Read input parameters from file.
 -- During this we allocate all necessary Halide images.
 readGriddingData :: GriddingMode -> FilePath -> IO (Maybe GriddingInput)
@@ -73,7 +86,8 @@ readGriddingData mode filePath = flip catchIOError (const $ return Nothing) $ do
                 timesteps <- readInt64 h
                 uvwImage <- halideFloatImage3D (fromIntegral baselines) (fromIntegral timesteps) 3
                 visibilities <- halideFloatImage3D (fromIntegral baselines) (fromIntegral timesteps) 8
-                error "reading is not done!"
+                sizes <- readImageContent [] h uvwImage
+                readImageContent sizes h visibilities
                 return $ Just $ GriddingInput {
                           griddingInputMode = mode
                         , griddingInputUVW = uvwImage
