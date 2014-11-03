@@ -95,7 +95,7 @@ static bool resultsEqual(Image<float> &result1, Image<float> &result2) {
 
 
 static void testGriddingSimpleConformance(void) {
-    int nBaselines = 10;
+    int nBaselines = 100;
     int nTimesteps = 100;
     int maxSupportSize = 101;
     int resultWidthHeight = 2048;
@@ -143,13 +143,13 @@ static void testGriddingSimpleConformance(void) {
 
     printf("Starting.\n");
     double runtime = 0;
-    runtime -= get_s();
-    int errCode = griddingSimple_float(UVWTriples, visibilities, support, supportSize, result);
-    runtime += get_s();
     double flopCount = nBaselines;      // we run across all baselines.
     flopCount *= nTimesteps;            // and also across all timesteps.
     flopCount *= maxSupportSize*maxSupportSize; // for each baseline, timestep pair we perform gridding with square support 
     flopCount *= 8*2;   // 4 polarizations, each is complex. We multiply and add.
+    runtime -= get_s();
+    int errCode = griddingSimple_float(UVWTriples, visibilities, support, supportSize, result);
+    runtime += get_s();
     printf("execution error code %d.\n",errCode);
     printf("time to execute %lf s.\n", runtime);
     printf("FLOPS %lf.\n", flopCount/runtime);

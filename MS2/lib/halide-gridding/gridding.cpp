@@ -8,7 +8,7 @@
 using namespace Halide;
 
 template<typename T>
-void gridding_func_simple(std::string typeName) {
+void gridding_func_simple(std::string typeName, Target* target) {
     int Tbits = sizeof(T) * 8;
     ImageParam UVW(Halide::type_of<T>(), 3, "UVW");     // baseline, timestep, UVW triples.
     ImageParam visibilities(Halide::type_of<T>(), 3, "visibilities");   // baseline, timestep, polarization fuzed with complex number.
@@ -86,19 +86,23 @@ void gridding_func_simple(std::string typeName) {
         .parallel(v, 64);
     result.compile_to_lowered_stmt("gridding.html", HTML);
 
-    Target compile_target = get_target_from_environment();
+    Target *compile_target = target;
+    Target env_target = get_target_from_environment();;
+    if (target == NULL) {
+        compile_target = &env_target;
+    }
     std::vector<Halide::Argument> compile_args;
     compile_args.push_back(UVW);
     compile_args.push_back(visibilities);
     compile_args.push_back(support);
     compile_args.push_back(supportSize);
-    result.compile_to_file(resultName, compile_args);
+    result.compile_to_file(resultName, compile_args, *compile_target);
 //    result.compile_to_c(resultName+".cpp", compile_args);
 
 } /* gridding_func_simple */
 
 int main(int argc, char **argv) {
-    gridding_func_simple<float>("float");
+    gridding_func_simple<float>("float", NULL);
 
     return 0;
 }
