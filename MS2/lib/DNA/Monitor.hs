@@ -3,12 +3,13 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable, DeriveFunctor, DeriveGeneric #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 -- |
--- Process which monitor execution of all other processes.
---
--- We have to use dedicated process for monitoring. One alternative is
--- to let parent do monitoring but it doesnt' wokr for following
--- reasons:
+-- Process which monitor execution of all other processes. We use
+-- dedicated process for monitoring. One natural alternative is let
+-- parents to monitor their children. It however won't work for
+-- following reasons:
 --
 --  * Process which receive result of computation should get either
 --    result or notification that process failed. Parent could be busy
@@ -45,6 +46,7 @@ module DNA.Monitor (
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Class
+import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State.Strict
 import Control.Monad.IO.Class
 import Control.Distributed.Static (closureApply)
@@ -59,8 +61,9 @@ import Data.Int
 import Data.Typeable (Typeable)
 import Data.Monoid   (Monoid(..))
 import qualified Data.Set        as Set
+import           Data.Set          (Set)
 import qualified Data.Map.Strict as Map
-import           Data.Map.Strict   (Map)
+import           Data.Map.Strict   (Map,(!))
 import qualified Data.Foldable   as T
 import GHC.Generics  (Generic)
 
@@ -84,7 +87,7 @@ newtype Monitor = Monitor ProcessId
 
 -- Register PID of single process
 newtype RegisterPID = RegisterPID ProcessId
-                deriving (Show,Eq,Typeable,Generic,Binary) 
+                deriving (Show,Eq,Typeable,Generic,Binary)
 
 -- Register group of processes
 data RegisterGroup = RegisterGroup ProcessId [ProcessId]
@@ -102,7 +105,7 @@ data AskProcess = AskProcess ProcessId (SendPort ())
 
 -- Ask about status of group. It contain Group ID and post to send
 -- back number of failed processes.
-data AskGroup = AskGroup GroupID (SendPort (Maybe Int)) 
+data AskGroup = AskGroup GroupID (SendPort (Maybe Int))
                 deriving (Show,Eq,Typeable,Generic)
 
 instance Binary AskProcess
@@ -146,7 +149,7 @@ waitForGroup (Monitor mon) gid = do
     send mon (AskGroup gid chSend)
     return chRecv
 
-    
+
 ----------------------------------------------------------------
 -- Implementation
 ----------------------------------------------------------------
@@ -154,183 +157,22 @@ waitForGroup (Monitor mon) gid = do
 -- | Start execution of monitor process
 runMonitor :: Process Monitor
 runMonitor = do
-    pid <- spawnLocal $ iterateM step (S 0 Map.empty Map.empty)
+    pid <- spawnLocal $ iterateM step (0, MonitorSt Map.empty Map.empty)
     return $ Monitor pid
 
-
--- Single step of monitor
-step :: S -> Process S
-step st = receiveWait
-  [ match $ \(ProcessMonitorNotification _ pid reason) -> case reason of
-                DiedUnknownId -> error "FIXME: not clear how to handle such case"
-                DiedNormal    -> handleNormalTermination st pid
-                _             -> handleCrash             st pid
-  , match $ handleAskProcess      st
-  , match $ handleAskGroup        st
-  , match $ handleRegisterProc    st
-  , match $ handleRegisterGroup   st
-  , match $ handleRegisterFailout st
-  ]
-
-
--- Handle normal termination of the process
-handleNormalTermination :: S -> ProcessId -> Process S
-handleNormalTermination st pid = do
-    case Map.lookup pid (stWorkers st) of
-      Nothing          -> error "SHOULD NOT HAPPEN"
-      Just (Left _)    -> return $ withPID pid Nothing st
-      Just (Right gid) -> withGID gid (dropGroupPID pid)
-                        $ withPID pid Nothing st
-
-
--- Handle crash of process.
-handleCrash :: S -> ProcessId -> Process S
-handleCrash st pid = do
-    case Map.lookup pid (stWorkers st) of
-      Nothing -> error "SHOULD NOT HAPPEN"
-      -- Single processes
-      Just (Left (Awaited ch)) -> do sendChan ch ()
-                                     return $ withPID pid Nothing st
-      Just (Left _)  -> return $ withPID pid (Just (Left Failed)) st
-      -- Process groups
-      Just (Right gid) -> withGID gid (dropCrashedPID pid)
-                        $ withPID pid Nothing st
-
--- Handle ask for the process state
-handleAskProcess :: S -> AskProcess -> Process S
-handleAskProcess st (AskProcess pid ch) = do
-    case Map.lookup pid (stWorkers st) of
-      Nothing -> return st
-      Just (Left Awaited{}) -> error "SHOULD NOT HAPPEN"
-      Just (Left Failed)    -> do sendChan ch ()
-                                  return $ withPID pid Nothing st
-      Just (Left  _)        -> return $ withPID pid (Just (Left (Awaited ch))) st
-      Just (Right _)        -> error "SHOULD NOT HAPPEN"
-
--- Handle ask for the process state
-handleAskGroup :: S -> AskGroup -> Process S
-handleAskGroup st (AskGroup gid ch) = do
-    case Map.lookup gid (stGroups st) of
-      Nothing -> return st
-      Just FailedGroup -> do sendChan ch Nothing
-                             return $ st { stGroups = Map.delete gid (stGroups st) }
-      Just (Group _ pids)
-          | Set.null pids -> return $ st { stGroups = Map.delete gid (stGroups st) }
-          | otherwise     -> return $ st { stGroups = Map.insert gid (Group (Just ch) pids) (stGroups st) }
-      Just (Failout _ pids n)
-          | Set.null pids && n == 0 -> return $ st { stGroups = Map.delete gid (stGroups st) }
-          | Set.null pids           -> do sendChan ch (Just n)
-                                          return $ st { stGroups = Map.delete gid (stGroups st) }
-          | otherwise               -> return $ st { stGroups = Map.insert gid (Failout (Just ch) pids n) (stGroups st) }
-
--- Handle registration of single process
-handleRegisterProc :: S -> RegisterPID -> Process S
-handleRegisterProc st (RegisterPID pid) = do
-    return $ st { stWorkers = Map.insert pid (Left Running) (stWorkers st) }
-
--- Handle registraction of normal group of processes
-handleRegisterGroup :: S -> RegisterGroup -> Process S
-handleRegisterGroup st (RegisterGroup pid group) = do
-    let n   = stCounter st
-        gid = GroupID n
-    send pid gid
-    return $ st
-        { stCounter = n + 1
-        , stWorkers = foldr (.) id [Map.insert pid (Right gid) | pid <- group]
-                    $ stWorkers st
-        , stGroups  = Map.insert gid (Group Nothing (Set.fromList group)) (stGroups st)
-        }
-    
--- Handle registraction of group of processes which uses failout
-handleRegisterFailout :: S -> RegisterFailout -> Process S
-handleRegisterFailout st (RegisterFailout pid group) = do
-    let n   = stCounter st
-        gid = GroupID n
-    send pid gid
-    return $ st
-        { stCounter = n + 1
-        , stWorkers = foldr (.) id [Map.insert pid (Right gid) | pid <- group]
-                    $ stWorkers st
-        , stGroups  = Map.insert gid (Failout Nothing (Set.fromList group) 0) (stGroups st)
-        }
-
-
--- Update process ID in monitor state
-withPID :: ProcessId -> Maybe (Either ProcState GroupID) -> S -> S
-withPID pid a s =
-    s { stWorkers = Map.update (const a) pid (stWorkers s)
-      }
-
--- Update group state in monitor state
-withGID :: Monad m
-        => GroupID -> (GroupState -> m (Maybe GroupState)) -> S -> m S
-withGID gid f st =
-    case Map.lookup gid (stGroups st) of
-      Nothing -> error "SHOULD NOT HAPPEN!"
-      Just  g -> do
-          r <- f g
-          return $ st { stGroups = Map.update (\_ -> r) gid (stGroups st) }
-
-
-
--- Drop normally terminated PID from group
-dropGroupPID :: ProcessId -> GroupState -> Process (Maybe GroupState)
-dropGroupPID pid s = case s of
-    -- Normal group
-    Group mp pids -> return $ do pids' <- remove pids
-                                 return $ Group mp pids
-    -- Failout group
-    Failout mp pids n -> case remove pids of
-        Nothing | n == 0    -> return Nothing
-                | otherwise ->
-                      case mp of
-                        Just ch -> do sendChan ch (Just n)
-                                      return Nothing
-                        Nothing -> return $ Just $ Failout mp Set.empty n
-        Just pids' -> return $ Just $ Failout mp pids' n
-    -- Failed group. Do nothing
-    FailedGroup -> return (Just FailedGroup)
-  where
-    remove pids = case Set.delete pid pids of
-                    x | Set.null x -> Nothing
-                      | otherwise  -> Just x
-
--- Drop normally terminated PID from group
-dropCrashedPID :: ProcessId -> GroupState -> Process (Maybe GroupState)
-dropCrashedPID pid s = case s of
-    -- Normal group
-    Group mp pids -> do T.forM_ pids $ \pid -> (kill pid "DIE IN FILE")
-                        return $ Just FailedGroup
-    -- Failout group
-    Failout mp pids n -> case remove pids of
-        Nothing -> case mp of
-                     Just ch -> do sendChan ch (Just (n+1))
-                                   return Nothing
-                     Nothing -> return $ Just $ Failout mp Set.empty (n+1)
-        Just pids' -> return $ Just $ Failout mp pids' (n+1)
-    -- Failed group. Do nothing
-    FailedGroup -> return (Just FailedGroup)
-  where
-    remove pids = case Set.delete pid pids of
-                    x | Set.null x -> Nothing
-                      | otherwise  -> Just x
-
-
--- State of monitor. We keep here both
-data S = S
-  { stCounter :: !Int
-    -- Counter for generation of fresh IDs
-  , stWorkers :: !(Map ProcessId (Either ProcState GroupID))
-    -- Map for processes. For single process we keep its state and for
-    -- process in group their GID
-  , stGroups  :: !(Map GroupID GroupState)
+-- Internal state of process monitor
+data MonitorSt = MonitorSt
+  { monWorkers :: !(Map ProcessId (Either ProcState GroupID))
+    -- Single process
+  , monGroups  :: !(Map GroupID GroupState)
+    -- State of process groups
   }
 
 -- State process group
 data GroupState
-    = Group   (Maybe (SendPort (Maybe Int))) (Set.Set ProcessId)
-      -- Group of normal processes. 
-    | Failout (Maybe (SendPort (Maybe Int))) (Set.Set ProcessId) Int
+    = Group   (Set ProcessId) (Maybe (SendPort (Maybe Int)))
+      -- Group of normal processes.
+    | Failout (Set ProcessId) (Maybe (SendPort (Maybe Int))) Int
       -- Group of failout processes. It keep number of failed processes
     | FailedGroup
       -- Execution of process group failed but no process asked about it
@@ -344,7 +186,173 @@ data ProcState
     | Failed
       -- Process crashed before someone asked about it
 
+
+-- Single step of monitor
+step :: (Int,MonitorSt) -> Process (Int,MonitorSt)
+step (i,st) = receiveWait
+  [ match $ \(ProcessMonitorNotification _ pid reason) -> case reason of
+                DiedUnknownId -> error "FIXME: not clear how to handle such case"
+                DiedNormal    -> (i,) <$> handleNormalTermination st pid
+                _             -> (i,) <$> handleCrash             st pid
+  , match $ \x -> (i,) <$> handleAskProcess      st x
+  , match $ \x -> (i,) <$> handleAskGroup        st x
+  , match $ \x -> (i,) <$> handleRegisterProc    st x
+  , match $ handleRegisterGroup   (i,st)
+  , match $ handleRegisterFailout (i,st)
+  ]
+
+-- Handle normal termination of the process
+handleNormalTermination :: MonitorSt -> ProcessId -> Process MonitorSt
+handleNormalTermination m@(MonitorSt{..}) pid = do
+    case Map.lookup pid monWorkers of
+      -- Unknown process
+      Nothing          -> return m
+      -- Single process terminated normally. Remove it from group
+      Just (Left _)    -> return droppedPID
+      -- Group
+      Just (Right gid) -> case monGroups ! gid of
+        -- Normal process group. Remove it from list of known process
+        -- and remove group if all processes terminated.
+        Group ps mch -> case Set.delete pid ps of
+          ps' | Set.null ps' -> return droppedPID { monGroups = Map.delete gid monGroups }
+              | otherwise    -> return droppedPID { monGroups = Map.insert gid (Group ps' mch) monGroups }
+        -- Failout process group. Remove PID from list of known
+        -- processes and send message if we had failures
+        Failout ps mch n -> case Set.delete pid ps of
+          ps' | Set.null ps' && n == 0 -> return droppedPID { monGroups = Map.delete gid monGroups }
+              | Set.null ps'           -> case mch of
+                  Just ch -> do sendChan ch (Just n)
+                                return droppedPID { monGroups = Map.delete gid monGroups }
+                  Nothing -> return droppedPID { monGroups = Map.insert gid (Failout ps' mch n) monGroups }
+              | otherwise -> return droppedPID { monGroups = Map.insert gid (Failout ps' mch n) monGroups }
+        -- Failed group. Normally we should never get here.
+        FailedGroup -> return droppedPID
+  where
+    droppedPID = m { monWorkers = Map.delete pid monWorkers }
+
+-- Handle crash of the process
+handleCrash :: MonitorSt -> ProcessId -> Process MonitorSt
+handleCrash m@(MonitorSt{..}) pid =
+    case Map.lookup pid monWorkers of
+      Nothing                  -> return m
+      -- Single process. Send crash notification or update state
+      Just (Left (Awaited ch)) -> do sendChan ch ()
+                                     return droppedPID
+      Just (Left _)            -> return m { monWorkers = Map.insert pid (Left Failed) monWorkers }
+      -- Process group
+      Just (Right gid) -> case monGroups ! gid of
+        -- Normal process group. We terminate whole group on first error
+        Group ps (Just ch) -> do sendChan ch Nothing
+                                 T.forM_ ps $ \p -> kill p "Terminate group"
+                                 return $ dropGID gid $ dropPIDS ps
+        Group ps Nothing   -> do T.forM_ ps $ \p -> kill p "Terminate group"
+                                 return (dropPIDS ps) { monGroups = Map.insert gid FailedGroup monGroups }
+        -- Failout group. We keep number of failures.
+        Failout ps mch n -> case Set.delete pid ps of
+            ps' | Set.null ps' -> case mch of
+                                    Just ch -> do sendChan ch (Just (n+1))
+                                                  return $ droppedPID { monGroups = Map.delete gid monGroups }
+                                    Nothing -> do return $ droppedPID { monGroups = Map.insert gid (Failout ps' mch (n+1)) monGroups }
+                | otherwise    -> return $ droppedPID { monGroups = Map.insert gid (Failout ps' mch (n+1)) monGroups }
+        -- Shouldn't really happen here
+        FailedGroup -> return droppedPID
+  where
+    droppedPID  = m { monWorkers = Map.delete pid monWorkers }
+    dropPIDS ps = m { monWorkers = T.foldr Map.delete monWorkers ps }
+    dropGID gid mm = mm { monGroups = Map.delete gid monGroups }
+
+-- Handle ask for the process state
+handleAskProcess :: MonitorSt -> AskProcess -> Process MonitorSt
+handleAskProcess st@(MonitorSt{..}) (AskProcess pid ch) = do
+    case Map.lookup pid monWorkers of
+      -- We don't know about process. So we assume it terminated normally.
+      Nothing -> return st
+      -- Single process
+      Just (Left Awaited{}) -> error "SHOULD NOT HAPPEN"
+      Just (Left Failed)    -> do sendChan ch ()
+                                  return $ st { monWorkers = Map.delete pid monWorkers }
+      Just (Left Running)   -> return $ st { monWorkers = Map.insert pid (Left (Awaited ch)) monWorkers }
+      Just (Right _)        -> error "SHOULD NOT HAPPEN"
+
+
+-- Handle ask for the process state
+handleAskGroup :: MonitorSt -> AskGroup -> Process MonitorSt
+handleAskGroup st@(MonitorSt{..}) (AskGroup gid ch) = do
+    case Map.lookup gid monGroups of
+      -- Assume group terminated normally
+      Nothing -> return st
+      -- Execution failed
+      Just FailedGroup -> do sendChan ch Nothing
+                             return $ st { monGroups = Map.delete gid monGroups }
+      -- Normal group
+      Just (Group pids _)
+          | Set.null pids -> return $ st { monGroups = Map.delete gid monGroups }
+          | otherwise     -> return $ st { monGroups = Map.insert gid (Group pids (Just ch)) monGroups }
+      -- Failout group
+      Just (Failout pids _ n)
+          | Set.null pids && n == 0 -> return $ st { monGroups = Map.delete gid monGroups }
+          | Set.null pids           -> do sendChan ch (Just n)
+                                          return $ st { monGroups = Map.delete gid monGroups }
+          | otherwise               -> return $ st { monGroups = Map.insert gid (Failout pids (Just ch) n) monGroups }
+
+-- Handle registration of single process
+handleRegisterProc :: MonitorSt -> RegisterPID -> Process MonitorSt
+handleRegisterProc st@(MonitorSt{..}) (RegisterPID pid) = do
+    return $ st { monWorkers = Map.insert pid (Left Running) monWorkers }
+
+-- Handle registraction of normal group of processes
+handleRegisterGroup :: (Int,MonitorSt) -> RegisterGroup -> Process (Int,MonitorSt)
+handleRegisterGroup (n,st@MonitorSt{..}) (RegisterGroup pid group) = do
+    let gid = GroupID n
+    send pid gid
+    return $ (n+1, st { monWorkers = foldr (.) id [Map.insert pid (Right gid) | pid <- group] monWorkers
+                      , monGroups  = Map.insert gid (Group (Set.fromList group) Nothing) monGroups
+                      })
+
+-- Handle registraction of group of processes which uses failout
+handleRegisterFailout :: (Int,MonitorSt) -> RegisterFailout -> Process (Int,MonitorSt)
+handleRegisterFailout (n,st@MonitorSt{..}) (RegisterFailout pid group) = do
+    let gid = GroupID n
+    send pid gid
+    return $ (n+1, st { monWorkers = foldr (.) id [Map.insert pid (Right gid) | pid <- group] monWorkers
+                      , monGroups  = Map.insert gid (Failout (Set.fromList group) Nothing 0) monGroups
+                      })
+
+
 iterateM :: Monad m => (a -> m a) -> a -> m b
 iterateM f a = loop a
+   where
+     loop = f >=> loop
+
+----------------------------------------------------------------
+-- Mapping between group
+----------------------------------------------------------------
+
+-- Mapping a <=> {b}
+data GroupMap a b = GroupMap (Map a (Set b)) (Map b a)
+
+lookupGID :: (Ord b) => b -> GroupMap a b -> Maybe a
+lookupGID b (GroupMap _ idx) = Map.lookup b idx
+
+-- | Delete member of group. If group is bein removed returns group ID
+deleteMember :: (Ord a, Ord b)
+             => b -> GroupMap a b -> (Maybe a, GroupMap a b)
+deleteMember b m@(GroupMap groups index) =
+    case Map.lookup b index of
+      Nothing -> (Nothing,m)
+      Just a  -> case Set.delete b (groups ! a) of
+        bs | Set.null bs -> (Just a,  GroupMap (Map.delete a groups)    index')
+           | otherwise   -> (Nothing, GroupMap (Map.insert a bs groups) index')
   where
-    loop = f >=> loop
+    index' = Map.delete b index
+
+deleteGroup :: (Ord a, Ord b) => a -> GroupMap a b -> GroupMap a b
+deleteGroup a m@(GroupMap groups index) =
+    case Map.lookup a groups of
+      Nothing -> m
+      Just bs -> GroupMap (Map.delete a groups) (T.foldr Map.delete index bs)
+
+addGroup :: (Ord a, Ord b) => a -> [b] -> GroupMap a b -> GroupMap a b
+addGroup a bs (GroupMap groups index) =
+    GroupMap (Map.insert a (Set.fromList bs) groups)
+             (T.foldr (\b -> Map.insert b a) index bs)
