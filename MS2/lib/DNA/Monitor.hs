@@ -174,8 +174,8 @@ data GroupState
       -- Group of normal processes.
     | Failout (Set ProcessId) (Maybe (SendPort (Maybe Int))) Int
       -- Group of failout processes. It keep number of failed processes
-    | FailedGroup
-      -- Execution of process group failed but no process asked about it
+    | CompletedGroup (Maybe Int)
+      -- Group completed execution and there was failures
 
 -- State of monitored process
 data ProcState
@@ -223,10 +223,10 @@ handleNormalTermination m@(MonitorSt{..}) pid = do
               | Set.null ps'           -> case mch of
                   Just ch -> do sendChan ch (Just n)
                                 return droppedPID { monGroups = Map.delete gid monGroups }
-                  Nothing -> return droppedPID { monGroups = Map.insert gid (Failout ps' mch n) monGroups }
+                  Nothing -> return droppedPID { monGroups = Map.insert gid (CompletedGroup (Just n)) monGroups }
               | otherwise -> return droppedPID { monGroups = Map.insert gid (Failout ps' mch n) monGroups }
         -- Failed group. Normally we should never get here.
-        FailedGroup -> return droppedPID
+        CompletedGroup _ -> return droppedPID
   where
     droppedPID = m { monWorkers = Map.delete pid monWorkers }
 
@@ -246,16 +246,16 @@ handleCrash m@(MonitorSt{..}) pid =
                                  T.forM_ ps $ \p -> kill p "Terminate group"
                                  return $ dropGID gid $ dropPIDS ps
         Group ps Nothing   -> do T.forM_ ps $ \p -> kill p "Terminate group"
-                                 return (dropPIDS ps) { monGroups = Map.insert gid FailedGroup monGroups }
+                                 return (dropPIDS ps) { monGroups = Map.insert gid (CompletedGroup Nothing) monGroups }
         -- Failout group. We keep number of failures.
         Failout ps mch n -> case Set.delete pid ps of
             ps' | Set.null ps' -> case mch of
                                     Just ch -> do sendChan ch (Just (n+1))
                                                   return $ droppedPID { monGroups = Map.delete gid monGroups }
-                                    Nothing -> do return $ droppedPID { monGroups = Map.insert gid (Failout ps' mch (n+1)) monGroups }
+                                    Nothing -> do return $ droppedPID { monGroups = Map.insert gid (CompletedGroup (Just (n+1))) monGroups }
                 | otherwise    -> return $ droppedPID { monGroups = Map.insert gid (Failout ps' mch (n+1)) monGroups }
         -- Shouldn't really happen here
-        FailedGroup -> return droppedPID
+        CompletedGroup _ -> return droppedPID
   where
     droppedPID  = m { monWorkers = Map.delete pid monWorkers }
     dropPIDS ps = m { monWorkers = T.foldr Map.delete monWorkers ps }
@@ -282,18 +282,12 @@ handleAskGroup st@(MonitorSt{..}) (AskGroup gid ch) = do
       -- Assume group terminated normally
       Nothing -> return st
       -- Execution failed
-      Just FailedGroup -> do sendChan ch Nothing
-                             return $ st { monGroups = Map.delete gid monGroups }
+      Just (CompletedGroup s) -> do sendChan ch s
+                                    return $ st { monGroups = Map.delete gid monGroups }
       -- Normal group
-      Just (Group pids _)
-          | Set.null pids -> return $ st { monGroups = Map.delete gid monGroups }
-          | otherwise     -> return $ st { monGroups = Map.insert gid (Group pids (Just ch)) monGroups }
+      Just (Group pids _) -> return $ st { monGroups = Map.insert gid (Group pids (Just ch)) monGroups }
       -- Failout group
-      Just (Failout pids _ n)
-          | Set.null pids && n == 0 -> return $ st { monGroups = Map.delete gid monGroups }
-          | Set.null pids           -> do sendChan ch (Just n)
-                                          return $ st { monGroups = Map.delete gid monGroups }
-          | otherwise               -> return $ st { monGroups = Map.insert gid (Failout pids (Just ch) n) monGroups }
+      Just (Failout pids _ n) -> return $ st { monGroups = Map.insert gid (Failout pids (Just ch) n) monGroups }
 
 -- Handle registration of single process
 handleRegisterProc :: MonitorSt -> RegisterPID -> Process MonitorSt
