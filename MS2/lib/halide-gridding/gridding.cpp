@@ -1,5 +1,6 @@
 // Gridding algoithm, adopted from bilateral_grid demo app.
 // There's nothing left from bilateral_grid except ideas and typical Halide idioms.
+// Uses C++11 features, compile with -std=c++11.
 
 #include <math.h>
 #include "Halide.h"
@@ -103,6 +104,12 @@ void gridding_func_simple(std::string typeName, Target* target) {
 
 int main(int argc, char **argv) {
     gridding_func_simple<float>("float", NULL);
+
+#if     defined(WILKES_CLUSTER)
+   std::vector<Target::Feature> wilkesFeatures = {Target::SSE41, Target::AVX, Target::CUDA, Target::CUDACapability35};
+   Target wilkesTarget (Target::Linux, Target::X86, 64, wilkesFeatures);
+   gridding_func_simple<float>("float_CUDA", &wilkesTarget);
+#endif
 
     return 0;
 }

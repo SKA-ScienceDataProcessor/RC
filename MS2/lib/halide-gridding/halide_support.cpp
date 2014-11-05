@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <assert.h>
 #include <sys/time.h>
 
@@ -33,3 +34,8 @@ extern "C" int64_t halideFloatImageDataSize (Image<float> *img) {
                         size *= info->extent[i];
         return size;
 } /* halideFloatImageDataSize */
+
+/* Read data right into image, not caring about anything */
+extern "C" int64_t readHalideFloatImage(Image<float> *img, int fd) {
+        return read(fd, &(*img)(0), halideFloatImageDataSize(img));
+} /* readHalideFloatImage */

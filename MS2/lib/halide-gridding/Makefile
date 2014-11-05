@@ -26,7 +26,7 @@ reduced-example-compiled.c: reduced-example
 	./reduced-example
 
 gridding: gridding.cpp
-	g++ -o gridding gridding.cpp -I$(HALIDE_INCLUDE) -ldl -lpthread $(HALIDE_LIB) ${shell llvm-config --ldflags}
+	g++ -std=c++11 -o gridding gridding.cpp -I$(HALIDE_INCLUDE) -ldl -lpthread $(HALIDE_LIB) ${shell llvm-config --ldflags}
 
 clean:
 	rm -f gridding griddingSimple_* test_conformance
