@@ -317,36 +317,3 @@ iterateM :: Monad m => (a -> m a) -> a -> m b
 iterateM f a = loop a
    where
      loop = f >=> loop
-
-----------------------------------------------------------------
--- Mapping between group
-----------------------------------------------------------------
-
--- Mapping a <=> {b}
-data GroupMap a b = GroupMap (Map a (Set b)) (Map b a)
-
-lookupGID :: (Ord b) => b -> GroupMap a b -> Maybe a
-lookupGID b (GroupMap _ idx) = Map.lookup b idx
-
--- | Delete member of group. If group is bein removed returns group ID
-deleteMember :: (Ord a, Ord b)
-             => b -> GroupMap a b -> (Maybe a, GroupMap a b)
-deleteMember b m@(GroupMap groups index) =
-    case Map.lookup b index of
-      Nothing -> (Nothing,m)
-      Just a  -> case Set.delete b (groups ! a) of
-        bs | Set.null bs -> (Just a,  GroupMap (Map.delete a groups)    index')
-           | otherwise   -> (Nothing, GroupMap (Map.insert a bs groups) index')
-  where
-    index' = Map.delete b index
-
-deleteGroup :: (Ord a, Ord b) => a -> GroupMap a b -> GroupMap a b
-deleteGroup a m@(GroupMap groups index) =
-    case Map.lookup a groups of
-      Nothing -> m
-      Just bs -> GroupMap (Map.delete a groups) (T.foldr Map.delete index bs)
-
-addGroup :: (Ord a, Ord b) => a -> [b] -> GroupMap a b -> GroupMap a b
-addGroup a bs (GroupMap groups index) =
-    GroupMap (Map.insert a (Set.fromList bs) groups)
-             (T.foldr (\b -> Map.insert b a) index bs)
