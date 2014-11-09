@@ -79,3 +79,13 @@ executable ddp-in-memory-collector
     base >=4.6,
     ch-dna,
     vector >= 0.10
+
+executable dna-gridding
+  -- needs custom Setup.hs, I guess. Also needs stdc++ library.
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded
+  hs-source-dirs:      dna-programs
+  main-is:             dna-gridding.hs
+  buid-depends:
+     base >= 4.6,
+     ch-dna
