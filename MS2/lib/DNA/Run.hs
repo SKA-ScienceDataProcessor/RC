@@ -22,8 +22,8 @@ dnaRun remoteTable dna = do
         Master (CommonOpts cadFile ip port) masterOptions -> do
             backend <- initializeBackend cadFile ip port rtable
             startMaster backend $ \nodes -> do
-                mon <- runMonitor
-                runDNA mon nodes dna
+                mon <- runMonitor nodes
+                runDNA mon dna
         Slave (CommonOpts cadFile ip port) -> do
             backend <- initializeBackend cadFile ip port rtable
             startSlave backend

@@ -4,7 +4,6 @@ module DNA (
       -- * DNA monad
       DNA
     , liftP
-    , getNodes
       -- * Promises
     , Promise
     , await
@@ -18,6 +17,10 @@ module DNA (
     , Actor
     , actor
     , eval
+    , ReqNode(..)
+    , ActorType(..)
+    , NodePool(..)
+    , ReqGroup(..)
     , forkLocal
     , forkRemote
     , forkGroup
@@ -36,3 +39,4 @@ import Control.Distributed.Process.Closure (mkStaticClosure,remotable)
 import DNA.Logging
 import DNA.Run
 import DNA.DNA
+import DNA.Monitor
