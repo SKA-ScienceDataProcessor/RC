@@ -285,8 +285,8 @@ handleReqPool (pid,pool) = do
     aid  <- ActorID <$> uniqID
     free <- use stFreeNodes
     case pool of
-      NoNodes     -> lift $ send pid (aid, [] :: [NodeId])
-      AllNodePool -> do lift $ send pid (aid, T.toList free)
+      NoNodes     -> lift $ send pid $ Just (aid, [] :: [NodeId])
+      AllNodePool -> do lift $ send pid $ Just (aid, T.toList free)
                         stFreeNodes .= Set.empty
 
 -- Request nodes for group of processes
