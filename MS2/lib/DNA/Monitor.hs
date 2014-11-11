@@ -108,7 +108,7 @@ askSingleNode (Monitor mon) req = do
     send mon (me,req)
     mr <- expect
     case mr of
-      Nothing -> error "Cannot find node"
+      Nothing -> failure "Cannot find node"
       Just  r -> return r
 
 -- | Ask monitor for nodes for group of actors.
@@ -121,7 +121,7 @@ askNodeGroup (Monitor mon) req = do
     send mon (me,req)
     mr <- expect
     case mr of
-      Nothing -> error "Cannot schedule nodes"
+      Nothing -> failure "Cannot schedule nodes"
       Just r  -> return r
 
 -- | Ask for pool of nodes for locally spawned actor
@@ -131,7 +131,7 @@ askNodePool (Monitor mon) pool = do
     send mon (me,pool)
     mr <- expect
     case mr of
-      Nothing -> error "Cannot schedule nodes"
+      Nothing -> failure "Cannot schedule nodes"
       Just r  -> return r
 
 
@@ -208,15 +208,19 @@ instance Binary RegisterFailout
 -- | Start execution of monitor process
 runMonitor :: [NodeId] -> Process Monitor
 runMonitor nids = do
-    forM_ nids monitorNode
-    pid <- spawnLocal $ iterateM step S { _stCounter       = 0
-                                        , _stWorkers       = Map.empty
-                                        , _stGroups        = Map.empty
-                                        , _stFreeNodes     = Set.fromList nids
-                                        , _stBusyNodes     = Map.empty
-                                        , _stPendingNodes  = Map.empty
-                                        , _stPendingGroups = Map.empty
-                                        }
+    me  <- getSelfPid
+    pid <- spawnLocal $ do
+        forM_ nids monitorNode
+        link me
+        iterateM step S { _stCounter       = 0
+                        , _stWorkers       = Map.empty
+                        , _stGroups        = Map.empty
+                        , _stFreeNodes     = Set.fromList nids
+                        , _stBusyNodes     = Map.empty
+                        , _stPendingNodes  = Map.empty
+                        , _stPendingGroups = Map.empty
+                        }
+    link pid
     return $ Monitor pid
 
 -- Iterate monadict action indefinitelys
@@ -236,7 +240,7 @@ step st = receiveWait
       -- Monitoring notifications
     , msg $ \(ProcessMonitorNotification _ pid reason) -> do
         case reason of
-          DiedUnknownId -> error "FIXME: not clear how to handle such case"
+          DiedUnknownId -> failure "FIXME: not clear how to handle such case"
           DiedNormal    -> handleNormalTermination pid
           _             -> handleProcessCrash      pid
     , msg $ \(NodeMonitorNotification _ nid _) ->
@@ -407,11 +411,11 @@ handleAskProcess (AskProcess pid ch) = do
     case r of
       Nothing -> return ()
       -- Could happen during double await!
-      Just (Left Awaited{}) -> error "SHOULD NOT HAPPEN"
+      Just (Left Awaited{}) -> failure "SHOULD NOT HAPPEN"
       Just (Left Failed)    -> do lift $ sendChan ch ()
                                   stWorkers . at pid .= Nothing
       Just (Left Running)   -> stWorkers . at pid .= Just (Left (Awaited ch))
-      Just (Right _)        -> error "SHOULD NOT HAPPEN"
+      Just (Right _)        -> failure "SHOULD NOT HAPPEN"
 
 -- Ask about status of group of actors
 handleAskGroup :: AskGroup -> StateT S Process ()
@@ -553,3 +557,8 @@ at k f m = f mv <&> \r -> case r of
 
 (<&>) :: Functor f => f a -> (a -> b) -> f b
 (<&>) = flip (<$>)
+
+failure :: MonadIO m => String -> m a
+failure msg = do
+    liftIO $ putStrLn $ "FAILED: " ++ msg
+    error msg
