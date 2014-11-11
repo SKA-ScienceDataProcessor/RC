@@ -240,7 +240,6 @@ step st = receiveWait
       -- Monitoring notifications
     , msg $ \(ProcessMonitorNotification _ pid reason) -> do
         case reason of
-          DiedUnknownId -> failure "FIXME: not clear how to handle such case"
           DiedNormal    -> handleNormalTermination pid
           _             -> handleProcessCrash      pid
     , msg $ \(NodeMonitorNotification _ nid _) ->
