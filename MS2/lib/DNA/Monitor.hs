@@ -208,6 +208,7 @@ instance Binary RegisterFailout
 -- | Start execution of monitor process
 runMonitor :: [NodeId] -> Process Monitor
 runMonitor nids = do
+    forM_ nids monitorNode
     pid <- spawnLocal $ iterateM step S { _stCounter       = 0
                                         , _stWorkers       = Map.empty
                                         , _stGroups        = Map.empty
