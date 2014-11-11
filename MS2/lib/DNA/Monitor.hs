@@ -65,7 +65,7 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.State.Strict
+import Control.Monad.State
 import Control.Distributed.Process
 import Control.Distributed.Process.Closure
 import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
@@ -288,14 +288,14 @@ handleReqProcess (pid,ReqNode actorType pool) = do
     free <- use stFreeNodes
     msg  <- case (actorType,pool) of
       -- Expensive process
-      (Expensive,NoNodes    ) -> case Set.maxView free of
-          Nothing     -> return Nothing
-          Just (n,ns) -> do stFreeNodes .= ns
-                            return $ Just $ Nodes n []
-      (Expensive,AllNodePool) -> case Set.maxView free of
-          Nothing     -> return Nothing
-          Just (n,ns) -> do stFreeNodes .= Set.empty
-                            return $ Just $ Nodes n (T.toList ns)
+      (Expensive,NoNodes    ) -> runMaybeT $ do
+          (n,ns) <- MaybeT $ return $ Set.maxView free
+          stFreeNodes .= ns
+          return $ Nodes n []
+      (Expensive,AllNodePool) -> runMaybeT $ do
+          (n,ns) <- MaybeT $ return $ Set.maxView free
+          stFreeNodes .= Set.empty
+          return $ Nodes n (T.toList ns)
       -- Cheap process
       --
       -- FIXME: we could use self process if none available
@@ -651,15 +651,15 @@ set l a s = runIdentity $ l (\_ -> Identity a) s
 over :: Lens' s a -> (a -> a) -> s -> s
 over l f s = runIdentity $ l (Identity . f) s
 
-(.=) :: Monad m => Lens' s a -> a -> StateT s m ()
+(.=) :: MonadState s m => Lens' s a -> a -> m ()
 l .= b = modify' $ set l b
 
-(%=) :: Monad m => Lens' s a -> (a -> a) -> StateT s m ()
+(%=) :: MonadState s m => Lens' s a -> (a -> a) -> m ()
 l %= b = modify' $ over l b
 
 infix 4 .=, %=
 
-use :: Monad m => Lens' s a -> StateT s m a
+use :: MonadState s m => Lens' s a -> m a
 use l = do
     s <- get
     return $ s ^. l
