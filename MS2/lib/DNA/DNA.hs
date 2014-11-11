@@ -52,7 +52,6 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
-import Control.Monad.Trans.State.Strict
 import Control.Monad.IO.Class
 import Control.Distributed.Static (closureApply)
 import Control.Distributed.Process
@@ -61,14 +60,9 @@ import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
 import Control.Distributed.Process.Serializable (Serializable)
 
 import Data.Binary   (Binary)
-import Data.Int
 import Data.Typeable (Typeable)
-import Data.Monoid   (Monoid(..))
-import qualified Data.Set        as Set
-import qualified Data.Map.Strict as Map
 import GHC.Generics  (Generic)
 
-import DNA.Logging
 import DNA.Types
 import DNA.Monitor
 
@@ -77,16 +71,14 @@ import DNA.Monitor
 -- Monad for building programs and data types
 ----------------------------------------------------------------
 
--- | Monad for defining DNA programs.
+-- | Monad for defining DNA programs. Actors could spawn other
+--   actors. One important limitation is that actors cannot outlive
+--   their parent. Otherwise we could have processes whose results
+--   will be never requested and no way to reap such deadlocked
+--   processes.
 --
---   Every actor is implemented as two CH processes. One perform all
---   computations and another one monitor child processes. We need two
---   processes because monitor process must respond to requests about
---   child process status in timely manner and main process could do
---   expensive computation and unable to respond.
---
---   It's possible to use global process monitor but it could lead to
---   accumulation of tracked processes which will be never removed.
+--   Every actor owns set of nodes on which it could spawn other actors.
+--   Upon completion this set of nodes is returned to parent actor.
 newtype DNA a = DNA (ReaderT Monitor Process a)
                 deriving (Functor,Applicative,Monad,MonadIO)
 
@@ -95,7 +87,7 @@ runDNA :: Monitor -> DNA a -> Process a
 runDNA mon (DNA dna)
     = flip runReaderT mon dna
 
--- | Lift Process computation to DNA monad
+-- | Lift 'Process' computation to DNA monad
 liftP :: Process a -> DNA a
 liftP = DNA . lift
 
@@ -110,10 +102,11 @@ getMonitor = DNA ask
 ----------------------------------------------------------------
 
 -- | Handle for obtaining result from process. Such handles are
---   returned by fork* functions
+--   returned by fork* functions. Handles from child processes must
+--   not be returned from the parent process
 --
 --   FIXME: If we await more than once then second call will block
---          indefinitely. wihout any way to detect deadlock. Since
+--          indefinitely wihout any way to detect deadlock. Since
 --          promises are serailizable we can obtain such deadlocks
 --          between different processes.
 data Promise a = Promise Monitor ProcessId (SendPort (SendPort a))

@@ -8,36 +8,12 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 -- |
-
--- Monitor process watch over child processes and keep track of
--- available nodes. We need to make it separate process in order
--- ensure timely responses.
---
--- Communication with monitor process should be done using functions
--- provided in this module. We intentionally hide process ID of
--- monitor process in the opaque handle
-
-
-
--- Below is table with
---  * Process which receive result of computation should get either
---    result or notification that process failed. Parent could be busy
---    doing computations and won't be able to answer in timely manner.
---
---  * Worker process could in principle outlive its parent so parent
---    could not reasonable monitor it.
---
--- FIXME: data race during process registration. Process could
---        complete execution either normally or abnormally before we
---        register it succesfully. Reasonable way to fix this is to
---        send message to a process and require it to receive it. This
---        way if we get notification that tell that process is unknown
---        we know that it crashed.
---
--- FIXME: Main scheduler should live here as well because we need to
---        return nodes to parent even if process died (and node is
---        still alive). Parent doesn't monitor child so it doesn't
---        know their status.
+-- Goal of monitor process is to watch over child processes and track
+-- nodes allocated to child processes. Every actor have corresponding
+-- monitor process. We need separate monitor process because actor
+-- could do lengthy computation and thus unable to respond to request
+-- about stat of processes in timely manner. Use of one monitor per
+-- actor also make many problems of cleanup much easier to solve.
 module DNA.Monitor (
       -- * Monitor API
       Monitor
@@ -67,20 +43,14 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.State
 import Control.Distributed.Process
-import Control.Distributed.Process.Closure
-import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
-import Control.Distributed.Process.Platform.ManagedProcess
-import Control.Distributed.Process.Serializable (Serializable)
 
 import Data.Binary   (Binary)
-import Data.Int
 import Data.Typeable (Typeable)
-import Data.Monoid   (Monoid(..))
 import Data.Functor.Identity
 import qualified Data.Set        as Set
 import           Data.Set          (Set)
 import qualified Data.Map.Strict as Map
-import           Data.Map.Strict   (Map,(!))
+import           Data.Map.Strict   (Map)
 import qualified Data.Foldable   as T
 import GHC.Generics  (Generic)
 
