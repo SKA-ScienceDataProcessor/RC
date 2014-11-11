@@ -265,23 +265,26 @@ handleReqProcess (pid,ReqNode actorType pool) = do
       -- Expensive process
       (Expensive,NoNodes    ) -> runMaybeT $ do
           (n,ns) <- MaybeT $ return $ Set.maxView free
-          stFreeNodes .= ns
+          stFreeNodes             .= ns
+          stPendingNodes . at aid .= Just (Set.singleton n)
           return $ Nodes n []
       (Expensive,AllNodePool) -> runMaybeT $ do
           (n,ns) <- MaybeT $ return $ Set.maxView free
-          stFreeNodes .= Set.empty
+          stFreeNodes             .= Set.empty
+          stPendingNodes . at aid .= Just free
           return $ Nodes n (T.toList ns)
       -- Cheap process
       --
       -- FIXME: we could use self process if none available
       (Cheap,    NoNodes    ) -> case Set.maxView free of
           Nothing     -> return Nothing
-          Just (n,ns) -> do stFreeNodes .= ns
+          Just (n,_ ) -> do stPendingNodes . at aid .= Just Set.empty
                             return $ Just $ Nodes n []
       (Cheap,    AllNodePool) -> case Set.maxView free of
-          Nothing     -> return Nothing
-          Just (n,ns) -> do stFreeNodes .= Set.empty
-                            return $ Just $ Nodes n (T.toList ns)
+          Nothing    -> return Nothing
+          Just (n,_) -> do stFreeNodes .= Set.empty
+                           stPendingNodes . at aid .= Just free
+                           return $ Just $ Nodes n (T.toList free)
     lift $ send pid $ (,) aid <$> msg
 
 handleReqPool :: (ProcessId,NodePool) -> StateT S Process ()
@@ -289,9 +292,11 @@ handleReqPool (pid,pool) = do
     aid  <- ActorID <$> uniqID
     free <- use stFreeNodes
     case pool of
-      NoNodes     -> lift $ send pid $ Just (aid, [] :: [NodeId])
+      NoNodes     -> do lift $ send pid $ Just (aid, [] :: [NodeId])
+                        stPendingNodes . at aid .= Just Set.empty
       AllNodePool -> do lift $ send pid $ Just (aid, T.toList free)
                         stFreeNodes .= Set.empty
+                        stPendingNodes . at aid .= Just free
 
 -- Request nodes for group of processes
 handleReqGroup :: (ProcessId,ReqGroup) -> StateT S Process ()
@@ -300,7 +305,9 @@ handleReqGroup (pid,ReqGroup) = do
     free <- use stFreeNodes
     msg  <- case () of
         _| Set.null free -> return Nothing
-         | otherwise     -> do stFreeNodes .= Set.empty
+         | otherwise     -> do stFreeNodes              .= Set.empty
+                               stPendingGroups . at gid .= Just
+                                   [ Set.singleton n | n <- T.toList free ]
                                return $ Just (gid,[Nodes n []
                                                   | n <- T.toList free ])
     lift $ send pid msg
