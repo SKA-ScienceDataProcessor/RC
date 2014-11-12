@@ -46,8 +46,8 @@ ddpReadVector = actor $ \(fname, (off,n)) -> do
 -- | Caclculate dot product of slice of vector
 ddpProductSlice :: Actor (String,(Int64,Int64)) Double
 ddpProductSlice = actor $ \(fname, slice) -> do
-    futVA <- forkLocal [] ddpComputeVector slice
-    futVB <- forkLocal [] ddpReadVector (fname :: String, slice :: (Int64,Int64))
+    futVA <- forkLocal NoNodes ddpComputeVector slice
+    futVB <- forkLocal NoNodes ddpReadVector (fname :: String, slice :: (Int64,Int64))
     va <- await futVA
     vb <- await futVB
     return $ (S.sum $ S.zipWith (*) va vb :: Double)
@@ -61,8 +61,7 @@ remotable [ 'ddpComputeVector
 -- | Actor for calculating dot product
 ddpDotProduct :: Actor (String,Int64) Double
 ddpDotProduct = actor $ \(fname,size) -> do
-    nodes    <- getNodes
-    partials <- forkGroup nodes $(mkStaticClosure 'ddpProductSlice)
+    partials <- forkGroup ReqGroup $(mkStaticClosure 'ddpProductSlice)
                   ((,) <$> same fname <*> scatter (\n -> scatterShape (fromIntegral n)) size)
     gather partials (+) 0
 

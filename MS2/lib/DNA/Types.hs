@@ -2,11 +2,13 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable, DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric #-}
 module DNA.Types where
 
 import Control.Distributed.Process
 import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
+import GHC.Generics  (Generic)
 
 
 -- | Newtype wrapper for sending parent process
@@ -27,3 +29,13 @@ newtype Param a = Param a
 -- | ID of group of processes
 newtype GroupID = GroupID Int
                 deriving (Show,Eq,Ord,Typeable,Binary)
+
+-- | ID of actor
+newtype ActorID = ActorID Int
+                deriving (Show,Eq,Ord,Typeable,Binary)
+
+-- | Tag for
+data Completed = Completed
+                deriving (Show,Eq,Ord,Typeable,Generic)
+
+instance Binary Completed

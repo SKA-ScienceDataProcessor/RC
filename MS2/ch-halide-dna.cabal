@@ -9,7 +9,7 @@ author:              Peter Braam
 maintainer:          peter.braam@peterbraam.com
 -- copyright:           
 category:            Concurrency
-build-type:          Simple
+build-type:          Custom
 cabal-version:       >=1.20
 
 --extra-source-files:  create-floats.c, create_floats.py,
@@ -33,6 +33,7 @@ library
     containers   >= 0.5,
     deepseq      >= 1.3,
     transformers >= 0.4.1,
+    mtl          >= 2.1,
     vector                  >= 0.10,
     vector-binary-instances >= 0.2.1,
     distributed-static,
@@ -70,12 +71,25 @@ executable ddp-in-memory
     ch-dna,
     vector >= 0.10
 
-executable ddp-in-memory-collector
+--executable ddp-in-memory-collector
+--  default-language:    Haskell2010
+--  ghc-options:         -O2 -Wall -threaded
+--  Hs-source-dirs:      dna-programs
+--  main-is:             ddp-in-memory-collector.hs
+--  build-depends:
+--    base >=4.6,
+--    ch-dna,
+--    vector >= 0.10
+
+executable dna-gridding
+  -- needs custom Setup.hs, I guess. Also needs stdc++ library.
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded
-  Hs-source-dirs:      dna-programs
-  main-is:             ddp-in-memory-collector.hs
+  hs-source-dirs:      dna-programs
+  main-is:             dna-gridding.hs
+
+--  c-sources:           lib/halide-gridding/halide_support.cpp
+
   build-depends:
-    base >=4.6,
-    ch-dna,
-    vector >= 0.10
+     base >= 4.6,
+     ch-dna

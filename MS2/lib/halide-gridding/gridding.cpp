@@ -1,5 +1,6 @@
 // Gridding algoithm, adopted from bilateral_grid demo app.
 // There's nothing left from bilateral_grid except ideas and typical Halide idioms.
+// Uses C++11 features, compile with -std=c++11.
 
 #include <math.h>
 #include "Halide.h"
@@ -8,27 +9,27 @@
 using namespace Halide;
 
 template<typename T>
-void gridding_func_simple(std::string typeName) {
+void gridding_func_simple(std::string typeName, Target* target) {
     int Tbits = sizeof(T) * 8;
-    ImageParam UVW(Halide::type_of<T>(), 4, "UVW");     // baseline, channel, timestep, UVW triples.
-    ImageParam visibilities(Halide::type_of<T>(), 4, "visibilities");   // baseline, channel, timestep, polarization fuzed with complex number.
+    ImageParam UVW(Halide::type_of<T>(), 3, "UVW");     // baseline, timestep, UVW triples.
+    ImageParam visibilities(Halide::type_of<T>(), 3, "visibilities");   // baseline, timestep, polarization fuzed with complex number.
     ImageParam support(Halide::type_of<T>(), 4, "supportSimple");      // baseline, u,v and two values of complex number.
     ImageParam supportSize(Int(32), 1, "supportSize");
 
-    RDom uvwRange (0, UVW.extent(0), 0, UVW.extent(1), 0, UVW.extent(2));
+    RDom uvwRange (0, UVW.extent(0), 0, UVW.extent(1));
 
-    Var baseline("baseline"), timestep("timestep"), channel("channel");
+    Var baseline("baseline"), timestep("timestep");
 
     // fetch the values.
     Func U("U");
-    U(baseline, timestep, channel) = UVW(baseline, timestep, channel, 0);
+    U(baseline, timestep) = UVW(baseline, timestep, 0);
     Func V("V");
-    V(baseline, timestep, channel) = UVW(baseline, timestep, channel, 1);
+    V(baseline, timestep) = UVW(baseline, timestep, 1);
 
     Func intU;
-    intU(baseline, timestep, channel) = cast<int>(U(baseline, timestep, channel));
+    intU(baseline, timestep) = cast<int>(U(baseline, timestep));
     Func intV;
-    intV(baseline, timestep, channel) = cast<int>(V(baseline, timestep, channel));
+    intV(baseline, timestep) = cast<int>(V(baseline, timestep));
 
     Func supportWidth("supportWidth");
     Var x("x");
@@ -42,58 +43,73 @@ void gridding_func_simple(std::string typeName) {
     Func result(resultName);
 
     // the weight of support changes with method - method here is SIMPLE..
-    Func weightr("weightr"), weighti("weighti");;
+    Func weight("weightr");
     Var weightBaseline("weightBaseline"), cu("cu"), u("u"), cv("cv"), v("v");
-    weightr(weightBaseline, cu, cv, u, v) =
-        select(abs(cv-v) <= supportWidth(weightBaseline) && abs(cu-u) <= supportWidth(weightBaseline),
+    weight(weightBaseline, cu, cv, u, v, x) =
+        select(abs(cv-v) <= supportWidthHalf(weightBaseline) && abs(cu-u) <= supportWidthHalf(weightBaseline),
                 support(weightBaseline,
-                        clamp(cu-u+supportWidth(weightBaseline)/2, 0, support.extent(1)-1),
-                        clamp(cv-v+supportWidth(weightBaseline)/2, 0, support.extent(2)-1), 0),
-                (T)0.0);
-    weighti(weightBaseline, cu, cv, u, v) =
-        select(abs(cv-v) <= supportWidth(weightBaseline) && abs(cu-u) <= supportWidth(weightBaseline),
-                support(weightBaseline,
-                        clamp(cu-u+supportWidth(weightBaseline)/2, 0, support.extent(1)-1),
-                        clamp(cv-v+supportWidth(weightBaseline)/2, 0, support.extent(2)-1), 1),
+                        clamp(u-cu+supportWidthHalf(weightBaseline), 0, support.extent(1)-1),
+                        clamp(v-cv+supportWidthHalf(weightBaseline), 0, support.extent(2)-1), x),
                 (T)0.0);
 
     RDom polarizations(0,4);
 
     Var polarization("polarization");
 
-    Func visibilityr("silibilityr"), visibilityi("visibilityi");
-    visibilityr(baseline, timestep, channel, polarization) = visibilities(baseline, timestep, channel, polarization*2);
-    visibilityi(baseline, timestep, channel, polarization) = visibilities(baseline, timestep, channel, polarization*2+1);
+    Func visibility("silibilityr");
+    visibility(baseline, timestep, polarization, x) = visibilities(baseline, timestep, polarization*2+x);
 
     Var pol("pol");
 
-    Expr baselineR("baselineR"), timestepR("timestepR"), channelR("channelR");
+    Expr baselineR("baselineR"), timestepR("timestepR");
 
     baselineR = uvwRange.x;
     timestepR = uvwRange.y;
-    channelR = uvwRange.z;
 
     // four dimensional result.
     // dimensions are: u, v, polarizations (XX,XY,YX, and YY, four total) and real and imaginary values of complex number.
     // so you should reaalize result as this: result.realize(MAX_U, MAX_V, 4, 2);
     result(u, v, pol, x)  = (T)0.0;
-    result(u, v, pol, 0) +=
-          weightr(baselineR, intU(baselineR, timestepR, channelR), intV(baselineR, timestepR, channelR),u,v)
-        * visibilityr(baselineR, timestepR, channelR, pol);
+    result(u, v, pol, x) +=
+          weight(baselineR, intU(baselineR, timestepR), intV(baselineR, timestepR),u,v, x)
+        * visibility(baselineR, timestepR, pol, x);
 
-    Target compile_target = get_target_from_environment();
+    result.bound(x, 0, 2);
+    result.bound(pol, 0, 4);
+
+    // no optimizations: 483K FLOPS
+
+    // This optimization: 4.84MFLOPS
+    Var polXFused;
+    result.update(0)
+        .fuse(x, pol, polXFused)
+        .vectorize(polXFused)
+        .parallel(v, 64);
+    result.compile_to_lowered_stmt("gridding.html", HTML);
+
+    Target *compile_target = target;
+    Target env_target = get_target_from_environment();;
+    if (target == NULL) {
+        compile_target = &env_target;
+    }
     std::vector<Halide::Argument> compile_args;
     compile_args.push_back(UVW);
     compile_args.push_back(visibilities);
     compile_args.push_back(support);
     compile_args.push_back(supportSize);
-    result.compile_to_file(resultName, compile_args);
-    result.compile_to_c(resultName+".cpp", compile_args);
+    result.compile_to_file(resultName, compile_args, *compile_target);
+//    result.compile_to_c(resultName+".cpp", compile_args);
 
 } /* gridding_func_simple */
 
 int main(int argc, char **argv) {
-    gridding_func_simple<float>("float");
+    gridding_func_simple<float>("float", NULL);
+
+#if     defined(WILKES_CLUSTER)
+   std::vector<Target::Feature> wilkesFeatures = {Target::SSE41, Target::AVX, Target::CUDA, Target::CUDACapability35};
+   Target wilkesTarget (Target::Linux, Target::X86, 64, wilkesFeatures);
+   gridding_func_simple<float>("float_CUDA", &wilkesTarget);
+#endif
 
     return 0;
 }

@@ -4,14 +4,25 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable, DeriveFunctor, DeriveGeneric #-}
 {-# LANGUAGE GADTs #-}
--- | DNA monad and helper functions
+-- | DNA monad and actor creation and communication primitives.
+--
+--   Actors track list of nodes they own and monitor their immediate
+--   children. We also have to impose important limitation: children
+--   cannot outlive their parents. It's quite reasonable to allow it
+--   but at the same time it could lead to processes which hangs
+--   around forever because no one will request their result. We need
+--   some kind of distributed garbage collection to reap such
+--   processes.
+--
+--   When spawned process\/group of processes returns handle for
+--   obtaining result of their computation. It could be serialized and
+--   send to other processes.
 module DNA.DNA (
       -- * DNA monad
       DNA(..)
     , runDNA
     , GroupID
     , liftP
-    , getNodes
     , getMonitor
       -- * Promises
     , Promise(..)
@@ -41,7 +52,6 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
-import Control.Monad.Trans.State.Strict
 import Control.Monad.IO.Class
 import Control.Distributed.Static (closureApply)
 import Control.Distributed.Process
@@ -50,14 +60,9 @@ import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
 import Control.Distributed.Process.Serializable (Serializable)
 
 import Data.Binary   (Binary)
-import Data.Int
 import Data.Typeable (Typeable)
-import Data.Monoid   (Monoid(..))
-import qualified Data.Set        as Set
-import qualified Data.Map.Strict as Map
 import GHC.Generics  (Generic)
 
-import DNA.Logging
 import DNA.Types
 import DNA.Monitor
 
@@ -66,47 +71,45 @@ import DNA.Monitor
 -- Monad for building programs and data types
 ----------------------------------------------------------------
 
--- | Monad for defining DNA programs
-newtype DNA a = DNA (ReaderT Monitor (StateT [NodeId] Process) a)
+-- | Monad for defining DNA programs. Actors could spawn other
+--   actors. One important limitation is that actors cannot outlive
+--   their parent. Otherwise we could have processes whose results
+--   will be never requested and no way to reap such deadlocked
+--   processes.
+--
+--   Every actor owns set of nodes on which it could spawn other actors.
+--   Upon completion this set of nodes is returned to parent actor.
+newtype DNA a = DNA (ReaderT Monitor Process a)
                 deriving (Functor,Applicative,Monad,MonadIO)
 
 -- | Execute DNA program
-runDNA :: Monitor -> [NodeId] -> DNA a -> Process a
-runDNA mon nodes (DNA dna)
-    = flip evalStateT nodes
-    $ flip runReaderT mon dna
+runDNA :: Monitor -> DNA a -> Process a
+runDNA mon (DNA dna)
+    = flip runReaderT mon dna
 
--- | Lift Process computation to DNA monad
+-- | Lift 'Process' computation to DNA monad
 liftP :: Process a -> DNA a
-liftP = DNA . lift . lift
-
--- | Get list of awailable nodes.
-getNodes :: DNA [NodeId]
-getNodes = DNA $ lift get
+liftP = DNA . lift
 
 -- | Get monitor process
 getMonitor :: DNA Monitor
 getMonitor = DNA ask
 
 
+
 ----------------------------------------------------------------
 -- Promises
 ----------------------------------------------------------------
 
--- | Normally subprocess will only return value once. Fork* function
---   return promise which is hadle for obtaining result of
---   computation.
+-- | Handle for obtaining result from process. Such handles are
+--   returned by fork* functions. Handles from child processes must
+--   not be returned from the parent process
 --
---   We use cloud haskell channels for commutincations instead of
---   send\/expect because this way we cannot mix up messages from
---   different sources.
---
---   FIXME: If we await more than once we await more than once we wll
---          deadlock and we have no way to detect such behaviour. Nor
---          we can detect if we do not await for promise. In this case
---          child process will be termintaed forcefully when parent
---          dies.
-data Promise a = Promise ProcessId (SendPort (SendPort a))
+--   FIXME: If we await more than once then second call will block
+--          indefinitely wihout any way to detect deadlock. Since
+--          promises are serailizable we can obtain such deadlocks
+--          between different processes.
+data Promise a = Promise Monitor ProcessId (SendPort (SendPort a))
                  deriving (Typeable,Generic)
 
 instance (Typeable a, Binary a) => Binary (Promise a)
@@ -117,11 +120,8 @@ instance (Typeable a, Binary a) => Binary (Promise a)
 --   This function will as well receive messages about termination of
 --   monitored processes.
 await :: Serializable a => Promise a -> DNA a
-await (Promise pid ch) = do
-    -- Ask monitor for status of process. It will not respond if
-    -- process terminated normally
-    mon             <- getMonitor
-    chFail          <- liftP $ waitForProcess mon pid
+await (Promise mon pid ch) = do
+    chFail <- liftP $ waitForProcess mon pid
     -- Send channel for sending result to remote process
     liftP $ do (chSend,chRecv) <- newChan
                sendChan ch chSend
@@ -137,6 +137,7 @@ await (Promise pid ch) = do
 -- | Set of values which is produces by group of processes which
 --   execute same code.
 data Group a = Group
+    Monitor
     GroupID
     -- ID of group
     Int
@@ -150,9 +151,7 @@ instance (Typeable a, Binary a) => Binary (Group a)
 
 -- | Gather all results from child processes.
 gather :: (Serializable a) => Group a -> (a -> a -> a) -> a -> DNA a
-gather (Group gid n remotes) op x0 = do
-    -- Notify monitor about process group
-    mon    <- getMonitor
+gather (Group mon gid n remotes) op x0 = do
     chFail <- liftP $ waitForGroup mon gid
     -- Send channels to all workers in thread
     (chSend,chRecv) <- liftP newChan
@@ -163,74 +162,9 @@ gather (Group gid n remotes) op x0 = do
             [ matchChan chRecv $ \a -> loop (i-1) (op a0 a)
             , matchChan chFail $ \m -> case m of
                   Nothing -> error "Ooops!"
-                  Just  n -> loop (i-n) a0
+                  Just  k -> loop (i-k) a0
             ]
     liftP $ loop n x0
-
--- gather (Group gType ch) op = case gType of
---     Reliable n     -> loopR n
---     FailOut  n gid -> loopF gid n
---   where
---     -- Reliable subprocesses
---     loopR n a
---         | n <= 0    = return a
---         | otherwise = do a' <- getval ch
---                          loopR (n-1) (op a a')
---     -- Fail-out
---     loopF gid n a = do
---         nCrash <- getNCrashed gid
---         case n <= nCrash of
---           True  -> return a
---           False -> do a' <- getval ch
---                       loopF gid (n-1) (op a a')
-
-
-
-
-
-{-
--- Wait for data from channel. We may receive message about process
--- termination instead
-waitForChan :: ReceivePort a -> Process (Either ProcTerm a)
-waitForChan ch = receiveWait
-    [ matchChan ch (return . Right)
-    , match $ \(ProcessMonitorNotification _ pid reason) ->
-        case reason of
-          DiedNormal -> return $ Left $ TermOK pid
-          _          -> return $ Left $ Crashed pid
-    ]
--}
-
-{-
--- Handle process termination message
-handleTermination :: ProcTerm -> DNA ()
-handleTermination (TermOK pid) = DNA $ do
-    -- We simply delete PID from every list of running processes if it
-    -- terminates normally.
-    st <- get
-    put $! st { stPIDS   = Set.delete pid (stPIDS st)
-              , stGroups = Map.delete pid (stGroups st)
-              }
-handleTermination (Crashed pid) = DNA $ do
-    -- If process is allowed to termiante we update number of failures
-    -- for curresponding group. Otherwise we just die violently.
-    st <- get
-    case Map.lookup pid (stGroups st) of
-      Just gid -> put $! st
-                    { stGroups = Map.delete pid (stGroups st)
-                    , stGroupFailures = Map.adjust (+1) gid (stGroupFailures st)
-                    }
-      Nothing -> lift terminate
--}
-
-{-
-getval :: ReceivePort a -> DNA a
-getval ch = do
-    ea <- liftP $ waitForChan ch
-    case ea of
-        Left  t -> handleTermination t >> getval ch
-        Right a -> return a
--}
 
 
 
@@ -302,31 +236,35 @@ actor = Actor
 --   parameters from messages
 runActor :: Actor a b -> Process ()
 runActor (Actor fun) = do
-    mon   <- expect
+    -- Get list of nodes and spawn local monitor
     nodes <- expect
+    mon   <- runMonitor nodes
     -- Create channel for obtaining channel to return results and send
-    -- it to parent (caller)
+    -- it to process requesting them
     Parent pid      <- expect
     (chSend,chRecv) <- newChan
     send pid chSend
     -- Obtain parameter and evaluate action
     Param a <- expect
-    b       <- runDNA mon nodes (fun a)
+    b       <- runDNA mon (fun a)
     dest    <- receiveChan chRecv
     sendChan dest b
+    -- Make sure that process will not terminate before we start
+    -- monitoring it
+    Completed <- expect
+    return ()
+
 
 -- | Send to actor necessary parameters
 sendToActor :: (Serializable a, Serializable b)
             => [NodeId] -> a -> ProcessId -> DNA (SendPort (SendPort b))
-sendToActor nodes a pid = do
-    mon <- getMonitor
-    liftP $ do me <- getSelfPid
-               send pid mon
-               send pid nodes
-               send pid (Parent me)
-               send pid (Param a)
-               -- FIXME: deadlock. Process can die before it responds!
-               expect
+sendToActor nodes a pid = liftP $ do
+    me <- getSelfPid
+    send pid nodes
+    send pid (Parent me)
+    send pid (Param a)
+    -- FIXME: deadlock. Process can die before it responds!
+    expect
 
 remotable [ 'runActor ]
 
@@ -347,31 +285,31 @@ eval (Actor act) a = act a
 
 -- | Fork process on local node
 forkLocal :: (Serializable a, Serializable b)
-          => [NodeId]           -- ^ List of nodes process allowed to use
+          => NodePool           -- ^ List of nodes process allowed to use
           -> Actor a b          -- ^ Actor
           -> a                  -- ^ Parameters for an actor
           -> DNA (Promise b)
-forkLocal nodes child a = do
+forkLocal pool child a = do
     mon <- getMonitor
-    pid <- liftP $ spawnLocal $ runActor child
-    liftP $ registerWorker mon pid
-    ch  <- sendToActor nodes a pid
-    return $ Promise pid ch
-
+    (aid,nodes) <- liftP $ askNodePool mon pool
+    pid         <- liftP $ spawnLocal $ runActor child
+    ch          <- sendToActor nodes a pid
+    liftP $ registerWorker mon aid pid
+    return $ Promise mon pid ch
 
 -- | Fork process on remote node
 forkRemote :: (Serializable a, Serializable b)
-           => [NodeId]             -- ^ List of nodes process allowed to use
-           -> NodeId               -- ^ Node to spawn on
+           => ReqNode              -- ^ List of nodes process allowed to use
            -> Closure (Actor a b)  -- ^ Actor
            -> a                    -- ^ Parameters for an actor
            -> DNA (Promise b)
-forkRemote nodes nid child a = do
+forkRemote req child a = do
     mon <- getMonitor
+    (aid,Nodes nid nodes) <- liftP $ askSingleNode mon req
     pid <- liftP $ spawnActor nid child
-    liftP $ registerWorker mon pid
+    liftP $ registerWorker mon aid pid
     ch  <- sendToActor nodes a pid
-    return $ Promise pid ch
+    return $ Promise mon pid ch
 
 
 -- | Create group of nodes
@@ -380,21 +318,23 @@ forkRemote nodes nid child a = do
 --          code on remote nodes.
 forkGroup
     :: (Serializable a, Serializable b)
-    => [NodeId]                 -- ^ List of nodes to spawn on
+    => ReqGroup                 -- ^ List of nodes to spawn on
     -> Closure (Actor a b)      -- ^ Actor
     -> Scatter a                -- ^ Parameters to actors.
     -> DNA (Group b)
-forkGroup [] _ _ = error "Empty list of nodes"
-forkGroup nodes child scat = do
+forkGroup req child scat = do
+    -- Get schedule for list of nodes
     mon <- getMonitor
+    (gid,nodes) <- liftP $ askNodeGroup mon req
     let n  = length nodes
         xs = runScatter n scat
     -- Spawn group of processes and register them
-    pids <- liftP $ forM nodes $ \nid -> spawnActor nid child
-    gid  <- liftP $ registerGroup mon pids
-    -- Send data to every process
-    chans <- forM (pids `zip` xs) $ \(pid,a) -> sendToActor [] a pid
-    return $ Group gid n chans
+    pids <- forM (nodes `zip` xs) $ \(Nodes nid nids, a) -> do
+        p  <- liftP $ spawnActor nid child
+        ch <- sendToActor nids a p
+        return (p,ch)
+    liftP $ registerGroup mon gid (fst <$> pids)
+    return $ Group mon gid n (snd <$> pids)
 
 
 -- | Create group of nodes and allow failout
@@ -403,18 +343,20 @@ forkGroup nodes child scat = do
 --          code on remote nodes.
 forkGroupFailout
     :: (Serializable a, Serializable b)
-    => [NodeId]                 -- ^ List of nodes to spawn on
+    => ReqGroup                 -- ^ List of nodes to spawn on
     -> Closure (Actor a b)      -- ^ Actor
     -> Scatter a                -- ^ Parameters to actors.
     -> DNA (Group b)
-forkGroupFailout [] _ _ = error "Empty node list"
-forkGroupFailout nodes child scat = do
+forkGroupFailout req child scat = do
+    -- Get schedule for list of nodes
     mon <- getMonitor
+    (gid,nodes) <- liftP $ askNodeGroup mon req
     let n  = length nodes
         xs = runScatter n scat
     -- Spawn group of processes and register them
-    pids <- liftP $ forM nodes $ \nid -> spawnActor nid child
-    gid  <- liftP $ registerFailout mon pids
-    -- Send data to every process
-    chans <- forM (pids `zip` xs) $ \(pid,a) -> sendToActor [] a pid
-    return $ Group gid n chans
+    pids <- forM (nodes `zip` xs) $ \(Nodes nid nids, a) -> do
+        p  <- liftP $ spawnActor nid child
+        ch <- sendToActor nids a p
+        return (p,ch)
+    liftP $ registerGroup mon gid (fst <$> pids)
+    return $ Group mon gid n (snd <$> pids)
