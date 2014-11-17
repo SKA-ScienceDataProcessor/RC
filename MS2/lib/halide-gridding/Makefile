@@ -9,6 +9,7 @@ HALIDE_SUPPORT_INCLUDE = $(HALIDE_PATH)/apps/support
 
 run_performance: test_performance
 	HL_NUM_THREADS=8 ./test_performance
+	HL_NUM_THREADS=4 ./test_performance
 
 run_conformance: test_conformance
 	./test_conformance
