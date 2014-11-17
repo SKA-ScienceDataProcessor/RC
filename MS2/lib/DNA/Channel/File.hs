@@ -44,25 +44,25 @@ roundUpDiv a b = - div (-a) b
 
 chunkOffset :: Int64 -> Int64 -> Int64 -> Int64
 chunkOffset chunkCount itemCount chunkNo
-    | chunkNo > chunkCount || chunkNo < 1 = -1
-    | otherwise = itemSize * (chunkNo -1 ) * roundUpDiv itemCount chunkCount
+        | chunkNo > chunkCount || chunkNo < 1 = -1
+        | otherwise = itemSize * (chunkNo -1 ) * roundUpDiv itemCount chunkCount
 
 
 chunkSize :: Int64 -> Int64 -> Int64 -> Int64
 chunkSize cC iC cN
-    |  cN < 1 || cN > cC = 0
-    |  cN > div iC (roundUpDiv iC cC) = iC - (cN -1) * (roundUpDiv iC cC)
-    |  otherwise = roundUpDiv iC cC
+        |  cN < 1 || cN > cC = 0
+        |  cN > div iC (roundUpDiv iC cC) = iC - (cN -1) * (roundUpDiv iC cC)
+        |  otherwise = roundUpDiv iC cC
 
 -- read a buffer from a file into pinned memory
 -- arguments: buffer ptr, size, offset, path
 foreign import ccall unsafe "read_data"
-    c_read_data :: Ptr CDouble -> CLong -> CLong -> CString -> IO ()
+        c_read_data :: Ptr CDouble -> CLong -> CLong -> CString -> IO ()
 
 -- read a buffer from a file into mmapped memory.
 -- arguments: size (num of elements of double type), offset, path
 foreign import ccall unsafe "read_data_mmap"
-    c_read_data_mmap :: CLong -> CLong -> CString -> CString -> IO (Ptr CDouble)
+        c_read_data_mmap :: CLong -> CLong -> CString -> CString -> IO (Ptr CDouble)
 
 readData :: Int64 -> Int64 -> String -> IO (S.Vector Double)
 readData n o p = do
@@ -86,7 +86,7 @@ readDataMMap n o p nodeId = do
 
 
 data FileVec = FileVec ProcessId (S.Vector Double)
-             deriving (Eq, Show, Typeable, Generic)
+                deriving (Eq, Show, Typeable, Generic)
 
 instance Binary FileVec where
 
