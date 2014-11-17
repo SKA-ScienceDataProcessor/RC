@@ -95,8 +95,8 @@ static bool resultsEqual(Image<float> &result1, Image<float> &result2) {
 
 
 static void testGriddingSimpleConformance(void) {
-    int nBaselines = 100;
-    int nTimesteps = 100;
+    int nBaselines = 40;
+    int nTimesteps = 40;
     int maxSupportSize = 101;
     int resultWidthHeight = 2048;
     int bl, ts, i, j;
