@@ -10,7 +10,7 @@ maintainer:          peter.braam@peterbraam.com
 -- copyright:           
 category:            Concurrency
 build-type:          Custom
-cabal-version:       >=1.20
+cabal-version:       >=1.16
 
 --extra-source-files:  create-floats.c, create_floats.py,
 --                     build.sh, clean.sh,
