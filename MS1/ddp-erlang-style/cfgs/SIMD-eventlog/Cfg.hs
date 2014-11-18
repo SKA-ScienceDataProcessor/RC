@@ -19,6 +19,8 @@ import Data.Time
 
 import Debug.Trace
 
+import System.IO.Unsafe (unsafeDupablePerformIO)
+
 import System.Locale (defaultTimeLocale)
 
 executableName = "ddp-erlang-style-SIMD-eventlog"
@@ -35,7 +37,11 @@ timePeriod ev a = do
 -- |Measure time period of pure computation into eventlog.
 -- Is strict on argument.
 timePeriodPure :: String -> a -> a
-timePeriodPure ev a = (traceEvent ("START "++ev) $! a) `seq` (traceEvent ("END "++ev) $! a)
+--timePeriodPure ev a = (traceEvent ("START "++ev) ()) `seq` (a `seq` traceEvent ("END "++ev) a)
+timePeriodPure ev a = unsafeDupablePerformIO $ do
+        traceEventIO ("START "++ev)
+        a `seq` traceEventIO ("END "++ev)
+        return a
 
 -- |Synchronize timings - put into eventlog an event with current wall time.
 synchronizationPoint :: MonadIO m => m ()

@@ -19,4 +19,3 @@ Noticeable Halide quirks
   * Halide supports images with dimensions up to 4 (x,y,z,w). You have to reduce dimensionality of
     arrays to 4. For example, visibilities array has dimensionality of 4, while in Romein code it is
     5-dimensional.
-
