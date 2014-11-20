@@ -4,31 +4,14 @@ module DNA.Channel.File (
           itemSize
         , readData, readDataMMap, roundUpDiv
         , chunkOffset, chunkSize
-        , FileVec(..), spawnFChan
-        , module Data.Int
         ) where
 
-import qualified Control.DeepSeq as CD
-
-import Control.Distributed.Process
-import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
-
-import Control.Monad
-
-import Data.Binary
-
-import GHC.Generics (Generic)
-
-import Data.Typeable
-
-import Data.Int (Int64)
 import Data.Vector.Binary ()
 
 import qualified Data.Vector.Storable as S
 import qualified Data.Vector.Storable.Mutable as MS
 
 import Foreign
-import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.C.String
 
@@ -86,20 +69,3 @@ readDataMMap n o p nodeId =
         nPtr <- new (fromIntegral n :: CLong)
         fptr <- newForeignPtrEnv c_munmap_data nPtr ptr
         return $ S.unsafeFromForeignPtr0 (castForeignPtr fptr) (fromIntegral n)
-
-
-
-data FileVec = FileVec ProcessId (S.Vector Double)
-                deriving (Eq, Show, Typeable, Generic)
-
-instance Binary FileVec where
-
-instance CD.NFData FileVec where
-        rnf (FileVec !procId !vec) = CD.rnf procId `seq` CD.rnf vec `seq` ()
-
-
-spawnFChan :: String -> Int64 -> Int64 -> ProcessId -> Process()
-spawnFChan path cO cS pid = do
-        mypid <- getSelfPid
-        iov   <- liftIO $ readDataMMap cS cO path (show mypid)
-        Unsafe.send pid (FileVec mypid iov)
