@@ -56,3 +56,12 @@ double* read_data_mmap(long n, long o, char *p, char *nodeid)
 
   return mapping;
 }
+
+/* Unmap data for vector. We pass data length as pointer because of
+ * constraints of ForeignPtr API
+ */
+void munmap_data(long* n, double* ptr) {
+  // FIXME: we don't check return code for munmap
+  munmap(ptr, sizeof(double) * (*n));
+  free(n);
+}

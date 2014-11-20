@@ -57,30 +57,34 @@ chunkSize cC iC cN
 -- read a buffer from a file into pinned memory
 -- arguments: buffer ptr, size, offset, path
 foreign import ccall unsafe "read_data"
-        c_read_data :: Ptr CDouble -> CLong -> CLong -> CString -> IO ()
+    c_read_data :: Ptr CDouble -> CLong -> CLong -> CString -> IO ()
 
 -- read a buffer from a file into mmapped memory.
 -- arguments: size (num of elements of double type), offset, path
 foreign import ccall unsafe "read_data_mmap"
-        c_read_data_mmap :: CLong -> CLong -> CString -> CString -> IO (Ptr CDouble)
+    c_read_data_mmap :: CLong -> CLong -> CString -> CString -> IO (Ptr CDouble)
+
+-- Unmap buffer fir the vector
+foreign import ccall unsafe "&munmap_data"
+    c_munmap_data :: FunPtr (Ptr CLong -> Ptr CDouble -> IO ())
 
 readData :: Int64 -> Int64 -> String -> IO (S.Vector Double)
 readData n o p = do
-        mv <- MS.new (fromIntegral n) :: IO (MS.IOVector Double)
-        MS.unsafeWith mv $ \ptr ->
-    -- Here I assume that CDouble and Double are same thing (it is)
-    --     -- and blindly cast pointer
-                withCString p (c_read_data (castPtr ptr) (fromIntegral n) (fromIntegral o))
-        S.unsafeFreeze mv
+    mv <- MS.new (fromIntegral n) :: IO (MS.IOVector Double)
+    MS.unsafeWith mv $ \ptr ->
+        -- Here I assume that CDouble and Double are same thing (it is)
+        -- and blindly cast pointer
+        withCString p (c_read_data (castPtr ptr) (fromIntegral n) (fromIntegral o))
+    S.unsafeFreeze mv
 
 readDataMMap :: Int64 -> Int64 -> String -> String -> IO (S.Vector Double)
-readDataMMap n o p nodeId = do
-        path <- newCString p
-        nodeStr <- newCString nodeId
-        ptr <-  c_read_data_mmap (fromIntegral n) (fromIntegral o) path nodeStr
-        free path
-        free nodeStr
-        fptr <- newForeignPtr_ ptr
+readDataMMap n o p nodeId =
+    withCString p      $ \path ->
+    withCString nodeId $ \nodeStr -> do
+        ptr  <- c_read_data_mmap (fromIntegral n) (fromIntegral o) path nodeStr
+        -- NOTE: pointer with length is freed in c_munmap_data
+        nPtr <- new (fromIntegral n :: CLong)
+        fptr <- newForeignPtrEnv c_munmap_data nPtr ptr
         return $ S.unsafeFromForeignPtr0 (castForeignPtr fptr) (fromIntegral n)
 
 
