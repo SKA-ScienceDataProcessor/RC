@@ -1,7 +1,4 @@
--- | Simple backend based on the TCP transport which offers node discovery
--- based on UDP multicast. This is a zero-configuration backend designed to
--- get you going with Cloud Haskell quickly without imposing any structure
--- on your application.
+-- | Simple backend based on the TCP transport
 --
 -- To simplify getting started we provide special support for /master/ and
 -- /slave/ nodes (see 'startSlave' and 'startMaster'). Use of these functions
@@ -76,10 +73,6 @@
 --
 -- [Troubleshooting]
 --
--- If you try the above example and the master process cannot find any slaves,
--- then it might be that your firewall settings do not allow for UDP multicast
--- (in particular, the default iptables on some Linux distributions might not
--- allow it).
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
@@ -148,6 +141,7 @@ import qualified Network.Transport.TCP as NT
   , defaultTCPParameters
   , encodeEndPointAddress
   )
+import Foreign.C.Types(CString, PeekCAString)
 import qualified Network.URI as URI
 import qualified Network.Transport as NT (Transport(..))
 
@@ -168,17 +162,24 @@ data BackendState = BackendState {
  , _peers           :: [NodeId]
  }
 
+-- | Build a list of hosts from SLURM_NODELIST or use localhost
+foreign import ccall dna_nodes:: IO CString
+getHostList:: IO (String)
+    return PeekCAString dna_nodes
+
+
+
 -- | Initialize the backend
 initializeBackend :: Maybe FilePath -> N.HostName -> N.ServiceName -> RemoteTable -> IO Backend
 initializeBackend maybeCadFile host port rtable = do
   mTransport   <- NT.createTransport host port NT.defaultTCPParameters
   addresses <- case maybeCadFile of
     Just cadFile -> do
-      text <- readFile cadFile
+      hosts <- getHostList
       let nonEmpty ('#':_) = False
           nonEmpty "" = False
           nonEmpty _ = True
-      let uriLines = map ("dna://"++) $ filter nonEmpty $ lines text
+      let uriLines = map ("dna://"++) $ filter nonEmpty $ lines hosts
       let splitURI uri = do
             auth <- URI.uriAuthority uri
             return (URI.uriRegName auth, drop 1 $ URI.uriPort auth)
