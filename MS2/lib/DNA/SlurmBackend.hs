@@ -191,7 +191,6 @@ initializeBackend cad host port rtable = do
                            , let theirPort = (show p)
                            , theirPort /= port
                            ]
-    liftIO $ print addresses
     backendState <- newMVar BackendState
                       { _localNodes      = []
                       , _peers           = addresses

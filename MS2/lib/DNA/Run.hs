@@ -7,11 +7,12 @@ module DNA.Run (
 
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Distributed.Process
+import Control.Exception
+import Control.Distributed.Process      (RemoteTable)
 import Control.Distributed.Process.Node (initRemoteTable)
 import Control.Concurrent (threadDelay)
 import System.Environment (getExecutablePath)
-import System.Process     (spawnProcess)
+import System.Process
 
 import DNA.SlurmBackend
 import DNA.CmdOpts
@@ -40,23 +41,29 @@ runUnix rtable opts nProc dna = do
         rank     = dnaRank     opts
         port     = basePort + rank
     -- Master process start all other processes
-    when (rank == 0) $ do
-        prog <- getExecutablePath
-        -- FIXME: we don't wait for children
-        _    <- forM [1 .. nProc - 1] $ \rnk -> do
-            spawnProcess prog [ "--base-port",     show basePort
-                              , "--internal-rank", show rnk
-                              , "--nprocs",        show nProc
-                              ]
-        return ()
+    pids <- case rank of
+        0 -> do prog <- getExecutablePath
+                forM [1 .. nProc - 1] $ \rnk -> do
+                    spawnProcess prog [ "--base-port",     show basePort
+                                      , "--internal-rank", show rnk
+                                      , "--nprocs",        show nProc
+                                      ]
+        _ -> return []
+    let killChild pid = do
+            st <- getProcessExitCode pid
+            case st of
+              Just _  -> return ()
+              Nothing -> terminateProcess pid
+    -- FIXME: this is source of potential problems if we get exception
+    --        during checking children state
+    let reapChildren = mapM_ killChild pids
     -- Initialize backend
     let ports = map (+ basePort) [0 .. nProc - 1]
     backend <- initializeBackend (Local ports) "localhost" (show port) rtable
     -- Start master or slave program
     case rank of
-      0 -> do
-            startMaster backend $ \nodes -> do
-             liftIO $ print nodes
-             mon <- runMonitor nodes
-             runDNA mon dna
+      0 -> do finally (startMaster backend $ \nodes -> do
+                            mon <- runMonitor nodes
+                            runDNA mon dna
+                      ) reapChildren
       _ -> startSlave backend
