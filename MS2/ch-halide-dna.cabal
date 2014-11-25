@@ -28,8 +28,10 @@ library
   Hs-source-dirs:      lib
   build-depends:
     base         >=4.6,
+    unix,
     bytestring   >= 0.10, 
     binary,
+    process      >= 1.2,
     containers   >= 0.5,
     deepseq      >= 1.3,
     transformers >= 0.4.1,
@@ -43,7 +45,7 @@ library
     network-multicast     == 0.0.11.*,
     network-transport     == 0.4.0.*,
     network-transport-tcp == 0.4.0.*,
-    optparse-applicative  == 0.10.*,
+    optparse-applicative  == 0.11.*,
     data-accessor         == 0.2.2.*
   Exposed-modules:
     DNA
@@ -55,8 +57,7 @@ library
     DNA.Channel.File
     DNA.Common
     DNA.CmdOpts
-    DNA.SimpleLocalNetWithoutDiscovery
-    DNA.SimpleLocalnet.Internal.Multicast
+    DNA.SlurmBackend
   c-sources:
     lib/DNA/cbits/channel-file.c
 

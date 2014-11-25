@@ -2,82 +2,94 @@
 --
 -- Command-line options parsing, using optparser-applicative.
 --
+--
+--
 -- Copyright (C) 2014 Braa Research, LLC.
 module DNA.CmdOpts (
       Options(..)
-    , MasterOptions(..)
-    , CommonOpts(..)
-    , dnaParseCommandLineOpts
+    , dnaParseOptions
     ) where
 
+import Control.Monad
 import Options.Applicative
-import System.Environment (getProgName)
+import System.Environment (getProgName,lookupEnv)
+import System.Posix.Process (getProcessID)
 
 
-
--- | Command line options for a program.
-data Options
-    = Master  CommonOpts MasterOptions
-    | Slave   CommonOpts
-    deriving (Show)
-
--- | Options common between slave and master.
-data CommonOpts = CommonOpts
-    { commonOptsCADFileName         :: Maybe String
-    , commonOptsHost                :: String
-    , commonOptsPort                :: String
+-- | Program options. Noe that we obtain configuration from both
+--   environment and from command line
+data Options = Options
+    { dnaPID      :: String     -- ^ Process ID
+    , dnaRank     :: Int        -- ^ Rank of UNIX process
+    , dnaNProcs   :: Maybe Int  -- ^ Number of processes to
+                                --   spawn. Nothing in SLURM case
+    , dnaBasePort :: Int        -- ^ Base port for program
     }
     deriving (Show)
 
--- | Master-specific options
-data MasterOptions = MasterOptions
-    { masterOptsCrash               :: Bool
-    , masterOptsFilename            :: String
-    }
-    deriving (Show)
-
-
--- | Parse options.
-optionsParser :: String -> ParserInfo Options
-optionsParser name =
-    info (helper <*> (subparser (master <> slave)))
-         (  fullDesc
-         <> progDesc "run a distributed dot product program as master or slave on IP:PORT binding"
-         <> header (name++" Cloud Haskell implementation")
-         )
+-- | Obtain startup options for
+dnaParseOptions :: IO Options
+dnaParseOptions = do
+    -- Try to obtain envvars set by SLURM
+    mslurmJID <- lookupEnv "SLURM_JOBID"
+    mslurmRnk <- (safeRead =<<) <$> lookupEnv "SLURM_PROCID"
+    -- They must be eitherboth present of both absent
+    case (mslurmJID,mslurmRnk) of
+      (Nothing,Nothing)             -> do
+          pid <- getProcessID
+          execParser $ wrapParser $  Options
+                                 <$> pure ("u-" ++ show pid)
+                                 <*> optRank
+                                 <*> (Just <$> optNProcs)
+                                 <*> optBasePort
+      (Just slurmJID,Just slurmRnk) -> do
+          execParser $ wrapParser $ Options
+                                 <$> pure ("s-" ++ slurmJID)
+                                 <*> pure slurmRnk
+                                 <*> pure Nothing
+                                 <*> optBasePort
+      _ -> error "SLURM envvars"
   where
-    master = command "master"
-           $ info (Master <$> commonOptions <*> masterOptions)
-                  (fullDesc <> progDesc "run as master on IP:PORT")
-    slave = command "slave"
-          $ info (Slave <$> commonOptions)
-                 (fullDesc <> progDesc "run as slave on IP:PORT")
-    masterOptions = MasterOptions <$> crashOpt <*> filenameOpt
-    commonOptions = CommonOpts <$> cadFile <*> ip <*> port
-    cadFile = optional $ strOption ( metavar "CAD"
-                                  <> long "cad"
-                                  <> help "Filename of cluster architecture description file.")
-    filenameOpt   = strOption ( metavar "FILE"
-                             <> long "filename"
-                             <> short 'f'
-                             <> help "Filename to read data from."
-                             <> value "float_file.txt"
-                              )
-    crashOpt      = switch ( long "crash"
-                          <> short 'c'
-                          <> help "make one node to crash.")
-    ip            = strOption ( metavar "IP"
-                             <> long "ip"
-                             <> short 'i'
-                             <> help "IP address"
-                              )
-    port          = strOption (metavar "PORT" <> long "port" <> short 'p' <> help "port for binnding")
-    restParser    = many (argument str (metavar "ARGS"))
+    wrapParser p = info (helper <*> p)
+        (  fullDesc
+        <> progDesc "Start DNA program"
+        <> header ("DNA Cloud Haskell implementation")
+        )
+    -- Command line options
+    optRank = option positiveNum
+            ( metavar "RANK"
+           <> long "internal-rank"
+           <> hidden
+           <> help "specify rank of process [DO NOT USE MANUALLY!]"
+            )
+           <|> pure 0
+    optBasePort = option readPort
+                ( metavar "PORT"
+               <> long "base-port"
+               <> help "set base port for processes (default 40000)"
+                )
+               <|> pure 40000
+                  
+    optNProcs = option positiveNum
+              ( metavar "N"
+             <> long "nprocs"
+             <> help "number of processe to spawn"
+              )
 
 
--- | An interface to parse command line options. Returns options
---   parsed as data type @Options@.
-dnaParseCommandLineOpts :: IO Options
-dnaParseCommandLineOpts = do
-    progName <- getProgName
-    execParser $ optionsParser progName
+positiveNum :: (Read a, Ord a, Num a) => ReadM a
+positiveNum = do
+    a <- auto
+    guard (a >= 0)
+    return a
+
+readPort :: ReadM Int
+readPort = do
+    a <- auto
+    guard (a > 0 && a < 65535)
+    return a
+
+safeRead :: Read a => String -> Maybe a
+safeRead s = do
+    [(a,"")] <- Just $ reads s
+    return a

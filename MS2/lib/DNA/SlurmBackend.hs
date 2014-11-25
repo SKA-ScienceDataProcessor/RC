@@ -76,9 +76,10 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module DNA.SimpleLocalNetWithoutDiscovery
+module DNA.SlurmBackend
   ( -- * Initialization
     Backend(..)
+  , CAD(..)  
   , initializeBackend
     -- * Slave nodes
   , startSlave
@@ -94,6 +95,7 @@ import Data.Binary (Binary(get, put), getWord8, putWord8)
 import Data.Accessor (Accessor, accessor, (^:), (^.))
 import Data.Foldable (forM_)
 import Data.Typeable (Typeable)
+import qualified Data.ByteString.Char8 as BSC
 import Control.Applicative ((<$>))
 import Control.Exception (throw)
 import Control.Monad (replicateM, replicateM_, forM, liftM)
@@ -141,7 +143,7 @@ import qualified Network.Transport.TCP as NT
   , defaultTCPParameters
   , encodeEndPointAddress
   )
-import Foreign.C.Types(CString, PeekCAString)
+import Foreign.C.String(CString, peekCAString)
 import qualified Network.URI as URI
 import qualified Network.Transport as NT (Transport(..))
 
@@ -162,54 +164,48 @@ data BackendState = BackendState {
  , _peers           :: [NodeId]
  }
 
+{-
 -- | Build a list of hosts from SLURM_NODELIST or use localhost
 foreign import ccall dna_nodes:: IO CString
 getHostList:: IO (String)
     return PeekCAString dna_nodes
+-}
 
-
+-- | Cluster
+data CAD
+    = Local [Int]          -- ^ Spawn program on localhost on list of ports
 
 -- | Initialize the backend
-initializeBackend :: Maybe FilePath -> N.HostName -> N.ServiceName -> RemoteTable -> IO Backend
-initializeBackend maybeCadFile host port rtable = do
-  mTransport   <- NT.createTransport host port NT.defaultTCPParameters
-  addresses <- case maybeCadFile of
-    Just cadFile -> do
-      hosts <- getHostList
-      let nonEmpty ('#':_) = False
-          nonEmpty "" = False
-          nonEmpty _ = True
-      let uriLines = map ("dna://"++) $ filter nonEmpty $ lines hosts
-      let splitURI uri = do
-            auth <- URI.uriAuthority uri
-            return (URI.uriRegName auth, drop 1 $ URI.uriPort auth)
-      let getHostPort uri = case splitURI uri of
-            Just (host, port) -> (host, port)
-            Nothing -> error $ "invalid uri "++show uri
-      let hostPorts = map getHostPort $ catMaybes $ map URI.parseURI uriLines
-      addresses <- liftM concat $ forM hostPorts $ \(theirHost, theirPort) -> do
-            if host == theirHost && port == theirPort
-                    then return []
-                    else do
-                            -- passing 0 as a endpointid is a hack. Again, I haven't found any better way.
-                            let ep = NT.encodeEndPointAddress theirHost theirPort 0
-                            return [NodeId ep]
-      --putStrLn $ "addresses "++show (take 3 addresses)
-      return addresses
-  backendState <- newMVar BackendState
+initializeBackend
+    :: CAD                      -- ^ Cluster description
+    -> N.HostName               -- ^ Host name for 
+    -> N.ServiceName            -- ^ Port number as bytestring
+    -> RemoteTable              -- ^ Remote table for backend
+    -> IO Backend
+initializeBackend cad host port rtable = do
+    mTransport <- NT.createTransport host port NT.defaultTCPParameters
+    let addresses = case cad of
+            -- passing 0 as a endpointid is a hack. Again, I haven't found any better way.
+            Local ports -> [ NodeId $ NT.encodeEndPointAddress "localhost" theirPort 0
+                           | p <- ports
+                           , let theirPort = (show p)
+                           , theirPort /= port
+                           ]
+    liftIO $ print addresses
+    backendState <- newMVar BackendState
                       { _localNodes      = []
                       , _peers           = addresses
                       }
-    -- readMVar backendState >>= \bes -> putStrLn ("peers: "++show (_peers bes))
-  case mTransport of
-    Left err -> throw err
-    Right transport ->
-      let backend = Backend {
-          newLocalNode       = apiNewLocalNode transport rtable backendState
-        , findPeers          = apiFindPeers backendState
-        , redirectLogsHere   = apiRedirectLogsHere backend
-        }
-      in return backend 
+    case mTransport of
+        Left  err       -> throw err
+        Right transport ->
+            let backend = Backend
+                    { newLocalNode     = apiNewLocalNode transport rtable backendState
+                    , findPeers        = apiFindPeers backendState
+                    , redirectLogsHere = apiRedirectLogsHere backend
+                    }
+            in return backend 
+
 
 -- | Create a new local node
 apiNewLocalNode :: NT.Transport
@@ -226,6 +222,7 @@ apiFindPeers :: MVar BackendState
              -> IO [NodeId]
 apiFindPeers backendState = do
   (^. peers) <$> readMVar backendState
+
 
 --------------------------------------------------------------------------------
 -- Back-end specific primitives                                               --
@@ -391,6 +388,8 @@ shutdownLogger = do
   receiveChan rport
   -- TODO: we should monitor the logger process so we don't deadlock if
   -- it has already died.
+
+
 
 --------------------------------------------------------------------------------
 -- Accessors                                                                  --
