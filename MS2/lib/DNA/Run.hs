@@ -9,8 +9,10 @@ import Control.Monad
 import Control.Exception
 import Control.Distributed.Process      hiding (finally)
 import Control.Distributed.Process.Node (initRemoteTable)
-import System.Environment (getExecutablePath)
+import System.Environment (getExecutablePath,getEnv)
 import System.Process
+import System.Directory   (createDirectoryIfMissing)
+import System.FilePath    ((</>))
 
 import DNA.SlurmBackend
 import DNA.CmdOpts
@@ -24,6 +26,10 @@ import qualified DNA.Controller
 dnaRun :: (RemoteTable -> RemoteTable) -> DNA () -> IO ()
 dnaRun remoteTable dna = do
     opts <- dnaParseOptions
+    -- Create directory for logs
+    home <- getEnv "HOME"
+    createDirectoryIfMissing True $
+        home </> "_dna" </> "logs" </> dnaPID opts </> show (dnaRank opts)
     -- In case of UNIX startup
     case dnaNProcs opts of
       -- SLURM case
@@ -49,6 +55,7 @@ runUnix rtable opts nProc dna = do
                 forM [1 .. nProc - 1] $ \rnk -> do
                     spawnProcess prog [ "--base-port",     show basePort
                                       , "--internal-rank", show rnk
+                                      , "--internal-pid",  dnaPID opts
                                       , "--nprocs",        show nProc
                                       ]
         _ -> return []

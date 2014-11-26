@@ -12,7 +12,7 @@ module DNA.CmdOpts (
 
 import Control.Monad
 import Options.Applicative
-import System.Environment (getProgName,lookupEnv)
+import System.Environment   (lookupEnv)
 import System.Posix.Process (getProcessID)
 
 
@@ -38,7 +38,7 @@ dnaParseOptions = do
       (Nothing,Nothing)             -> do
           pid <- getProcessID
           execParser $ wrapParser $  Options
-                                 <$> pure ("u-" ++ show pid)
+                                 <$> optPID pid
                                  <*> optRank
                                  <*> (Just <$> optNProcs)
                                  <*> optBasePort
@@ -63,13 +63,18 @@ dnaParseOptions = do
            <> help "specify rank of process [DO NOT USE MANUALLY!]"
             )
            <|> pure 0
+    optPID p = option str
+             ( metavar "PID"
+            <> long    "internal-pid"
+            <> hidden
+            <> help    "specify Job ID of process"
+             ) <|> pure ("u-" ++ show p)
     optBasePort = option readPort
                 ( metavar "PORT"
                <> long "base-port"
                <> help "set base port for processes (default 40000)"
                 )
                <|> pure 40000
-                  
     optNProcs = option positiveNum
               ( metavar "N"
              <> long "nprocs"
