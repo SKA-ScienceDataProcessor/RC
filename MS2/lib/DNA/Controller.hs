@@ -1,0 +1,326 @@
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE DeriveFunctor, DeriveGeneric, DeriveDataTypeable #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE TemplateHaskell #-}
+-- | Controller processes for node and actor
+module DNA.Controller (
+      -- * Starting ACP
+      startAcpLoop
+    , ACP(..)  
+      -- * Control messages for ACP
+    , ReqSpawnShell(..)
+    , ReqSpawnGroup(..)
+    , ReqConnect(..)
+    , ReqResources(..)
+    , ReqResourcesGrp(..)
+      -- * Node controller
+    , nodeController
+    , spawnHierachically
+    , __remoteTable
+    ) where
+
+import Control.Applicative
+import Control.Monad
+import Control.Monad.State
+import Control.Distributed.Process
+import Control.Distributed.Process.Closure
+import Control.Distributed.Process.Serializable (Serializable)
+import Data.Binary   (Binary)
+import Data.Typeable (Typeable)
+import qualified Data.Foldable   as T
+import qualified Data.Set        as Set
+import           Data.Set          (Set)
+import qualified Data.Map.Strict as Map
+import           Data.Map.Strict   (Map)
+import GHC.Generics (Generic)
+
+import DNA.Lens
+import DNA.Types
+
+
+----------------------------------------------------------------
+-- ACP
+----------------------------------------------------------------
+
+-- | Start execution of actor controller process
+startAcpLoop :: Closure (Process ()) -- ^ Closure to self
+             -> Set NodeInfo         -- ^ Allocated nodes
+             -> sProcess ()
+startAcpLoop self res = do
+    undefined
+
+
+
+----------------------------------------------------------------
+-- Control messages
+----------------------------------------------------------------
+
+-- | Command to spawn shell actor. Contains pair of 
+data ReqSpawnShell = ReqSpawnShell (Closure (Process ())) ProcessId Resources
+                    deriving (Show,Typeable,Generic)
+instance Binary ReqSpawnShell
+
+
+-- | Command to spawn group of shell actors
+data ReqSpawnGroup = ReqSpawnGroup (Closure (Process ())) ProcessId [Resources]
+                    deriving (Show,Typeable,Generic)
+instance Binary ReqSpawnGroup
+
+
+-- | Command to mark process as connected to another actor
+data ReqConnect
+    = ReqConnectTo       ACP     ACP
+    | ReqConnectToGrp    ACP     GroupID
+    | ReqConnectGrp      GroupID ACP     [SendPort (Maybe Int)]
+    | ReqConnectGrpToGrp GroupID GroupID [SendPort (Maybe Int)]
+    deriving (Show,Typeable,Generic)
+instance Binary ReqConnect
+
+
+
+-- | Request resourses for single process.
+data ReqResources = ReqResources Int
+                    deriving (Show,Typeable,Generic)
+instance Binary ReqResources
+
+-- | Request resourses for group of processes
+data ReqResourcesGrp = ReqResourcesGrp Int
+                    deriving (Show,Typeable,Generic)
+instance Binary ReqResourcesGrp
+
+
+
+----------------------------------------------------------------
+-- Handling of incoming messages
+----------------------------------------------------------------
+
+-- Handle incoming messages from other processes 
+acpStep :: StateACP -> Process (Maybe StateACP)
+acpStep st = receiveWait
+    [ -- Requests for resources
+      msg handleReqResources
+    , msg handleReqResourcesGrp
+      -- Requests for spawning children\
+    , msg handleSpawnShell
+    , msg handleSpawnShellGroup
+      -- Connect children
+
+      -- Monitoring notifications
+    , msg $ \(ProcessMonitorNotification _ pid reason) -> do
+        case reason of
+          DiedNormal    -> handleNormalTermination pid
+          _             -> handleProcessCrash      pid
+    ]
+  where
+    msg :: Serializable a => (a -> StateT StateACP Process ()) -> Match (Maybe StateACP)
+    msg handler = match $ \a -> Just <$> execStateT (handler a) st
+
+
+
+handleReqResources :: ReqResources -> StateT StateACP Process ()
+handleReqResources (ReqResources n) = do
+    undefined
+
+handleReqResourcesGrp :: ReqResourcesGrp -> StateT StateACP Process ()
+handleReqResourcesGrp (ReqResourcesGrp n) = do
+    undefined
+
+
+handleSpawnShell :: ReqSpawnShell -> StateT StateACP Process ()
+handleSpawnShell (ReqSpawnShell actor pid resID) = do
+    -- FIXME: better error reporting. If we reuse resource to spawn
+    --        process we'll get this error
+    Just resources <- use $ stAllocResources . at resID
+    undefined
+
+handleSpawnShellGroup :: ReqSpawnGroup -> StateT StateACP Process ()
+handleSpawnShellGroup (ReqSpawnGroup actor pid res) = do
+    undefined
+
+
+handleNormalTermination :: ProcessId -> StateT StateACP Process ()
+handleNormalTermination pid = do
+    -- Silently remove node from list of monitored nodes
+    r <- use $ stChildren . at pid
+    case r of
+      -- In principle its possible that process terminates normally
+      -- and we don't know about it. When one process in group crashes
+      -- we kill all other processes and forget them. But it possible
+      -- that one could terminate normally before receiving message
+      Nothing -> return ()
+      Just (Left  _  ) -> stChildren . at pid .= Nothing
+      -- Process belongs to group
+      Just (Right gid) -> do
+          Just g <- use $ stGroups . at gid
+          case g of
+            -- We are done
+            GroupState _ (GroupProcs 1 nD) (Just ch) -> do
+                lift $ sendChan ch (Just (nD+1))
+                stGroups . at gid .= Nothing
+            GroupState _ (GroupProcs 1 nD) Nothing -> do
+                stGroups . at gid .= Just (CompletedGroup (Just nD))
+            -- Not yet
+            GroupState ty (GroupProcs nR nD) mch -> do
+                stGroups . at gid .= Just (GroupState ty (GroupProcs (nR-1) (nD+1)) mch)
+            CompletedGroup _ -> error "Should not happen"
+    -- Mark resources as free
+    mfreed <- use $ stUsedResources . at pid
+    T.forM_ mfreed $ \freed -> do
+        stUsedResources %= Map.delete pid
+        stNodePool      %= Set.union freed
+
+
+handleProcessCrash :: ProcessId -> StateT StateACP Process ()
+-- FIXME: I leave processes in stChildren dictionary when process
+--        crashes. Whole data structure is VERY inelegant
+handleProcessCrash pid = do
+    r <- use $ stChildren . at pid
+    case r of
+      -- Again we could remove child from list of known processes already
+      Nothing -> return ()
+      -- Single process
+      Just (Left (Connected remotes)) -> do
+          lift $ forM_ remotes $ \(ACP acp) -> send acp Terminate
+          stChildren . at pid .= Nothing
+      Just (Left _) -> do
+          stChildren . at pid .= Just (Left Failed)
+      -- Group of processes
+      Just (Right gid) -> do
+          Just g <- use $ stGroups . at gid
+          case g of
+            -- In normal group we terminate whole group!
+            GroupState NormalGroup _ (Just ch) -> do
+                lift $ sendChan ch Nothing
+                stGroups . at gid .= Nothing
+            GroupState NormalGroup _ Nothing -> do
+                stGroups . at gid .= Just (CompletedGroup Nothing)
+            -- In failout we carry on
+            GroupState FailoutGroup _ _ -> undefined
+            CompletedGroup{} -> return ()
+              
+
+
+
+
+----------------------------------------------------------------
+-- Internal state of node controller
+----------------------------------------------------------------
+
+data StateACP = StateACP
+    { _stCounter  :: !Int
+      -- Counter for generation of unique IDs
+    , _stChildren :: !(Map ProcessId (Either ProcState GroupID))
+      -- State of monitored processes
+    , _stGroups   :: !(Map GroupID GroupState)
+      -- State of groups of processes
+    , _stNodePool :: !(Set NodeInfo)
+      -- Unused nodes which could be reused
+    , _stAllocResources :: !(Map Resources (Set NodeInfo))
+      -- Resources which have been allocated but we didn't start use
+      -- them yet.
+    , _stUsedResources :: !(Map ProcessId (Set NodeInfo))
+      -- Resources used by some process
+    }
+
+-- State of process
+data ProcState
+    = Running
+      -- Process is running but we don't know its sink yet
+    | Connected [ACP]
+      -- Process is running and we know its sink
+    | Failed
+      -- Process failed
+
+data GroupProcs = GroupProcs
+    { grpRunning :: !Int
+    , grpDone    :: !Int
+    }
+
+-- State of group of processes
+data GroupState
+    = GroupState GroupType GroupProcs (Maybe (SendPort (Maybe Int)))
+      -- Running group. It contains following fields:
+      --  + Type of group of processes
+      --  + (N completed, N crashed)
+      --  + channel to send information on completion
+    | CompletedGroup (Maybe Int)
+      -- Group which completed execution normally of abnormally
+
+data GroupType
+    = NormalGroup
+    | FailoutGroup
+
+
+stCounter :: Lens' StateACP Int
+stCounter = lens _stCounter (\a x -> x { _stCounter = a})
+
+stChildren :: Lens' StateACP (Map ProcessId (Either ProcState GroupID))
+stChildren = lens _stChildren (\a x -> x { _stChildren = a})
+
+stGroups :: Lens' StateACP (Map GroupID GroupState)
+stGroups = lens _stGroups (\a x -> x { _stGroups = a})
+
+stNodePool :: Lens' StateACP (Set NodeInfo)
+stNodePool = lens _stNodePool (\a x -> x { _stNodePool = a})
+
+stAllocResources :: Lens' StateACP (Map Resources (Set NodeInfo))
+stAllocResources = lens _stAllocResources (\a x -> x { _stAllocResources = a})
+
+stUsedResources :: Lens' StateACP (Map ProcessId (Set NodeInfo))
+stUsedResources = lens _stUsedResources (\a x -> x { _stUsedResources = a})
+
+
+
+-- Generate unique ID
+uniqID :: Monad m => StateT StateACP m Int
+uniqID = do
+    i <- use stCounter
+    stCounter .= (i + 1)
+    return i
+
+
+----------------------------------------------------------------
+-- Controller processes
+----------------------------------------------------------------
+
+-- | Node controller process
+--
+nodeController :: Process () 
+-- We have to jump through quite elaborate hoops because we cannot
+-- make closure of nodeController inside body of function. (Necessary
+-- functions are only visible after remotable call). Instead we send
+-- closure as message.
+nodeController = do
+    (self,parent,subcads) <- expect
+    me <- getSelfPid
+    let n = length subcads
+    -- FIXME: assumes reliability. Process spaning may in fact fail
+    cads <- forM subcads $ \(CAD nid rest) -> do
+        pid <- spawn nid self
+        send pid (self,me,rest)
+        expect
+    let ninfo = NodeInfo { nodeCP     = NCP me
+                         -- FIXME: notion of parent.
+                         , nodeParent = Just (NCP parent)
+                         , nodeID     = undefined
+                         }
+    send parent $ CAD ninfo cads
+    -- FIXME: here we just block eternally to keep process alive. We
+    --        need to figure out whether we need this process
+    () <- expect
+    return ()
+
+
+remotable [ 'nodeController ]
+
+
+-- | Spawn all nodes controllers hierarchially
+spawnHierachically :: CAD NodeId -> Process (CAD NodeInfo)
+spawnHierachically (CAD nid children) = do
+    me  <- getSelfPid
+    let clos = $(mkStaticClosure 'nodeController)
+    pid <- spawn nid clos
+    send pid (clos,me,children)
+    cad <- expect
+    return cad
