@@ -60,20 +60,28 @@ writeBinFile f p n = bracket (openBinaryFile f WriteMode) hClose
 -- No clutter with newtypes to make code shorter and clearer.
 type ArrD = (Ptr Double, Int)
 type CalcD = ArrD -> IO ArrD
+type Finalizer = ArrD -> IO ()
 
--- FIXME: Put genuine computations here. For now they only make plain copies for tests.
-halide, romein :: CalcD
-halide (p, n) = do
+data Task = Task {
+    taskName :: String
+  , taskCalc :: CalcD
+  , taskFinalizer :: Finalizer
+  }
+
+-- Stubs
+stubCalc :: CalcD
+stubCalc (p, n) = do
   pn <- mallocBytes n
   copyBytes pn p n
   return (pn, n)
-romein = halide
 
--- FIXME: After previous FIXME is done, put corresponding finalizers here.
-type Finalizer = ArrD -> IO ()
-halideFinalizer, romeinFinalizer :: Finalizer
-halideFinalizer = free . fst
-romeinFinalizer = halideFinalizer
+stubFinalize :: Finalizer
+stubFinalize = free . fst
+
+-- FIXME: Put genuine computations here. For now they only make plain copies for tests.
+halide, romein :: Task
+halide = Task "Halide" stubCalc stubFinalize
+romein = Task "Romein" stubCalc stubFinalize
 
 compute :: P.ProcessId -> ArrD -> CalcD -> P.Process ()
 compute hostid arr action = do
@@ -81,36 +89,38 @@ compute hostid arr action = do
   res <- P.liftIO $ action arr
   P.send hostid (res, me)
 
-writer :: M.Map P.ProcessId FilePath -> M.Map P.ProcessId Finalizer -> P.ProcessId -> (ArrD, P.ProcessId) -> P.Process ()
-writer names finalizers hostid (arr@(p, n), cid) = do
-  P.liftIO (writeBinFile (names M.! cid ++ ".dat") p n >> (finalizers M.! cid) arr)
+type TaskMap = M.Map P.ProcessId Task
+
+writer :: TaskMap -> P.ProcessId -> (ArrD, P.ProcessId) -> P.Process ()
+writer tm hostid (arr@(p, n), cid) = do
+  P.liftIO (writeBinFile (taskName (tm M.! cid) ++ ".dat") p n >> taskFinalizer (tm M.! cid) arr)
   P.send hostid cid
 
 hostProcess :: P.Process ()
 hostProcess = do
   (ptr, rawsize, offset, size) <- P.liftIO $ mmapFilePtr "UVW.dat" ReadOnly Nothing
   host <- P.getSelfPid
-  let comp = compute host (plusPtr ptr offset, size)
-  halideId <- P.spawnLocal (comp halide)
-  romeinId <- P.spawnLocal (comp romein)
-  -- This is deliberately made to be scalable to any number of worker processes!
+  -- This is deliberately made to be scalable to any number of tasks!
   let
-    compids = [halideId, romeinId]
-    names = M.fromList $ zip compids ["Halide", "Romein"]
-    finalizers = M.fromList $ zip compids [halideFinalizer, romeinFinalizer]
-    --
+    tasks = [halide, romein]
+    comp task = compute host (plusPtr ptr offset, size) (taskCalc task)
+  compids <- mapM (P.spawnLocal . comp) tasks
+  let
+    tm = M.fromList (zip compids tasks)
+    -- Sets are represented as lists for convenience.
     matcher [] ws True = P.liftIO (munmapFilePtr ptr rawsize) >> matcher [] ws False
     matcher [] [] _    = return ()
     matcher comps writers ismapped = P.receiveWait [
         P.matchIf (\cr -> snd cr `elem` comps)
           (\cr -> do
-                    _ <- P.spawnLocal $ writer names finalizers host cr
+                    _ <- P.spawnLocal $ writer tm host cr
                     let cid = snd cr
                     matcher (cid `delete` comps) (cid : writers) ismapped
           )
       , P.matchIf (`elem` writers)
           (\cid -> matcher comps (cid `delete` writers) ismapped)
       ]
+
   matcher compids [] True
 
 main :: IO ()
