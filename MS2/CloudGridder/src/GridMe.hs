@@ -48,7 +48,7 @@ import Network.Socket (withSocketsDo)
 -- Utilities
 instance Binary (Ptr a) where
   put = put . toInteger . ptrToIntPtr
-  get = (get :: Get Integer) >>= return . intPtrToPtr . fromIntegral
+  get = fmap (intPtrToPtr . fromIntegral) (get :: Get Integer)
 
 writeBinFile :: FilePath -> Ptr a -> Int -> IO ()
 writeBinFile f p n = bracket (openBinaryFile f WriteMode) hClose
