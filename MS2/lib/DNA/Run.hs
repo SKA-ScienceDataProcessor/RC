@@ -6,17 +6,15 @@ module DNA.Run (
   ) where
 
 import Control.Monad
-import Control.Monad.IO.Class
 import Control.Exception
 import Control.Distributed.Process      hiding (finally)
 import Control.Distributed.Process.Node (initRemoteTable)
-import Control.Concurrent (threadDelay)
 import System.Environment (getExecutablePath)
 import System.Process
 
 import DNA.SlurmBackend
 import DNA.CmdOpts
-import DNA.DNA        hiding (__remoteTable)
+import DNA.DNA        hiding (__remoteTable,rank)
 import DNA.Controller hiding (__remoteTable)
 import qualified DNA.DNA
 import qualified DNA.Controller
