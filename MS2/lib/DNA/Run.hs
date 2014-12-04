@@ -8,7 +8,7 @@ module DNA.Run (
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Exception
-import Control.Distributed.Process      (RemoteTable)
+import Control.Distributed.Process      hiding (finally)
 import Control.Distributed.Process.Node (initRemoteTable)
 import Control.Concurrent (threadDelay)
 import System.Environment (getExecutablePath)
@@ -16,8 +16,10 @@ import System.Process
 
 import DNA.SlurmBackend
 import DNA.CmdOpts
-import DNA.DNA
-import DNA.Monitor
+import DNA.DNA        hiding (__remoteTable)
+import DNA.Controller hiding (__remoteTable)
+import qualified DNA.DNA
+import qualified DNA.Controller
 
 
 -- | Parse command line option and start program
@@ -32,7 +34,10 @@ dnaRun remoteTable dna = do
       Just nProc -> runUnix rtable opts nProc dna
 
   where
-    rtable = (remoteTable . __remoteTable) initRemoteTable
+    rtable = ( remoteTable
+             . DNA.DNA.__remoteTable
+             . DNA.Controller.__remoteTable
+             ) initRemoteTable
 
 
 runUnix :: RemoteTable -> Options -> Int -> DNA () -> IO ()
@@ -62,8 +67,14 @@ runUnix rtable opts nProc dna = do
     backend <- initializeBackend (Local ports) "localhost" (show port) rtable
     -- Start master or slave program
     case rank of
-      0 -> do finally (startMaster backend $ \nodes -> do
-                            mon <- runMonitor nodes
-                            runDNA mon dna
-                      ) reapChildren
+      0 -> startMaster backend (executeDNA dna) `finally` reapChildren
       _ -> startSlave backend
+
+
+executeDNA :: DNA () -> [NodeId] -> Process ()
+executeDNA dna nodes = do
+    -- Create CAD out of list of nodes
+    let initialCAD = makeCAD nodes
+    cad <- spawnHierachically initialCAD
+    -- Start master's ACP
+    return ()

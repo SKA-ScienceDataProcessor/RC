@@ -86,9 +86,14 @@ data NodeInfo = NodeInfo
     }
     deriving (Show,Eq,Ord,Typeable,Generic)
 
+-- | Resources allocated to single process. It always have access to
+--   node it owns and possibly list of other nodes.
+data VirtualCAD = VirtualCAD NodeInfo [NodeInfo]
+                  deriving (Show,Eq,Ord,Typeable,Generic)
+
 instance Binary a => Binary (CAD a)
 instance Binary NodeInfo
-
+instance Binary VirtualCAD
 
 
 
@@ -106,7 +111,7 @@ instance (Serializable a, Serializable b) => Binary (Shell a b)
 data CollectorShell a b = CollectorShell
      (SendPort a)
      (SendPort (Maybe Int))
-     (SendPort (SendPort b))
+     (SendPort [SendPort b])
      ACP
      deriving (Show,Typeable,Generic)
 instance (Serializable a, Serializable b) => Binary (CollectorShell a b)
@@ -124,7 +129,6 @@ instance (Serializable a, Serializable b) => Binary (ShellGroup a b)
 data GroupCollect a b = GroupCollect GroupID [CollectorShell a b]
                     deriving (Show,Typeable,Generic)
 instance (Serializable a, Serializable b) => Binary (GroupCollect a b)
-
 
 
 

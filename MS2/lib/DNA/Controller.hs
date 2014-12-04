@@ -7,7 +7,7 @@
 module DNA.Controller (
       -- * Starting ACP
       startAcpLoop
-    , ACP(..)  
+    , ACP(..)
       -- * Control messages for ACP
     , ReqSpawnShell(..)
     , ReqSpawnGroup(..)
@@ -45,10 +45,24 @@ import DNA.Types
 
 -- | Start execution of actor controller process
 startAcpLoop :: Closure (Process ()) -- ^ Closure to self
-             -> Set NodeInfo         -- ^ Allocated nodes
-             -> sProcess ()
-startAcpLoop self res = do
-    undefined
+             -> ProcessId            -- ^ PID of process being monitored
+             -> VirtualCAD           -- ^ Allocated nodes
+             -> Process ()
+startAcpLoop self pid (VirtualCAD n nodes) = do
+    let loop s = do ms <- acpStep s
+                    case ms of
+                      Just s' -> loop s'
+                      Nothing -> return ()
+    loop StateACP { _stCounter        = 0
+                  , _stAcpClosure     = self
+                  , _stActor          = pid
+                  , _stLocalNode      = n
+                  , _stChildren       = Map.empty
+                  , _stGroups         = Map.empty
+                  , _stNodePool       = nodes
+                  , _stAllocResources = Map.empty
+                  , _stUsedResources  = Map.empty
+                  }
 
 
 
@@ -56,7 +70,7 @@ startAcpLoop self res = do
 -- Control messages
 ----------------------------------------------------------------
 
--- | Command to spawn shell actor. Contains pair of 
+-- | Command to spawn shell actor. Contains pair of
 data ReqSpawnShell = ReqSpawnShell (Closure (Process ())) ProcessId Resources
                     deriving (Show,Typeable,Generic)
 instance Binary ReqSpawnShell
@@ -95,7 +109,7 @@ instance Binary ReqResourcesGrp
 -- Handling of incoming messages
 ----------------------------------------------------------------
 
--- Handle incoming messages from other processes 
+-- Handle incoming messages from other processes
 acpStep :: StateACP -> Process (Maybe StateACP)
 acpStep st = receiveWait
     [ -- Requests for resources
@@ -120,23 +134,70 @@ acpStep st = receiveWait
 
 handleReqResources :: ReqResources -> StateT StateACP Process ()
 handleReqResources (ReqResources n) = do
-    undefined
+    when (n <= 0) $ error "Positive number of nodes required"
+    res <- Resources <$> uniqID
+    -- FIXME: What to do when we don't have enough resources to
+    --        satisfy request?
+    free <- use stNodePool
+    when (length free < n) $
+        error "Cannot allocate enough resources!"
+    let (node:touse,rest) = splitAt n free
+    stNodePool                .= rest
+    stAllocResources . at res .= Just (VirtualCAD node touse)
+    -- Send back reply
+    pid <- use stActor
+    lift $ send pid res
+
 
 handleReqResourcesGrp :: ReqResourcesGrp -> StateT StateACP Process ()
 handleReqResourcesGrp (ReqResourcesGrp n) = do
-    undefined
+    when (n <= 0) $ error "Positive number of nodes required"
+    ress <- replicateM n $ Resources <$> uniqID
+    -- FIXME: What to do when we don't have enough resources to
+    --        satisfy request?
+    free <- use stNodePool
+    when (length free < n) $
+        error "Cannot allocate enough resources!"
+    let (nodes,rest) = splitAt n free
+    stNodePool .= rest
+    forM_ (ress `zip` nodes) $ \(r,ni) -> do
+        stAllocResources . at r .= Just (VirtualCAD ni [])
+    -- Send back reply
+    pid <- use stActor
+    lift $ send pid ress
 
 
 handleSpawnShell :: ReqSpawnShell -> StateT StateACP Process ()
 handleSpawnShell (ReqSpawnShell actor pid resID) = do
     -- FIXME: better error reporting. If we reuse resource to spawn
-    --        process we'll get this error
-    Just resources <- use $ stAllocResources . at resID
-    undefined
+    --        process we'll trigger bad pattern error
+    Just res@(VirtualCAD n _) <- use $ stAllocResources . at resID
+    -- Spawn remote supervisor
+    acpClos <- use stAcpClosure
+    (acp,_) <- lift $ spawnSupervised (nodeID n) actor
+    lift $ send acp (acpClos, res, Rank 0)
+    lift $ send acp (actor, pid)
+    --
+    stChildren       . at acp   .= Just (Left Running)
+    stAllocResources . at resID .= Nothing
+    stUsedResources  . at acp   .= Just res
 
 handleSpawnShellGroup :: ReqSpawnGroup -> StateT StateACP Process ()
 handleSpawnShellGroup (ReqSpawnGroup actor pid res) = do
+    gid     <- GroupID <$> uniqID
+    me      <- lift getSelfPid
+    acpClos <- use stAcpClosure
+    -- Spawn remote actors
+    -- forM_ res $ \rid@(VirtualCAD n _) -> do
+    --     Just res <- use $ stAllocResources . at rid
+    --     (acp,_) <- lift $ spawnSupervised (nodeID n) actor
+    --     lift $ send acp (acpClos, res, Rank 0)
+    --     lift $ send acp (actor, pid)
     undefined
+    -- stChildren       . at acp   .= Just (Left Running)
+    -- stAllocResources . at resID .= Nothing
+    -- stUsedResources  . at acp   .= Just res
+
 
 
 handleNormalTermination :: ProcessId -> StateT StateACP Process ()
@@ -166,9 +227,9 @@ handleNormalTermination pid = do
             CompletedGroup _ -> error "Should not happen"
     -- Mark resources as free
     mfreed <- use $ stUsedResources . at pid
-    T.forM_ mfreed $ \freed -> do
+    T.forM_ mfreed $ \(VirtualCAD n ns) -> do
         stUsedResources %= Map.delete pid
-        stNodePool      %= Set.union freed
+        stNodePool      %= (\free -> n : ns ++ free)
 
 
 handleProcessCrash :: ProcessId -> StateT StateACP Process ()
@@ -198,7 +259,7 @@ handleProcessCrash pid = do
             -- In failout we carry on
             GroupState FailoutGroup _ _ -> undefined
             CompletedGroup{} -> return ()
-              
+
 
 
 
@@ -208,18 +269,24 @@ handleProcessCrash pid = do
 ----------------------------------------------------------------
 
 data StateACP = StateACP
-    { _stCounter  :: !Int
+    { _stCounter   :: !Int
       -- Counter for generation of unique IDs
+    , _stAcpClosure :: Closure (Process ())
+      -- Closure of runACP
+    , _stActor     :: ProcessId
+      -- PID of actor process
+    , _stLocalNode :: NodeInfo
+      -- Node we are running on
     , _stChildren :: !(Map ProcessId (Either ProcState GroupID))
       -- State of monitored processes
     , _stGroups   :: !(Map GroupID GroupState)
       -- State of groups of processes
-    , _stNodePool :: !(Set NodeInfo)
+    , _stNodePool :: ![NodeInfo]
       -- Unused nodes which could be reused
-    , _stAllocResources :: !(Map Resources (Set NodeInfo))
+    , _stAllocResources :: !(Map Resources VirtualCAD)
       -- Resources which have been allocated but we didn't start use
       -- them yet.
-    , _stUsedResources :: !(Map ProcessId (Set NodeInfo))
+    , _stUsedResources :: !(Map ProcessId VirtualCAD)
       -- Resources used by some process
     }
 
@@ -255,19 +322,25 @@ data GroupType
 stCounter :: Lens' StateACP Int
 stCounter = lens _stCounter (\a x -> x { _stCounter = a})
 
+stAcpClosure :: Lens' StateACP (Closure (Process ()))
+stAcpClosure = lens _stAcpClosure (\a x -> x { _stAcpClosure = a})
+
+stActor :: Lens' StateACP ProcessId
+stActor = lens _stActor (\a x -> x { _stActor = a})
+
 stChildren :: Lens' StateACP (Map ProcessId (Either ProcState GroupID))
 stChildren = lens _stChildren (\a x -> x { _stChildren = a})
 
 stGroups :: Lens' StateACP (Map GroupID GroupState)
 stGroups = lens _stGroups (\a x -> x { _stGroups = a})
 
-stNodePool :: Lens' StateACP (Set NodeInfo)
+stNodePool :: Lens' StateACP [NodeInfo]
 stNodePool = lens _stNodePool (\a x -> x { _stNodePool = a})
 
-stAllocResources :: Lens' StateACP (Map Resources (Set NodeInfo))
+stAllocResources :: Lens' StateACP (Map Resources VirtualCAD)
 stAllocResources = lens _stAllocResources (\a x -> x { _stAllocResources = a})
 
-stUsedResources :: Lens' StateACP (Map ProcessId (Set NodeInfo))
+stUsedResources :: Lens' StateACP (Map ProcessId VirtualCAD)
 stUsedResources = lens _stUsedResources (\a x -> x { _stUsedResources = a})
 
 
@@ -286,7 +359,7 @@ uniqID = do
 
 -- | Node controller process
 --
-nodeController :: Process () 
+nodeController :: Process ()
 -- We have to jump through quite elaborate hoops because we cannot
 -- make closure of nodeController inside body of function. (Necessary
 -- functions are only visible after remotable call). Instead we send

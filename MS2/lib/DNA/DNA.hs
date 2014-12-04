@@ -251,19 +251,23 @@ data Group a = Group (ReceivePort a) (ReceivePort (Maybe Int))
 await :: Serializable a => Promise a -> DNA a
 await (Promise ch) = liftP $ receiveChan ch
 
+
 gather :: Serializable a => Group a -> (b -> a -> b) -> b -> DNA b
-gather (Group chA chN) f x0 = do
+gather g f = gatherM g (\b a -> return (f b a))
+
+gatherM :: Serializable a => Group a -> (b -> a -> DNA b) -> b -> DNA b
+gatherM (Group chA chN) f x0 = do
     let loop n tot !b
             | n >= tot = return b
         loop n tot !b = do
-            r <- receiveWait [ matchChan chA (return . Right)
-                             , matchChan chN (return . Left)
-                             ]
+            r <- liftP $ receiveWait [ matchChan chA (return . Right)
+                                     , matchChan chN (return . Left)
+                                     ]
             case r of
-              Right a -> loop (n + 1) tot (f b a)
+              Right a       -> loop (n + 1) tot =<< f b a
               Left Nothing  -> error "FIXME: do something more meaningful"
               Left (Just k) -> loop n k b
-    liftP $ loop 0 (-1) x0
+    loop 0 (-1) x0
 
 
 
@@ -311,7 +315,24 @@ runActor (Actor action) = do
     forM_ dst $ \ch -> sendChan ch b
 
 runCollectActor :: CollectActor a b -> Process ()
-runCollectActor (CollectActor _ _ _) = undefined
+runCollectActor (CollectActor step start fini) = do
+    -- Where to send channels?
+    Parent pid <- expect
+    acp        <- expect
+    rnk        <- expect
+    -- Create channels for communication
+    (chSendParam,chRecvParam) <- newChan
+    (chSendDst,  chRecvDst  ) <- newChan
+    (chSendN,    chRecvN    ) <- newChan
+    -- Send shell process back
+    send pid (CollectorShell chSendParam chSendN chSendDst acp)
+    b <- runDNA acp rnk $ do
+        s0 <- start
+        s  <- gatherM (Group chRecvParam chRecvN) step s0
+        fini s
+    dst <- receiveChan chRecvDst
+    forM_ dst $ \ch -> sendChan ch b
+
 
 -- | Start execution of actor controller process (ACP). Takes triple
 --   of actor closure, actor's rank and PID of process to send shell
@@ -337,7 +358,7 @@ runACP = do
     send pid (rnk    :: Rank  )
     send pid (ACP me)
     -- Start listening on events
-    startAcpLoop self resources
+    startAcpLoop self pid resources
 
 remotable [ 'runActor
           , 'runCollectActor
@@ -404,7 +425,7 @@ startCollectorGroup res child = do
     return shell
 
 
-                 
+
 {-
 {-
 

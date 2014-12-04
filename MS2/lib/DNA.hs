@@ -4,33 +4,36 @@ module DNA (
       -- * DNA monad
       DNA
     , liftP
-      -- * Promises
-    , Promise
-    , await
-    , Group
-    , gather
-      -- * Scattering data
-    , Scatter
-    , same
-    , scatter
-      -- * Spawning of actors
+    , rank
+      -- * Actors
     , Actor
     , actor
-    , eval
-    , ReqNode(..)
-    , ActorType(..)
-    , NodePool(..)
-    , ReqGroup(..)
-    , forkLocal
-    , forkRemote
-    , forkGroup
-    , forkGroupFailout
-      -- * Running program
-    , dnaRun
-      -- * Reexports
-    , MonadIO(..)
-    , mkStaticClosure
-    , remotable
+    , CollectActor
+    , collectActor
+      -- ** Shell actors
+    , Shell
+    , CollectorShell
+    , ShellGroup
+    , GroupCollect
+      -- * CAD & Co
+    , CAD
+    , makeCAD
+    , select
+    , selectMany
+      -- * Connecting actors
+    , sendParam
+    , broadcastParam
+    , connect
+    , broadcast
+    , collect
+    , connectCollectorGroup
+      -- ** Promises
+    , Promise
+    , Group
+    , await
+    , gather
+    , delay
+    , delayGroup
     ) where
 
 import Control.Monad.IO.Class
