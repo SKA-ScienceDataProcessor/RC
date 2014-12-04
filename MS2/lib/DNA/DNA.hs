@@ -34,6 +34,10 @@ module DNA.DNA (
     , CollectorShell(..)
     , ShellGroup(..)
     , GroupCollect(..)
+    , startActor
+    , startCollector
+    , startGroup
+    , startCollectorGroup
       -- * CAD & Co
     , CAD(..)
     , makeCAD
@@ -174,11 +178,14 @@ makeCAD []     = error "DNA.CAD.makeCAD: empty list of nodes"
 makeCAD (x:xs) = CAD x [CAD a [] | a <- xs]
 
 
+-- | Allocate N nodes to single actor
 select :: Int -> DNA Resources
 select n = do
     sendACP $ ReqResources n
     liftP expect
 
+-- | Allocate N nodes for group of actors. Each will have only single
+--   node
 selectMany :: Int -> DNA [Resources]
 selectMany n = do
     sendACP $ ReqResourcesGrp n
@@ -270,15 +277,18 @@ gatherM (Group chA chN) f x0 = do
     loop 0 (-1) x0
 
 
-
+-- | Create promise for single actor. It allows to receive data from
+--   it later.
 delay :: Serializable b => Shell a b -> DNA (Promise b)
 delay (Shell _ chDst acp) = do
     myACP           <- getMonitor
     (chSend,chRecv) <- liftP newChan
     liftP $ sendChan chDst [chSend]
     sendACP $ ReqConnectTo acp myACP
-    return $ Promise chRecv
+    return  $ Promise chRecv
 
+-- | Create promise from group of processes which allows to collect
+--   data from them later.
 delayGroup :: Serializable b => ShellGroup a b -> DNA (Group b)
 delayGroup (ShellGroup gid shells) = do
     myACP         <- getMonitor
@@ -287,7 +297,7 @@ delayGroup (ShellGroup gid shells) = do
     liftP $ forM_ shells $ \(Shell _ chDst _) ->
         sendChan chDst [sendB]
     sendACP $ ReqConnectGrp gid myACP [sendN]
-    return $ Group recvB recvN
+    return  $ Group recvB recvN
 
 
 
@@ -314,6 +324,7 @@ runActor (Actor action) = do
     dst <- receiveChan chRecvDst
     forM_ dst $ \ch -> sendChan ch b
 
+-- | Start execution of collector actor
 runCollectActor :: CollectActor a b -> Process ()
 runCollectActor (CollectActor step start fini) = do
     -- Where to send channels?
@@ -406,8 +417,11 @@ startGroup res child = do
     me      <- liftP getSelfPid
     let clos = $(mkStaticClosure 'runActor) `closureApply` child
     liftP $ send acp $ ReqSpawnGroup clos me res
-    shell <- liftP expect
-    return shell
+    -- FIXME: here we spawn groups in very unreliable manner. We
+    --        assume that nothingf will crash which is plain wrong
+    gid    <- liftP expect
+    shells <- liftP $ replicateM (length res) expect
+    return $ ShellGroup gid shells
 
 
 -- | Start group of collector processes
@@ -421,8 +435,11 @@ startCollectorGroup res child = do
     me      <- liftP getSelfPid
     let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
     liftP $ send acp $ ReqSpawnGroup clos me res
-    shell <- liftP expect
-    return shell
+    gid    <- liftP expect
+    -- FIXME: See above
+    shells <- liftP $ replicateM (length res) expect
+    return $ GroupCollect gid shells
+
 
 
 

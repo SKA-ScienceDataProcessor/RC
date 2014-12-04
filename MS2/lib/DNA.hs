@@ -15,6 +15,10 @@ module DNA (
     , CollectorShell
     , ShellGroup
     , GroupCollect
+    , startActor
+    , startCollector
+    , startGroup
+    , startCollectorGroup
       -- * CAD & Co
     , CAD
     , makeCAD

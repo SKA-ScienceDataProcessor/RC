@@ -184,19 +184,24 @@ handleSpawnShell (ReqSpawnShell actor pid resID) = do
 
 handleSpawnShellGroup :: ReqSpawnGroup -> StateT StateACP Process ()
 handleSpawnShellGroup (ReqSpawnGroup actor pid res) = do
+    -- FIXME: How to assemble a group?
     gid     <- GroupID <$> uniqID
-    me      <- lift getSelfPid
     acpClos <- use stAcpClosure
     -- Spawn remote actors
-    -- forM_ res $ \rid@(VirtualCAD n _) -> do
-    --     Just res <- use $ stAllocResources . at rid
-    --     (acp,_) <- lift $ spawnSupervised (nodeID n) actor
-    --     lift $ send acp (acpClos, res, Rank 0)
-    --     lift $ send acp (actor, pid)
-    undefined
-    -- stChildren       . at acp   .= Just (Left Running)
-    -- stAllocResources . at resID .= Nothing
-    -- stUsedResources  . at acp   .= Just res
+    --
+    -- FIXME: Here we require that none of nodes will fail during
+    forM_ ([0..] `zip` res) $ \(i, rid) -> do
+        Just r@(VirtualCAD n rest) <- use $ stAllocResources . at rid
+        (acp,_) <- lift $ spawnSupervised (nodeID n) actor
+        lift $ send acp (acpClos, rest, Rank i)
+        lift $ send acp (actor,pid)
+        lift $ send pid gid
+        stChildren . at acp .= Just (Right gid)
+        stAllocResources . at rid .= Nothing
+        stUsedResources  . at acp .= Just r
+    -- FIXME: pass type of group
+    stGroups . at gid .= Just
+        (GroupState NormalGroup (GroupProcs (length res) 0) Nothing)
 
 
 
