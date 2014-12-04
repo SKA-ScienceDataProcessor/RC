@@ -371,8 +371,9 @@ nodeController :: Process ()
 -- closure as message.
 nodeController = do
     (self,parent,subcads) <- expect
-    me <- getSelfPid
-    let n = length subcads
+    me     <- getSelfPid
+    local  <- getSelfNode
+    logger <- spawnLocal loggerProcess
     -- FIXME: assumes reliability. Process spaning may in fact fail
     cads <- forM subcads $ \(CAD nid rest) -> do
         pid <- spawn nid self
@@ -381,12 +382,18 @@ nodeController = do
     let ninfo = NodeInfo { nodeCP     = NCP me
                          -- FIXME: notion of parent.
                          , nodeParent = Just (NCP parent)
-                         , nodeID     = undefined
+                         , nodeID     = local
+                         , loggerProc = logger
                          }
     send parent $ CAD ninfo cads
     -- FIXME: here we just block eternally to keep process alive. We
     --        need to figure out whether we need this process
     () <- expect
+    return ()
+
+loggerProcess :: Process ()
+loggerProcess = forever $ do
+    s <- expect :: Process String
     return ()
 
 

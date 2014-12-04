@@ -62,38 +62,38 @@ library
     lib/DNA/cbits/channel-file.c
 
 ----------------------------------------------------------------
-executable ddp-in-memory
-  default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded
-  Hs-source-dirs:      dna-programs
-  main-is:             ddp-in-memory.hs
-  build-depends:
-    base >=4.6,
-    ch-dna,
-    vector >= 0.10
+-- executable ddp-in-memory
+--   default-language:    Haskell2010
+--   ghc-options:         -O2 -Wall -threaded
+--   Hs-source-dirs:      dna-programs
+--   main-is:             ddp-in-memory.hs
+--   build-depends:
+--     base >=4.6,
+--     ch-dna,
+--     vector >= 0.10
 
-executable ddp-in-memory-collector
- default-language:    Haskell2010
- ghc-options:         -O2 -Wall -threaded
- Hs-source-dirs:      dna-programs
- main-is:             ddp-in-memory-collector.hs
- build-depends:
-   base >=4.6,
-   ch-dna,
-   vector >= 0.10
+-- executable ddp-in-memory-collector
+--  default-language:    Haskell2010
+--  ghc-options:         -O2 -Wall -threaded
+--  Hs-source-dirs:      dna-programs
+--  main-is:             ddp-in-memory-collector.hs
+--  build-depends:
+--    base >=4.6,
+--    ch-dna,
+--    vector >= 0.10
 
-executable dna-gridding
-  -- needs custom Setup.hs, I guess. Also needs stdc++ library.
-  default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded
-  hs-source-dirs:      dna-programs
-  main-is:             dna-gridding.hs
+-- executable dna-gridding
+--   -- needs custom Setup.hs, I guess. Also needs stdc++ library.
+--   default-language:    Haskell2010
+--   ghc-options:         -O2 -Wall -threaded
+--   hs-source-dirs:      dna-programs
+--   main-is:             dna-gridding.hs
 
---  c-sources:           lib/halide-gridding/halide_support.cpp
+-- --  c-sources:           lib/halide-gridding/halide_support.cpp
 
-  build-depends:
-     base >= 4.6,
-     ch-dna
+--   build-depends:
+--      base >= 4.6,
+--      ch-dna
 
 executable ddp-gen-data-file
   default-language:    Haskell2010
