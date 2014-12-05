@@ -137,6 +137,7 @@ import qualified Control.Distributed.Process.Node as Node
   ( LocalNode
   , newLocalNode
   , runProcess
+  , forkProcess
   )
 import qualified Network.Socket as N
 import qualified Network.Transport.TCP as NT
@@ -297,8 +298,8 @@ startSlave backend = do
 startSlaveWithProc :: Backend -> Process () -> IO ()
 startSlaveWithProc backend process = do
   node <- newLocalNode backend
+  _ <- Node.forkProcess node process
   Node.runProcess node slaveController
-  Node.runProcess node process
 
 -- | The slave controller interprets 'SlaveControllerMsg's
 slaveController :: Process ()

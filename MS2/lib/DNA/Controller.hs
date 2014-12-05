@@ -395,7 +395,7 @@ nodeController = do
     -- Get logger process. Here we assume that it logger is already
     -- spawned and registered. Otherwise we will block here forever.
     let getLogger = do
-            mh <- whereis "logger"
+            mh <- whereis "dnaLogger"
             maybe getLogger return mh
     logger <- getLogger
     -- FIXME: assumes reliability. Process spaning may in fact fail
@@ -441,7 +441,7 @@ startLoggerProcess logdir = do
     liftIO $ createDirectoryIfMissing True logdir
     bracket open fini $ \h -> do
         me <- getSelfPid
-        register "logger" me
+        register "dnaLogger" me
         forever $ do
             s <- expect
             liftIO $ hPutStrLn h s
