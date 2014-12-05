@@ -19,12 +19,6 @@ import GHC.Generics  (Generic)
 newtype Parent = Parent ProcessId
               deriving (Show,Eq,Typeable,Binary)
 
--- | Parameters for a subprocess. If process require more than one
---   parameter it's sent as tuple if it doesn't require parameters ()
---   is sent.
-newtype Param a = Param a
-                  deriving (Show,Eq,Typeable,Binary)
-
 -- | Rank of actor
 newtype Rank = Rank Int
              deriving (Show,Eq,Ord,Typeable,Binary)
@@ -44,13 +38,6 @@ newtype ActorID = ActorID Int
 -- | ID of resourses
 newtype Resources = Resources Int
                   deriving (Show,Eq,Ord,Typeable,Binary)
-
--- | Tag for
-data Completed = Completed
-                deriving (Show,Eq,Ord,Typeable,Generic)
-
-instance Binary Completed
-
 
 -- | Command for ACP to terminate
 data Terminate = Terminate
