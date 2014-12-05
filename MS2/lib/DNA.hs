@@ -5,7 +5,7 @@ module DNA (
       DNA
     , liftP
     , rank
-      -- * Actors
+       -- * Actors
     , Actor
     , actor
     , CollectActor
@@ -38,6 +38,12 @@ module DNA (
     , gather
     , delay
     , delayGroup
+      -- * Start DNA program
+    , dnaRun
+      -- * Reexports
+    , MonadIO(..)
+    , remotable
+    , mkStaticClosure
     ) where
 
 import Control.Monad.IO.Class
