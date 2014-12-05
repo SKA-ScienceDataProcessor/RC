@@ -9,10 +9,16 @@ CXXFLAGS=-O3 -Wall -std=c++14 $(INCFLAGS)
 #test: uvw2romein
 #	./uvw2romein ../run_remote/0-0.vis
 
+all: uvw2romein amp2romein
+
 uvw2romein: uvw2romein.o o2a.o
 	$(CC) -o uvw2romein uvw2romein.o o2a.o $(LDFLAGS)
 
+amp2romein: amp2romein.o o2a.o
+	$(CC) -o amp2romein amp2romein.o o2a.o $(LDFLAGS)
+
 uvw2romein.o: uvw2romein.c
+amp2romein.o: amp2romein.c
 o2a.o: o2a.cpp
 
 clean:
