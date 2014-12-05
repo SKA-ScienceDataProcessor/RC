@@ -2,7 +2,7 @@
 
   Example of o2a library usage.
 
-  Reads and reshuffles u, v, w and amp data to the
+  Reads and reshuffles u, v, w data to the
   layout, suitable for Romein (R) and Halide (H) gridders consumption.
 
   Copyright (C) 2014 Braam Research, LLC.
@@ -16,8 +16,13 @@ int main(int argc, char** argv){
   VisHandle vh;
   Dimensions dims;
   DoubleData data;
-  int i, j, n;
+  #ifdef __OSKAR_NATIVE_ORDER
+  int i;
+  int n;
+  #else
+  int bl, ts;
   int BL, bloff;
+  #endif
   FILE * out;
   const double *cu, *cv, *cw;
 
@@ -58,9 +63,9 @@ int main(int argc, char** argv){
       cv = data.v;
       cw = data.w;
       BL = dims.baselines;
-      for ( i = 0; i < BL; i++ ) {
-        for ( j = 0; j < dims.timesteps; j++ ) {
-          bloff = BL * j + i;
+      for ( bl = 0; bl < BL; bl++ ) {
+        for ( ts = 0; ts < dims.timesteps; ts++ ) {
+          bloff = BL * ts + bl;
           fwrite(cu + bloff, sizeof (*cu), 1, out);
           fwrite(cv + bloff, sizeof (*cv), 1, out);
           fwrite(cw + bloff, sizeof (*cw), 1, out);
