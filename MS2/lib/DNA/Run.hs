@@ -13,7 +13,8 @@ import System.Environment (getExecutablePath,getEnv)
 import System.Process
 import System.FilePath    ((</>))
 
-import DNA.SlurmBackend
+import DNA.SlurmBackend (initializeBackend,startMaster,startSlaveWithProc)
+import qualified DNA.SlurmBackend as CH
 import DNA.CmdOpts
 import DNA.DNA        hiding (__remoteTable,rank)
 import DNA.Controller hiding (__remoteTable)
@@ -66,7 +67,7 @@ runUnix logDir rtable opts nProc dna = do
     let reapChildren = mapM_ killChild pids
     -- Initialize backend
     let ports = map (+ basePort) [0 .. nProc - 1]
-    backend <- initializeBackend (Local ports) "localhost" (show port) rtable
+    backend <- initializeBackend (CH.Local ports) "localhost" (show port) rtable
     -- Start master or slave program
     case rank of
       0 -> startMaster backend (executeDNA logDir dna) `finally` reapChildren

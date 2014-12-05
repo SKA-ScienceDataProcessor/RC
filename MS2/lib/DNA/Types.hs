@@ -88,15 +88,19 @@ data NodeInfo = NodeInfo
     }
     deriving (Show,Eq,Ord,Typeable,Generic)
 
+data Location = Remote
+              | Local
+    deriving (Show,Eq,Ord,Typeable,Generic)
+
 -- | Resources allocated to single process. It always have access to
 --   node it owns and possibly list of other nodes.
-data VirtualCAD = VirtualCAD NodeInfo [NodeInfo]
+data VirtualCAD = VirtualCAD Location NodeInfo [NodeInfo]
                   deriving (Show,Eq,Ord,Typeable,Generic)
 
 instance Binary a => Binary (CAD a)
 instance Binary NodeInfo
 instance Binary VirtualCAD
-
+instance Binary Location
 
 
 

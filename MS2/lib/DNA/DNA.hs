@@ -42,6 +42,7 @@ module DNA.DNA (
       -- * CAD & Co
     , CAD(..)
     , makeCAD
+    , Location(..)
     , select
     , selectMany
       -- * Connecting actors
@@ -180,9 +181,9 @@ makeCAD (x:xs) = CAD x [CAD a [] | a <- xs]
 
 
 -- | Allocate N nodes to single actor
-select :: Int -> DNA Resources
-select n = do
-    sendACP $ ReqResources n
+select :: Location -> Int -> DNA Resources
+select loc n = do
+    sendACP $ ReqResources loc n
     liftP expect
 
 -- | Allocate N nodes for group of actors. Each will have only single

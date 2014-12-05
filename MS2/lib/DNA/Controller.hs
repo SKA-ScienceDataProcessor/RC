@@ -51,7 +51,7 @@ startAcpLoop :: Closure (Process ()) -- ^ Closure to self
              -> ProcessId            -- ^ PID of process being monitored
              -> VirtualCAD           -- ^ Allocated nodes
              -> Process ()
-startAcpLoop self pid (VirtualCAD n nodes) = do
+startAcpLoop self pid (VirtualCAD _ n nodes) = do
     let loop s = do ms <- acpStep s
                     case ms of
                       Just s' -> loop s'
@@ -97,7 +97,7 @@ instance Binary ReqConnect
 
 
 -- | Request resourses for single process.
-data ReqResources = ReqResources Int
+data ReqResources = ReqResources Location Int
                     deriving (Show,Typeable,Generic)
 instance Binary ReqResources
 
@@ -136,17 +136,29 @@ acpStep st = receiveWait
 
 
 handleReqResources :: ReqResources -> StateT StateACP Process ()
-handleReqResources (ReqResources n) = do
-    when (n <= 0) $ error "Positive number of nodes required"
+handleReqResources (ReqResources loc n) = do
     res <- Resources <$> uniqID
     -- FIXME: What to do when we don't have enough resources to
     --        satisfy request?
-    free <- use stNodePool
-    when (length free < n) $
-        error "Cannot allocate enough resources!"
-    let (node:touse,rest) = splitAt n free
-    stNodePool                .= rest
-    stAllocResources . at res .= Just (VirtualCAD node touse)
+    resourse <- case loc of
+        Remote -> do
+            when (n <= 0) $ error "Positive number of nodes required"
+            free <- use stNodePool
+            when (length free < n) $
+                error "Cannot allocate enough resources!"
+            let (node:touse,rest) = splitAt n free
+            stNodePool .= rest
+            return $ VirtualCAD loc node touse
+        Local -> do
+            when (n < 0) $ error "Non-negative number of nodes required"
+            free <- use stNodePool
+            when (length free < n) $
+                error "Cannot allocate enough resources!"
+            let (touse,rest) = splitAt n free
+            stNodePool .= rest
+            n <- use stLocalNode
+            return $ VirtualCAD loc n touse
+    stAllocResources . at res .= Just resourse
     -- Send back reply
     pid <- use stActor
     lift $ send pid res
@@ -164,7 +176,7 @@ handleReqResourcesGrp (ReqResourcesGrp n) = do
     let (nodes,rest) = splitAt n free
     stNodePool .= rest
     forM_ (ress `zip` nodes) $ \(r,ni) -> do
-        stAllocResources . at r .= Just (VirtualCAD ni [])
+        stAllocResources . at r .= Just (VirtualCAD Remote ni [])
     -- Send back reply
     pid <- use stActor
     lift $ send pid ress
@@ -174,7 +186,7 @@ handleSpawnShell :: ReqSpawnShell -> StateT StateACP Process ()
 handleSpawnShell (ReqSpawnShell actor pid resID) = do
     -- FIXME: better error reporting. If we reuse resource to spawn
     --        process we'll trigger bad pattern error
-    Just res@(VirtualCAD n _) <- use $ stAllocResources . at resID
+    Just res@(VirtualCAD _ n _) <- use $ stAllocResources . at resID
     -- Spawn remote supervisor
     acpClos <- use stAcpClosure
     (acp,_) <- lift $ spawnSupervised (nodeID n) actor
@@ -194,7 +206,7 @@ handleSpawnShellGroup (ReqSpawnGroup actor pid res) = do
     --
     -- FIXME: Here we require that none of nodes will fail during
     forM_ ([0..] `zip` res) $ \(i, rid) -> do
-        Just r@(VirtualCAD n rest) <- use $ stAllocResources . at rid
+        Just r@(VirtualCAD _ n rest) <- use $ stAllocResources . at rid
         (acp,_) <- lift $ spawnSupervised (nodeID n) actor
         lift $ send acp (acpClos, rest, Rank i)
         lift $ send acp (actor,pid)
@@ -235,7 +247,7 @@ handleNormalTermination pid = do
             CompletedGroup _ -> error "Should not happen"
     -- Mark resources as free
     mfreed <- use $ stUsedResources . at pid
-    T.forM_ mfreed $ \(VirtualCAD n ns) -> do
+    T.forM_ mfreed $ \(VirtualCAD _ n ns) -> do
         stUsedResources %= Map.delete pid
         stNodePool      %= (\free -> n : ns ++ free)
 
@@ -335,6 +347,9 @@ stAcpClosure = lens _stAcpClosure (\a x -> x { _stAcpClosure = a})
 
 stActor :: Lens' StateACP ProcessId
 stActor = lens _stActor (\a x -> x { _stActor = a})
+
+stLocalNode :: Lens' StateACP NodeInfo
+stLocalNode = lens _stLocalNode (\a x -> x { _stLocalNode = a})
 
 stChildren :: Lens' StateACP (Map ProcessId (Either ProcState GroupID))
 stChildren = lens _stChildren (\a x -> x { _stChildren = a})

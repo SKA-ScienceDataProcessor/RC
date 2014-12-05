@@ -22,7 +22,7 @@ module DNA (
     , startCollectorGroup
       -- * CAD & Co
     , CAD
-    , makeCAD
+    , Location(..)
     , select
     , selectMany
       -- * Connecting actors
