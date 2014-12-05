@@ -32,6 +32,13 @@ typedef struct Double2_tag
   double y;
 } Double2;
 
+typedef struct Double3_tag
+{
+  double x;
+  double y;
+  double z;
+} Double3;
+
 typedef struct Float4c_tag {
   Float2 a;
   Float2 b;
