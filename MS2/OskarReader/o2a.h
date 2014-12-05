@@ -28,8 +28,8 @@ typedef struct Float2_tag
 
 typedef struct Double2_tag
 {
-  float x;
-  float y;
+  double x;
+  double y;
 } Double2;
 
 typedef struct Float4c_tag {
