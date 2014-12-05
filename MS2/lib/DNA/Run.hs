@@ -11,7 +11,6 @@ import Control.Distributed.Process      hiding (finally)
 import Control.Distributed.Process.Node (initRemoteTable)
 import System.Environment (getExecutablePath,getEnv)
 import System.Process
-import System.Directory   (createDirectoryIfMissing)
 import System.FilePath    ((</>))
 
 import DNA.SlurmBackend
@@ -28,15 +27,13 @@ dnaRun remoteTable dna = do
     opts <- dnaParseOptions
     -- Create directory for logs
     home <- getEnv "HOME"
-    createDirectoryIfMissing True $
-        home </> "_dna" </> "logs" </> dnaPID opts </> show (dnaRank opts)
+    let logDir = home </> "_dna" </> "logs" </> dnaPID opts </> show (dnaRank opts)
     -- In case of UNIX startup
     case dnaNProcs opts of
       -- SLURM case
       Nothing -> error "SLURM startup is not implemented"
       -- Unix startup
-      Just nProc -> runUnix rtable opts nProc dna
-
+      Just nProc -> runUnix logDir rtable opts nProc dna
   where
     rtable = ( remoteTable
              . DNA.DNA.__remoteTable
@@ -44,8 +41,8 @@ dnaRun remoteTable dna = do
              ) initRemoteTable
 
 
-runUnix :: RemoteTable -> Options -> Int -> DNA () -> IO ()
-runUnix rtable opts nProc dna = do
+runUnix :: FilePath -> RemoteTable -> Options -> Int -> DNA () -> IO ()
+runUnix logDir rtable opts nProc dna = do
     let basePort = dnaBasePort opts
         rank     = dnaRank     opts
         port     = basePort + rank
@@ -72,12 +69,13 @@ runUnix rtable opts nProc dna = do
     backend <- initializeBackend (Local ports) "localhost" (show port) rtable
     -- Start master or slave program
     case rank of
-      0 -> startMaster backend (executeDNA dna) `finally` reapChildren
-      _ -> startSlave backend
+      0 -> startMaster backend (executeDNA logDir dna) `finally` reapChildren
+      _ -> startSlaveWithProc backend (startLoggerProcess logDir)
 
 
-executeDNA :: DNA () -> [NodeId] -> Process ()
-executeDNA dna nodes = do
+executeDNA :: FilePath -> DNA () -> [NodeId] -> Process ()
+executeDNA logDir dna nodes = do
+    startLoggerProcess logDir
     -- Create CAD out of list of nodes
     let initialCAD = makeCAD nodes
     cad <- spawnHierachically initialCAD

@@ -17,6 +17,7 @@ module DNA.Controller (
       -- * Node controller
     , nodeController
     , spawnHierachically
+    , startLoggerProcess
     , __remoteTable
     ) where
 
@@ -33,6 +34,8 @@ import qualified Data.Set        as Set
 import           Data.Set          (Set)
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict   (Map)
+import System.IO
+import System.Directory   (createDirectoryIfMissing)
 import GHC.Generics (Generic)
 
 import DNA.Lens
@@ -373,7 +376,12 @@ nodeController = do
     (self,parent,subcads) <- expect
     me     <- getSelfPid
     local  <- getSelfNode
-    logger <- spawnLocal loggerProcess
+    -- Get logger process. Here we assume that it logger is already
+    -- spawned and registered. Otherwise we will block here forever.
+    let getLogger = do
+            mh <- whereis "logger"
+            maybe getLogger return mh
+    logger <- getLogger
     -- FIXME: assumes reliability. Process spaning may in fact fail
     cads <- forM subcads $ \(CAD nid rest) -> do
         pid <- spawn nid self
@@ -409,3 +417,18 @@ spawnHierachically (CAD nid children) = do
     send pid (clos,me,children)
     cad <- expect
     return cad
+
+
+-- | Start logger process and register in local registry
+startLoggerProcess :: FilePath -> Process ()
+startLoggerProcess logdir = do
+    liftIO $ createDirectoryIfMissing True logdir
+    bracket open fini $ \h -> do
+        me <- getSelfPid
+        register "logger" me
+        forever $ do
+            s <- expect
+            liftIO $ hPutStrLn h s
+  where
+    open   = liftIO (openFile (logdir ++ "/log") WriteMode)
+    fini h = liftIO (hClose h)

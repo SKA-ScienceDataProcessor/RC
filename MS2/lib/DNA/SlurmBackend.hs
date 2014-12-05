@@ -83,6 +83,7 @@ module DNA.SlurmBackend
   , initializeBackend
     -- * Slave nodes
   , startSlave
+  , startSlaveWithProc
   , terminateSlave
   , findSlaves
   , terminateAllSlaves
@@ -292,6 +293,12 @@ startSlave :: Backend -> IO ()
 startSlave backend = do
   node <- newLocalNode backend
   Node.runProcess node slaveController
+
+startSlaveWithProc :: Backend -> Process () -> IO ()
+startSlaveWithProc backend process = do
+  node <- newLocalNode backend
+  Node.runProcess node slaveController
+  Node.runProcess node process
 
 -- | The slave controller interprets 'SlaveControllerMsg's
 slaveController :: Process ()
