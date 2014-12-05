@@ -34,6 +34,7 @@ module DNA.DNA (
     , CollectorShell(..)
     , ShellGroup(..)
     , GroupCollect(..)
+    , eval
     , startActor
     , startCollector
     , startGroup
@@ -380,6 +381,14 @@ remotable [ 'runActor
 ----------------------------------------------------------------
 -- Shell actors
 ----------------------------------------------------------------
+
+-- | Evaluate actor without forking off enother thread
+eval :: (Serializable a, Serializable b)
+     => Actor a b
+     -> a
+     -> DNA b
+eval (Actor act) a = act a
+
 
 -- | Start single actor
 startActor :: (Serializable a, Serializable b)

@@ -15,6 +15,7 @@ module DNA (
     , CollectorShell
     , ShellGroup
     , GroupCollect
+    , eval
     , startActor
     , startCollector
     , startGroup
