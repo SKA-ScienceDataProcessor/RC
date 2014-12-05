@@ -190,7 +190,7 @@ handleSpawnShell (ReqSpawnShell actor pid resID) = do
     -- Spawn remote supervisor
     acpClos <- use stAcpClosure
     (acp,_) <- lift $ spawnSupervised (nodeID n) actor
-    lift $ send acp (acpClos, res, Rank 0)
+    lift $ send acp (acpClos, res, Rank 0, GroupSize 1)
     lift $ send acp (actor, pid)
     --
     stChildren       . at acp   .= Just (Left Running)
@@ -205,10 +205,11 @@ handleSpawnShellGroup (ReqSpawnGroup actor pid res) = do
     -- Spawn remote actors
     --
     -- FIXME: Here we require that none of nodes will fail during
+    let k = length res
     forM_ ([0..] `zip` res) $ \(i, rid) -> do
         Just r@(VirtualCAD _ n rest) <- use $ stAllocResources . at rid
         (acp,_) <- lift $ spawnSupervised (nodeID n) actor
-        lift $ send acp (acpClos, rest, Rank i)
+        lift $ send acp (acpClos, rest, Rank i, GroupSize k)
         lift $ send acp (actor,pid)
         lift $ send pid gid
         stChildren . at acp .= Just (Right gid)

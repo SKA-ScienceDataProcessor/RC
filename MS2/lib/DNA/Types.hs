@@ -29,6 +29,10 @@ newtype Param a = Param a
 newtype Rank = Rank Int
              deriving (Show,Eq,Ord,Typeable,Binary)
 
+-- | Size of group of proceesses
+newtype GroupSize = GroupSize Int
+             deriving (Show,Eq,Ord,Typeable,Binary)
+
 -- | ID of group of processes
 newtype GroupID = GroupID Int
                 deriving (Show,Eq,Ord,Typeable,Binary)

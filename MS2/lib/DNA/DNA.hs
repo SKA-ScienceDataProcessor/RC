@@ -22,6 +22,7 @@ module DNA.DNA (
       DNA(..)
     , runDNA
     , rank
+    , groupSize
     , getMonitor
     , liftP
       -- * Actors
@@ -100,18 +101,23 @@ import DNA.Controller hiding (__remoteTable)
 --
 --   Every actor owns set of nodes on which it could spawn other actors.
 --   Upon completion this set of nodes is returned to parent actor.
-newtype DNA a = DNA (ReaderT (ACP,Rank) Process a)
+newtype DNA a = DNA (ReaderT (ACP,Rank,GroupSize) Process a)
                 deriving (Functor,Applicative,Monad,MonadIO)
 
 -- | Execute DNA program
-runDNA :: ACP -> Rank -> DNA a -> Process a
-runDNA mon r (DNA dna)
-    = flip runReaderT (mon,r) dna
+runDNA :: ACP -> Rank -> GroupSize -> DNA a -> Process a
+runDNA mon r grp (DNA dna)
+    = flip runReaderT (mon,r,grp) dna
 
 -- | Get rank of process in group
 rank :: DNA Int
 rank = do
-    Rank n <- snd <$> DNA ask
+    (_,Rank n,_) <- DNA ask
+    return n
+
+groupSize :: DNA Int
+groupSize = do
+    (_,_,GroupSize n) <- DNA ask
     return n
 
 -- | Lift 'Process' computation to DNA monad
@@ -120,7 +126,9 @@ liftP = DNA . lift
 
 -- | Get monitor process
 getMonitor :: DNA ACP
-getMonitor = fst <$> DNA ask
+getMonitor = do
+    (acp,_,_) <- DNA ask
+    return acp
 
 -- | Send message to actor's controller
 sendACP :: (Binary a, Typeable a) => a -> DNA ()
@@ -315,6 +323,7 @@ runActor (Actor action) = do
     Parent pid <- expect
     acp        <- expect
     rnk        <- expect
+    grp        <- expect
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
@@ -322,7 +331,7 @@ runActor (Actor action) = do
     send pid (Shell chSendParam chSendDst acp)
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
-    b   <- runDNA acp rnk (action a)
+    b   <- runDNA acp rnk grp (action a)
     dst <- receiveChan chRecvDst
     forM_ dst $ \ch -> sendChan ch b
 
@@ -333,13 +342,14 @@ runCollectActor (CollectActor step start fini) = do
     Parent pid <- expect
     acp        <- expect
     rnk        <- expect
+    grp        <- expect
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process back
     send pid (CollectorShell chSendParam chSendN chSendDst acp)
-    b <- runDNA acp rnk $ do
+    b <- runDNA acp rnk grp $ do
         s0 <- start
         s  <- gatherM (Group chRecvParam chRecvN) step s0
         fini s
@@ -357,8 +367,8 @@ runCollectActor (CollectActor step start fini) = do
 runACP :: Process ()
 runACP = do
     -- Get parameters for ACP and actor
-    (self, resources, rnk) <- expect
-    (child,parent)         <- expect
+    (self, resources, rnk, grp) <- expect
+    (child,parent)              <- expect
     -- Start actor process
     nid <- getSelfNode
     me  <- getSelfPid
@@ -367,8 +377,9 @@ runACP = do
     --        we want to do something.
     (pid,_) <- spawnSupervised nid child
     link pid
-    send pid (parent :: Parent)
-    send pid (rnk    :: Rank  )
+    send pid (parent :: Parent   )
+    send pid (rnk    :: Rank     )
+    send pid (grp    :: GroupSize)
     send pid (ACP me)
     -- Start listening on events
     startAcpLoop self pid resources

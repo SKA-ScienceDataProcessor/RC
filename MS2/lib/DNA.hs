@@ -5,6 +5,7 @@ module DNA (
       DNA
     , liftP
     , rank
+    , groupSize
        -- * Actors
     , Actor
     , actor
