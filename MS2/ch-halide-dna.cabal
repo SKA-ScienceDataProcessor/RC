@@ -54,7 +54,7 @@ library
     DNA.DNA
     DNA.Types
     DNA.Run
-    DNA.Monitor
+    DNA.Controller
     DNA.Logging
     DNA.Channel.File
     DNA.Common
@@ -64,15 +64,17 @@ library
     lib/DNA/cbits/channel-file.c
 
 ----------------------------------------------------------------
--- executable ddp-in-memory
---   default-language:    Haskell2010
---   ghc-options:         -O2 -Wall -threaded
---   Hs-source-dirs:      dna-programs
---   main-is:             ddp-in-memory.hs
---   build-depends:
---     base >=4.6,
---     ch-dna,
---     vector >= 0.10
+executable ddp-in-memory
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded
+  Hs-source-dirs:      dna-programs
+  main-is:             ddp-in-memory.hs
+  build-depends:
+    base >=4.6,
+    ch-dna,
+    vector >= 0.10
+  other-modules:
+    DDP
 
 -- executable ddp-in-memory-collector
 --  default-language:    Haskell2010

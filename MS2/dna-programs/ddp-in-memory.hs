@@ -11,6 +11,9 @@ import qualified Data.Vector.Storable as S
 import DNA.Channel.File (readDataMMap)
 import DNA
 
+import           DDP hiding (__remoteTable)
+import qualified DDP 
+
 
 -- | Split vector into set of slices.
 scatterShape :: Int64 -> Int64 -> [(Int64,Int64)]
@@ -31,43 +34,47 @@ scatterShape n size
 -- receive CAD.
 ----------------------------------------------------------------
 
--- | Compute vector and send it back to master using unsafe send.
-ddpComputeVector :: Actor (Int64,Int64) (S.Vector Double)
-ddpComputeVector = actor $ \(off,n) -> do
-    return $ S.generate (fromIntegral n)
-               (\i -> fromIntegral (fromIntegral i + fromIntegral off))
-
--- | Read vector slice from the data file.
-ddpReadVector :: Actor (String,(Int64,Int64)) (S.Vector Double)
-ddpReadVector = actor $ \(fname, (off,n)) -> do
-    liftIO $ readDataMMap n off fname "FIXME"
-
-
 -- | Caclculate dot product of slice of vector
-ddpProductSlice :: Actor (String,(Int64,Int64)) Double
-ddpProductSlice = actor $ \(fname, slice) -> do
-    futVA <- forkLocal NoNodes ddpComputeVector slice
-    futVB <- forkLocal NoNodes ddpReadVector (fname :: String, slice :: (Int64,Int64))
+ddpProductSlice :: Actor (String,Int64) Double
+ddpProductSlice = actor $ \(fname, size) -> do
+    -- Calculate offsets
+    nProc <- groupSize
+    rnk   <- rank
+    -- FIXME: Bad!
+    let (off,n) = scatterShape (fromIntegral nProc) size !! rnk
+    -- Start local processes
+    resVA <- select Local 0
+    resVB <- select Local 0
+    shellVA <- startActor resVA $(mkStaticClosure 'ddpComputeVector)
+    shellVB <- startActor resVB $(mkStaticClosure 'ddpReadVector   )
+    -- Connect actors
+    sendParam (off,n)          shellVA 
+    sendParam (fname, (off,n)) shellVB
+    --
+    futVA <- delay shellVA
+    futVB <- delay shellVB
+    --
     va <- await futVA
     vb <- await futVB
+    --
     return $ (S.sum $ S.zipWith (*) va vb :: Double)
 
-
-remotable [ 'ddpComputeVector
-          , 'ddpProductSlice
+remotable [ 'ddpProductSlice
           ]
 
 
 -- | Actor for calculating dot product
 ddpDotProduct :: Actor (String,Int64) Double
 ddpDotProduct = actor $ \(fname,size) -> do
-    partials <- forkGroup ReqGroup $(mkStaticClosure 'ddpProductSlice)
-                  ((,) <$> same fname <*> scatter (\n -> scatterShape (fromIntegral n)) size)
+    res <- selectMany 4
+    shell <- startGroup res $(mkStaticClosure 'ddpProductSlice)
+    broadcastParam (fname,size) shell
+    partials <- delayGroup shell
     gather partials (+) 0
 
 
 
 main :: IO ()
-main = dnaRun __remoteTable $ do
+main = dnaRun (DDP.__remoteTable . __remoteTable) $ do
     b <- eval ddpDotProduct ("file.dat",1000000)
     liftIO $ print b
