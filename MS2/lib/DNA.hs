@@ -6,6 +6,7 @@ module DNA (
     , liftP
     , rank
     , groupSize
+    , logMessage
        -- * Actors
     , Actor
     , actor
