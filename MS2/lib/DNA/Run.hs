@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 -- | Run.hs
 --
 -- Functions for starting DNA programs
@@ -8,6 +9,7 @@ module DNA.Run (
 import Control.Monad
 import Control.Exception
 import Control.Distributed.Process      hiding (finally)
+import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Node (initRemoteTable)
 import System.Environment (getExecutablePath,getEnv)
 import System.Process
@@ -81,4 +83,5 @@ executeDNA logDir dna nodes = do
     let initialCAD = makeCAD nodes
     cad <- spawnHierachically initialCAD
     -- Start master's ACP
+    let acpClos = $(mkStaticClosure 'runACP)
     return ()

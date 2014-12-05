@@ -66,6 +66,7 @@ module DNA.DNA (
     , runCollectActor
     , runACP
     , __remoteTable
+    , runACP__static
     ) where
 -- FIXME: understand how to implement local spawn
 
@@ -380,6 +381,8 @@ runACP = do
     -- Start actor process
     nid <- getSelfNode
     me  <- getSelfPid
+    -- FIXME: Ugly logger!!!
+    send (loggerProc ninfo) $ "Starting ACP: " ++ show me
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.
