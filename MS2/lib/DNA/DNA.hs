@@ -283,7 +283,8 @@ gather g f = gatherM g (\b a -> return (f b a))
 gatherM :: Serializable a => Group a -> (b -> a -> DNA b) -> b -> DNA b
 gatherM (Group chA chN) f x0 = do
     let loop n tot !b
-            | n >= tot = return b
+            | n >= tot && tot >= 0= do
+                  return b
         loop n tot !b = do
             r <- liftP $ receiveWait [ matchChan chA (return . Right)
                                      , matchChan chN (return . Left)
@@ -335,6 +336,7 @@ runActor (Actor action) = do
     -- Obtain parameters
     ParamActor parent rnk grp <- expect
     (ACP acp,ninfo) <- expect
+    me <- getSelfPid
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
@@ -384,12 +386,11 @@ runACP = do
     nid <- getSelfNode
     me  <- getSelfPid
     -- FIXME: Ugly logger!!!
---    send (loggerProc ninfo) $ "Starting ACP: " ++ show me
+    send (loggerProc ninfo) $ "Starting ACP: " ++ show me
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.
     (pid,_) <- spawnSupervised nid act
-    link pid
     send pid actorP
     send pid ((ACP me,ninfo) :: (ACP,NodeInfo))
     -- Start listening on events
@@ -416,9 +417,8 @@ runMasterACP (ParamACP self () resources actorP) act = do
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.
-    pid <- spawnLocal (runUnit act)
+    pid <- spawnLocal (link me >> runUnit act)
     _   <- monitor pid
-    link pid
     send pid actorP
     send pid (ACP me,ninfo)
     -- Start listening on events

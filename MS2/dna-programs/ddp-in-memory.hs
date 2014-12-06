@@ -66,15 +66,15 @@ remotable [ 'ddpProductSlice
 -- | Actor for calculating dot product
 ddpDotProduct :: Actor (String,Int64) Double
 ddpDotProduct = actor $ \(fname,size) -> do
-    res <- selectMany 4
+    res   <- selectMany 4
     shell <- startGroup res $(mkStaticClosure 'ddpProductSlice)
     broadcastParam (fname,size) shell
     partials <- delayGroup shell
-    gather partials (+) 0
-
-
+    x <- gather partials (+) 0
+    logMessage "GATHER"
+    return x
 
 main :: IO ()
 main = dnaRun (DDP.__remoteTable . __remoteTable) $ do
     b <- eval ddpDotProduct ("file.dat",1000000)
-    liftIO $ print b
+    liftIO $ putStrLn $ "RESULT: " ++ show b

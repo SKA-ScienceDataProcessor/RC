@@ -131,10 +131,12 @@ acpStep st = receiveWait
       -- Connect children
     , msg handleConnect
       -- Monitoring notifications
-    , msg $ \(ProcessMonitorNotification _ pid reason) -> do
-        case reason of
-          DiedNormal    -> handleNormalTermination pid
-          _             -> handleProcessCrash      pid
+    , match $ \(ProcessMonitorNotification _ pid reason) -> case () of
+        _| pid == st ^. stActor -> handleChildTermination reason st
+         | otherwise            -> Just <$> flip execStateT st (case reason of
+             DiedNormal    -> handleNormalTermination pid
+             _             -> handleProcessCrash      pid
+             )
     ]
   where
     msg :: Serializable a => (a -> StateT StateACP Process ()) -> Match (Maybe StateACP)
@@ -191,6 +193,11 @@ handleReqResourcesGrp (ReqResourcesGrp n) = do
 
 
 handleConnect :: ReqConnect -> StateT StateACP Process ()
+handleConnect (ReqConnectGrp gid acp port) = do
+    Just grp <- use $ stGroups . at gid
+    case grp of
+      GroupShell{} -> error "Impossible"
+      GroupState ty p _ -> stGroups . at gid .= Just (GroupState ty p (Just port))
 handleConnect _ = do
     -- FIXME: for time being we ignore messages. this means we cannot
     --        act properly when process fails.
@@ -204,7 +211,7 @@ handleSpawnShell (ReqSpawnShell actor chShell resID) = do
     -- Spawn remote ACP
     acpClos <- use stAcpClosure
     me      <- lift getSelfPid
-    (acp,_) <- lift $ spawnSupervised (nodeID n) actor
+    (acp,_) <- lift $ spawnSupervised (nodeID n) acpClos
     lift $ send acp $ ParamACP
         { acpSelf         = acpClos
         , acpActorClosure = actor
@@ -231,7 +238,7 @@ handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
     let k = length res
     forM_ ([0..] `zip` res) $ \(i, rid) -> do
         Just r@(VirtualCAD _ n _) <- use $ stAllocResources . at rid
-        (acp,_) <- lift $ spawnSupervised (nodeID n) actor
+        (acp,_) <- lift $ spawnSupervised (nodeID n) acpClos
         me <- lift getSelfPid
         lift $ send acp ParamACP
             { acpSelf         = acpClos
@@ -254,6 +261,12 @@ handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
 
 
 
+handleChildTermination :: DiedReason -> StateACP -> Process (Maybe StateACP)
+-- FIXME: do someing about children if needed
+handleChildTermination DiedNormal _ = return Nothing
+handleChildTermination _ _ = error "Ooops!"
+
+
 handleNormalTermination :: ProcessId -> StateT StateACP Process ()
 handleNormalTermination pid = do
     -- Silently remove node from list of monitored nodes
@@ -264,19 +277,19 @@ handleNormalTermination pid = do
       -- we kill all other processes and forget them. But it possible
       -- that one could terminate normally before receiving message
       Nothing -> return ()
-      Just (Left ShellProc{}) -> error "Cannot happen!"
+      Just (Left ShellProc{}) -> error $ "Cannot happen single proc normal termination "
       Just (Left  _  ) -> stChildren . at pid .= Nothing
       -- Process belongs to group
       Just (Right gid) -> do
           Just g <- use $ stGroups . at gid
           case g of
-            GroupShell{} -> error "Cannot happen"
+            GroupShell{} -> error "Cannot happen: group normal termination"
             -- We are done
             GroupState _ (GroupProcs 1 nD) (Just ch) -> do
-                lift $ sendChan ch (Just (nD+1))
+                lift $ forM_ ch $ \c -> sendChan c (Just (nD+1))
                 stGroups . at gid .= Nothing
             GroupState _ (GroupProcs 1 nD) Nothing -> do
-                stGroups . at gid .= Just (CompletedGroup (Just nD))
+                stGroups . at gid .= Just (CompletedGroup (Just (nD+1)))
             -- Not yet
             GroupState ty (GroupProcs nR nD) mch -> do
                 stGroups . at gid .= Just (GroupState ty (GroupProcs (nR-1) (nD+1)) mch)
@@ -316,7 +329,7 @@ handleProcessCrash pid = do
                 stGroups . at gid .= Nothing
             -- In normal group we terminate whole group!
             GroupState NormalGroup _ (Just ch) -> do
-                lift $ sendChan ch Nothing
+                lift $ forM_ ch $ \c -> sendChan c Nothing
                 stGroups . at gid .= Nothing
             GroupState NormalGroup _ Nothing -> do
                 stGroups . at gid .= Just (CompletedGroup Nothing)
@@ -327,6 +340,7 @@ handleProcessCrash pid = do
 
 handleChannelMsg :: (ProcessId,Message) -> StateT StateACP Process ()
 handleChannelMsg (pid,msg) = do
+    me <- lift getSelfPid
     r <- use $ stChildren . at pid
     case r of
       Just (Left (ShellProc ch)) -> do
@@ -343,8 +357,10 @@ handleChannelMsg (pid,msg) = do
                        stGroups . at gid .= Just (GroupState ty (GroupProcs n 0) Nothing)
                    else do
                        stGroups . at gid .= Just (GroupShell ty ch n (msg : msgs))
-            _ -> error "Cannot happen"
-      _ -> error "Cannot happen"
+            _ -> error "Cannot happen: group crash"
+      -- Errors
+      Nothing -> error $ "Cannot happen: unknown process " ++ show pid
+      _       -> error $ "Cannot happen: single proc crash " ++ show pid
 
 
 
@@ -373,6 +389,7 @@ data StateACP = StateACP
     , _stUsedResources :: !(Map ProcessId VirtualCAD)
       -- Resources used by some process
     }
+    deriving (Show)
 
 -- State of process.
 data ProcState
@@ -384,28 +401,31 @@ data ProcState
       -- Process is running and we know its sink
     | Failed
       -- Process failed
+    deriving (Show)
 
 data GroupProcs = GroupProcs
     { grpRunning :: !Int
     , grpDone    :: !Int
     }
+    deriving (Show)
 
 -- State of group of processes
 data GroupState
     = GroupShell GroupType (SendPort (Maybe (GroupID,[Message]))) Int [Message]
       -- We started processes but didn't assembled processes yet
-    | GroupState GroupType GroupProcs (Maybe (SendPort (Maybe Int)))
+    | GroupState GroupType GroupProcs (Maybe [SendPort (Maybe Int)])
       -- Running group. It contains following fields:
       --  + Type of group of processes
       --  + (N completed, N crashed)
       --  + channel to send information on completion
     | CompletedGroup (Maybe Int)
       -- Group which completed execution normally of abnormally
+    deriving (Show)
 
 data GroupType
     = NormalGroup
     | FailoutGroup
-
+    deriving (Show)
 
 stCounter :: Lens' StateACP Int
 stCounter = lens _stCounter (\a x -> x { _stCounter = a})
@@ -503,12 +523,12 @@ startLoggerProcess logdir = do
     liftIO $ createDirectoryIfMissing True logdir
     bracket open fini $ \h -> do
         me <- getSelfPid
-        liftIO $ print $ logdir ++ " " ++ show me
         register "dnaLogger" me
         forever $ do
             s <- expect
             liftIO $ print s
             liftIO $ hPutStrLn h s
+            liftIO $ hFlush h
   where
     open   = liftIO (openFile (logdir ++ "/log") WriteMode)
     fini h = liftIO (hClose h)
