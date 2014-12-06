@@ -88,12 +88,30 @@ data Location = Remote
 data VirtualCAD = VirtualCAD Location NodeInfo [NodeInfo]
                   deriving (Show,Eq,Ord,Typeable,Generic)
 
+-- | Parameters for ACP process
+data ParamACP = ParamACP
+    { acpSelf :: Closure (Process ())
+      -- ^ Closure for the DNA.DNA.runACP function. We have to pass it
+      --   explicitly since we cannot create it inside @runACP@.
+    , acpVCAD :: VirtualCAD
+      -- ^ Part of cluster allocated to the process
+    , acpRank      :: Rank
+      -- ^ Rank of actor
+    , acpGroupSize :: GroupSize
+      -- ^ Size of a group of actors
+    }
+    deriving (Show,Typeable,Generic)
+
 instance Binary a => Binary (CAD a)
 instance Binary NodeInfo
 instance Binary VirtualCAD
 instance Binary Location
+instance Binary ParamACP
 
 
+----------------------------------------------------------------
+-- Shell actors
+----------------------------------------------------------------
 
 -- | Simple shell process
 data Shell a b = Shell

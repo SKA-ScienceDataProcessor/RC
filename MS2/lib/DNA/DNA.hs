@@ -376,8 +376,9 @@ runCollectActor (CollectActor step start fini) = do
 runACP :: Process ()
 runACP = do
     -- Get parameters for ACP and actor
-    (self, ninfo, resources, rnk, grp) <- expect
-    (child,parent)              <- expect
+    ParamACP self resources rnk grp <- expect
+    (child,parent)                  <- expect
+    let VirtualCAD _ ninfo _ = resources
     -- Start actor process
     nid <- getSelfNode
     me  <- getSelfPid
