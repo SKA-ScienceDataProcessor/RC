@@ -129,7 +129,7 @@ acpStep st = receiveWait
     , msg handleSpawnShellGroup
     , msg handleChannelMsg
       -- Connect children
-
+    , msg handleConnect
       -- Monitoring notifications
     , msg $ \(ProcessMonitorNotification _ pid reason) -> do
         case reason of
@@ -189,6 +189,12 @@ handleReqResourcesGrp (ReqResourcesGrp n) = do
     pid <- use stActor
     lift $ send pid ress
 
+
+handleConnect :: ReqConnect -> StateT StateACP Process ()
+handleConnect _ = do
+    -- FIXME: for time being we ignore messages. this means we cannot
+    --        act properly when process fails.
+    return ()
 
 handleSpawnShell :: ReqSpawnShell -> StateT StateACP Process ()
 handleSpawnShell (ReqSpawnShell actor chShell resID) = do
