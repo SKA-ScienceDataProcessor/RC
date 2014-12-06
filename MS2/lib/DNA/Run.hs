@@ -14,14 +14,17 @@ import Control.Distributed.Process.Node (initRemoteTable)
 import System.Environment (getExecutablePath,getEnv)
 import System.Process
 import System.FilePath    ((</>))
+import qualified Data.Foldable as T
 
 import DNA.SlurmBackend (initializeBackend,startMaster,startSlaveWithProc)
 import qualified DNA.SlurmBackend as CH
 import DNA.CmdOpts
 import DNA.DNA        hiding (__remoteTable,rank)
 import DNA.Controller hiding (__remoteTable)
+import DNA.Types
 import qualified DNA.DNA
 import qualified DNA.Controller
+
 
 
 -- | Parse command line option and start program
@@ -78,10 +81,23 @@ runUnix logDir rtable opts nProc dna = do
 
 executeDNA :: FilePath -> DNA () -> [NodeId] -> Process ()
 executeDNA logDir dna nodes = do
-    startLoggerProcess logDir
+    me  <- getSelfPid
+    nid <- getSelfNode
+    _   <- spawnLocal $ startLoggerProcess logDir
     -- Create CAD out of list of nodes
-    let initialCAD = makeCAD nodes
-    cad <- spawnHierachically initialCAD
-    -- Start master's ACP
-    let acpClos = $(mkStaticClosure 'runACP)
-    return ()
+    let initialCAD = makeCAD (nid : nodes)
+    -- FIXME: very-very-very bad
+    CAD n rest <- spawnHierachically initialCAD
+    let param = ParamACP
+            { acpSelf  = acpClos
+            , acpActorClosure = ()
+            , acpVCAD = VirtualCAD Local n (T.toList =<< rest)
+            , acpActor = ParamActor
+                { actorParentACP = me
+                , actorRank      = Rank 0
+                , actorGroupSize = GroupSize 1
+                }
+            }
+        acpClos = $(mkStaticClosure 'runACP)
+    -- Start master ACP
+    runMasterACP param dna

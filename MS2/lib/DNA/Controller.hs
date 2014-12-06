@@ -483,12 +483,6 @@ nodeController = do
     () <- expect
     return ()
 
-loggerProcess :: Process ()
-loggerProcess = forever $ do
-    s <- expect :: Process String
-    return ()
-
-
 remotable [ 'nodeController ]
 
 
@@ -509,9 +503,11 @@ startLoggerProcess logdir = do
     liftIO $ createDirectoryIfMissing True logdir
     bracket open fini $ \h -> do
         me <- getSelfPid
+        liftIO $ print $ logdir ++ " " ++ show me
         register "dnaLogger" me
         forever $ do
             s <- expect
+            liftIO $ print s
             liftIO $ hPutStrLn h s
   where
     open   = liftIO (openFile (logdir ++ "/log") WriteMode)

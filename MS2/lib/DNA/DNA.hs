@@ -65,6 +65,7 @@ module DNA.DNA (
     , runActor
     , runCollectActor
     , runACP
+    , runMasterACP
     , __remoteTable
     , runACP__static
     ) where
@@ -389,6 +390,37 @@ runACP = do
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.
     (pid,_) <- spawnSupervised nid act
+    link pid
+    send pid actorP
+    send pid (ACP me,ninfo)
+    -- Start listening on events
+    startAcpLoop self pid resources
+
+
+-- | Start execution of standard actor.
+runUnit :: DNA () -> Process ()
+runUnit action = do
+    -- Obtain parameters
+    ParamActor parent rnk grp <- expect
+    (acp,ninfo) <- expect
+    me          <- getSelfNode
+    runDNA acp ninfo rnk grp action
+
+
+-- FIXME: duplication
+runMasterACP :: ParamACP () -> DNA () -> Process ()
+runMasterACP (ParamACP self () resources actorP) act = do
+    let VirtualCAD _ ninfo _ = resources
+    -- Start actor process
+    me  <- getSelfPid
+    -- FIXME: Ugly logger!!!
+    send (loggerProc ninfo) $ "Starting ACP: " ++ show me
+    liftIO $ print (loggerProc ninfo)
+    -- FIXME: understand how do we want to monitor state of child
+    --        process? Do we want to just die unconditionally or maybe
+    --        we want to do something.
+    pid <- spawnLocal (runUnit act)
+    _   <- monitor pid
     link pid
     send pid actorP
     send pid (ACP me,ninfo)
