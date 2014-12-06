@@ -334,16 +334,15 @@ runActor :: Actor a b -> Process ()
 runActor (Actor action) = do
     -- Obtain parameters
     ParamActor parent rnk grp <- expect
-    (acp,ninfo) <- expect
-    me          <- getSelfNode
+    (ACP acp,ninfo) <- expect
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
     -- Send shell process back
-    send parent (me, wrapMessage $ Shell chSendParam chSendDst acp)
+    send parent (acp, wrapMessage $ Shell chSendParam chSendDst (ACP acp))
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
-    b   <- runDNA acp ninfo rnk grp (action a)
+    b   <- runDNA (ACP acp) ninfo rnk grp (action a)
     dst <- receiveChan chRecvDst
     forM_ dst $ \ch -> sendChan ch b
 
@@ -352,16 +351,16 @@ runCollectActor :: CollectActor a b -> Process ()
 runCollectActor (CollectActor step start fini) = do
     -- Obtain parameters
     ParamActor parent rnk grp <- expect
-    (acp,ninfo) <- expect
-    me          <- getSelfNode
+    (ACP acp,ninfo) <- expect
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
-    send parent (me, wrapMessage $ CollectorShell chSendParam chSendN chSendDst acp)
+    send parent (acp, wrapMessage $
+                      CollectorShell chSendParam chSendN chSendDst (ACP acp))
     -- Start execution of an actor
-    b <- runDNA acp ninfo rnk grp $ do
+    b <- runDNA (ACP acp) ninfo rnk grp $ do
         s0 <- start
         s  <- gatherM (Group chRecvParam chRecvN) step s0
         fini s
@@ -385,14 +384,14 @@ runACP = do
     nid <- getSelfNode
     me  <- getSelfPid
     -- FIXME: Ugly logger!!!
-    send (loggerProc ninfo) $ "Starting ACP: " ++ show me
+--    send (loggerProc ninfo) $ "Starting ACP: " ++ show me
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.
     (pid,_) <- spawnSupervised nid act
     link pid
     send pid actorP
-    send pid (ACP me,ninfo)
+    send pid ((ACP me,ninfo) :: (ACP,NodeInfo))
     -- Start listening on events
     startAcpLoop self pid resources
 
@@ -401,9 +400,8 @@ runACP = do
 runUnit :: DNA () -> Process ()
 runUnit action = do
     -- Obtain parameters
-    ParamActor parent rnk grp <- expect
+    ParamActor _ rnk grp <- expect
     (acp,ninfo) <- expect
-    me          <- getSelfNode
     runDNA acp ninfo rnk grp action
 
 
@@ -414,8 +412,7 @@ runMasterACP (ParamACP self () resources actorP) act = do
     -- Start actor process
     me  <- getSelfPid
     -- FIXME: Ugly logger!!!
-    send (loggerProc ninfo) $ "Starting ACP: " ++ show me
-    liftIO $ print (loggerProc ninfo)
+    send (loggerProc ninfo) $ "Starting master ACP: " ++ show me
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.
@@ -442,7 +439,9 @@ eval :: (Serializable a, Serializable b)
      => Actor a b
      -> a
      -> DNA b
-eval (Actor act) a = act a
+eval (Actor act) a = do
+    logMessage "executing: eval"
+    act a
 
 
 -- | Start single actor
