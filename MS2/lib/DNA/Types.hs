@@ -3,6 +3,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveDataTypeable, DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable, DeriveTraversable #-}
 {-# LANGUAGE DeriveGeneric #-}
 module DNA.Types where
 
@@ -10,6 +11,8 @@ import Control.Distributed.Process
 import Control.Distributed.Process.Serializable (Serializable)
 import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
+import Data.Foldable (Foldable)
+import Data.Traversable (Traversable)
 import qualified Data.Set        as Set
 import           Data.Set          (Set)
 import GHC.Generics  (Generic)
@@ -67,7 +70,7 @@ newtype ACP = ACP { acpPID :: ProcessId }
 -- | Cluster architecture description. Nodes are arranged into rose
 --   tree and it's polymorphic in
 data CAD a = CAD a [CAD a]
-             deriving (Show,Typeable,Generic,Functor)
+             deriving (Show,Typeable,Generic,Functor,Foldable,Traversable)
 
 -- | Information about node. It's normally used in the CAD.
 data NodeInfo = NodeInfo
