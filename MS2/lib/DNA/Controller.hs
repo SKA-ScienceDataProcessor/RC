@@ -74,14 +74,20 @@ startAcpLoop self pid (VirtualCAD _ n nodes) = do
 ----------------------------------------------------------------
 
 -- | Command to spawn shell actor. Contains pair of
-data ReqSpawnShell = ReqSpawnShell (Closure (Process ())) ProcessId Resources
-                    deriving (Show,Typeable,Generic)
+data ReqSpawnShell = ReqSpawnShell
+    (Closure (Process ()))      -- Actor's closure
+    (SendPort (Maybe Message))  -- Port to send Shell to
+    Resources                   -- Resources ID for an actor
+    deriving (Show,Typeable,Generic)
 instance Binary ReqSpawnShell
 
 
 -- | Command to spawn group of shell actors
-data ReqSpawnGroup = ReqSpawnGroup (Closure (Process ())) ProcessId [Resources]
-                    deriving (Show,Typeable,Generic)
+data ReqSpawnGroup = ReqSpawnGroup
+    (Closure (Process ()))      -- Actor's closure
+    (SendPort (Maybe (GroupID,[Message])))  -- Port to send Shell to
+    [Resources]                 -- Resources ID for all actors
+    deriving (Show,Typeable,Generic)
 instance Binary ReqSpawnGroup
 
 
@@ -121,6 +127,7 @@ acpStep st = receiveWait
       -- Requests for spawning children\
     , msg handleSpawnShell
     , msg handleSpawnShellGroup
+    , msg handleChannelMsg
       -- Connect children
 
       -- Monitoring notifications
@@ -132,6 +139,7 @@ acpStep st = receiveWait
   where
     msg :: Serializable a => (a -> StateT StateACP Process ()) -> Match (Maybe StateACP)
     msg handler = match $ \a -> Just <$> execStateT (handler a) st
+
 
 
 
@@ -156,8 +164,8 @@ handleReqResources (ReqResources loc n) = do
                 error "Cannot allocate enough resources!"
             let (touse,rest) = splitAt n free
             stNodePool .= rest
-            n <- use stLocalNode
-            return $ VirtualCAD loc n touse
+            nid <- use stLocalNode
+            return $ VirtualCAD loc nid touse
     stAllocResources . at res .= Just resourse
     -- Send back reply
     pid <- use stActor
@@ -183,27 +191,31 @@ handleReqResourcesGrp (ReqResourcesGrp n) = do
 
 
 handleSpawnShell :: ReqSpawnShell -> StateT StateACP Process ()
-handleSpawnShell (ReqSpawnShell actor pid resID) = do
+handleSpawnShell (ReqSpawnShell actor chShell resID) = do
     -- FIXME: better error reporting. If we reuse resource to spawn
     --        process we'll trigger bad pattern error
     Just res@(VirtualCAD _ n _) <- use $ stAllocResources . at resID
-    -- Spawn remote supervisor
+    -- Spawn remote ACP
     acpClos <- use stAcpClosure
+    me      <- lift getSelfPid
     (acp,_) <- lift $ spawnSupervised (nodeID n) actor
     lift $ send acp $ ParamACP
-        { acpSelf      = acpClos
-        , acpVCAD      = res
-        , acpRank      = Rank 0
-        , acpGroupSize = GroupSize 1
+        { acpSelf         = acpClos
+        , acpActorClosure = actor
+        , acpVCAD         = res
+        , acpActor = ParamActor
+            { actorParentACP = me
+            , actorRank      = Rank 0
+            , actorGroupSize = GroupSize 1
+            }
         }
-    lift $ send acp (actor, pid)
-    --
-    stChildren       . at acp   .= Just (Left Running)
+    -- Updare
+    stChildren       . at acp   .= Just (Left (ShellProc chShell))
     stAllocResources . at resID .= Nothing
     stUsedResources  . at acp   .= Just res
 
 handleSpawnShellGroup :: ReqSpawnGroup -> StateT StateACP Process ()
-handleSpawnShellGroup (ReqSpawnGroup actor pid res) = do
+handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
     -- FIXME: How to assemble a group?
     gid     <- GroupID <$> uniqID
     acpClos <- use stAcpClosure
@@ -214,20 +226,25 @@ handleSpawnShellGroup (ReqSpawnGroup actor pid res) = do
     forM_ ([0..] `zip` res) $ \(i, rid) -> do
         Just r@(VirtualCAD _ n _) <- use $ stAllocResources . at rid
         (acp,_) <- lift $ spawnSupervised (nodeID n) actor
+        me <- lift getSelfPid
         lift $ send acp ParamACP
-            { acpSelf      = acpClos
-            , acpVCAD      = r
-            , acpRank      = Rank i
-            , acpGroupSize = GroupSize k
+            { acpSelf         = acpClos
+            , acpActorClosure = actor
+            , acpVCAD  = r
+            , acpActor = ParamActor
+                { actorParentACP = me
+                , actorRank      = Rank i
+                , actorGroupSize = GroupSize k
+                }
             }
-        lift $ send acp (actor,pid)
-        lift $ send pid gid
-        stChildren . at acp .= Just (Right gid)
+        -- Update process status
+        stChildren       . at acp .= Just (Right gid)
         stAllocResources . at rid .= Nothing
         stUsedResources  . at acp .= Just r
     -- FIXME: pass type of group
     stGroups . at gid .= Just
-        (GroupState NormalGroup (GroupProcs (length res) 0) Nothing)
+        (GroupShell NormalGroup chShell (length res) [])
+--        (GroupState NormalGroup (GroupProcs (length res) 0) Nothing)
 
 
 
@@ -241,11 +258,13 @@ handleNormalTermination pid = do
       -- we kill all other processes and forget them. But it possible
       -- that one could terminate normally before receiving message
       Nothing -> return ()
+      Just (Left ShellProc{}) -> error "Cannot happen!"
       Just (Left  _  ) -> stChildren . at pid .= Nothing
       -- Process belongs to group
       Just (Right gid) -> do
           Just g <- use $ stGroups . at gid
           case g of
+            GroupShell{} -> error "Cannot happen"
             -- We are done
             GroupState _ (GroupProcs 1 nD) (Just ch) -> do
                 lift $ sendChan ch (Just (nD+1))
@@ -266,12 +285,17 @@ handleNormalTermination pid = do
 handleProcessCrash :: ProcessId -> StateT StateACP Process ()
 -- FIXME: I leave processes in stChildren dictionary when process
 --        crashes. Whole data structure is VERY inelegant
+--
+-- FIXME: kill everything if we cannot continue
 handleProcessCrash pid = do
     r <- use $ stChildren . at pid
     case r of
       -- Again we could remove child from list of known processes already
       Nothing -> return ()
       -- Single process
+      Just (Left (ShellProc ch)) -> do
+          lift $ sendChan ch Nothing
+          stChildren . at pid .= Nothing
       Just (Left (Connected remotes)) -> do
           lift $ forM_ remotes $ \(ACP acp) -> send acp Terminate
           stChildren . at pid .= Nothing
@@ -281,6 +305,9 @@ handleProcessCrash pid = do
       Just (Right gid) -> do
           Just g <- use $ stGroups . at gid
           case g of
+            GroupShell _ ch _ _ -> do
+                lift $ sendChan ch Nothing
+                stGroups . at gid .= Nothing
             -- In normal group we terminate whole group!
             GroupState NormalGroup _ (Just ch) -> do
                 lift $ sendChan ch Nothing
@@ -292,6 +319,26 @@ handleProcessCrash pid = do
             CompletedGroup{} -> return ()
 
 
+handleChannelMsg :: (ProcessId,Message) -> StateT StateACP Process ()
+handleChannelMsg (pid,msg) = do
+    r <- use $ stChildren . at pid
+    case r of
+      Just (Left (ShellProc ch)) -> do
+          lift $ sendChan ch (Just msg)
+          stChildren . at pid .= Just (Left Running)
+      Just (Right gid) -> do
+          Just grp <- use (stGroups . at gid)
+          case grp of
+            GroupShell ty ch n (msgs) ->
+                let k = length (msg : msgs)
+                in if k == n
+                   then do
+                       lift $ sendChan ch (Just (gid,msg : msgs))
+                       stGroups . at gid .= Just (GroupState ty (GroupProcs n 0) Nothing)
+                   else do
+                       stGroups . at gid .= Just (GroupShell ty ch n (msg : msgs))
+            _ -> error "Cannot happen"
+      _ -> error "Cannot happen"
 
 
 
@@ -321,9 +368,11 @@ data StateACP = StateACP
       -- Resources used by some process
     }
 
--- State of process
+-- State of process.
 data ProcState
-    = Running
+    = ShellProc (SendPort (Maybe Message))
+      -- We started process but didn't receive status update from it
+    | Running
       -- Process is running but we don't know its sink yet
     | Connected [ACP]
       -- Process is running and we know its sink
@@ -337,7 +386,9 @@ data GroupProcs = GroupProcs
 
 -- State of group of processes
 data GroupState
-    = GroupState GroupType GroupProcs (Maybe (SendPort (Maybe Int)))
+    = GroupShell GroupType (SendPort (Maybe (GroupID,[Message]))) Int [Message]
+      -- We started processes but didn't assembled processes yet
+    | GroupState GroupType GroupProcs (Maybe (SendPort (Maybe Int)))
       -- Running group. It contains following fields:
       --  + Type of group of processes
       --  + (N completed, N crashed)
@@ -376,6 +427,7 @@ stAllocResources = lens _stAllocResources (\a x -> x { _stAllocResources = a})
 
 stUsedResources :: Lens' StateACP (Map ProcessId VirtualCAD)
 stUsedResources = lens _stUsedResources (\a x -> x { _stUsedResources = a})
+
 
 
 
@@ -458,3 +510,18 @@ startLoggerProcess logdir = do
   where
     open   = liftIO (openFile (logdir ++ "/log") WriteMode)
     fini h = liftIO (hClose h)
+
+
+
+
+----------------------------------------------------------------
+-- Helper functions
+----------------------------------------------------------------
+
+data FMatch b where
+    MatchChan :: Serializable a
+              => ReceivePort a -> (a -> Process b) -> FMatch b
+
+instance Functor FMatch where
+    fmap f (MatchChan ch g) =
+        MatchChan ch (fmap f . g)

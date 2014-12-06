@@ -93,12 +93,23 @@ data ParamACP = ParamACP
     { acpSelf :: Closure (Process ())
       -- ^ Closure for the DNA.DNA.runACP function. We have to pass it
       --   explicitly since we cannot create it inside @runACP@.
+    , acpActorClosure   :: Closure (Process ())
+      -- ^ Closure for actor to run
     , acpVCAD :: VirtualCAD
       -- ^ Part of cluster allocated to the process
-    , acpRank      :: Rank
-      -- ^ Rank of actor
-    , acpGroupSize :: GroupSize
-      -- ^ Size of a group of actors
+    , acpActor :: ParamActor
+      -- ^ Parameters for actor
+    }
+    deriving (Show,Typeable,Generic)
+
+-- | Parameter send to actor on startup
+data ParamActor = ParamActor
+    { actorParentACP :: ProcessId
+      -- ^ Destination to send channels to.
+    , actorRank      :: Rank
+      -- ^ Rank of an actor
+    , actorGroupSize :: GroupSize
+      -- ^ Size of group of actors
     }
     deriving (Show,Typeable,Generic)
 
@@ -107,6 +118,7 @@ instance Binary NodeInfo
 instance Binary VirtualCAD
 instance Binary Location
 instance Binary ParamACP
+instance Binary ParamActor
 
 
 ----------------------------------------------------------------

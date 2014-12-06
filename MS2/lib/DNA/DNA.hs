@@ -321,22 +321,25 @@ delayGroup (ShellGroup gid shells) = do
 
 ----------------------------------------------------------------
 -- Running actors
+--
+-- We use relatively complicated algorithm for spawning actors. To
+-- spawn shell (not connected anywhere) actor we send message to our
+-- ACP which in turn spawns ACP for shell actor.
+--
 ----------------------------------------------------------------
 
 -- | Start execution of standard actor.
 runActor :: Actor a b -> Process ()
 runActor (Actor action) = do
-    -- Where to send channels?
-    Parent pid <- expect
-    acp        <- expect
-    rnk        <- expect
-    grp        <- expect
-    ninfo      <- expect
+    -- Obtain parameters
+    ParamActor parent rnk grp <- expect
+    (acp,ninfo) <- expect
+    me          <- getSelfNode
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
     -- Send shell process back
-    send pid (Shell chSendParam chSendDst acp)
+    send parent (me, wrapMessage $ Shell chSendParam chSendDst acp)
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
     b   <- runDNA acp ninfo rnk grp (action a)
@@ -346,18 +349,17 @@ runActor (Actor action) = do
 -- | Start execution of collector actor
 runCollectActor :: CollectActor a b -> Process ()
 runCollectActor (CollectActor step start fini) = do
-    -- Where to send channels?
-    Parent pid <- expect
-    acp        <- expect
-    rnk        <- expect
-    grp        <- expect
-    ninfo      <- expect
+    -- Obtain parameters
+    ParamActor parent rnk grp <- expect
+    (acp,ninfo) <- expect
+    me          <- getSelfNode
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
     (chSendN,    chRecvN    ) <- newChan
-    -- Send shell process back
-    send pid (CollectorShell chSendParam chSendN chSendDst acp)
+    -- Send shell process description back
+    send parent (me, wrapMessage $ CollectorShell chSendParam chSendN chSendDst acp)
+    -- Start execution of an actor
     b <- runDNA acp ninfo rnk grp $ do
         s0 <- start
         s  <- gatherM (Group chRecvParam chRecvN) step s0
@@ -376,8 +378,7 @@ runCollectActor (CollectActor step start fini) = do
 runACP :: Process ()
 runACP = do
     -- Get parameters for ACP and actor
-    ParamACP self resources rnk grp <- expect
-    (child,parent)                  <- expect
+    ParamACP self act resources actorP <- expect
     let VirtualCAD _ ninfo _ = resources
     -- Start actor process
     nid <- getSelfNode
@@ -387,13 +388,10 @@ runACP = do
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.
-    (pid,_) <- spawnSupervised nid child
+    (pid,_) <- spawnSupervised nid act
     link pid
-    send pid (parent :: Parent   )
-    send pid (rnk    :: Rank     )
-    send pid (grp    :: GroupSize)
-    send pid (ACP me)
-    send pid (ninfo :: NodeInfo)
+    send pid actorP
+    send pid (ACP me,ninfo)
     -- Start listening on events
     startAcpLoop self pid resources
 
@@ -419,12 +417,17 @@ eval (Actor act) a = act a
 startActor :: (Serializable a, Serializable b)
            => Resources -> Closure (Actor a b) -> DNA (Shell a b)
 startActor res child = do
-    ACP acp <- getMonitor
-    me      <- liftP getSelfPid
+    ACP acp         <- getMonitor
+    (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runActor) `closureApply` child
-    liftP $ send acp $ ReqSpawnShell clos me res
-    shell <- liftP expect
-    return shell
+    liftP $ send acp $ ReqSpawnShell clos shellS res
+    mmsg <- liftP (receiveChan shellR)
+    case mmsg of
+      Nothing -> error "Ooops! Cannot obtain shell"
+      Just msg -> do m <- unwrapMessage msg
+                     case m of
+                       Nothing -> error "Bad shell message"
+                       Just  s -> return s
 
 
 -- | Start single collector actor
@@ -433,12 +436,17 @@ startCollector :: (Serializable a, Serializable b)
                -> Closure (CollectActor a b)
                -> DNA (CollectorShell a b)
 startCollector res child = do
-    ACP acp <- getMonitor
-    me      <- liftP getSelfPid
+    ACP acp         <- getMonitor
+    (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
-    liftP $ send acp $ ReqSpawnShell clos me res
-    shell <- liftP expect
-    return shell
+    liftP $ send acp $ ReqSpawnShell clos shellS res
+    mmsg <- liftP (receiveChan shellR)
+    case mmsg of
+      Nothing -> error "Ooops! Cannot obtain shell"
+      Just msg -> do m <- unwrapMessage msg
+                     case m of
+                       Nothing -> error "Bad shell message"
+                       Just  s -> return s
 
 
 -- | Start group of processes
@@ -447,15 +455,20 @@ startGroup :: (Serializable a, Serializable b)
            -> Closure (Actor a b)
            -> DNA (ShellGroup a b)
 startGroup res child = do
-    ACP acp <- getMonitor
-    me      <- liftP getSelfPid
+    ACP acp         <- getMonitor
+    (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runActor) `closureApply` child
-    liftP $ send acp $ ReqSpawnGroup clos me res
+    liftP $ send acp $ ReqSpawnGroup clos shellS res
     -- FIXME: here we spawn groups in very unreliable manner. We
     --        assume that nothingf will crash which is plain wrong
-    gid    <- liftP expect
-    shells <- liftP $ replicateM (length res) expect
-    return $ ShellGroup gid shells
+    mmsg <- liftP (receiveChan shellR)
+    case mmsg of
+      Nothing -> error "Ooops! Cannot obtain shell"
+      Just (gid,msgs) -> do
+          ms <- mapM unwrapMessage msgs
+          case sequence ms of
+            Nothing -> error "Bad shell message"
+            Just  s -> return (ShellGroup gid s)
 
 
 -- | Start group of collector processes
@@ -465,14 +478,19 @@ startCollectorGroup
     -> Closure (CollectActor a b)
     -> DNA (GroupCollect a b)
 startCollectorGroup res child = do
-    ACP acp <- getMonitor
-    me      <- liftP getSelfPid
+    ACP acp         <- getMonitor
+    (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
-    liftP $ send acp $ ReqSpawnGroup clos me res
-    gid    <- liftP expect
+    liftP $ send acp $ ReqSpawnGroup clos shellS res
     -- FIXME: See above
-    shells <- liftP $ replicateM (length res) expect
-    return $ GroupCollect gid shells
+    mmsg <- liftP (receiveChan shellR)
+    case mmsg of
+      Nothing -> error "Ooops! Cannot obtain shell"
+      Just (gid,msgs) -> do
+          ms <- mapM unwrapMessage msgs
+          case sequence ms of
+            Nothing -> error "Bad shell message"
+            Just  s -> return (GroupCollect gid s)
 
 
 
