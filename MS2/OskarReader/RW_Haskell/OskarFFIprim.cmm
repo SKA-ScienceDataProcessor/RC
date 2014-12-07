@@ -1,0 +1,29 @@
+#include "Cmm.h"
+
+vis_allocate_and_readzh(W_ filepath) {
+  W_ status_addr; /* CInt status; */
+  W_ vh;
+  W_ status;
+  CInt num_channels;
+  CInt num_times;
+  CInt num_baselines;
+
+  reserve 1 = status_addr {
+    W_[status_addr] = 0;
+    ("ptr" vh) = ccall oskar_vis_read(filepath "ptr", status_addr "ptr");
+  }
+
+  status = W_[status_addr];
+
+  if (status == 0) {
+    (num_channels)  = ccall oskar_vis_num_channels (vh "ptr");
+    (num_times)     = ccall oskar_vis_num_times    (vh "ptr");
+    (num_baselines) = ccall oskar_vis_num_baselines(vh "ptr");
+  } else {
+    num_channels  = 0;
+    num_times     = 0;
+    num_baselines = 0;
+  }
+  
+  return (vh, TO_W_(num_times * num_baselines), TO_W_(num_channels), vis_write_and_free, W_[status_addr]);
+}
