@@ -2,9 +2,10 @@
 
 #include "griddingSimple_double_CUDA.h"
 
-#ifndef BASELINES
-#define BASELINES (44*(44-1)/2)
+#ifndef NR_STATIONS
+#define NR_STATIONS	44
 #endif
+#define BASELINES	(NR_STATIONS * (NR_STATIONS - 1) / 2)
 #ifndef TIMESTEPS
 #define TIMESTEPS 20
 #endif
