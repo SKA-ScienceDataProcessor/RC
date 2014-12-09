@@ -7,12 +7,12 @@ halideComputeGridOnCudazh(W_ uwv_ptr, W_ amp_ptr) {
   CInt errCode;
 
   reserve 1 = im_ptr_ptr {
-    (errCode) = ccall performHalideGriddingDouble(uwv_ptr "ptr", amp_ptr "ptr", im_ptr_ptr "ptr");
+    (errCode) = ccall halideComputeGridOnCuda(uwv_ptr "ptr", amp_ptr "ptr", im_ptr_ptr "ptr");
   }
   im_ptr = W_[im_ptr_ptr];
   ("ptr" data_ptr) = ccall halideGetGridData(im_ptr "ptr");
 
-  return (im_ptr, data_ptr, TO_W_(finalizeHalideDoubleImage), TO_W_(errCode));
+  return (im_ptr, data_ptr, TO_W_(halideFinalizeGrid), TO_W_(errCode));
 }
 
 romeinComputeGridOnCudazh(W_ uwv_ptr, W_ amp_ptr) {
