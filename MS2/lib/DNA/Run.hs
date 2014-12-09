@@ -21,6 +21,7 @@ import qualified DNA.SlurmBackend as CH
 import DNA.CmdOpts
 import DNA.DNA        hiding (__remoteTable,rank)
 import DNA.Controller hiding (__remoteTable)
+import DNA.Logging
 import DNA.Types
 import qualified DNA.DNA
 import qualified DNA.Controller

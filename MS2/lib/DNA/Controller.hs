@@ -1,3 +1,4 @@
+
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE DeriveFunctor, DeriveGeneric, DeriveDataTypeable #-}
@@ -19,7 +20,6 @@ module DNA.Controller (
       -- * Node controller
     , nodeController
     , spawnHierachically
-    , startLoggerProcess
     , __remoteTable
     ) where
 
@@ -37,8 +37,6 @@ import qualified Data.Set        as Set
 import           Data.Set          (Set)
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict   (Map)
-import System.IO
-import System.Directory   (createDirectoryIfMissing)
 import GHC.Generics (Generic)
 
 import DNA.Lens
@@ -600,20 +598,3 @@ spawnHierachically (CAD nid children) = do
     send pid (clos,me,children)
     cad <- expect
     return cad
-
-
--- | Start logger process and register in local registry
-startLoggerProcess :: FilePath -> Process ()
-startLoggerProcess logdir = do
-    liftIO $ createDirectoryIfMissing True logdir
-    bracket open fini $ \h -> do
-        me <- getSelfPid
-        register "dnaLogger" me
-        forever $ do
-            s <- expect
-            liftIO $ print s
-            liftIO $ hPutStrLn h s
-            liftIO $ hFlush h
-  where
-    open   = liftIO (openFile (logdir ++ "/log") WriteMode)
-    fini h = liftIO (hClose h)

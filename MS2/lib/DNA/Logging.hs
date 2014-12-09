@@ -7,6 +7,39 @@
 module DNA.Logging where
 
 
+import Control.Applicative
+import Control.Monad
+import Control.Monad.State
+import Control.Monad.Except
+import Control.Distributed.Process
+import Control.Distributed.Process.Closure
+import Control.Distributed.Process.Serializable (Serializable)
+import Data.Binary   (Binary)
+import Data.Typeable (Typeable)
+import qualified Data.Foldable   as T
+import System.IO
+import System.Directory   (createDirectoryIfMissing)
+import GHC.Generics (Generic)
+
+
+
+-- | Start logger process and register in local registry
+startLoggerProcess :: FilePath -> Process ()
+startLoggerProcess logdir = do
+    liftIO $ createDirectoryIfMissing True logdir
+    bracket open fini $ \h -> do
+        me <- getSelfPid
+        register "dnaLogger" me
+        forever $ do
+            s <- expect
+            liftIO $ hPutStrLn h s
+            liftIO $ hFlush h
+  where
+    open   = liftIO (openFile (logdir ++ "/log") WriteMode)
+    fini h = liftIO (hClose h)
+
+
+{-
 -- | Dictionary of logging functions. Note that logger could implement
 --   only parts of described functionality.
 data Logger m = Logger
@@ -19,3 +52,4 @@ data Logger m = Logger
   , -- | Put message to event log
     eventMessage :: String -> m ()
   }
+-}
