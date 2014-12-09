@@ -1,6 +1,11 @@
 #include <static_image.h>
 
+#if defined (WILKES_CLUSTER) || defined (CUDA_CONSUMER)
 #include "griddingSimple_double_CUDA.h"
+#else
+#include "griddingSimple_double.h"
+#define griddingSimple_double_CUDA griddingSimple_double
+#endif
 
 #ifndef NR_STATIONS
 #define NR_STATIONS	44
@@ -19,8 +24,16 @@
 #define GRID_U 2048
 #endif
 
-extern "C"
-int performHalideGriddingDouble(const double * uvw, const double * amp, Image<double> ** resp) {
+#ifdef _MSC_VER
+#define DLL_EXPORT __declspec(dllexport)
+#else
+#define DLL_EXPORT
+#endif
+
+extern "C" {
+
+DLL_EXPORT
+int halideComputeGridOnCuda(const double * uvw, const double * amp, Image<double> ** resp) {
     int nBaselines = BASELINES;
     int nTimesteps = TIMESTEPS * BLOCKS;
     int maxSupportSize = SUPPORT_U;
@@ -76,6 +89,14 @@ int performHalideGriddingDouble(const double * uvw, const double * amp, Image<do
     return errcode;
 }
 
-extern "C" void finalizeDoubleImage(Image<double> * im) {
+DLL_EXPORT
+double* halideGetGridData(Image<double> * im) {
+  return im->data();
+}
+
+DLL_EXPORT
+void halideFinalizeGrid(Image<double> * im) {
   delete im;
+}
+
 }

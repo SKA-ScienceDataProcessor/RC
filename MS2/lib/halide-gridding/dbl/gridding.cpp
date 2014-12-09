@@ -105,13 +105,17 @@ void gridding_func_simple(std::string typeName, Target* target) {
 } /* gridding_func_simple */
 
 int main(int argc, char **argv) {
-    gridding_func_simple<double>("double", NULL);
-
-#if     defined(WILKES_CLUSTER)
-   std::vector<Target::Feature> wilkesFeatures = {Target::SSE41, Target::AVX, Target::CUDA, Target::CUDACapability35};
-   Target wilkesTarget (Target::Linux, Target::X86, 64, wilkesFeatures);
-   gridding_func_simple<double>("double_CUDA", &wilkesTarget);
+#if defined (WILKES_CLUSTER) || defined (CUDA_CONSUMER)
+   std::vector<Target::Feature> cudaFeatures =
+#if defined (WILKES_CLUSTER)
+     {Target::SSE41, Target::AVX, Target::CUDA, Target::CUDACapability35};
+#else
+     {Target::SSE41, Target::CUDA};
 #endif
-
-    return 0;
+   Target cudaTarget(Target::Windows, Target::X86, 64, cudaFeatures);
+   gridding_func_simple<double>("double_CUDA", &cudaTarget);
+#else
+   gridding_func_simple<double>("double", NULL);
+#endif
+   return 0;
 }
