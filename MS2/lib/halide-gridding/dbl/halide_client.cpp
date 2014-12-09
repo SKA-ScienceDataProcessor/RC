@@ -47,7 +47,7 @@ int halideComputeGridOnCuda(const double * uvw, const double * amp, Image<double
         0                            // dev
       , const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(uvw))
       , {nBaselines, nTimesteps, 3}  // extents
-      , {1, nBaselines * nTimesteps} // strides
+      , {1, nBaselines, nBaselines * nTimesteps} // strides
       , {0}                          // minimums
       , sizeof(double)
       , true                         // host_dirty, can by any, because no dev is still involved
@@ -58,7 +58,7 @@ int halideComputeGridOnCuda(const double * uvw, const double * amp, Image<double
         0
       , const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(amp))
       , {nBaselines, nTimesteps, 8}
-      , {1, nBaselines * nTimesteps}
+      , {1, nBaselines, nBaselines * nTimesteps}
       , {0}
       , sizeof(double)
       , true
