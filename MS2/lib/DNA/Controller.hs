@@ -327,11 +327,11 @@ handleNormalTermination pid = do
         (\g _ -> case g of
            GroupShell{}           -> fatal "Impossible: Normal termination in shell group"
            GroupState _ _ Nothing -> fatal "Impossible: Unconnected process in group terminated normally"
-           GroupState _ (GroupProcs 1 nD) (Just ch) -> do
+           GroupState _ (1, nD) (Just ch) -> do
                lift $ forM_ ch $ \c -> sendChan c (Just (nD + 1))
                return Nothing
-           GroupState ty (GroupProcs nR nD) mch -> do
-               return $ Just (GroupState ty (GroupProcs (nR-1) (nD+1)) mch)
+           GroupState ty (nR, nD) mch -> do
+               return $ Just (GroupState ty (nR-1, nD+1) mch)
            CompletedGroup{} -> fatal "Impossible: Process terminated in complete group"
         )
     dropPID pid
@@ -364,13 +364,13 @@ handleProcessCrash pid = do
            GroupState NormalGroup _ Nothing -> do
                return $ Just $ CompletedGroup Nothing
            -- Failout groups
-           GroupState FailoutGroup (GroupProcs 1 nD) (Just ch) -> do
+           GroupState FailoutGroup (1, nD) (Just ch) -> do
                lift $ forM_ ch $ \c -> sendChan c (Just nD)
                return Nothing
-           GroupState FailoutGroup (GroupProcs 1 nD) Nothing -> do
+           GroupState FailoutGroup (1, nD) Nothing -> do
                return $ Just $ CompletedGroup (Just nD)
-           GroupState FailoutGroup (GroupProcs nR nD) mch -> do
-               return $ Just $ GroupState FailoutGroup (GroupProcs (nR-1) nD) mch
+           GroupState FailoutGroup (nR, nD) mch -> do
+               return $ Just $ GroupState FailoutGroup (nR-1, nD) mch
            -- Completed group
            CompletedGroup {} -> return (Just g)
         )
@@ -395,7 +395,7 @@ handleChannelMsg (pid,msg) = do
            GroupShell ty ch 1 msgs -> do
                let msgs' = msg : msgs
                lift $ sendChan ch (Just (gid, msgs'))
-               return $ Just $ GroupState ty (GroupProcs (length msgs') 0) Nothing
+               return $ Just $ GroupState ty (length msgs', 0) Nothing
            GroupShell ty ch n msgs -> do
                return $ Just $ GroupShell ty ch (n-1) (msg : msgs)
            _ -> fatal "Invalid shell for group is received"
@@ -493,17 +493,12 @@ data ProcState
       -- Process failed
     deriving (Show)
 
-data GroupProcs = GroupProcs
-    { grpRunning :: !Int
-    , grpDone    :: !Int
-    }
-    deriving (Show)
 
 -- State of group of processes
 data GroupState
     = GroupShell GroupType (SendPort (Maybe (GroupID,[Message]))) Int [Message]
       -- We started processes but didn't assembled processes yet
-    | GroupState GroupType GroupProcs (Maybe [SendPort (Maybe Int)])
+    | GroupState GroupType (Int,Int) (Maybe [SendPort (Maybe Int)])
       -- Running group. It contains following fields:
       --  + Type of group of processes
       --  + (N completed, N crashed)
