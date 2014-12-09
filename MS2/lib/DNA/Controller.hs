@@ -355,14 +355,23 @@ handleProcessCrash pid = do
            Failed       -> fatal "Impossible: Process crashed twice"
         )
         (\g _ -> case g of
+           -- FIXME: What to do when shell process in group crashes?
            GroupShell{} -> return Nothing
+           -- Normal groups
            GroupState NormalGroup _ (Just ch) -> do
                lift $ forM_ ch $ \c -> sendChan c Nothing
                return Nothing
            GroupState NormalGroup _ Nothing -> do
                return $ Just $ CompletedGroup Nothing
-           GroupState FailoutGroup _ _ -> do
-               undefined
+           -- Failout groups
+           GroupState FailoutGroup (GroupProcs 1 nD) (Just ch) -> do
+               lift $ forM_ ch $ \c -> sendChan c (Just nD)
+               return Nothing
+           GroupState FailoutGroup (GroupProcs 1 nD) Nothing -> do
+               return $ Just $ CompletedGroup (Just nD)
+           GroupState FailoutGroup (GroupProcs nR nD) mch -> do
+               return $ Just $ GroupState FailoutGroup (GroupProcs (nR-1) nD) mch
+           -- Completed group
            CompletedGroup {} -> return (Just g)
         )
     dropPID pid
