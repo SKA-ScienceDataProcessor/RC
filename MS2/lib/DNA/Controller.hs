@@ -532,18 +532,3 @@ startLoggerProcess logdir = do
   where
     open   = liftIO (openFile (logdir ++ "/log") WriteMode)
     fini h = liftIO (hClose h)
-
-
-
-
-----------------------------------------------------------------
--- Helper functions
-----------------------------------------------------------------
-
-data FMatch b where
-    MatchChan :: Serializable a
-              => ReceivePort a -> (a -> Process b) -> FMatch b
-
-instance Functor FMatch where
-    fmap f (MatchChan ch g) =
-        MatchChan ch (fmap f . g)
