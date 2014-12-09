@@ -162,6 +162,9 @@ acpStep st = receiveWait
 -- Handlers for individual messages
 ----------------------------------------------------------------
 
+-- > ReqResources
+--
+-- Request for resources
 handleReqResources :: ReqResources -> Controller ()
 handleReqResources (ReqResources loc n) = do
     res <- Resources <$> uniqID
@@ -192,6 +195,9 @@ handleReqResources (ReqResources loc n) = do
     lift . lift $ send pid res
 
 
+-- > ReqResourcesGrp
+--
+-- Request for resources for group of processes
 handleReqResourcesGrp :: ReqResourcesGrp -> Controller ()
 handleReqResourcesGrp (ReqResourcesGrp n) = do
     when (n <= 0) $
@@ -210,19 +216,22 @@ handleReqResourcesGrp (ReqResourcesGrp n) = do
     pid <- use stActor
     lift . lift $ send pid ress
 
+
 -- > ReqConnect
 --
 -- Write down how processes are connected
 handleConnect :: ReqConnect -> Controller ()
-handleConnect (ReqConnectGrp gid acp port) = do
+handleConnect (ReqConnectGrp gid _ port) = do
     Just grp <- use $ stGroups . at gid
     case grp of
-      GroupShell{}      -> error "Impossible"
+      GroupShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
       GroupState ty p _ -> stGroups . at gid .= Just (GroupState ty p (Just port))
+      CompletedGroup{}  -> fatal "Cannot connect group which already completed"
 handleConnect _ = do
     -- FIXME: for time being we ignore messages. this means we cannot
     --        act properly when process fails.
     return ()
+
 
 -- > ReqSpawnShell
 --
@@ -250,6 +259,7 @@ handleSpawnShell (ReqSpawnShell actor chShell resID) = do
     stChildren       . at acp   .= Just (Left (ShellProc chShell))
     stAllocResources . at resID .= Nothing
     stUsedResources  . at acp   .= Just res
+
 
 -- > ReqSpawnGroup
 --
@@ -309,20 +319,20 @@ handleNormalTermination pid = do
         -- that one could terminate normally before receiving message
         (return ())
         (\p -> case p of
-           ShellProc _ -> fatal "shell process terminated normally"
-           Running     -> fatal "Unconnected process terminated normally"
+           ShellProc _ -> fatal "Impossible: shell process terminated normally"
+           Running     -> fatal "Impossible: Unconnected process terminated normally"
            Connected _ -> return Nothing
-           Failed      -> fatal "Normal termination after crash"
+           Failed      -> fatal "Impossible: Normal termination after crash"
         )
         (\g _ -> case g of
-           GroupShell{}           -> fatal "Normal termination in shell group"
-           GroupState _ _ Nothing -> fatal "Unconnected process in group terminated normally"
+           GroupShell{}           -> fatal "Impossible: Normal termination in shell group"
+           GroupState _ _ Nothing -> fatal "Impossible: Unconnected process in group terminated normally"
            GroupState _ (GroupProcs 1 nD) (Just ch) -> do
                lift $ forM_ ch $ \c -> sendChan c (Just (nD + 1))
                return Nothing
            GroupState ty (GroupProcs nR nD) mch -> do
                return $ Just (GroupState ty (GroupProcs (nR-1) (nD+1)) mch)
-           CompletedGroup{} -> fatal "Process terminated in complete group"
+           CompletedGroup{} -> fatal "Impossible: Process terminated in complete group"
         )
     dropPID pid
 
@@ -336,13 +346,13 @@ handleProcessCrash pid = do
         (return ())
         (\p -> case p of
            -- FIXME: we should notify someone probably...
-           ShellProc _  -> return Nothing
-           Running      -> return Nothing
+           ShellProc _  -> undefined
+           Running      -> return $ Just Failed
            Connected acps -> do
                lift $ forM_ acps $ \(ACP acp) ->
                    send acp Terminate
                return Nothing
-           Failed       -> fatal "Process crashed twice"
+           Failed       -> fatal "Impossible: Process crashed twice"
         )
         (\g _ -> case g of
            GroupShell{} -> return Nothing
