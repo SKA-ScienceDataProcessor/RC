@@ -1,8 +1,10 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE DeriveFunctor, DeriveGeneric, DeriveDataTypeable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE RankNTypes #-}
 -- | Controller processes for node and actor
 module DNA.Controller (
       -- * Starting ACP
@@ -24,6 +26,7 @@ module DNA.Controller (
 import Control.Applicative
 import Control.Monad
 import Control.Monad.State
+import Control.Monad.Except
 import Control.Distributed.Process
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Serializable (Serializable)
@@ -54,8 +57,10 @@ startAcpLoop :: Closure (Process ()) -- ^ Closure to self
 startAcpLoop self pid (VirtualCAD _ n nodes) = do
     let loop s = do ms <- acpStep s
                     case ms of
-                      Just s' -> loop s'
-                      Nothing -> return ()
+                      Right s' -> loop s'
+                      -- FIXME: check status of child processes
+                      Left Done -> return ()
+                      Left (Fatal s) -> undefined
     loop StateACP { _stCounter        = 0
                   , _stAcpClosure     = self
                   , _stActor          = pid
@@ -118,8 +123,16 @@ instance Binary ReqResourcesGrp
 -- Handling of incoming messages
 ----------------------------------------------------------------
 
+type Controller = StateT StateACP (ExceptT Err Process)
+
+data Err = Fatal String
+         | Done
+
+fatal :: MonadError Err m => String -> m a
+fatal msg = throwError (Fatal msg)
+
 -- Handle incoming messages from other processes
-acpStep :: StateACP -> Process (Maybe StateACP)
+acpStep :: StateACP -> Process (Either Err StateACP)
 acpStep st = receiveWait
     [ -- Requests for resources
       msg handleReqResources
@@ -133,29 +146,34 @@ acpStep st = receiveWait
       -- Monitoring notifications
     , match $ \(ProcessMonitorNotification _ pid reason) -> case () of
         _| pid == st ^. stActor -> handleChildTermination reason st
-         | otherwise            -> Just <$> flip execStateT st (case reason of
+         | otherwise            -> run $ case reason of
              DiedNormal    -> handleNormalTermination pid
              _             -> handleProcessCrash      pid
-             )
     ]
   where
-    msg :: Serializable a => (a -> StateT StateACP Process ()) -> Match (Maybe StateACP)
-    msg handler = match $ \a -> Just <$> execStateT (handler a) st
+    run :: Controller a -> Process (Either Err StateACP)
+    run action = runExceptT $ execStateT action st
+    msg :: Serializable a => (a -> Controller ()) -> Match (Either Err StateACP)
+    msg handler = match $ run . handler
 
 
 
+----------------------------------------------------------------
+-- Handlers for individual messages
+----------------------------------------------------------------
 
-handleReqResources :: ReqResources -> StateT StateACP Process ()
+handleReqResources :: ReqResources -> Controller ()
 handleReqResources (ReqResources loc n) = do
     res <- Resources <$> uniqID
     -- FIXME: What to do when we don't have enough resources to
     --        satisfy request?
     resourse <- case loc of
         Remote -> do
-            when (n <= 0) $ error "Positive number of nodes required"
+            when (n <= 0) $
+                fatal "Positive number of nodes required"
             free <- use stNodePool
             when (length free < n) $
-                error "Cannot allocate enough resources!"
+                fatal "Cannot allocate enough resources!"
             let (node:touse,rest) = splitAt n free
             stNodePool .= rest
             return $ VirtualCAD loc node touse
@@ -171,12 +189,13 @@ handleReqResources (ReqResources loc n) = do
     stAllocResources . at res .= Just resourse
     -- Send back reply
     pid <- use stActor
-    lift $ send pid res
+    lift . lift $ send pid res
 
 
-handleReqResourcesGrp :: ReqResourcesGrp -> StateT StateACP Process ()
+handleReqResourcesGrp :: ReqResourcesGrp -> Controller ()
 handleReqResourcesGrp (ReqResourcesGrp n) = do
-    when (n <= 0) $ error "Positive number of nodes required"
+    when (n <= 0) $
+        fatal "Positive number of nodes required"
     ress <- replicateM n $ Resources <$> uniqID
     -- FIXME: What to do when we don't have enough resources to
     --        satisfy request?
@@ -189,30 +208,35 @@ handleReqResourcesGrp (ReqResourcesGrp n) = do
         stAllocResources . at r .= Just (VirtualCAD Remote ni [])
     -- Send back reply
     pid <- use stActor
-    lift $ send pid ress
+    lift . lift $ send pid ress
 
-
-handleConnect :: ReqConnect -> StateT StateACP Process ()
+-- > ReqConnect
+--
+-- Write down how processes are connected
+handleConnect :: ReqConnect -> Controller ()
 handleConnect (ReqConnectGrp gid acp port) = do
     Just grp <- use $ stGroups . at gid
     case grp of
-      GroupShell{} -> error "Impossible"
+      GroupShell{}      -> error "Impossible"
       GroupState ty p _ -> stGroups . at gid .= Just (GroupState ty p (Just port))
 handleConnect _ = do
     -- FIXME: for time being we ignore messages. this means we cannot
     --        act properly when process fails.
     return ()
 
-handleSpawnShell :: ReqSpawnShell -> StateT StateACP Process ()
+-- > ReqSpawnShell
+--
+-- Spawn single shell process
+handleSpawnShell :: ReqSpawnShell -> Controller ()
 handleSpawnShell (ReqSpawnShell actor chShell resID) = do
     -- FIXME: better error reporting. If we reuse resource to spawn
     --        process we'll trigger bad pattern error
     Just res@(VirtualCAD _ n _) <- use $ stAllocResources . at resID
     -- Spawn remote ACP
     acpClos <- use stAcpClosure
-    me      <- lift getSelfPid
-    (acp,_) <- lift $ spawnSupervised (nodeID n) acpClos
-    lift $ send acp $ ParamACP
+    me      <- (lift . lift) getSelfPid
+    (acp,_) <- lift . lift $ spawnSupervised (nodeID n) acpClos
+    lift . lift $ send acp $ ParamACP
         { acpSelf         = acpClos
         , acpActorClosure = actor
         , acpVCAD         = res
@@ -222,12 +246,15 @@ handleSpawnShell (ReqSpawnShell actor chShell resID) = do
             , actorGroupSize = GroupSize 1
             }
         }
-    -- Updare
+    -- Update
     stChildren       . at acp   .= Just (Left (ShellProc chShell))
     stAllocResources . at resID .= Nothing
     stUsedResources  . at acp   .= Just res
 
-handleSpawnShellGroup :: ReqSpawnGroup -> StateT StateACP Process ()
+-- > ReqSpawnGroup
+--
+-- Spawn group of processes
+handleSpawnShellGroup :: ReqSpawnGroup -> Controller ()
 handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
     -- FIXME: How to assemble a group?
     gid     <- GroupID <$> uniqID
@@ -238,9 +265,9 @@ handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
     let k = length res
     forM_ ([0..] `zip` res) $ \(i, rid) -> do
         Just r@(VirtualCAD _ n _) <- use $ stAllocResources . at rid
-        (acp,_) <- lift $ spawnSupervised (nodeID n) acpClos
-        me <- lift getSelfPid
-        lift $ send acp ParamACP
+        (acp,_) <- lift . lift $ spawnSupervised (nodeID n) acpClos
+        me <- (lift . lift) getSelfPid
+        lift . lift $ send acp ParamACP
             { acpSelf         = acpClos
             , acpActorClosure = actor
             , acpVCAD  = r
@@ -261,106 +288,150 @@ handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
 
 
 
-handleChildTermination :: DiedReason -> StateACP -> Process (Maybe StateACP)
--- FIXME: do someing about children if needed
-handleChildTermination DiedNormal _ = return Nothing
-handleChildTermination _ _ = error "Ooops!"
-
-
-handleNormalTermination :: ProcessId -> StateT StateACP Process ()
-handleNormalTermination pid = do
-    -- Silently remove node from list of monitored nodes
-    r <- use $ stChildren . at pid
-    case r of
-      -- In principle its possible that process terminates normally
-      -- and we don't know about it. When one process in group crashes
-      -- we kill all other processes and forget them. But it possible
-      -- that one could terminate normally before receiving message
-      Nothing -> return ()
-      Just (Left ShellProc{}) -> error $ "Cannot happen single proc normal termination "
-      Just (Left  _  ) -> stChildren . at pid .= Nothing
-      -- Process belongs to group
-      Just (Right gid) -> do
-          Just g <- use $ stGroups . at gid
-          case g of
-            GroupShell{} -> error "Cannot happen: group normal termination"
-            -- We are done
-            GroupState _ (GroupProcs 1 nD) (Just ch) -> do
-                lift $ forM_ ch $ \c -> sendChan c (Just (nD+1))
-                stGroups . at gid .= Nothing
-            GroupState _ (GroupProcs 1 nD) Nothing -> do
-                stGroups . at gid .= Just (CompletedGroup (Just (nD+1)))
-            -- Not yet
-            GroupState ty (GroupProcs nR nD) mch -> do
-                stGroups . at gid .= Just (GroupState ty (GroupProcs (nR-1) (nD+1)) mch)
-            CompletedGroup _ -> error "Should not happen"
-    -- Mark resources as free
-    mfreed <- use $ stUsedResources . at pid
-    T.forM_ mfreed $ \(VirtualCAD _ n ns) -> do
-        stUsedResources %= Map.delete pid
-        stNodePool      %= (\free -> n : ns ++ free)
-
-
-handleProcessCrash :: ProcessId -> StateT StateACP Process ()
--- FIXME: I leave processes in stChildren dictionary when process
---        crashes. Whole data structure is VERY inelegant
+-- > ProcessMonitorNotification
 --
--- FIXME: kill everything if we cannot continue
+-- Controlled actor died for some reason
+handleChildTermination :: DiedReason -> StateACP -> Process (Either Err StateACP)
+-- FIXME: do someing about children if needed
+handleChildTermination DiedNormal _ = return $ Left Done
+handleChildTermination reason     _ = return $ Left $ Fatal $ show reason
+
+
+-- > ProcessMonitorNotification
+--
+-- Child process terminated normally
+handleNormalTermination :: ProcessId -> Controller ()
+handleNormalTermination pid = do
+    handlePidEvent pid
+        -- In principle its possible that process terminates normally
+        -- and we don't know about it. When one process in group crashes
+        -- we kill all other processes and forget them. But it possible
+        -- that one could terminate normally before receiving message
+        (return ())
+        (\p -> case p of
+           ShellProc _ -> fatal "shell process terminated normally"
+           Running     -> fatal "Unconnected process terminated normally"
+           Connected _ -> return Nothing
+           Failed      -> fatal "Normal termination after crash"
+        )
+        (\g _ -> case g of
+           GroupShell{}           -> fatal "Normal termination in shell group"
+           GroupState _ _ Nothing -> fatal "Unconnected process in group terminated normally"
+           GroupState _ (GroupProcs 1 nD) (Just ch) -> do
+               lift $ forM_ ch $ \c -> sendChan c (Just (nD + 1))
+               return Nothing
+           GroupState ty (GroupProcs nR nD) mch -> do
+               return $ Just (GroupState ty (GroupProcs (nR-1) (nD+1)) mch)
+           CompletedGroup{} -> fatal "Process terminated in complete group"
+        )
+    dropPID pid
+
+
+-- > ProcessMonitorNotification
+--
+-- Child process died because of exception
+handleProcessCrash :: ProcessId -> Controller ()
 handleProcessCrash pid = do
-    r <- use $ stChildren . at pid
-    case r of
-      -- Again we could remove child from list of known processes already
-      Nothing -> return ()
-      -- Single process
-      Just (Left (ShellProc ch)) -> do
-          lift $ sendChan ch Nothing
-          stChildren . at pid .= Nothing
-      Just (Left (Connected remotes)) -> do
-          lift $ forM_ remotes $ \(ACP acp) -> send acp Terminate
-          stChildren . at pid .= Nothing
-      Just (Left _) -> do
-          stChildren . at pid .= Just (Left Failed)
-      -- Group of processes
-      Just (Right gid) -> do
-          Just g <- use $ stGroups . at gid
-          case g of
-            GroupShell _ ch _ _ -> do
-                lift $ sendChan ch Nothing
-                stGroups . at gid .= Nothing
-            -- In normal group we terminate whole group!
-            GroupState NormalGroup _ (Just ch) -> do
-                lift $ forM_ ch $ \c -> sendChan c Nothing
-                stGroups . at gid .= Nothing
-            GroupState NormalGroup _ Nothing -> do
-                stGroups . at gid .= Just (CompletedGroup Nothing)
-            -- In failout we carry on
-            GroupState FailoutGroup _ _ -> undefined
-            CompletedGroup{} -> return ()
+    handlePidEvent pid
+        (return ())
+        (\p -> case p of
+           -- FIXME: we should notify someone probably...
+           ShellProc _  -> return Nothing
+           Running      -> return Nothing
+           Connected acps -> do
+               lift $ forM_ acps $ \(ACP acp) ->
+                   send acp Terminate
+               return Nothing
+           Failed       -> fatal "Process crashed twice"
+        )
+        (\g _ -> case g of
+           GroupShell{} -> return Nothing
+           GroupState NormalGroup _ (Just ch) -> do
+               lift $ forM_ ch $ \c -> sendChan c Nothing
+               return Nothing
+           GroupState NormalGroup _ Nothing -> do
+               return $ Just $ CompletedGroup Nothing
+           GroupState FailoutGroup _ _ -> do
+               undefined
+           CompletedGroup {} -> return (Just g)
+        )
+    dropPID pid
 
 
-handleChannelMsg :: (ProcessId,Message) -> StateT StateACP Process ()
+-- > (ProcessId,Message)
+--
+-- Child process sent shell process back.
+handleChannelMsg :: (ProcessId,Message) -> Controller ()
 handleChannelMsg (pid,msg) = do
-    me <- lift getSelfPid
+    handlePidEvent pid
+        (fatal "Shell: unknown process")
+        (\p -> case p of
+           ShellProc ch -> do
+               lift $ sendChan ch (Just msg)
+               return $ Just Running
+           Failed -> return $ Just Failed
+           _      -> fatal "Shell received twice"
+        )
+        (\g gid -> case g of
+           GroupShell ty ch 1 msgs -> do
+               let msgs' = msg : msgs
+               lift $ sendChan ch (Just (gid, msgs'))
+               return $ Just $ GroupState ty (GroupProcs (length msgs') 0) Nothing
+           GroupShell ty ch n msgs -> do
+               return $ Just $ GroupShell ty ch (n-1) (msg : msgs)
+           _ -> fatal "Invalid shell for group is received"
+        )
+
+
+----------------------------------------------------------------
+-- Operations on internal state
+----------------------------------------------------------------
+
+-- Process event where we dispatch on PID of process
+handlePidEvent
+    :: ProcessId
+    -> (Controller ())
+    -- What to do when PID not found
+    -> (ProcState  -> ExceptT Err Process (Maybe ProcState))
+    -- What to do with single process
+    -> (GroupState -> GroupID -> ExceptT Err Process (Maybe GroupState))
+    -- What to do with group of processes
+    -> StateT StateACP (ExceptT Err Process) ()
+handlePidEvent pid none onProc onGrp = do
     r <- use $ stChildren . at pid
     case r of
-      Just (Left (ShellProc ch)) -> do
-          lift $ sendChan ch (Just msg)
-          stChildren . at pid .= Just (Left Running)
-      Just (Right gid) -> do
-          Just grp <- use (stGroups . at gid)
-          case grp of
-            GroupShell ty ch n (msgs) ->
-                let k = length (msg : msgs)
-                in if k == n
-                   then do
-                       lift $ sendChan ch (Just (gid,msg : msgs))
-                       stGroups . at gid .= Just (GroupState ty (GroupProcs n 0) Nothing)
-                   else do
-                       stGroups . at gid .= Just (GroupShell ty ch n (msg : msgs))
-            _ -> error "Cannot happen: group crash"
-      -- Errors
-      Nothing -> error $ "Cannot happen: unknown process " ++ show pid
-      _       -> error $ "Cannot happen: single proc crash " ++ show pid
+      Nothing          -> none
+      Just (Left  p  ) -> do mp' <- lift $ onProc p
+                             case mp' of
+                               Nothing -> dropPID pid
+                               Just p' -> stChildren . at pid .= Just (Left p')
+      Just (Right gid) -> do Just g <- use $ stGroups . at gid
+                             mg' <- lift $ onGrp g gid
+                             case mg' of
+                               Nothing -> dropGroup gid
+                               Just g' -> stGroups . at gid .= Just g'
+
+
+-- Remove PID from process registry
+dropPID :: ProcessId -> Controller ()
+dropPID pid = do
+    stChildren . at pid .= Nothing
+    mr <- use $ stUsedResources . at pid
+    case mr of
+      Nothing -> return ()
+      Just (VirtualCAD Local  _ ns) -> stNodePool %= (ns ++)
+      Just (VirtualCAD Remote n ns) -> stNodePool %= (\xs -> n : (ns ++ xs))
+
+
+-- Remove GID from process registry
+dropGroup :: GroupID -> Controller ()
+dropGroup gid = do
+    stGroups . at gid .= Nothing
+    children <- use stChildren
+    let pids = [p | (p,Right gid') <- Map.toList children
+                  , gid' == gid
+                  ]
+    forM_ pids dropPID
 
 
 
@@ -398,7 +469,7 @@ data ProcState
     | Running
       -- Process is running but we don't know its sink yet
     | Connected [ACP]
-      -- Process is running and we know its sink
+      -- Process is running and we know its sink[s]
     | Failed
       -- Process failed
     deriving (Show)

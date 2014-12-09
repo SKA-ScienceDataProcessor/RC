@@ -60,3 +60,12 @@ failure :: MonadIO m => String -> m a
 failure msg = do
     liftIO $ putStrLn $ "FAILED: " ++ msg
     error msg
+
+
+
+zoom :: Monad m => Lens' s a -> StateT a m b -> StateT s m b
+zoom l action = do
+    s <- get
+    (b,a') <- lift $ runStateT action (s ^. l)
+    put $ set l a' s
+    return b
