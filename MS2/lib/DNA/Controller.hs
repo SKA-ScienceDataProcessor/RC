@@ -224,16 +224,30 @@ handleReqResourcesGrp (ReqResourcesGrp n) = do
 --
 -- Write down how processes are connected
 handleConnect :: ReqConnect -> Controller ()
+-- FIXME: understand what to when connecting to group
+handleConnect (ReqConnectTo (ACP pid) dst) = do
+    Just st <- use $ stChildren . at pid
+    case st of
+      Right _ -> fatal "Impossible: group instead of process"
+      Left ShellProc{} -> fatal "Impossible: shell could not be connected"
+      Left Running     -> stChildren . at pid .= Just (Left (Connected [dst]))
+      Left _           -> fatal "Double connect"
+handleConnect (ReqConnectToGrp (ACP pid) gid) = do
+    Just st <- use $ stChildren . at pid
+    Just gr <- use $ stGroups   . at gid
+    case st of
+      Right _          -> fatal "Impossible: group instead of process"
+      Left ShellProc{} -> fatal "Impossible: shell could not be connected"
+      Left Running     -> undefined
+      Left _           -> fatal "Double connect"
 handleConnect (ReqConnectGrp gid _ port) = do
     Just grp <- use $ stGroups . at gid
     case grp of
       GroupShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
       GroupState ty p _ -> stGroups . at gid .= Just (GroupState ty p (Just port))
       CompletedGroup{}  -> fatal "Cannot connect group which already completed"
-handleConnect _ = do
-    -- FIXME: for time being we ignore messages. this means we cannot
-    --        act properly when process fails.
-    return ()
+handleConnect (ReqConnectGrpToGrp _ _ _) = undefined
+
 
 
 -- > ReqSpawnShell
