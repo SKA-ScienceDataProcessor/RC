@@ -89,6 +89,7 @@ import GHC.Generics  (Generic)
 
 import DNA.Types
 import DNA.Controller hiding (__remoteTable)
+import DNA.Logging
 
 
 
@@ -143,7 +144,8 @@ sendACP a = do
 logMessage :: String -> DNA ()
 logMessage msg = do
     (_,n,_,_) <- DNA ask
-    liftP $ send (loggerProc n) msg
+    m <- liftP $ makeLogMessage "DNA" msg
+    liftP $ send (loggerProc n) m
 
 
 ----------------------------------------------------------------
@@ -386,7 +388,7 @@ runACP = do
     nid <- getSelfNode
     me  <- getSelfPid
     -- FIXME: Ugly logger!!!
-    send (loggerProc ninfo) $ "Starting ACP: " ++ show me
+    send (loggerProc ninfo) =<< makeLogMessage "ACP" "Starting ACP"
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.
@@ -413,7 +415,7 @@ runMasterACP (ParamACP self () resources actorP) act = do
     -- Start actor process
     me  <- getSelfPid
     -- FIXME: Ugly logger!!!
-    send (loggerProc ninfo) $ "Starting master ACP: " ++ show me
+    send (loggerProc ninfo) =<< makeLogMessage "ACP" "Starting ACP"
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.

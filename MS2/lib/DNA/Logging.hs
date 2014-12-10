@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveDataTypeable, DeriveFunctor #-}
 {-# LANGUAGE RankNTypes #-}
 -- | Logging.hs
 --
@@ -16,12 +19,40 @@ import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Serializable (Serializable)
 import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.Foldable   as T
 import System.IO
 import System.Directory   (createDirectoryIfMissing)
 import GHC.Generics (Generic)
+import Text.Printf
 
 
+----------------------------------------------------------------
+-- Message data types for logger
+----------------------------------------------------------------
+
+-- | Time stamp in POSIX time. We have microsecond precision.
+type TimeStamp = Double
+
+-- | Message data type which is sent to the logger process
+data LogMsg
+    = LogMsg    Double ProcessId String String
+      -- ^ Time stamp, source process, tag, message
+    | SyncPoint Double
+    deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary LogMsg
+
+-- | Create log message to send to logger
+makeLogMessage :: String -> String -> Process LogMsg
+makeLogMessage tag msg = do
+    t  <- liftIO getPOSIXTime
+    me <- getSelfPid
+    return $ LogMsg (realToFrac t) me tag msg
+
+
+----------------------------------------------------------------
+-- Logger process
+----------------------------------------------------------------
 
 -- | Start logger process and register in local registry
 startLoggerProcess :: FilePath -> Process ()
@@ -31,8 +62,12 @@ startLoggerProcess logdir = do
         me <- getSelfPid
         register "dnaLogger" me
         forever $ do
-            s <- expect
-            liftIO $ hPutStrLn h s
+            msg <- expect
+            case msg of
+              LogMsg t pid tag s ->
+                  liftIO $ hPutStrLn h $ printf "%.15 %s [%s]: %s" t (show pid) tag s
+              -- FIXME: write it
+              SyncPoint{} -> return ()
             liftIO $ hFlush h
   where
     open   = liftIO (openFile (logdir ++ "/log") WriteMode)

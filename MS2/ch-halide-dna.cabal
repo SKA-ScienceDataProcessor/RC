@@ -29,6 +29,7 @@ library
   build-depends:
     base         >=4.6,
     unix,
+    time,
     bytestring   >= 0.10, 
     binary,
     process      >= 1.2,
