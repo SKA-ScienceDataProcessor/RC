@@ -14,6 +14,7 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Except
+import Control.Exception  (SomeException)
 import Control.Distributed.Process
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Serializable (Serializable)
@@ -63,11 +64,13 @@ startLoggerProcess logdir = do
         register "dnaLogger" me
         forever $ do
             msg <- expect
-            case msg of
+            catch (
+             case msg of
               LogMsg t pid tag s ->
-                  liftIO $ hPutStrLn h $ printf "%.15 %s [%s]: %s" t (show pid) tag s
+                  liftIO $ hPutStrLn h $ printf "%f %s [%s]: %s" t (show pid) tag s
               -- FIXME: write it
               SyncPoint{} -> return ()
+             ) (\e -> liftIO $ print (e :: SomeException))
             liftIO $ hFlush h
   where
     open   = liftIO (openFile (logdir ++ "/log") WriteMode)
