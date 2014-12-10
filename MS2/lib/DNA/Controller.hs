@@ -195,7 +195,7 @@ handleReqResources (ReqResources loc n) = do
     stAllocResources . at res .= Just resourse
     -- Send back reply
     pid <- use stActor
-    lift . lift $ send pid res
+    liftP $ send pid res
 
 
 -- > ReqResourcesGrp
@@ -217,7 +217,7 @@ handleReqResourcesGrp (ReqResourcesGrp n) = do
         stAllocResources . at r .= Just (VirtualCAD Remote ni [])
     -- Send back reply
     pid <- use stActor
-    lift . lift $ send pid ress
+    liftP $ send pid ress
 
 
 -- > ReqConnect
@@ -260,9 +260,9 @@ handleSpawnShell (ReqSpawnShell actor chShell resID) = do
     Just res@(VirtualCAD _ n _) <- use $ stAllocResources . at resID
     -- Spawn remote ACP
     acpClos <- use stAcpClosure
-    me      <- (lift . lift) getSelfPid
-    (acp,_) <- lift . lift $ spawnSupervised (nodeID n) acpClos
-    lift . lift $ send acp $ ParamACP
+    me      <- liftP getSelfPid
+    (acp,_) <- liftP $ spawnSupervised (nodeID n) acpClos
+    liftP $ send acp $ ParamACP
         { acpSelf         = acpClos
         , acpActorClosure = actor
         , acpVCAD         = res
@@ -292,9 +292,9 @@ handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
     let k = length res
     forM_ ([0..] `zip` res) $ \(i, rid) -> do
         Just r@(VirtualCAD _ n _) <- use $ stAllocResources . at rid
-        (acp,_) <- lift . lift $ spawnSupervised (nodeID n) acpClos
-        me <- (lift . lift) getSelfPid
-        lift . lift $ send acp ParamACP
+        (acp,_) <- liftP $ spawnSupervised (nodeID n) acpClos
+        me <- liftP getSelfPid
+        liftP $ send acp ParamACP
             { acpSelf         = acpClos
             , acpActorClosure = actor
             , acpVCAD  = r

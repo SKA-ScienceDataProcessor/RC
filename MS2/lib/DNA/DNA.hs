@@ -24,7 +24,6 @@ module DNA.DNA (
     , rank
     , groupSize
     , getMonitor
-    , liftP
     , logMessage
       -- * Actors
     , Actor(..)
@@ -106,7 +105,7 @@ import DNA.Logging
 --   Every actor owns set of nodes on which it could spawn other actors.
 --   Upon completion this set of nodes is returned to parent actor.
 newtype DNA a = DNA (ReaderT (ACP,NodeInfo,Rank,GroupSize) Process a)
-                deriving (Functor,Applicative,Monad,MonadIO)
+                deriving (Functor,Applicative,Monad,MonadIO,MonadProcess)
 
 -- | Execute DNA program
 runDNA :: ACP -> NodeInfo -> Rank -> GroupSize -> DNA a -> Process a
@@ -123,10 +122,6 @@ groupSize :: DNA Int
 groupSize = do
     (_,_,_,GroupSize n) <- DNA ask
     return n
-
--- | Lift 'Process' computation to DNA monad
-liftP :: Process a -> DNA a
-liftP = DNA . lift
 
 -- | Get monitor process
 getMonitor :: DNA ACP

@@ -7,6 +7,10 @@
 {-# LANGUAGE DeriveGeneric #-}
 module DNA.Types where
 
+import Control.Monad.IO.Class
+import Control.Monad.State
+import Control.Monad.Except
+import Control.Monad.Reader
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable (Serializable)
 import Data.Binary   (Binary)
@@ -17,6 +21,31 @@ import qualified Data.Set        as Set
 import           Data.Set          (Set)
 import GHC.Generics  (Generic)
 
+
+----------------------------------------------------------------
+-- MonadProcess
+----------------------------------------------------------------
+
+class MonadIO m =>  MonadProcess m where
+    liftP :: Process a -> m a
+
+instance MonadProcess Process where
+    liftP = id
+
+instance MonadProcess m => MonadProcess (StateT s m) where
+    liftP = lift . liftP
+
+instance MonadProcess m => MonadProcess (ExceptT e m) where
+    liftP = lift . liftP
+
+instance MonadProcess m => MonadProcess (ReaderT r m) where
+    liftP = lift . liftP
+
+
+
+----------------------------------------------------------------
+-- Data types
+----------------------------------------------------------------
 
 -- | Newtype wrapper for sending parent process
 newtype Parent = Parent ProcessId

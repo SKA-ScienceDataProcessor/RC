@@ -3,7 +3,6 @@
 module DNA (
       -- * DNA monad
       DNA
-    , liftP
     , rank
     , groupSize
     , logMessage
@@ -45,6 +44,7 @@ module DNA (
     , dnaRun
       -- * Reexports
     , MonadIO(..)
+    , MonadProcess(..)
     , remotable
     , mkStaticClosure
     ) where
@@ -52,6 +52,6 @@ module DNA (
 import Control.Monad.IO.Class
 import Control.Distributed.Process.Closure (mkStaticClosure,remotable)
 
-import DNA.Logging
+import DNA.Types
 import DNA.Run
 import DNA.DNA
