@@ -139,7 +139,7 @@ sendACP a = do
 logMessage :: String -> DNA ()
 logMessage msg = do
     (_,n,_,_) <- DNA ask
-    m <- liftP $ makeLogMessage "DNA" msg
+    m <- makeLogMessage "DNA" msg
     liftP $ send (loggerProc n) m
 
 

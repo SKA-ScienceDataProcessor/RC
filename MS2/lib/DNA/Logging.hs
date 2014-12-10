@@ -27,6 +27,9 @@ import System.Directory   (createDirectoryIfMissing)
 import GHC.Generics (Generic)
 import Text.Printf
 
+import DNA.Types
+
+
 
 ----------------------------------------------------------------
 -- Message data types for logger
@@ -44,10 +47,10 @@ data LogMsg
 instance Binary LogMsg
 
 -- | Create log message to send to logger
-makeLogMessage :: String -> String -> Process LogMsg
+makeLogMessage :: MonadProcess m => String -> String -> m LogMsg
 makeLogMessage tag msg = do
     t  <- liftIO getPOSIXTime
-    me <- getSelfPid
+    me <- liftP getSelfPid
     return $ LogMsg (realToFrac t) me tag msg
 
 
