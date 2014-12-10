@@ -41,6 +41,8 @@ import GHC.Generics (Generic)
 
 import DNA.Lens
 import DNA.Types
+import DNA.Logging
+
 
 
 ----------------------------------------------------------------
@@ -53,12 +55,15 @@ startAcpLoop :: Closure (Process ()) -- ^ Closure to self
              -> VirtualCAD           -- ^ Allocated nodes
              -> Process ()
 startAcpLoop self pid (VirtualCAD _ n nodes) = do
-    let loop s = do ms <- acpStep s
-                    case ms of
-                      Right s' -> loop s'
-                      -- FIXME: check status of child processes
-                      Left Done -> return ()
-                      Left (Fatal s) -> undefined
+    let loop s = do
+            ms <- acpStep s
+            case ms of
+              Right s' -> loop s'
+              -- FIXME: check status of child processes
+              Left  Done ->
+                  send (loggerProc n) =<< makeLogMessage "ACP" "DONE"
+              Left (Fatal s) ->
+                  send (loggerProc n) =<< makeLogMessage "ACP" ("Failure: "++s)
     loop StateACP { _stCounter        = 0
                   , _stAcpClosure     = self
                   , _stActor          = pid
