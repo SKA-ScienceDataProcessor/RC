@@ -27,11 +27,13 @@ GriddersFFIprim.o: GriddersFFIprim.cmm
 OskarFFIprim.o: OskarFFIprim.cmm
 	ghc -O2 -fPIC -c OskarFFIprim.cmm
 
-romein_client.o: romein_client.cc
+romein_client.o: romein_client.cc Common.h Defines.h
 	nvcc -Xptxas -v  -x cu --compile -ccbin=g++ -g -D__CUDA__ -I. $(METRICS) -use_fast_math -arch=compute_35 -code=compute_35 -Xcompiler "-O3,-fopenmp,-fPIC" romein_client.cc -o romein_client.o
 
-romein_client.cc:
+romein_client.cc Common.h Defines.h:
 	wget --no-check-certificate https://github.com/awson/Romein-gridding/raw/doubles/Gridding-0.2/Gridding.cc && mv Gridding.cc romein_client.cc
+	wget --no-check-certificate https://github.com/awson/Romein-gridding/raw/doubles/Gridding-0.2/Common.h
+	wget --no-check-certificate https://github.com/awson/Romein-gridding/raw/doubles/Gridding-0.2/Defines.h
 
 griddingSimple_double_CUDA.h griddingSimple_double_CUDA.o: gridding
 	./gridding
