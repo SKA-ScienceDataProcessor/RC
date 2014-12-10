@@ -25,6 +25,7 @@ module DNA.DNA (
     , groupSize
     , getMonitor
     , logMessage
+    , timePeriod
       -- * Actors
     , Actor(..)
     , actor
@@ -136,11 +137,23 @@ sendACP a = do
     liftP $ send pid a
 
 
+-- | Put message into log file
 logMessage :: String -> DNA ()
 logMessage msg = do
     (_,n,_,_) <- DNA ask
     m <- makeLogMessage "DNA" msg
     liftP $ send (loggerProc n) m
+
+-- | Measure execution time of action into event log. Value of action
+--   will be evaluated up to WHNF.
+timePeriod :: String -> DNA a -> DNA a
+timePeriod msg action = do
+    (_,n,_,_) <- DNA ask
+    liftP . send (loggerProc n) =<< makeLogMessage "START" msg
+    !a <- action
+    liftP . send (loggerProc n) =<< makeLogMessage "END" msg
+    return a
+
 
 
 ----------------------------------------------------------------
