@@ -41,7 +41,7 @@ computeActor = do
      	compChPid = DNA.forkLocal DNA.chCompDoubles func offset count
      	(A1, A2) = DNA.wait fChPid compChPid
      	res = dpLocal A1 A2
-     	DNA.join DNA.output res  —- sends res message to outputis, notifies parent of clean exit
+     	DNA.join DNA.output res  -- sends res message to outputis, notifies parent of clean exit
 
 collectorActor = do
 	DNA.waitForStart

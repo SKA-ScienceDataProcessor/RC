@@ -3,40 +3,56 @@
 module DNA (
       -- * DNA monad
       DNA
-    , liftP
-      -- * Promises
-    , Promise
-    , await
-    , Group
-    , gather
-      -- * Scattering data
-    , Scatter
-    , same
-    , scatter
-      -- * Spawning of actors
+    , rank
+    , groupSize
+    , logMessage
+    , timePeriod
+       -- * Actors
     , Actor
     , actor
+    , CollectActor
+    , collectActor
+      -- ** Shell actors
+    , Shell
+    , CollectorShell
+    , ShellGroup
+    , GroupCollect
     , eval
-    , ReqNode(..)
-    , ActorType(..)
-    , NodePool(..)
-    , ReqGroup(..)
-    , forkLocal
-    , forkRemote
-    , forkGroup
-    , forkGroupFailout
-      -- * Running program
+    , startActor
+    , startCollector
+    , startGroup
+    , startCollectorGroup
+      -- * CAD & Co
+    , CAD
+    , Location(..)
+    , select
+    , selectMany
+      -- * Connecting actors
+    , sendParam
+    , broadcastParam
+    , connect
+    , broadcast
+    , collect
+    , connectCollectorGroup
+      -- ** Promises
+    , Promise
+    , Group
+    , await
+    , gather
+    , delay
+    , delayGroup
+      -- * Start DNA program
     , dnaRun
       -- * Reexports
     , MonadIO(..)
-    , mkStaticClosure
+    , MonadProcess(..)
     , remotable
+    , mkStaticClosure
     ) where
 
 import Control.Monad.IO.Class
 import Control.Distributed.Process.Closure (mkStaticClosure,remotable)
 
-import DNA.Logging
+import DNA.Types
 import DNA.Run
 import DNA.DNA
-import DNA.Monitor

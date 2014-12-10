@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveDataTypeable, DeriveFunctor #-}
 {-# LANGUAGE RankNTypes #-}
 -- | Logging.hs
 --
@@ -7,6 +10,77 @@
 module DNA.Logging where
 
 
+import Control.Applicative
+import Control.Monad
+import Control.Monad.State
+import Control.Monad.Except
+import Control.Exception  (SomeException)
+import Control.Distributed.Process
+import Control.Distributed.Process.Closure
+import Control.Distributed.Process.Serializable (Serializable)
+import Data.Binary   (Binary)
+import Data.Typeable (Typeable)
+import Data.Time.Clock.POSIX (getPOSIXTime)
+import qualified Data.Foldable   as T
+import System.IO
+import System.Directory   (createDirectoryIfMissing)
+import GHC.Generics (Generic)
+import Text.Printf
+
+import DNA.Types
+
+
+
+----------------------------------------------------------------
+-- Message data types for logger
+----------------------------------------------------------------
+
+-- | Time stamp in POSIX time. We have microsecond precision.
+type TimeStamp = Double
+
+-- | Message data type which is sent to the logger process
+data LogMsg
+    = LogMsg    Double ProcessId String String
+      -- ^ Time stamp, source process, tag, message
+    | SyncPoint Double
+    deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary LogMsg
+
+-- | Create log message to send to logger
+makeLogMessage :: MonadProcess m => String -> String -> m LogMsg
+makeLogMessage tag msg = do
+    t  <- liftIO getPOSIXTime
+    me <- liftP getSelfPid
+    return $ LogMsg (realToFrac t) me tag msg
+
+
+----------------------------------------------------------------
+-- Logger process
+----------------------------------------------------------------
+
+-- | Start logger process and register in local registry
+startLoggerProcess :: FilePath -> Process ()
+startLoggerProcess logdir = do
+    liftIO $ createDirectoryIfMissing True logdir
+    bracket open fini $ \h -> do
+        me <- getSelfPid
+        register "dnaLogger" me
+        forever $ do
+            msg <- expect
+            catch (
+             case msg of
+              LogMsg t pid tag s ->
+                  liftIO $ hPutStrLn h $ printf "%f %s [%s]: %s" t (show pid) tag s
+              -- FIXME: write it
+              SyncPoint{} -> return ()
+             ) (\e -> liftIO $ print (e :: SomeException))
+            liftIO $ hFlush h
+  where
+    open   = liftIO (openFile (logdir ++ "/log") WriteMode)
+    fini h = liftIO (hClose h)
+
+
+{-
 -- | Dictionary of logging functions. Note that logger could implement
 --   only parts of described functionality.
 data Logger m = Logger
@@ -19,3 +93,4 @@ data Logger m = Logger
   , -- | Put message to event log
     eventMessage :: String -> m ()
   }
+-}

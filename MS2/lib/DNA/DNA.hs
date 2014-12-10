@@ -21,32 +21,56 @@ module DNA.DNA (
       -- * DNA monad
       DNA(..)
     , runDNA
-    , GroupID
-    , liftP
+    , rank
+    , groupSize
     , getMonitor
-      -- * Promises
-    , Promise(..)
-    , await
-    , Group(..)
-    , gather
-      -- * Scattering
-    , Scatter
-    , runScatter
-    , same
-    , scatter
-      -- * Spawning of actors
+    , logMessage
+    , timePeriod
+      -- * Actors
     , Actor(..)
     , actor
-    , runActor
-    , spawnActor
+    , CollectActor(..)
+    , collectActor
+      -- ** Shell actors
+    , Shell(..)
+    , CollectorShell(..)
+    , ShellGroup(..)
+    , GroupCollect(..)
     , eval
-    , forkLocal
-    , forkRemote
-    , forkGroup
-    , forkGroupFailout
-      -- * CH
+    , startActor
+    , startCollector
+    , startGroup
+    , startCollectorGroup
+      -- * CAD & Co
+    , CAD(..)
+    , makeCAD
+    , Location(..)
+    , select
+    , selectMany
+      -- * Connecting actors
+    , sendParam
+    , broadcastParam
+    , connect
+    , broadcast
+    , collect
+    , connectCollectorGroup
+      -- ** Promises
+    , Promise
+    , Group
+    , await
+    , gather
+    , delay
+    , delayGroup
+      -- * Starting actors
+    , runActor
+    , runCollectActor
+    , runACP
+    , runMasterACP
     , __remoteTable
+    , runACP__static
     ) where
+-- FIXME: understand how to implement local spawn
+
 
 import Control.Applicative
 import Control.Monad
@@ -64,11 +88,13 @@ import Data.Typeable (Typeable)
 import GHC.Generics  (Generic)
 
 import DNA.Types
-import DNA.Monitor
+import DNA.Controller hiding (__remoteTable)
+import DNA.Logging
+
 
 
 ----------------------------------------------------------------
--- Monad for building programs and data types
+-- DNA monad
 ----------------------------------------------------------------
 
 -- | Monad for defining DNA programs. Actors could spawn other
@@ -79,142 +105,59 @@ import DNA.Monitor
 --
 --   Every actor owns set of nodes on which it could spawn other actors.
 --   Upon completion this set of nodes is returned to parent actor.
-newtype DNA a = DNA (ReaderT Monitor Process a)
-                deriving (Functor,Applicative,Monad,MonadIO)
+newtype DNA a = DNA (ReaderT (ACP,NodeInfo,Rank,GroupSize) Process a)
+                deriving (Functor,Applicative,Monad,MonadIO,MonadProcess)
 
 -- | Execute DNA program
-runDNA :: Monitor -> DNA a -> Process a
-runDNA mon (DNA dna)
-    = flip runReaderT mon dna
+runDNA :: ACP -> NodeInfo -> Rank -> GroupSize -> DNA a -> Process a
+runDNA mon ninfo r grp (DNA dna)
+    = flip runReaderT (mon,ninfo,r,grp) dna
 
--- | Lift 'Process' computation to DNA monad
-liftP :: Process a -> DNA a
-liftP = DNA . lift
+-- | Get rank of process in group
+rank :: DNA Int
+rank = do
+    (_,_,Rank n,_) <- DNA ask
+    return n
+
+groupSize :: DNA Int
+groupSize = do
+    (_,_,_,GroupSize n) <- DNA ask
+    return n
 
 -- | Get monitor process
-getMonitor :: DNA Monitor
-getMonitor = DNA ask
+getMonitor :: DNA ACP
+getMonitor = do
+    (acp,_,_,_) <- DNA ask
+    return acp
+
+-- | Send message to actor's controller
+sendACP :: (Binary a, Typeable a) => a -> DNA ()
+sendACP a = do
+    ACP pid <- getMonitor
+    liftP $ send pid a
+
+
+-- | Put message into log file
+logMessage :: String -> DNA ()
+logMessage msg = do
+    (_,n,_,_) <- DNA ask
+    m <- makeLogMessage "DNA" msg
+    liftP $ send (loggerProc n) m
+
+-- | Measure execution time of action into event log. Value of action
+--   will be evaluated up to WHNF.
+timePeriod :: String -> DNA a -> DNA a
+timePeriod msg action = do
+    (_,n,_,_) <- DNA ask
+    liftP . send (loggerProc n) =<< makeLogMessage "START" msg
+    !a <- action
+    liftP . send (loggerProc n) =<< makeLogMessage "END" msg
+    return a
 
 
 
 ----------------------------------------------------------------
--- Promises
-----------------------------------------------------------------
-
--- | Handle for obtaining result from process. Such handles are
---   returned by fork* functions. Handles from child processes must
---   not be returned from the parent process
---
---   FIXME: If we await more than once then second call will block
---          indefinitely wihout any way to detect deadlock. Since
---          promises are serailizable we can obtain such deadlocks
---          between different processes.
-data Promise a = Promise Monitor ProcessId (SendPort (SendPort a))
-                 deriving (Typeable,Generic)
-
-instance (Typeable a, Binary a) => Binary (Promise a)
-
-
--- | Await result from promise. Function will block.
---
---   This function will as well receive messages about termination of
---   monitored processes.
-await :: Serializable a => Promise a -> DNA a
-await (Promise mon pid ch) = do
-    chFail <- liftP $ waitForProcess mon pid
-    -- Send channel for sending result to remote process
-    liftP $ do (chSend,chRecv) <- newChan
-               sendChan ch chSend
-               receiveWait [ matchChan chRecv return
-                           , matchChan chFail $ \_ -> error "OOPS!"
-                           ]
-
-
-----------------------------------------------------------------
--- Groups
-----------------------------------------------------------------
-
--- | Set of values which is produces by group of processes which
---   execute same code.
-data Group a = Group
-    Monitor
-    GroupID
-    -- ID of group
-    Int
-    -- Number of elements. Could be different from length of worker processes
-    [SendPort (SendPort a)]
-    -- Port to send destinations to
-    deriving (Typeable,Generic)
-
-instance (Typeable a, Binary a) => Binary (Group a)
-
-
--- | Gather all results from child processes.
-gather :: (Serializable a) => Group a -> (a -> a -> a) -> a -> DNA a
-gather (Group mon gid n remotes) op x0 = do
-    chFail <- liftP $ waitForGroup mon gid
-    -- Send channels to all workers in thread
-    (chSend,chRecv) <- liftP newChan
-    liftP $ forM_ remotes $ \ch -> sendChan ch chSend
-    -- Merge results
-    let loop 0 a0 = return a0
-        loop i a0 = receiveWait
-            [ matchChan chRecv $ \a -> loop (i-1) (op a0 a)
-            , matchChan chFail $ \m -> case m of
-                  Nothing -> error "Ooops!"
-                  Just  k -> loop (i-k) a0
-            ]
-    liftP $ loop n x0
-
-
-
-----------------------------------------------------------------
--- Scattering values to children
-----------------------------------------------------------------
-
--- | Very important question is how to pass parameters to multiple
---   childs. We have two primary way to divide data.
---
---    1. Divide data on parent processa nd send values to childs.
---
---    2. Let childs to select suitable part of data by themselves
---       using their rank.
---
---   We provide applicative interface for data splitting. It's a bit
---   awkward to use. Ideally we'd want to use idiom bracket but
---   upcoming applicative-do in GHC 7.10 will be useful as well.
-data Scatter a
-    = Same a
-    | Scatter (Int -> [a])
-    deriving (Functor)
-
-instance Applicative Scatter where
-    pure = same
-    Same    f <*> Same a    = Same (f a)
-    Same    f <*> Scatter a = Scatter $ (fmap . fmap) f a
-    Scatter f <*> Same a    = Scatter $ (fmap . fmap) ($ a) f
-    Scatter f <*> Scatter a = Scatter $ \n -> zipWith ($) (f n) (a n)
-
-runScatter :: Int -> Scatter a -> [a]
-runScatter n (Same a) = replicate n a
-runScatter n (Scatter f)
-    | length xs == n = xs
-    | otherwise      = error "runScatter: list length doesn't match!"
-  where xs = f n
-
-
--- | Send same value to all nodes.
-same :: a -> Scatter a
-same = Same
-
--- | Scatter value
-scatter :: (Int -> a -> [b]) -> a -> Scatter b
-scatter f a = Scatter (\n -> f n a)
-
-
-
-----------------------------------------------------------------
--- Spawning of actors
+-- Data types for actors
 ----------------------------------------------------------------
 
 -- | Actor which receive messages of type @a@ and produce result of
@@ -224,7 +167,6 @@ data Actor a b where
     Actor :: (Serializable a, Serializable b) => (a -> DNA b) -> Actor a b
     deriving (Typeable)
 
-
 -- | Smart constructor for actors. Here we receive parameters and
 --   output channel for an actor
 actor :: (Serializable a, Serializable b)
@@ -232,131 +174,361 @@ actor :: (Serializable a, Serializable b)
       -> Actor a b
 actor = Actor
 
--- | Start actor execution on remote node. Here we obtain all
---   parameters from messages
+
+-- | Actor which collects multiple inputs from other actors
+data CollectActor a b where
+    CollectActor :: (Serializable a, Serializable b)
+                 => (s -> a -> DNA s)
+                 -> DNA s
+                 -> (s -> DNA b)
+                 -> CollectActor a b
+    deriving (Typeable)
+
+-- | Smart constructor for collector actors.
+collectActor
+    :: (Serializable a, Serializable b, Serializable s)
+    => (s -> a -> DNA s)
+    -> DNA s
+    -> (s -> DNA b)
+    -> CollectActor a b
+collectActor = CollectActor
+
+
+
+----------------------------------------------------------------
+-- CAD
+----------------------------------------------------------------
+
+-- | Make CAD from list of nodes. At the moment w don't use any
+--   information about nodes.
+makeCAD :: [a] -> CAD a
+makeCAD []     = error "DNA.CAD.makeCAD: empty list of nodes"
+makeCAD (x:xs) = CAD x [CAD a [] | a <- xs]
+
+
+-- | Allocate N nodes to single actor
+select :: Location -> Int -> DNA Resources
+select loc n = do
+    sendACP $ ReqResources loc n
+    liftP expect
+
+-- | Allocate N nodes for group of actors. Each will have only single
+--   node
+selectMany :: Int -> DNA [Resources]
+selectMany n = do
+    sendACP $ ReqResourcesGrp n
+    liftP expect
+
+
+
+----------------------------------------------------------------
+-- Connect actors
+----------------------------------------------------------------
+
+-- | Send parameter to the actor
+sendParam :: Serializable a => a -> Shell a b -> DNA ()
+sendParam a (Shell ch _ _) = do
+    liftP $ sendChan ch a
+
+
+-- | Send parameter to the group of actors. All will receive same value.
+broadcastParam :: Serializable a => a -> ShellGroup a b -> DNA ()
+broadcastParam a (ShellGroup _ shells) = do
+    forM_ shells (sendParam a)
+
+
+-- | Connect two processes together
+connect :: Serializable b => Shell a b -> Shell b c -> DNA ()
+connect (Shell _ chDst childA) (Shell chB _ childB) = do
+    liftP $ sendChan chDst [chB]
+    sendACP $ ReqConnectTo childA childB
+
+
+-- | Connect single process to the group of processes. All processes
+--   in the group will receive same data.
+broadcast :: Serializable b => Shell a b -> ShellGroup b c -> DNA ()
+broadcast (Shell _ chDst childA) (ShellGroup gid chansB) = do
+    liftP $ sendChan chDst [ch | Shell ch _ _ <- chansB]
+    sendACP $ ReqConnectToGrp childA gid
+
+
+-- | Connect group of processes to collector process
+collect :: Serializable b => ShellGroup a b -> CollectorShell b c -> DNA ()
+collect (ShellGroup gid shells) (CollectorShell chB chN _ childB) = do
+    liftP $ forM_ shells $ \(Shell _ dst _) -> do
+        sendChan dst [chB]
+    sendACP $ ReqConnectGrp gid childB [chN]
+
+
+-- | Connect group of processes to the group of collector
+--   processes. All collectors will receive each message from each
+--   actor in first group.
+connectCollectorGroup
+    :: Serializable b => ShellGroup a b -> GroupCollect b c -> DNA ()
+connectCollectorGroup (ShellGroup gidA shells) (GroupCollect gidB colSh) = do
+    let dsts   = [ch | CollectorShell ch _ _ _ <- colSh]
+        chansN = [ch | CollectorShell _ ch _ _ <- colSh]
+    liftP $ forM_ shells $ \(Shell _ ch _) ->
+        sendChan ch dsts
+    sendACP $ ReqConnectGrpToGrp gidA gidB chansN
+
+
+
+----------------------------------------------------------------
+-- Promises
+----------------------------------------------------------------
+
+newtype Promise a = Promise (ReceivePort a)
+
+data Group a = Group (ReceivePort a) (ReceivePort (Maybe Int))
+
+
+await :: Serializable a => Promise a -> DNA a
+await (Promise ch) = liftP $ receiveChan ch
+
+
+gather :: Serializable a => Group a -> (b -> a -> b) -> b -> DNA b
+gather g f = gatherM g (\b a -> return (f b a))
+
+gatherM :: Serializable a => Group a -> (b -> a -> DNA b) -> b -> DNA b
+gatherM (Group chA chN) f x0 = do
+    let loop n tot !b
+            | n >= tot && tot >= 0= do
+                  return b
+        loop n tot !b = do
+            r <- liftP $ receiveWait [ matchChan chA (return . Right)
+                                     , matchChan chN (return . Left)
+                                     ]
+            case r of
+              Right a       -> loop (n + 1) tot =<< f b a
+              Left Nothing  -> error "FIXME: do something more meaningful"
+              Left (Just k) -> loop n k b
+    loop 0 (-1) x0
+
+
+-- | Create promise for single actor. It allows to receive data from
+--   it later.
+delay :: Serializable b => Shell a b -> DNA (Promise b)
+delay (Shell _ chDst acp) = do
+    myACP           <- getMonitor
+    (chSend,chRecv) <- liftP newChan
+    liftP $ sendChan chDst [chSend]
+    sendACP $ ReqConnectTo acp myACP
+    return  $ Promise chRecv
+
+-- | Create promise from group of processes which allows to collect
+--   data from them later.
+delayGroup :: Serializable b => ShellGroup a b -> DNA (Group b)
+delayGroup (ShellGroup gid shells) = do
+    myACP         <- getMonitor
+    (sendB,recvB) <- liftP newChan
+    (sendN,recvN) <- liftP newChan
+    liftP $ forM_ shells $ \(Shell _ chDst _) ->
+        sendChan chDst [sendB]
+    sendACP $ ReqConnectGrp gid myACP [sendN]
+    return  $ Group recvB recvN
+
+
+
+
+----------------------------------------------------------------
+-- Running actors
+--
+-- We use relatively complicated algorithm for spawning actors. To
+-- spawn shell (not connected anywhere) actor we send message to our
+-- ACP which in turn spawns ACP for shell actor.
+--
+----------------------------------------------------------------
+
+-- | Start execution of standard actor.
 runActor :: Actor a b -> Process ()
-runActor (Actor fun) = do
-    -- Get list of nodes and spawn local monitor
-    nodes <- expect
-    mon   <- runMonitor nodes
-    -- Create channel for obtaining channel to return results and send
-    -- it to process requesting them
-    Parent pid      <- expect
-    (chSend,chRecv) <- newChan
-    send pid chSend
-    -- Obtain parameter and evaluate action
-    Param a <- expect
-    b       <- runDNA mon (fun a)
-    dest    <- receiveChan chRecv
-    sendChan dest b
-    -- Make sure that process will not terminate before we start
-    -- monitoring it
-    Completed <- expect
-    return ()
-
-
--- | Send to actor necessary parameters
-sendToActor :: (Serializable a, Serializable b)
-            => [NodeId] -> a -> ProcessId -> DNA (SendPort (SendPort b))
-sendToActor nodes a pid = liftP $ do
+runActor (Actor action) = do
+    -- Obtain parameters
+    ParamActor parent rnk grp <- expect
+    (ACP acp,ninfo) <- expect
     me <- getSelfPid
-    send pid nodes
-    send pid (Parent me)
-    send pid (Param a)
-    -- FIXME: deadlock. Process can die before it responds!
-    expect
+    -- Create channels for communication
+    (chSendParam,chRecvParam) <- newChan
+    (chSendDst,  chRecvDst  ) <- newChan
+    -- Send shell process back
+    send parent (acp, wrapMessage $ Shell chSendParam chSendDst (ACP acp))
+    -- Now we can start execution and send back data
+    a   <- receiveChan chRecvParam
+    b   <- runDNA (ACP acp) ninfo rnk grp (action a)
+    dst <- receiveChan chRecvDst
+    forM_ dst $ \ch -> sendChan ch b
 
-remotable [ 'runActor ]
+-- | Start execution of collector actor
+runCollectActor :: CollectActor a b -> Process ()
+runCollectActor (CollectActor step start fini) = do
+    -- Obtain parameters
+    ParamActor parent rnk grp <- expect
+    (ACP acp,ninfo) <- expect
+    -- Create channels for communication
+    (chSendParam,chRecvParam) <- newChan
+    (chSendDst,  chRecvDst  ) <- newChan
+    (chSendN,    chRecvN    ) <- newChan
+    -- Send shell process description back
+    send parent (acp, wrapMessage $
+                      CollectorShell chSendParam chSendN chSendDst (ACP acp))
+    -- Start execution of an actor
+    b <- runDNA (ACP acp) ninfo rnk grp $ do
+        s0 <- start
+        s  <- gatherM (Group chRecvParam chRecvN) step s0
+        fini s
+    dst <- receiveChan chRecvDst
+    forM_ dst $ \ch -> sendChan ch b
 
 
--- | Spawn actor on remote node and set up monitoring.
-spawnActor :: (Typeable a, Typeable b)
-           => NodeId -> Closure (Actor a b) -> Process ProcessId
-spawnActor nid child = do
-    spawn nid $ $(mkStaticClosure 'runActor) `closureApply` child
+-- | Start execution of actor controller process (ACP). Takes triple
+--   of actor closure, actor's rank and PID of process to send shell
+--   back.
+--
+--   NOTE: again because of TH limitation we have to pass all
+--         parameters AND closure of this function as messages because
+--         we cannot create closure of our function ourselves.
+runACP :: Process ()
+runACP = do
+    -- Get parameters for ACP and actor
+    ParamACP self act resources actorP <- expect
+    let VirtualCAD _ ninfo _ = resources
+    -- Start actor process
+    nid <- getSelfNode
+    me  <- getSelfPid
+    -- FIXME: Ugly logger!!!
+    send (loggerProc ninfo) =<< makeLogMessage "ACP" "Starting ACP"
+    -- FIXME: understand how do we want to monitor state of child
+    --        process? Do we want to just die unconditionally or maybe
+    --        we want to do something.
+    (pid,_) <- spawnSupervised nid act
+    send pid actorP
+    send pid ((ACP me,ninfo) :: (ACP,NodeInfo))
+    -- Start listening on events
+    startAcpLoop self pid resources
 
--- | Evaluate actor in the same thread
+
+-- | Start execution of standard actor.
+runUnit :: DNA () -> Process ()
+runUnit action = do
+    -- Obtain parameters
+    ParamActor _ rnk grp <- expect
+    (acp,ninfo) <- expect
+    runDNA acp ninfo rnk grp action
+
+
+-- FIXME: duplication
+runMasterACP :: ParamACP () -> DNA () -> Process ()
+runMasterACP (ParamACP self () resources actorP) act = do
+    let VirtualCAD _ ninfo _ = resources
+    -- Start actor process
+    me  <- getSelfPid
+    -- FIXME: Ugly logger!!!
+    send (loggerProc ninfo) =<< makeLogMessage "ACP" "Starting ACP"
+    -- FIXME: understand how do we want to monitor state of child
+    --        process? Do we want to just die unconditionally or maybe
+    --        we want to do something.
+    pid <- spawnLocal (link me >> runUnit act)
+    _   <- monitor pid
+    send pid actorP
+    send pid (ACP me,ninfo)
+    -- Start listening on events
+    startAcpLoop self pid resources
+
+remotable [ 'runActor
+          , 'runCollectActor
+          , 'runACP
+          ]
+
+
+----------------------------------------------------------------
+-- Shell actors
+----------------------------------------------------------------
+
+-- | Evaluate actor without forking off enother thread
 eval :: (Serializable a, Serializable b)
      => Actor a b
      -> a
      -> DNA b
-eval (Actor act) a = act a
+eval (Actor act) a = do
+    logMessage "executing: eval"
+    act a
 
 
--- | Fork process on local node
-forkLocal :: (Serializable a, Serializable b)
-          => NodePool           -- ^ List of nodes process allowed to use
-          -> Actor a b          -- ^ Actor
-          -> a                  -- ^ Parameters for an actor
-          -> DNA (Promise b)
-forkLocal pool child a = do
-    mon <- getMonitor
-    (aid,nodes) <- liftP $ askNodePool mon pool
-    pid         <- liftP $ spawnLocal $ runActor child
-    ch          <- sendToActor nodes a pid
-    liftP $ registerWorker mon aid pid
-    return $ Promise mon pid ch
-
--- | Fork process on remote node
-forkRemote :: (Serializable a, Serializable b)
-           => ReqNode              -- ^ List of nodes process allowed to use
-           -> Closure (Actor a b)  -- ^ Actor
-           -> a                    -- ^ Parameters for an actor
-           -> DNA (Promise b)
-forkRemote req child a = do
-    mon <- getMonitor
-    (aid,Nodes nid nodes) <- liftP $ askSingleNode mon req
-    pid <- liftP $ spawnActor nid child
-    liftP $ registerWorker mon aid pid
-    ch  <- sendToActor nodes a pid
-    return $ Promise mon pid ch
+-- | Start single actor
+startActor :: (Serializable a, Serializable b)
+           => Resources -> Closure (Actor a b) -> DNA (Shell a b)
+startActor res child = do
+    ACP acp         <- getMonitor
+    (shellS,shellR) <- liftP newChan
+    let clos = $(mkStaticClosure 'runActor) `closureApply` child
+    liftP $ send acp $ ReqSpawnShell clos shellS res
+    mmsg <- liftP (receiveChan shellR)
+    case mmsg of
+      Nothing -> error "Ooops! Cannot obtain shell"
+      Just msg -> do m <- unwrapMessage msg
+                     case m of
+                       Nothing -> error "Bad shell message"
+                       Just  s -> return s
 
 
--- | Create group of nodes
---
---   FIXME: at the moment child processes are not allowed to spawn
---          code on remote nodes.
-forkGroup
+-- | Start single collector actor
+startCollector :: (Serializable a, Serializable b)
+               => Resources
+               -> Closure (CollectActor a b)
+               -> DNA (CollectorShell a b)
+startCollector res child = do
+    ACP acp         <- getMonitor
+    (shellS,shellR) <- liftP newChan
+    let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
+    liftP $ send acp $ ReqSpawnShell clos shellS res
+    mmsg <- liftP (receiveChan shellR)
+    case mmsg of
+      Nothing -> error "Ooops! Cannot obtain shell"
+      Just msg -> do m <- unwrapMessage msg
+                     case m of
+                       Nothing -> error "Bad shell message"
+                       Just  s -> return s
+
+
+-- | Start group of processes
+startGroup :: (Serializable a, Serializable b)
+           => [Resources]
+           -> Closure (Actor a b)
+           -> DNA (ShellGroup a b)
+startGroup res child = do
+    ACP acp         <- getMonitor
+    (shellS,shellR) <- liftP newChan
+    let clos = $(mkStaticClosure 'runActor) `closureApply` child
+    liftP $ send acp $ ReqSpawnGroup clos shellS res
+    -- FIXME: here we spawn groups in very unreliable manner. We
+    --        assume that nothingf will crash which is plain wrong
+    mmsg <- liftP (receiveChan shellR)
+    case mmsg of
+      Nothing -> error "Ooops! Cannot obtain shell"
+      Just (gid,msgs) -> do
+          ms <- mapM unwrapMessage msgs
+          case sequence ms of
+            Nothing -> error "Bad shell message"
+            Just  s -> return (ShellGroup gid s)
+
+
+-- | Start group of collector processes
+startCollectorGroup
     :: (Serializable a, Serializable b)
-    => ReqGroup                 -- ^ List of nodes to spawn on
-    -> Closure (Actor a b)      -- ^ Actor
-    -> Scatter a                -- ^ Parameters to actors.
-    -> DNA (Group b)
-forkGroup req child scat = do
-    -- Get schedule for list of nodes
-    mon <- getMonitor
-    (gid,nodes) <- liftP $ askNodeGroup mon req
-    let n  = length nodes
-        xs = runScatter n scat
-    -- Spawn group of processes and register them
-    pids <- forM (nodes `zip` xs) $ \(Nodes nid nids, a) -> do
-        p  <- liftP $ spawnActor nid child
-        ch <- sendToActor nids a p
-        return (p,ch)
-    liftP $ registerGroup mon gid (fst <$> pids)
-    return $ Group mon gid n (snd <$> pids)
-
-
--- | Create group of nodes and allow failout
---
---   FIXME: at the moment child processes are not allowed to spawn
---          code on remote nodes.
-forkGroupFailout
-    :: (Serializable a, Serializable b)
-    => ReqGroup                 -- ^ List of nodes to spawn on
-    -> Closure (Actor a b)      -- ^ Actor
-    -> Scatter a                -- ^ Parameters to actors.
-    -> DNA (Group b)
-forkGroupFailout req child scat = do
-    -- Get schedule for list of nodes
-    mon <- getMonitor
-    (gid,nodes) <- liftP $ askNodeGroup mon req
-    let n  = length nodes
-        xs = runScatter n scat
-    -- Spawn group of processes and register them
-    pids <- forM (nodes `zip` xs) $ \(Nodes nid nids, a) -> do
-        p  <- liftP $ spawnActor nid child
-        ch <- sendToActor nids a p
-        return (p,ch)
-    liftP $ registerGroup mon gid (fst <$> pids)
-    return $ Group mon gid n (snd <$> pids)
+    => [Resources]
+    -> Closure (CollectActor a b)
+    -> DNA (GroupCollect a b)
+startCollectorGroup res child = do
+    ACP acp         <- getMonitor
+    (shellS,shellR) <- liftP newChan
+    let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
+    liftP $ send acp $ ReqSpawnGroup clos shellS res
+    -- FIXME: See above
+    mmsg <- liftP (receiveChan shellR)
+    case mmsg of
+      Nothing -> error "Ooops! Cannot obtain shell"
+      Just (gid,msgs) -> do
+          ms <- mapM unwrapMessage msgs
+          case sequence ms of
+            Nothing -> error "Bad shell message"
+            Just  s -> return (GroupCollect gid s)
