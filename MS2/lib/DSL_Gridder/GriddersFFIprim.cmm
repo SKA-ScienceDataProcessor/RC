@@ -1,0 +1,26 @@
+#include "Cmm.h"
+
+halideComputeGridOnCudazh(W_ uwv_ptr, W_ amp_ptr) {
+  W_ im_ptr_ptr;
+  W_ im_ptr;
+  W_ data_ptr;
+  CInt errCode;
+
+  reserve 1 = im_ptr_ptr {
+    (errCode) = ccall halideComputeGridOnCuda(uwv_ptr "ptr", amp_ptr "ptr", im_ptr_ptr "ptr");
+  }
+  im_ptr = W_[im_ptr_ptr];
+  ("ptr" data_ptr) = ccall halideGetGridData(im_ptr "ptr");
+
+  return (im_ptr, data_ptr, TO_W_(halideFinalizeGrid), TO_W_(errCode));
+}
+
+romeinComputeGridOnCudazh(W_ uwv_ptr, W_ amp_ptr) {
+  W_ im_ptr;
+  W_ data_ptr;
+
+  ("ptr" im_ptr) = ccall romeinComputeGridOnCuda(uwv_ptr "ptr", amp_ptr "ptr");
+  ("ptr" data_ptr) = ccall romeinGetGridData(im_ptr "ptr");
+
+  return (im_ptr, data_ptr, TO_W_(romeinFinalizeGrid), 0);
+}
