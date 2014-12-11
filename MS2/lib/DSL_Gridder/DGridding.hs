@@ -1,6 +1,7 @@
 {-# LANGUAGE
     CPP
   , TemplateHaskell
+  , BangPatterns
   #-}
 
 module DGridding where
@@ -36,13 +37,26 @@ import Control.Exception(
     handle
   , SomeException
   )
+import Debug.Trace (traceEventIO)
 
 import DNA
 import GriddersFFI
 import Oskar
 
+-- Event logging util.
+log_duration :: MonadIO m => String -> String -> m a -> m a
+log_duration cxt param act = do
+    logevent "<< Start %s with %s >>"
+    !r <- act
+    logevent "<<  End  %s with %s >>"
+    return r
+  where
+    logevent fmt = liftIO $ traceEventIO $ printf fmt cxt param
+
+
 rawSystemActor :: Actor (String, [String]) (Maybe Int)
-rawSystemActor = actor $ \(cmd, args) -> liftIO (fmap ec2mb $ rawSystem cmd args)
+rawSystemActor = actor $ \(cmd, args) ->
+    log_duration "rawSystemActor" (unwords $ cmd:args) $ liftIO (fmap ec2mb $ rawSystem cmd args)
   where
     -- We have no binary instance for ExitCode, hence this conversion
     ec2mb ExitSuccess = Nothing
@@ -57,7 +71,7 @@ writeResultsActor :: Actor (Maybe (FilePath, GridData)) String
 writeResultsActor = actor doIt
   where
     doIt Nothing = return "Nothing to write."
-    doIt (Just (f, gd)) = liftIO $ 
+    doIt (Just (f, gd)) = log_duration "writeResultsActor" f $ liftIO $ 
       handle handleEx $ do
          writeBinFile f (gdData gd) grid_size
          gdFinalize gd
@@ -71,18 +85,15 @@ type GridderParams = (Ptr CDouble, Ptr CDouble)
 type GridderActor = Actor GridderParams (Either GStatus GridData)
 
 mkGridderActor :: String -> GridProcType -> GridderActor
-mkGridderActor gridder_name gridder_proc = actor $ \(uvwp, ampp) -> liftIO $ do
-    __SHOUT("Start %s gridding") gridder_name
-    rr <- gridder_proc uvwp ampp
-    __SHOUT("Finished %s gridding") gridder_name
-    return rr
+mkGridderActor gridder_name gridder_proc = actor $ \(uvwp, ampp) ->
+  log_duration "GridderActor" gridder_name $ liftIO $ gridder_proc uvwp ampp
 
 romeinActor, halideActor :: GridderActor
 romeinActor = mkGridderActor "Romein" romeinComputeGridOnCuda
 halideActor = mkGridderActor "Romein" halideComputeGridOnCuda
 
 convertVisActor :: Actor String OStatus
-convertVisActor = actor $ liftIO . convertVis
+convertVisActor = actor $ \fname -> log_duration "convertVisActor" fname $ liftIO (convertVis fname)
 
 -- TODO: Add parameterts setting *and* oskar_sim_interferometer .ini file generation
 grid_size :: Int
