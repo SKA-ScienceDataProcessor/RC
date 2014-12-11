@@ -109,10 +109,11 @@ int main(int argc, char **argv) {
    std::vector<Target::Feature> cudaFeatures =
 #if defined (WILKES_CLUSTER)
      {Target::SSE41, Target::AVX, Target::CUDA, Target::CUDACapability35};
+   Target cudaTarget(Target::Linux, Target::X86, 64, cudaFeatures);
 #else
      {Target::SSE41, Target::CUDA};
-#endif
    Target cudaTarget(Target::Windows, Target::X86, 64, cudaFeatures);
+#endif
    gridding_func_simple<double>("double_CUDA", &cudaTarget);
 #else
    gridding_func_simple<double>("double", NULL);
