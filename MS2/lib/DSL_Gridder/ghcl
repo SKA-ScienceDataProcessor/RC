@@ -1,2 +1,0 @@
-#!/bin/bash
-ghc -O2 -Wall -threaded -hidir ./tmp -odir ./tmp -stubdir ./tmp -i/home/awson/data/Work/RC/MS2/lib -no-user-package-db -package-db /home/awson/data/Work/RC/MS2/.cabal-sandbox/x86_64-linux-ghc-7.8.3-packages.conf.d --make $*
