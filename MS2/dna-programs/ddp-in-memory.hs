@@ -54,10 +54,11 @@ ddpProductSlice = actor $ \(fname, size) -> do
     futVA <- delay shellVA
     futVB <- delay shellVB
     --
-    va <- await futVA
-    vb <- await futVB
+    va <- timePeriod "receive compute" $ await futVA
+    vb <- timePeriod "receive read"    $ await futVB
     --
-    return $ (S.sum $ S.zipWith (*) va vb :: Double)
+    timePeriod "compute sum" $
+      return $ (S.sum $ S.zipWith (*) va vb :: Double)
 
 remotable [ 'ddpProductSlice
           ]
@@ -76,5 +77,5 @@ ddpDotProduct = actor $ \(fname,size) -> do
 
 main :: IO ()
 main = dnaRun (DDP.__remoteTable . __remoteTable) $ do
-    b <- eval ddpDotProduct ("file.dat",1000000)
+    b <- eval ddpDotProduct ("file.dat",20000000)
     liftIO $ putStrLn $ "RESULT: " ++ show b
