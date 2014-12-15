@@ -12,8 +12,10 @@ import Control.Distributed.Process      hiding (finally)
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Node (initRemoteTable)
 import System.Environment (getExecutablePath,getEnv)
+import System.Directory
 import System.Process
 import System.FilePath    ((</>))
+import System.Posix.Process (getProcessID,executeFile)
 import qualified Data.Foldable as T
 
 import DNA.SlurmBackend (initializeBackend,startMaster,startSlaveWithProc)
@@ -31,38 +33,67 @@ import qualified DNA.Controller
 -- | Parse command line option and start program
 dnaRun :: (RemoteTable -> RemoteTable) -> DNA () -> IO ()
 dnaRun remoteTable dna = do
-    opts <- dnaParseOptions
-    -- Create directory for logs
-    home <- getEnv "HOME"
-    let logDir = home </> "_dna" </> "logs" </> dnaPID opts </> show (dnaRank opts)
-    -- In case of UNIX startup
-    case dnaNProcs opts of
-      -- SLURM case
-      Nothing -> error "SLURM startup is not implemented"
-      -- Unix startup
-      Just nProc -> runUnix logDir rtable opts nProc dna
+    (opts,common) <- dnaParseOptions
+    case opts of
+      Unix n       -> runUnix n common
+      UnixWorker o -> runUnixWorker rtable o common dna
+      Slurm        -> error "SLURM startup is not implemented"
   where
     rtable = ( remoteTable
              . DNA.DNA.__remoteTable
              . DNA.Controller.__remoteTable
              ) initRemoteTable
 
+-- Startup of program
+runUnix :: Int -> CommonOpt -> IO ()
+runUnix n common = do
+    pid     <- getProcessID
+    program <- getExecutablePath
+    workdir <- getCurrentDirectory
+    -- Create log dirs for all processess
+    home    <- getEnv "HOME"
+    let dnaPID = show pid ++ "-u"
+        logDir = home </> "_dna" </> "logs" </> dnaPID
+    forM_ [0 .. n-1] $ \k ->
+        createDirectoryIfMissing True (logDir </> show k)
+    -- Reexec program with enabled eventlog
+    setCurrentDirectory (logDir </> "0")
+    executeFile program True
+        [ "+RTS", "-l-au", "-RTS"
+        , "--nprocs",        show n
+        , "--internal-rank", "0"
+        , "--internal-pid",  dnaPID
+        , "--workdir",       workdir
+        , "--base-port",     show (dnaBasePort common)
+        ] Nothing
 
-runUnix :: FilePath -> RemoteTable -> Options -> Int -> DNA () -> IO ()
-runUnix logDir rtable opts nProc dna = do
-    let basePort = dnaBasePort opts
-        rank     = dnaRank     opts
+runUnixWorker :: RemoteTable -> UnixStart -> CommonOpt -> DNA () -> IO ()
+runUnixWorker rtable opts common dna = do
+    home    <- getEnv "HOME"
+    let basePort = dnaBasePort common
+        rank     = dnaUnixRank opts
         port     = basePort + rank
-    -- Master process start all other processes
+        dnaPID   = dnaUnixPID opts
+        nProc    = dnaUnixNProc opts
+    let logDir = home </> "_dna" </> "logs" </> dnaPID
+    -- Spawn child processes
     pids <- case rank of
-        0 -> do prog <- getExecutablePath
+        0 -> do program <- getExecutablePath
                 forM [1 .. nProc - 1] $ \rnk -> do
-                    spawnProcess prog [ "--base-port",     show basePort
-                                      , "--internal-rank", show rnk
-                                      , "--internal-pid",  dnaPID opts
-                                      , "--nprocs",        show nProc
-                                      ]
+                    let dir = logDir </> show rnk
+                    createDirectoryIfMissing True dir
+                    setCurrentDirectory dir
+                    spawnProcess program
+                        [ "+RTS", "-l-au", "-RTS"
+                        , "--base-port",     show basePort
+                        , "--nprocs",        show nProc
+                        , "--internal-rank", show rnk
+                        , "--internal-pid",  dnaPID
+                        , "--workdir",       dnaUnixWDir opts
+                        ]
         _ -> return []
+    -- Go back to working dir
+    setCurrentDirectory (dnaUnixWDir opts)
     let killChild pid = do
             st <- getProcessExitCode pid
             case st of
@@ -78,6 +109,7 @@ runUnix logDir rtable opts nProc dna = do
     case rank of
       0 -> startMaster backend (executeDNA logDir dna) `finally` reapChildren
       _ -> startSlaveWithProc backend (startLoggerProcess logDir)
+
 
 
 executeDNA :: FilePath -> DNA () -> [NodeId] -> Process ()

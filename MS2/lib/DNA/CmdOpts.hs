@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 -- |CmdLine.hs
 --
 -- Command-line options parsing, using optparser-applicative.
@@ -6,56 +7,89 @@
 --
 -- Copyright (C) 2014 Braa Research, LLC.
 module DNA.CmdOpts (
-      Options(..)
+      StartOpt(..)
+    , UnixStart(..)
+    , CommonOpt(..)
     , dnaParseOptions
     ) where
 
 import Control.Monad
 import Options.Applicative
-import System.Environment   (lookupEnv)
-import System.Posix.Process (getProcessID)
+import System.Environment
 
 
--- | Program options. Noe that we obtain configuration from both
---   environment and from command line
-data Options = Options
-    { dnaPID      :: String     -- ^ Process ID
-    , dnaRank     :: Int        -- ^ Rank of UNIX process
-    , dnaNProcs   :: Maybe Int  -- ^ Number of processes to
-                                --   spawn. Nothing in SLURM case
-    , dnaBasePort :: Int        -- ^ Base port for program
+
+-- | Options for different methods of starting DNA program
+data StartOpt
+    = Unix       Int            -- ^ UNIX start
+    | UnixWorker UnixStart
+    | Slurm
+    deriving (Show)
+
+-- | Options for UNIX start
+data UnixStart = UnixStart
+    { dnaUnixNProc :: Int       -- ^ Total N of processes
+    , dnaUnixPID   :: String    -- ^ PID of process
+    , dnaUnixRank  :: Int       -- ^ Rank of process
+    , dnaUnixWDir  :: FilePath  -- ^ Working directory for program
     }
     deriving (Show)
 
+
+-- | Options common for all method of starting DNA program.
+data CommonOpt = CommonOpt
+    { dnaBasePort :: Int        -- ^ Base port for program
+    }
+    deriving (Show)
+
+
 -- | Obtain startup options for
-dnaParseOptions :: IO Options
+dnaParseOptions :: IO (StartOpt, CommonOpt)
 dnaParseOptions = do
-    -- Try to obtain envvars set by SLURM
-    mslurmJID <- lookupEnv "SLURM_JOBID"
-    mslurmRnk <- (safeRead =<<) <$> lookupEnv "SLURM_PROCID"
-    -- They must be eitherboth present of both absent
-    case (mslurmJID,mslurmRnk) of
-      (Nothing,Nothing)             -> do
-          pid <- getProcessID
-          execParser $ wrapParser $  Options
-                                 <$> optPID pid
-                                 <*> optRank
-                                 <*> (Just <$> optNProcs)
-                                 <*> optBasePort
-      (Just slurmJID,Just slurmRnk) -> do
-          execParser $ wrapParser $ Options
-                                 <$> pure ("s-" ++ slurmJID)
-                                 <*> pure slurmRnk
-                                 <*> pure Nothing
-                                 <*> optBasePort
-      _ -> error "SLURM envvars"
+    -- Parse command line parameters
+    args <- getArgs
+    -- FIXME: Alternative instance doesn't work properly for composite
+    --        parsers. Probably bug should be filed for that
+    let a <.> b = (,) <$> a <*> b
+    let run p = execParserPure ParserPrefs
+                    { prefMultiSuffix     = "VAR"
+                    , prefDisambiguate    = False
+                    , prefShowHelpOnError = True
+                    , prefBacktrack       = True
+                    , prefColumns         = 80
+                    }
+                    (wrapParser p) args
+    -- FIXME: better error reporting required
+    case run (optUnixWorker <.> optCommon) of
+      Success a -> return a
+      _ -> case run (optUnix <.> optCommon) of
+             Success a -> return a
+             _ -> case run (optSlurm <.> optCommon) of
+                    Success a -> return a
+                    _ -> error "Cannot parse command line parameters"
   where
     wrapParser p = info (helper <*> p)
         (  fullDesc
         <> progDesc "Start DNA program"
         <> header ("DNA Cloud Haskell implementation")
         )
-    -- Command line options
+    --
+    optUnix       = Unix <$> optNProcs
+    optUnixWorker = UnixWorker <$>
+        ( UnixStart
+       <$> optNProcs
+       <*> optPID
+       <*> optRank
+       <*> optWDir
+        )
+    optSlurm  = pure Slurm
+    optCommon = CommonOpt <$> optBasePort
+    -- Parsers for
+    optWDir = option str
+            ( metavar "DIR"
+           <> long "workdir"
+           <> help "Working directory for program"
+            )
     optRank = option positiveNum
             ( metavar "RANK"
            <> long "internal-rank"
@@ -63,12 +97,12 @@ dnaParseOptions = do
            <> help "specify rank of process [DO NOT USE MANUALLY!]"
             )
            <|> pure 0
-    optPID p = option str
-             ( metavar "PID"
-            <> long    "internal-pid"
-            <> hidden
-            <> help    "specify Job ID of process"
-             ) <|> pure ("u-" ++ show p)
+    optPID = option str
+           ( metavar "PID"
+          <> long    "internal-pid"
+          <> hidden
+          <> help    "specify Job ID of process"
+           )
     optBasePort = option readPort
                 ( metavar "PORT"
                <> long "base-port"
