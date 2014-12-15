@@ -106,8 +106,6 @@ data NodeInfo = NodeInfo
     { nodeCP     :: NCP         -- ^ PID of controller process
     , nodeParent :: Maybe NCP   -- ^ PID of parent's controller process
     , nodeID     :: NodeId      -- ^ Node ID
-    , loggerProc :: ProcessId
-      -- ^ Port for sending thread local data
     }
     deriving (Show,Eq,Ord,Typeable,Generic)
 

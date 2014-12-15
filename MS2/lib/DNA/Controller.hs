@@ -60,10 +60,11 @@ startAcpLoop self pid (VirtualCAD _ n nodes) = do
             case ms of
               Right s' -> loop s'
               -- FIXME: check status of child processes
-              Left  Done ->
-                  send (loggerProc n) =<< makeLogMessage "ACP" "DONE"
-              Left (Fatal s) ->
-                  send (loggerProc n) =<< makeLogMessage "ACP" ("Failure: "++s)
+              -- FIXME: log status of actors?
+              Left Done -> return ()
+                  -- send (loggerProc n) =<< makeLogMessage "ACP" "DONE"
+              Left (Fatal s) -> return ()
+                  -- send (loggerProc n) =<< makeLogMessage "ACP" ("Failure: "++s)
     loop StateACP { _stCounter        = 0
                   , _stAcpClosure     = self
                   , _stActor          = pid
@@ -582,12 +583,6 @@ nodeController = do
     (self,parent,subcads) <- expect
     me     <- getSelfPid
     local  <- getSelfNode
-    -- Get logger process. Here we assume that it logger is already
-    -- spawned and registered. Otherwise we will block here forever.
-    let getLogger = do
-            mh <- whereis "dnaLogger"
-            maybe getLogger return mh
-    logger <- getLogger
     -- FIXME: assumes reliability. Process spaning may in fact fail
     cads <- forM subcads $ \(CAD nid rest) -> do
         pid <- spawn nid self
@@ -597,7 +592,6 @@ nodeController = do
                          -- FIXME: notion of parent.
                          , nodeParent = Just (NCP parent)
                          , nodeID     = local
-                         , loggerProc = logger
                          }
     send parent $ CAD ninfo cads
     -- FIXME: here we just block eternally to keep process alive. We

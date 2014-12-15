@@ -139,21 +139,7 @@ sendACP a = do
 
 -- | Put message into log file
 logMessage :: String -> DNA ()
-logMessage msg = do
-    (_,n,_,_) <- DNA ask
-    m <- makeLogMessage "DNA" msg
-    liftP $ send (loggerProc n) m
-
--- | Measure execution time of action into event log. Value of action
---   will be evaluated up to WHNF.
-timePeriod :: String -> DNA a -> DNA a
-timePeriod msg action = do
-    (_,n,_,_) <- DNA ask
-    liftP . send (loggerProc n) =<< makeLogMessage "START" msg
-    !a <- action
-    liftP . send (loggerProc n) =<< makeLogMessage "END" msg
-    return a
-
+logMessage = eventMessage
 
 
 ----------------------------------------------------------------
@@ -395,8 +381,9 @@ runACP = do
     -- Start actor process
     nid <- getSelfNode
     me  <- getSelfPid
-    -- FIXME: Ugly logger!!!
-    send (loggerProc ninfo) =<< makeLogMessage "ACP" "Starting ACP"
+    -- FIXME: Logging message
+    -- send (loggerProc ninfo) =<< makeLogMessage "ACP" "Starting ACP"
+    --
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.
@@ -423,7 +410,8 @@ runMasterACP (ParamACP self () resources actorP) act = do
     -- Start actor process
     me  <- getSelfPid
     -- FIXME: Ugly logger!!!
-    send (loggerProc ninfo) =<< makeLogMessage "ACP" "Starting ACP"
+    -- send (loggerProc ninfo) =<< makeLogMessage "ACP" "Starting ACP"
+    --
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.

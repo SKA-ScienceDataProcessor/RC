@@ -1,7 +1,4 @@
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveDataTypeable, DeriveFunctor #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE BangPatterns #-}
 -- | Logging.hs
 --
 -- Logging facilities.
@@ -9,25 +6,11 @@
 -- Copyright (C) 2014 Braam Research, LLC.
 module DNA.Logging where
 
-
-import Control.Applicative
-import Control.Monad
-import Control.Monad.State
-import Control.Monad.Except
-import Control.Exception  (SomeException)
-import Control.Distributed.Process
-import Control.Distributed.Process.Closure
-import Control.Distributed.Process.Serializable (Serializable)
-import Data.Binary   (Binary)
-import Data.Typeable (Typeable)
-import Data.Time.Clock.POSIX (getPOSIXTime)
-import qualified Data.Foldable   as T
-import System.IO
-import System.Directory   (createDirectoryIfMissing)
-import GHC.Generics (Generic)
-import Text.Printf
-
-import DNA.Types
+import Control.Monad.IO.Class
+import Data.Time
+import System.IO.Unsafe   (unsafeDupablePerformIO)
+import System.Locale      (defaultTimeLocale)
+import Debug.Trace        (traceEventIO)
 
 
 
@@ -35,62 +18,31 @@ import DNA.Types
 -- Message data types for logger
 ----------------------------------------------------------------
 
--- | Time stamp in POSIX time. We have microsecond precision.
-type TimeStamp = Double
+-- |Put measurements about time period into eventlog.
+timePeriod :: MonadIO m => String -> m a -> m a
+timePeriod ev a = do
+    liftIO $ traceEventIO $ "START "++ev
+    !r <- a
+    liftIO $ traceEventIO $ "END "++ev
+    return r
 
--- | Message data type which is sent to the logger process
-data LogMsg
-    = LogMsg    Double ProcessId String String
-      -- ^ Time stamp, source process, tag, message
-    | SyncPoint Double
-    deriving (Show,Eq,Ord,Typeable,Generic)
-instance Binary LogMsg
+-- |Measure time period of pure computation into eventlog.
+-- Is strict on argument.
+timePeriodPure :: String -> a -> a
+timePeriodPure ev a = unsafeDupablePerformIO $ do
+    traceEventIO ("START "++ev)
+    a `seq` traceEventIO ("END "++ev)
+    return a
 
--- | Create log message to send to logger
-makeLogMessage :: MonadProcess m => String -> String -> m LogMsg
-makeLogMessage tag msg = do
-    t  <- liftIO getPOSIXTime
-    me <- liftP getSelfPid
-    return $ LogMsg (realToFrac t) me tag msg
+-- |Synchronize timings - put into eventlog an event with current wall time.
+synchronizationPoint :: MonadIO m => m ()
+synchronizationPoint = liftIO $ do
+    utcTime <- getCurrentTime
+    -- we are formatting time to number of seconds in POSIX epoch and
+    -- fractional part in picoseconds.
+    let timeString = formatTime defaultTimeLocale "%s.%q" utcTime
+    traceEventIO $ "SYNCHRONIZATION "++timeString
 
-
-----------------------------------------------------------------
--- Logger process
-----------------------------------------------------------------
-
--- | Start logger process and register in local registry
-startLoggerProcess :: FilePath -> Process ()
-startLoggerProcess logdir = do
-    liftIO $ createDirectoryIfMissing True logdir
-    bracket open fini $ \h -> do
-        me <- getSelfPid
-        register "dnaLogger" me
-        forever $ do
-            msg <- expect
-            catch (
-             case msg of
-              LogMsg t pid tag s ->
-                  liftIO $ hPutStrLn h $ printf "%f %s [%s]: %s" t (show pid) tag s
-              -- FIXME: write it
-              SyncPoint{} -> return ()
-             ) (\e -> liftIO $ print (e :: SomeException))
-            liftIO $ hFlush h
-  where
-    open   = liftIO (openFile (logdir ++ "/log") WriteMode)
-    fini h = liftIO (hClose h)
-
-
-{-
--- | Dictionary of logging functions. Note that logger could implement
---   only parts of described functionality.
-data Logger m = Logger
-  { -- | Measure how long action will execute and put it into eventlog.
-    timePeriod :: forall a. String -> m a -> m a
-  , -- | Measure how long does pure computation take to compute and put it into eventlog.
-    timePeriodPure :: forall a. String -> a -> a
-  , -- | Synchronize timings - put into eventlog an event with current wall time.
-    synchronizationPoint :: m ()
-  , -- | Put message to event log
-    eventMessage :: String -> m ()
-  }
--}
+-- |Message to eventlog.
+eventMessage :: MonadIO m => String -> m ()
+eventMessage msg = liftIO $ traceEventIO $ "MESSAGE "++msg

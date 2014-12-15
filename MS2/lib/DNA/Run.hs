@@ -18,7 +18,7 @@ import System.FilePath    ((</>))
 import System.Posix.Process (getProcessID,executeFile)
 import qualified Data.Foldable as T
 
-import DNA.SlurmBackend (initializeBackend,startMaster,startSlaveWithProc)
+import DNA.SlurmBackend (initializeBackend,startMaster,startSlave)
 import qualified DNA.SlurmBackend as CH
 import DNA.CmdOpts
 import DNA.DNA        hiding (__remoteTable,rank)
@@ -107,16 +107,15 @@ runUnixWorker rtable opts common dna = do
     backend <- initializeBackend (CH.Local ports) "localhost" (show port) rtable
     -- Start master or slave program
     case rank of
-      0 -> startMaster backend (executeDNA logDir dna) `finally` reapChildren
-      _ -> startSlaveWithProc backend (startLoggerProcess logDir)
+      0 -> startMaster backend (executeDNA dna) `finally` reapChildren
+      _ -> startSlave backend
 
 
 
-executeDNA :: FilePath -> DNA () -> [NodeId] -> Process ()
-executeDNA logDir dna nodes = do
+executeDNA :: DNA () -> [NodeId] -> Process ()
+executeDNA dna nodes = do
     me  <- getSelfPid
     nid <- getSelfNode
-    _   <- spawnLocal $ startLoggerProcess logDir
     -- Create CAD out of list of nodes
     let initialCAD = makeCAD (nid : nodes)
     -- FIXME: very-very-very bad

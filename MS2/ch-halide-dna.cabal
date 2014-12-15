@@ -30,6 +30,7 @@ library
     base         >=4.6,
     unix,
     time,
+    old-locale,
     bytestring   >= 0.10, 
     binary,
     process      >= 1.2,
