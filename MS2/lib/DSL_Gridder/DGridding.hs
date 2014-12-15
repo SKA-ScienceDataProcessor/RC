@@ -120,7 +120,7 @@ amp_doubles_in_chnl = elems_in_chnl * 8
 
 uvw_bytes_in_chnl, amp_bytes_in_chnl :: Int
 uvw_bytes_in_chnl = uvw_doubles_in_chnl * sizeOf (undefined :: CDouble)
-amp_bytes_in_chnl = uvw_doubles_in_chnl * sizeOf (undefined :: CDouble)
+amp_bytes_in_chnl = amp_doubles_in_chnl * sizeOf (undefined :: CDouble)
 
 remotable [ 'rawSystemActor
           , 'convertVisActor

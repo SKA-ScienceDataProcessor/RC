@@ -42,7 +42,7 @@ doThemAll :: Actor () String
 doThemAll = actor $ \_ -> do
     rsim <- select Local 0
     sim  <- startActor rsim $(mkStaticClosure 'rawSystemActor)
-    sendParam ("oskar_sim_interferometer", [vis_file_name]) sim
+    sendParam ("oskar_sim_interferometer", ["temp.ini"]) sim
     simwaiter <- delay sim
     retcode <- await simwaiter
     case retcode of
@@ -58,8 +58,8 @@ doThemAll = actor $ \_ -> do
           else do
             (ptru, rawsizeu, offsetu, sizeu) <- liftIO $ mmapFilePtr (uvw_filename vis_file_name) ReadOnly Nothing
             (ptra, rawsizea, offseta, sizea) <- liftIO $ mmapFilePtr (amp_filename vis_file_name) ReadOnly Nothing
-            if sizeu /= uvw_bytes_in_chnl || sizea /=  amp_bytes_in_chnl
-              then return $ "Wrong input dimensions"
+            if sizeu /= uvw_bytes_in_chnl || sizea /= amp_bytes_in_chnl
+              then return $ printf "Wrong input dimensions: %d instead of %d, %d instead of %d" sizeu uvw_bytes_in_chnl sizea amp_bytes_in_chnl
               else do
                 let
                    buffers = (ptru `plusPtr` offsetu, ptra `plusPtr` offseta)
