@@ -18,7 +18,7 @@ import System.FilePath    ((</>))
 import System.Posix.Process (getProcessID,executeFile)
 import qualified Data.Foldable as T
 
-import DNA.SlurmBackend (initializeBackend,startMaster,startSlave)
+import DNA.SlurmBackend (initializeBackend,startMaster,startSlave,terminateAllSlaves)
 import qualified DNA.SlurmBackend as CH
 import DNA.CmdOpts
 import DNA.DNA        hiding (__remoteTable,rank)
@@ -107,7 +107,7 @@ runUnixWorker rtable opts common dna = do
     backend <- initializeBackend (CH.Local ports) "localhost" (show port) rtable
     -- Start master or slave program
     case rank of
-      0 -> startMaster backend (executeDNA dna) `finally` reapChildren
+      0 -> do startMaster backend (\n -> executeDNA dna n >> terminateAllSlaves backend)
       _ -> startSlave backend
 
 
