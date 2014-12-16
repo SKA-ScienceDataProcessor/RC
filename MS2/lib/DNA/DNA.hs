@@ -25,7 +25,7 @@ module DNA.DNA (
     , groupSize
     , getMonitor
     , logMessage
-    , timePeriod
+    , duration
       -- * Actors
     , Actor(..)
     , actor
@@ -141,6 +141,11 @@ sendACP a = do
 logMessage :: String -> DNA ()
 logMessage = eventMessage
 
+duration :: String -> DNA a -> DNA a
+duration msg dna = do
+    pid <- liftP getSelfPid
+    let msg' = "[" ++ show pid ++ "] " ++ msg
+    timePeriod msg' dna
 
 ----------------------------------------------------------------
 -- Data types for actors

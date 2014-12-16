@@ -6,7 +6,7 @@ module DNA (
     , rank
     , groupSize
     , logMessage
-    , timePeriod
+    , duration
        -- * Actors
     , Actor
     , actor

@@ -54,10 +54,10 @@ ddpProductSlice = actor $ \(fname, size) -> do
     futVA <- delay shellVA
     futVB <- delay shellVB
     --
-    va <- timePeriod "receive compute" $ await futVA
-    vb <- timePeriod "receive read"    $ await futVB
+    va <- duration "receive compute" $ await futVA
+    vb <- duration "receive read"    $ await futVB
     --
-    timePeriod "compute sum" $
+    duration "compute sum" $
       return $ (S.sum $ S.zipWith (*) va vb :: Double)
 
 remotable [ 'ddpProductSlice
@@ -67,12 +67,12 @@ remotable [ 'ddpProductSlice
 -- | Actor for calculating dot product
 ddpDotProduct :: Actor (String,Int64) Double
 ddpDotProduct = actor $ \(fname,size) -> do
+    logMessage "YAY"
     res   <- selectMany 4
     shell <- startGroup res $(mkStaticClosure 'ddpProductSlice)
     broadcastParam (fname,size) shell
     partials <- delayGroup shell
     x <- gather partials (+) 0
-    logMessage "GATHER"
     return x
 
 main :: IO ()
