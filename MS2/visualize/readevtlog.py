@@ -132,5 +132,5 @@ def read_timelines(dir) :
         [nm] = os.listdir(logd)
         nm   = os.path.join(logd,nm)
         t = Timeline( read_log_entries(stream_eventlog(nm) ) )
-        res[d] = t
+        res[int(d)] = t
     return res
