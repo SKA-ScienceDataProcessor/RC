@@ -28,7 +28,7 @@ class LogEntry :
 
 def read_log_entries(stream) :
     "Read stream of LogEntry from textual stream of eventlog"
-    regex = re.compile("([0-9]+): cap [0-9]+: ([A-Z]+) +(.*)")
+    regex = re.compile(" *([0-9]+): cap [0-9]+: ([A-Z]+) +(.*)")
     for line in stream :
         m = regex.match(line)
         if m is None :
