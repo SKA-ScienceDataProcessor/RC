@@ -40,6 +40,7 @@ module DNA (
     , await
     , gather
     , delay
+    , delayCollector
     , delayGroup
       -- * Start DNA program
     , dnaRun

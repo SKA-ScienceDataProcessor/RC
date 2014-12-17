@@ -60,6 +60,7 @@ module DNA.DNA (
     , await
     , gather
     , delay
+    , delayCollector
     , delayGroup
       -- * Starting actors
     , runActor
@@ -312,6 +313,15 @@ delay loc (Shell _ chDst acp) = do
     liftP $ sendChan chDst $ destFromLoc loc chSend
     sendACP $ ReqConnectTo acp myACP
     return  $ Promise chRecv
+
+delayCollector :: Serializable b => Location -> CollectorShell a b -> DNA (Promise b)
+delayCollector loc (CollectorShell _ _ chDst acp) = do
+    myACP           <- getMonitor
+    (chSend,chRecv) <- liftP newChan
+    liftP $ sendChan chDst $ destFromLoc loc chSend
+    sendACP $ ReqConnectTo acp myACP
+    return  $ Promise chRecv
+    
 
 -- | Create promise from group of processes which allows to collect
 --   data from them later.
