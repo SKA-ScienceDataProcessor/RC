@@ -143,12 +143,22 @@ data ParamActor = ParamActor
     }
     deriving (Show,Typeable,Generic)
 
+-- | Destination for actor computation
+data Dest a
+    = SendLocally (SendPort a)
+      -- ^ Send result using using unsafe primitive
+    | SendRemote [SendPort a]
+      -- ^ Send result using standard primitives
+    deriving (Show,Typeable,Generic)
+
 instance Binary a => Binary (CAD a)
 instance Binary NodeInfo
 instance Binary VirtualCAD
 instance Binary Location
 instance Binary a => Binary (ParamACP a)
 instance Binary ParamActor
+instance Serializable a => Binary (Dest a)
+
 
 
 ----------------------------------------------------------------
@@ -158,7 +168,7 @@ instance Binary ParamActor
 -- | Simple shell process
 data Shell a b = Shell
     (SendPort a)
-    (SendPort [SendPort b])
+    (SendPort (Dest b))
     ACP
     deriving (Show,Typeable,Generic)
 instance (Serializable a, Serializable b) => Binary (Shell a b)
@@ -168,7 +178,7 @@ instance (Serializable a, Serializable b) => Binary (Shell a b)
 data CollectorShell a b = CollectorShell
      (SendPort a)
      (SendPort (Maybe Int))
-     (SendPort [SendPort b])
+     (SendPort (Dest b))
      ACP
      deriving (Show,Typeable,Generic)
 instance (Serializable a, Serializable b) => Binary (CollectorShell a b)
@@ -186,15 +196,3 @@ instance (Serializable a, Serializable b) => Binary (ShellGroup a b)
 data GroupCollect a b = GroupCollect GroupID [CollectorShell a b]
                     deriving (Show,Typeable,Generic)
 instance (Serializable a, Serializable b) => Binary (GroupCollect a b)
-
-
-
-----------------------------------------------------------------
--- Destinations
-----------------------------------------------------------------
-
--- | Destination for result of actor computations
-data Dest a = Dest (SendPort a) (SendPort ())
-
--- | Destination for result of group of actors computation
-data DestGrp a = DestGrp (SendPort a) (SendPort (Maybe Int))

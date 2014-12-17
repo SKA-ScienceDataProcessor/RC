@@ -51,8 +51,8 @@ ddpProductSlice = actor $ \(fname, size) -> do
     sendParam (off,n)          shellVA 
     sendParam (fname, (off,n)) shellVB
     --
-    futVA <- delay shellVA
-    futVB <- delay shellVB
+    futVA <- delay Local shellVA
+    futVB <- delay Local shellVB
     --
     va <- duration "receive compute" $ await futVA
     vb <- duration "receive read"    $ await futVB

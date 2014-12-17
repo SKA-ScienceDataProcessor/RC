@@ -231,7 +231,8 @@ broadcastParam a (ShellGroup _ shells) = do
 -- | Connect two processes together
 connect :: Serializable b => Shell a b -> Shell b c -> DNA ()
 connect (Shell _ chDst childA) (Shell chB _ childB) = do
-    liftP $ sendChan chDst [chB]
+    -- FIXME: Do we want to allow unsafe send here?
+    liftP $ sendChan chDst $ SendRemote [chB]
     sendACP $ ReqConnectTo childA childB
 
 
@@ -239,7 +240,7 @@ connect (Shell _ chDst childA) (Shell chB _ childB) = do
 --   in the group will receive same data.
 broadcast :: Serializable b => Shell a b -> ShellGroup b c -> DNA ()
 broadcast (Shell _ chDst childA) (ShellGroup gid chansB) = do
-    liftP $ sendChan chDst [ch | Shell ch _ _ <- chansB]
+    liftP $ sendChan chDst $ SendRemote [ch | Shell ch _ _ <- chansB]
     sendACP $ ReqConnectToGrp childA gid
 
 
@@ -247,7 +248,7 @@ broadcast (Shell _ chDst childA) (ShellGroup gid chansB) = do
 collect :: Serializable b => ShellGroup a b -> CollectorShell b c -> DNA ()
 collect (ShellGroup gid shells) (CollectorShell chB chN _ childB) = do
     liftP $ forM_ shells $ \(Shell _ dst _) -> do
-        sendChan dst [chB]
+        sendChan dst $ SendRemote [chB]
     sendACP $ ReqConnectGrp gid childB [chN]
 
 
@@ -260,8 +261,13 @@ connectCollectorGroup (ShellGroup gidA shells) (GroupCollect gidB colSh) = do
     let dsts   = [ch | CollectorShell ch _ _ _ <- colSh]
         chansN = [ch | CollectorShell _ ch _ _ <- colSh]
     liftP $ forM_ shells $ \(Shell _ ch _) ->
-        sendChan ch dsts
+        sendChan ch $ SendRemote dsts
     sendACP $ ReqConnectGrpToGrp gidA gidB chansN
+
+
+destFromLoc :: Location -> SendPort a -> Dest a
+destFromLoc Local  = SendLocally
+destFromLoc Remote = SendRemote . (:[])
 
 
 
@@ -299,11 +305,11 @@ gatherM (Group chA chN) f x0 = do
 
 -- | Create promise for single actor. It allows to receive data from
 --   it later.
-delay :: Serializable b => Shell a b -> DNA (Promise b)
-delay (Shell _ chDst acp) = do
+delay :: Serializable b => Location -> Shell a b -> DNA (Promise b)
+delay loc (Shell _ chDst acp) = do
     myACP           <- getMonitor
     (chSend,chRecv) <- liftP newChan
-    liftP $ sendChan chDst [chSend]
+    liftP $ sendChan chDst $ destFromLoc loc chSend
     sendACP $ ReqConnectTo acp myACP
     return  $ Promise chRecv
 
@@ -315,7 +321,7 @@ delayGroup (ShellGroup gid shells) = do
     (sendB,recvB) <- liftP newChan
     (sendN,recvN) <- liftP newChan
     liftP $ forM_ shells $ \(Shell _ chDst _) ->
-        sendChan chDst [sendB]
+        sendChan chDst $ SendRemote [sendB]
     sendACP $ ReqConnectGrp gid myACP [sendN]
     return  $ Group recvB recvN
 
@@ -337,7 +343,6 @@ runActor (Actor action) = do
     -- Obtain parameters
     ParamActor parent rnk grp <- expect
     (ACP acp,ninfo) <- expect
-    me <- getSelfPid
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
@@ -345,9 +350,10 @@ runActor (Actor action) = do
     send parent (acp, wrapMessage $ Shell chSendParam chSendDst (ACP acp))
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
-    b   <- runDNA (ACP acp) ninfo rnk grp (action a)
+    !b  <- runDNA (ACP acp) ninfo rnk grp (action a)
     dst <- receiveChan chRecvDst
-    forM_ dst $ \ch -> sendChan ch b
+    sendToDest dst b
+
 
 -- | Start execution of collector actor
 runCollectActor :: CollectActor a b -> Process ()
@@ -363,12 +369,19 @@ runCollectActor (CollectActor step start fini) = do
     send parent (acp, wrapMessage $
                       CollectorShell chSendParam chSendN chSendDst (ACP acp))
     -- Start execution of an actor
-    b <- runDNA (ACP acp) ninfo rnk grp $ do
+    !b <- runDNA (ACP acp) ninfo rnk grp $ do
         s0 <- start
         s  <- gatherM (Group chRecvParam chRecvN) step s0
         fini s
     dst <- receiveChan chRecvDst
-    forM_ dst $ \ch -> sendChan ch b
+    sendToDest dst b
+
+
+sendToDest :: (Serializable a) => Dest a -> a -> Process ()
+sendToDest dst a =
+    case dst of
+      SendLocally ch  -> unsafeSendChan ch a
+      SendRemote  chs -> forM_ chs $ \c -> sendChan c a
 
 
 -- | Start execution of actor controller process (ACP). Takes triple
