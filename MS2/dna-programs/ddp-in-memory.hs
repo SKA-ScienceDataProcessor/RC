@@ -36,7 +36,7 @@ scatterShape n size
 
 -- | Caclculate dot product of slice of vector
 ddpProductSlice :: Actor (String,Int64) Double
-ddpProductSlice = actor $ \(fname, size) -> do
+ddpProductSlice = actor $ \(fname, size) -> duration "vector slice" $ do
     -- Calculate offsets
     nProc <- groupSize
     rnk   <- rank
@@ -67,12 +67,11 @@ remotable [ 'ddpProductSlice
 -- | Actor for calculating dot product
 ddpDotProduct :: Actor (String,Int64) Double
 ddpDotProduct = actor $ \(fname,size) -> do
-    logMessage "YAY"
     res   <- selectMany 4
     shell <- startGroup res $(mkStaticClosure 'ddpProductSlice)
     broadcastParam (fname,size) shell
     partials <- delayGroup shell
-    x <- gather partials (+) 0
+    x <- duration "collecting vectors" $ gather partials (+) 0
     return x
 
 main :: IO ()
