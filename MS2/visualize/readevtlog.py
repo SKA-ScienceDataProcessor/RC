@@ -16,7 +16,8 @@ class LogEntry :
        It contain timestamp, message tag and raw message
     """
     def __init__(self,t,tag,msg) :
-        self.t   = t
+        # Convert timestamp to seconds
+        self.t   = t / 1e9
         self.tag = tag
         self.msg = msg
 
@@ -70,6 +71,18 @@ class Interval :
     def dt(self) :
         return self.t2 - self.t1
 
+class Sync :
+    "Sync event"
+    def __init__(self,t,msg) :
+        self.t = t
+        m = re.match(r'([0-9]+\.[0-9]*) (.*)', msg)
+        self.wall_clock = float(m.group(1))
+        self.msg = m.group(2)
+
+    def __str__(self) :
+        return "t={} at {} {}".format(self.t, self.wall_clock, self.msg)
+    def __repr__(self) :
+        return "Sync{{t={} at {} {}}}".format(self.t, self.wall_clock, self.msg)
 
 class Timeline :
     "Timeline of events for some particular node"
@@ -89,7 +102,7 @@ class Timeline :
             
         for e in stream :
             if e.tag == "SYNC" :
-                self.sync.append(e)
+                self.sync.append(Sync(e.t, e.msg))
             elif e.tag == "MESSAGE" :
                 self.messages.append(e)
             elif e.tag == "START" :
