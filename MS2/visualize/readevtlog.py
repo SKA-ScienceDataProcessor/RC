@@ -65,9 +65,9 @@ class Interval :
         self.pid = pid
         self.msg = msg
     def __str__(self) :
-        return "{}-{} [{}] {}".format(self.t1,self.t2,self.pid,self.msg)
+        return "{}-{} [{}] '{}'".format(self.t1,self.t2,self.pid,self.msg)
     def __repr__(self) :
-        return "Interval{{{}-{} [{}] {}}}".format(self.t1,self.t2,self.pid,self.msg)
+        return "Interval{{{}-{} [{}] '{}'}}".format(self.t1,self.t2,self.pid,self.msg)
     def dt(self) :
         return self.t2 - self.t1
 
@@ -80,9 +80,9 @@ class Sync :
         self.msg = m.group(2)
 
     def __str__(self) :
-        return "t={} at {} {}".format(self.t, self.wall_clock, self.msg)
+        return "t={} at {} '{}'".format(self.t, self.wall_clock, self.msg)
     def __repr__(self) :
-        return "Sync{{t={} at {} {}}}".format(self.t, self.wall_clock, self.msg)
+        return "Sync{{t={} at {} '{}'}}".format(self.t, self.wall_clock, self.msg)
 
 class Timeline :
     "Timeline of events for some particular node"
@@ -99,7 +99,7 @@ class Timeline :
             if m is None :
                 raise Exception("Bad message")
             return (m.group(1), m.group(2))
-            
+
         for e in stream :
             if e.tag == "SYNC" :
                 self.sync.append(Sync(e.t, e.msg))
@@ -121,7 +121,24 @@ class Timeline :
                 if l :
                     stack[(pid,msg)] = l
 
-                
+    def get_sync_event_times(self, nm) :
+        "Return sync events with given message"
+        return [e for e in self.sync if e.msg == nm]
+    def get_durations_for_name(self,nm) :
+        "List of durations for given name"
+        return [e for e in self.time if e.msg == nm]
+
+
+
+def offset_timelines(logs) :
+    "Set minimal wall clock time in logs to 0"
+    def min_t(timeline) :
+        return min([e.wall_clock for e in timeline.sync])
+    t0 = min([min_t(e) for e in logs.itervalues()])
+    for timeline in logs.itervalues() :
+        for e in timeline.sync :
+            e.wall_clock -= t0
+
 def read_timelines(dir) :
     "read dictionary of timelines"
     res = {}
