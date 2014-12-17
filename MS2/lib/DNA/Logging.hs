@@ -35,13 +35,13 @@ timePeriodPure ev a = unsafeDupablePerformIO $ do
     return a
 
 -- |Synchronize timings - put into eventlog an event with current wall time.
-synchronizationPoint :: MonadIO m => m ()
-synchronizationPoint = liftIO $ do
+synchronizationPoint :: MonadIO m => String -> m ()
+synchronizationPoint msg = liftIO $ do
     utcTime <- getCurrentTime
     -- we are formatting time to number of seconds in POSIX epoch and
     -- fractional part in picoseconds.
     let timeString = formatTime defaultTimeLocale "%s.%q" utcTime
-    traceEventIO $ "SYNCHRONIZATION "++timeString
+    traceEventIO $ "SYNC " ++ timeString ++ " " ++ msg
 
 -- |Message to eventlog.
 eventMessage :: MonadIO m => String -> m ()

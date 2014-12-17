@@ -88,7 +88,7 @@ class Timeline :
             return (m.group(1), m.group(2))
             
         for e in stream :
-            if e.tag == "SYNCHRONIZATION" :
+            if e.tag == "SYNC" :
                 self.sync.append(e)
             elif e.tag == "MESSAGE" :
                 self.messages.append(e)

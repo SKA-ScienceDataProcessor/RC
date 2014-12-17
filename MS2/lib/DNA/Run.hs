@@ -69,6 +69,7 @@ runUnix n common = do
 
 runUnixWorker :: RemoteTable -> UnixStart -> CommonOpt -> DNA () -> IO ()
 runUnixWorker rtable opts common dna = do
+    synchronizationPoint "UNIX"
     home    <- getEnv "HOME"
     let basePort = dnaBasePort common
         rank     = dnaUnixRank opts
@@ -107,7 +108,10 @@ runUnixWorker rtable opts common dna = do
     backend <- initializeBackend (CH.Local ports) "localhost" (show port) rtable
     -- Start master or slave program
     case rank of
-      0 -> do startMaster backend (\n -> executeDNA dna n >> terminateAllSlaves backend)
+      0 -> startMaster backend $ \n -> do
+               synchronizationPoint "CH"
+               executeDNA dna n
+               terminateAllSlaves backend
       _ -> startSlave backend
 
 
