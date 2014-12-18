@@ -153,6 +153,8 @@ acpStep st = receiveWait
          | otherwise            -> run $ case reason of
              DiedNormal    -> handleNormalTermination pid
              _             -> handleProcessCrash      pid
+    , match $ \Terminate -> do
+        error "Terminated by request!"
     ]
   where
     run :: Controller a -> Process (Either Err StateACP)
