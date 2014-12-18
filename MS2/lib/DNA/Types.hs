@@ -47,10 +47,6 @@ instance MonadProcess m => MonadProcess (ReaderT r m) where
 -- Data types
 ----------------------------------------------------------------
 
--- | Newtype wrapper for sending parent process
-newtype Parent = Parent ProcessId
-              deriving (Show,Eq,Typeable,Binary)
-
 -- | Rank of actor
 newtype Rank = Rank Int
              deriving (Show,Eq,Ord,Typeable,Binary)
