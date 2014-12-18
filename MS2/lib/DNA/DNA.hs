@@ -199,18 +199,17 @@ makeCAD (x:xs) = CAD x [CAD a [] | a <- xs]
 
 
 -- | Allocate N nodes to single actor
-select :: Location -> Int -> DNA Resources
+select :: Location -> Res -> DNA Resources
 select loc n = do
     sendACP $ ReqResources loc n
     liftP expect
 
 -- | Allocate N nodes for group of actors. Each will have only single
 --   node
-selectMany :: Int -> DNA [Resources]
+selectMany :: Res -> DNA [Resources]
 selectMany n = do
     sendACP $ ReqResourcesGrp n
     liftP expect
-
 
 
 ----------------------------------------------------------------

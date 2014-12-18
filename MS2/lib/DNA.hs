@@ -25,6 +25,7 @@ module DNA (
       -- * CAD & Co
     , CAD
     , Location(..)
+    , Res(..)
     , select
     , selectMany
       -- * Connecting actors
@@ -57,3 +58,4 @@ import Control.Distributed.Process.Closure (mkStaticClosure,remotable)
 import DNA.Types
 import DNA.Run
 import DNA.DNA
+import DNA.Controller

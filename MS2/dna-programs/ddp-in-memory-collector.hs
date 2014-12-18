@@ -45,8 +45,8 @@ ddpProductSlice = actor $ \(fname, size) -> duration "vector slice" $ do
     -- FIXME: Bad!
     let (off,n) = scatterShape (fromIntegral nProc) size !! rnk
     -- Start local processes
-    resVA <- select Local 0
-    resVB <- select Local 0
+    resVA <- select Local (NNodes 0)
+    resVB <- select Local (NNodes 0)
     shellVA <- startActor resVA $(mkStaticClosure 'ddpComputeVector)
     shellVB <- startActor resVB $(mkStaticClosure 'ddpReadVector   )
     -- Connect actors
@@ -77,8 +77,8 @@ remotable [ 'ddpProductSlice
 -- | Actor for calculating dot product
 ddpDotProduct :: Actor (String,Int64) Double
 ddpDotProduct = actor $ \(fname,size) -> do
-    res <- selectMany 4
-    r   <- select Local 0
+    res <- selectMany (NFrac 1)
+    r   <- select Local (NNodes 0)
     shell <- startGroup res $(mkStaticClosure 'ddpProductSlice)
     shCol <- startCollector r $(mkStaticClosure 'ddpCollector)
     broadcastParam (fname,size) shell

@@ -12,6 +12,7 @@ module DNA.Controller (
       startAcpLoop
     , ACP(..)
       -- * Control messages for ACP
+    , Res(..)
     , ReqSpawnShell(..)
     , ReqSpawnGroup(..)
     , ReqConnect(..)
@@ -37,6 +38,7 @@ import qualified Data.Set        as Set
 import           Data.Set          (Set)
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict   (Map)
+import Text.Printf
 import GHC.Generics (Generic)
 
 import DNA.Lens
@@ -82,6 +84,14 @@ startAcpLoop self pid (VirtualCAD _ n nodes) = do
 -- Control messages
 ----------------------------------------------------------------
 
+-- | What part of process pool is to use
+data Res
+    = NNodes Int                -- ^ Fixed number of nodes
+    | NFrac  Double             -- ^ Fraction of nodes
+    deriving (Show,Typeable,Generic)
+instance Binary Res
+
+
 -- | Command to spawn shell actor. Contains pair of
 data ReqSpawnShell = ReqSpawnShell
     (Closure (Process ()))      -- Actor's closure
@@ -112,12 +122,12 @@ instance Binary ReqConnect
 
 
 -- | Request resourses for single process.
-data ReqResources = ReqResources Location Int
+data ReqResources = ReqResources Location Res
                     deriving (Show,Typeable,Generic)
 instance Binary ReqResources
 
 -- | Request resourses for group of processes
-data ReqResourcesGrp = ReqResourcesGrp Int
+data ReqResourcesGrp = ReqResourcesGrp Res
                     deriving (Show,Typeable,Generic)
 instance Binary ReqResourcesGrp
 
@@ -168,34 +178,46 @@ acpStep st = receiveWait
 -- Handlers for individual messages
 ----------------------------------------------------------------
 
+-- Get N nodes from pool
+getNNodes :: Int -> Controller [NodeInfo]
+getNNodes n = do
+    free <- use stNodePool
+    when (length free < n) $
+        fatal $ printf "Cannot allocate %i nodes" n
+    let (used,rest) = splitAt n free
+    stNodePool .= rest
+    return used
+
+-- Get fraction of free nodes from pool
+getFracNodes :: Double -> Controller [NodeInfo]
+getFracNodes frac = do
+    free <- use stNodePool
+    let n = length free
+        k = round $ fromIntegral n * frac
+    let (used,rest) = splitAt k free
+    liftIO $ print (k,n)
+    stNodePool .= rest
+    return used
+
+
+makeResource :: Location -> [NodeInfo] -> Controller VirtualCAD
+makeResource Remote []     = fatal "Need positive number of nodes"
+makeResource Remote (n:ns) = return (VirtualCAD Remote n ns)
+makeResource Local  ns     = do
+    n <- use stLocalNode
+    return $ VirtualCAD Local n ns
+
 -- > ReqResources
 --
 -- Request for resources
 handleReqResources :: ReqResources -> Controller ()
-handleReqResources (ReqResources loc n) = do
+handleReqResources (ReqResources loc req) = do
     res <- Resources <$> uniqID
     -- FIXME: What to do when we don't have enough resources to
     --        satisfy request?
-    resourse <- case loc of
-        Remote -> do
-            when (n <= 0) $
-                fatal "Positive number of nodes required"
-            free <- use stNodePool
-            when (length free < n) $
-                fatal "Cannot allocate enough resources!"
-            let (node:touse,rest) = splitAt n free
-            stNodePool .= rest
-            return $ VirtualCAD loc node touse
-        Local -> do
-            when (n < 0) $
-                fatal "Non-negative number of nodes required"
-            free <- use stNodePool
-            when (length free < n) $
-                fatal "Cannot allocate enough resources!"
-            let (touse,rest) = splitAt n free
-            stNodePool .= rest
-            nid <- use stLocalNode
-            return $ VirtualCAD loc nid touse
+    resourse <- case req of
+        NNodes n -> makeResource loc =<< getNNodes n
+        NFrac  f -> makeResource loc =<< getFracNodes f
     stAllocResources . at res .= Just resourse
     -- Send back reply
     pid <- use stActor
@@ -206,22 +228,19 @@ handleReqResources (ReqResources loc n) = do
 --
 -- Request for resources for group of processes
 handleReqResourcesGrp :: ReqResourcesGrp -> Controller ()
-handleReqResourcesGrp (ReqResourcesGrp n) = do
-    when (n <= 0) $
-        fatal "Positive number of nodes required"
-    ress <- replicateM n $ Resources <$> uniqID
-    -- FIXME: What to do when we don't have enough resources to
-    --        satisfy request?
-    free <- use stNodePool
-    when (length free < n) $
-        fatal "Cannot allocate enough resources!"
-    let (nodes,rest) = splitAt n free
-    stNodePool .= rest
-    forM_ (ress `zip` nodes) $ \(r,ni) -> do
-        stAllocResources . at r .= Just (VirtualCAD Remote ni [])
+handleReqResourcesGrp (ReqResourcesGrp req) = do
+    -- Allocate resources
+    nodes <- case req of
+        NNodes n -> getNNodes n
+        NFrac  f -> getFracNodes f
+    res <- forM nodes $ \n -> do
+        let r = VirtualCAD Remote n []
+        i <- Resources <$> uniqID
+        stAllocResources . at i .= Just r
+        return i
     -- Send back reply
     pid <- use stActor
-    liftP $ send pid ress
+    liftP $ send pid (res :: [Resources])
 
 
 -- > ReqConnect
