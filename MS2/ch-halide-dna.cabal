@@ -73,7 +73,11 @@ executable ddp-in-memory
   build-depends:
     base >=4.6,
     ch-dna,
-    vector >= 0.10
+    vector >= 0.10,
+    bytestring,
+    binary,
+    data-binary-ieee754,
+    directory
   other-modules:
     DDP
 

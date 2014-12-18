@@ -3,17 +3,15 @@
 {-# LANGUAGE BangPatterns #-}
 module Main(main) where
 
-import Control.Applicative
-import Control.Monad
 import Data.Int
 import qualified Data.Vector.Storable as S
 
-import DNA.Channel.File (readDataMMap)
+import System.IO        ( openTempFile, hClose )
+import System.Directory ( removeFile )
+
 import DNA
 
-import           DDP hiding (__remoteTable)
-import qualified DDP 
-
+import DDP
 
 -- | Split vector into set of slices.
 scatterShape :: Int64 -> Int64 -> [(Int64,Int64)]
@@ -63,10 +61,17 @@ ddpProductSlice = actor $ \(fname, size) -> duration "vector slice" $ do
 remotable [ 'ddpProductSlice
           ]
 
-
 -- | Actor for calculating dot product
 ddpDotProduct :: Actor (String,Int64) Double
 ddpDotProduct = actor $ \(fname,size) -> do
+
+    -- Run generator & delay
+    resG <- select Local 0
+    shellG <- startActor resG $(mkStaticClosure 'ddpGenerateVector)
+    sendParam (fname, size) shellG
+    _ <- timePeriod "generate" . await =<< delay shellG
+
+    -- Chunk & send out
     res   <- selectMany 4
     shell <- startGroup res $(mkStaticClosure 'ddpProductSlice)
     broadcastParam (fname,size) shell
@@ -75,6 +80,10 @@ ddpDotProduct = actor $ \(fname,size) -> do
     return x
 
 main :: IO ()
-main = dnaRun (DDP.__remoteTable . __remoteTable) $ do
-    b <- eval ddpDotProduct ("file.dat",20000000)
+main = do
+  (fname, h) <- openTempFile "." "temp.dat"
+  dnaRun (DDP.__remoteTable . Main.__remoteTable) $ do
+    b <- eval ddpDotProduct (fname,20000000)
     liftIO $ putStrLn $ "RESULT: " ++ show b
+  hClose h
+  removeFile fname

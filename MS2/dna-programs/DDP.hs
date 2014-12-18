@@ -6,6 +6,10 @@ import Control.Monad
 import Data.Int
 import qualified Data.Vector.Storable as S
 
+import qualified Data.ByteString.Lazy as BS
+import Data.Binary.Put
+import Data.Binary.IEEE754
+
 import DNA.Channel.File (readDataMMap)
 import DNA
 
@@ -24,6 +28,13 @@ ddpReadVector :: Actor (String,(Int64,Int64)) (S.Vector Double)
 ddpReadVector = actor $ \(fname, (off,n)) -> duration "read vector" $ do
     liftIO $ readDataMMap n off fname "FIXME"
 
+-- | Fill the file with an example vector of the given size
+ddpGenerateVector :: Actor (String,Int64) ()
+ddpGenerateVector = actor $ \(fname, n) -> timePeriod "generate vector" $ do
+    liftIO $ BS.writeFile fname $ runPut $
+      replicateM_ (fromIntegral n) (putFloat64le 0.1)
+
 remotable [ 'ddpComputeVector
           , 'ddpReadVector
+          , 'ddpGenerateVector
           ]
