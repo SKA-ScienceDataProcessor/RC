@@ -154,7 +154,7 @@ acpStep st = receiveWait
              DiedNormal    -> handleNormalTermination pid
              _             -> handleProcessCrash      pid
     , match $ \Terminate -> do
-        error "Terminated by request!"
+        return $ Left $ Fatal "Terminated by request!"
     ]
   where
     run :: Controller a -> Process (Either Err StateACP)
@@ -187,10 +187,11 @@ handleReqResources (ReqResources loc n) = do
             stNodePool .= rest
             return $ VirtualCAD loc node touse
         Local -> do
-            when (n < 0) $ error "Non-negative number of nodes required"
+            when (n < 0) $
+                fatal "Non-negative number of nodes required"
             free <- use stNodePool
             when (length free < n) $
-                error "Cannot allocate enough resources!"
+                fatal "Cannot allocate enough resources!"
             let (touse,rest) = splitAt n free
             stNodePool .= rest
             nid <- use stLocalNode
@@ -213,7 +214,7 @@ handleReqResourcesGrp (ReqResourcesGrp n) = do
     --        satisfy request?
     free <- use stNodePool
     when (length free < n) $
-        error "Cannot allocate enough resources!"
+        fatal "Cannot allocate enough resources!"
     let (nodes,rest) = splitAt n free
     stNodePool .= rest
     forM_ (ress `zip` nodes) $ \(r,ni) -> do
