@@ -2,14 +2,13 @@
 
 module Main(main) where
 
-import Foreign.Ptr (plusPtr)
+-- import Foreign.Ptr (plusPtr)
 import Text.Printf (printf)
-
-import System.IO.MMap (
+{- import System.IO.MMap (
     Mode(..)
   , mmapFilePtr
   , munmapFilePtr
-  )
+  ) -}
 import Control.Distributed.Static (Closure)
 
 import GriddersFFI(

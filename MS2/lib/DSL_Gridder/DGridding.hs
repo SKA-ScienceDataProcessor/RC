@@ -24,12 +24,9 @@ import System.IO.MMap (
 import Foreign.Ptr (
     Ptr
   , plusPtr
-  , ptrToIntPtr
-  , intPtrToPtr
   )
 import Foreign.Storable (sizeOf)
 import Foreign.C.Types (CDouble)
-import System.FilePath (addExtension)
 import System.Process (rawSystem)
 import System.Exit (ExitCode(..))
 import Text.Printf (printf)
