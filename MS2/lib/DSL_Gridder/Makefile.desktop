@@ -21,8 +21,17 @@ WG=wget --no-check-certificate
 dslgridder: ./tmp/Main.o ./tmp/DGridding.o ./tmp/GriddersFFI.o ./tmp/Oskar.o romein_client.o halide_client.o writeOSKARc.o o2a.o OskarFFIprim.o GriddersFFIprim.o griddingSimple_double_CUDA.o
 	ghc $(GHC_OPTS) --make gridding-in-memory.hs writeOSKARc.o o2a.o OskarFFIprim.o GriddersFFIprim.o -L$(LIB) -loskar halide_client.o griddingSimple_double_CUDA.o romein_client.o -L$(CUDA_LIB_PATH) -lcuda -lcudart -lstdc++ -lgomp
 
-./tmp/Main.o ./tmp/DGridding.o ./tmp/GriddersFFI.o ./tmp/Oskar.o: gridding-in-memory.hs DGridding.hs GriddersFFI.hs Oskar.hs
+./tmp/Main.o: gridding-in-memory.hs DGridding.hs Oskar.hs GriddersFFI.hs
 	ghc $(GHC_OPTS) --make -c gridding-in-memory.hs
+
+./tmp/DGridding.o: DGridding.hs Oskar.hs GriddersFFI.hs
+	ghc $(GHC_OPTS) --make -c DGridding.hs
+
+./tmp/GriddersFFI.o: GriddersFFI.hs
+	ghc $(GHC_OPTS) --make -c GriddersFFI.hs
+
+./tmp/Oskar.o: Oskar.hs
+	ghc $(GHC_OPTS) --make -c Oskar.hs
 
 GriddersFFIprim.o: GriddersFFIprim.cmm
 	ghc -O2 -c GriddersFFIprim.cmm
