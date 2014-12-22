@@ -121,7 +121,7 @@ instance Binary ReqSpawnShell
 -- | Command to spawn group of shell actors
 data ReqSpawnGroup = ReqSpawnGroup
     (Closure (Process ()))      -- Actor's closure
-    (SendPort (Maybe (GroupID,[Message])))  -- Port to send Shell to
+    (SendPort (GroupID,[Message]))  -- Port to send Shell to
     [Resources]                 -- Resources ID for all actors
     deriving (Show,Typeable,Generic)
 instance Binary ReqSpawnGroup
@@ -450,7 +450,7 @@ handleChannelMsg (pid,msg) = do
         (\g gid -> case g of
            GroupShell ty ch 1 msgs -> do
                let msgs' = msg : msgs
-               lift $ sendChan ch (Just (gid, msgs'))
+               lift $ sendChan ch (gid, msgs')
                return $ Just $ GroupState ty (length msgs', 0) Nothing
            GroupShell ty ch n msgs -> do
                return $ Just $ GroupShell ty ch (n-1) (msg : msgs)
@@ -552,7 +552,7 @@ data ProcState
 
 -- State of group of processes
 data GroupState
-    = GroupShell GroupType (SendPort (Maybe (GroupID,[Message]))) Int [Message]
+    = GroupShell GroupType (SendPort (GroupID,[Message])) Int [Message]
       -- We started processes but didn't assembled processes yet
     | GroupState GroupType (Int,Int) (Maybe [SendPort (Maybe Int)])
       -- Running group. It contains following fields:

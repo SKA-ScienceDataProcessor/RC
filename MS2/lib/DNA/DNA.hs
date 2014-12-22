@@ -511,14 +511,10 @@ startGroup res child = do
     liftP $ send acp $ ReqSpawnGroup clos shellS res
     -- FIXME: here we spawn groups in very unreliable manner. We
     --        assume that nothingf will crash which is plain wrong
-    mmsg <- liftP (receiveChan shellR)
-    case mmsg of
-      Nothing -> error "Ooops! Cannot obtain shell"
-      Just (gid,msgs) -> do
-          ms <- mapM unwrapMessage msgs
-          case sequence ms of
-            Nothing -> error "Bad shell message"
-            Just  s -> return (ShellGroup gid s)
+    (gid,msgs) <- unwrapMessage =<< liftP (receiveChan shellR)
+    case sequence msgs of
+      Nothing -> error "Bad shell message"
+      Just  s -> return (ShellGroup gid s)
 
 
 -- | Start group of collector processes
