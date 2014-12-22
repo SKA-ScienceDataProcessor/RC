@@ -81,12 +81,26 @@ writeResultsActor = actor doIt
 
 #define __SHOUT(a) putStrLn $ printf (printf "<<<%s>>>" a)
 
-type GridderParams = (Ptr CDouble, Ptr CDouble)
+-- type GridderParams = (Ptr CDouble, Ptr CDouble)
+type GridderParams = (String, String)
 type GridderActor = Actor GridderParams (Either GStatus GridData)
 
+-- mkGridderActor :: String -> GridProcType -> GridderActor
+-- mkGridderActor gridder_name gridder_proc = actor $ \(uvwp, ampp) ->
+--   log_duration "GridderActor" gridder_name $ liftIO $ gridder_proc uvwp ampp
+
 mkGridderActor :: String -> GridProcType -> GridderActor
-mkGridderActor gridder_name gridder_proc = actor $ \(uvwp, ampp) ->
-  log_duration "GridderActor" gridder_name $ liftIO $ gridder_proc uvwp ampp
+mkGridderActor gridder_name gridder_proc = actor $ log_duration "GridderActor" gridder_name . liftIO . gridProc -- $ \(uvwp, ampp) ->
+  where
+    gridProc (path_uvw, path_amp) = do
+      (ptru, rawsizeu, offsetu, sizeu) <- mmapFilePtr path_uvw ReadOnly Nothing
+      (ptra, rawsizea, offseta, sizea) <- mmapFilePtr path_amp ReadOnly Nothing
+      if sizeu /= uvw_bytes_in_chnl || sizea /= amp_bytes_in_chnl
+        then return (Left (-999)) -- FIXME: better retcode
+        else
+        finally
+          (gridder_proc (ptru `plusPtr` offsetu) (ptra `plusPtr` offseta))
+          (munmapFilePtr ptru rawsizeu >> munmapFilePtr ptra rawsizea)
 
 romeinActor, halideActor :: GridderActor
 romeinActor = mkGridderActor "Romein" romeinComputeGridOnCuda

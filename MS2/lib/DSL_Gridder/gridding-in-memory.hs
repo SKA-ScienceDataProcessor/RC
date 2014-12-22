@@ -56,13 +56,14 @@ doThemAll = actor $ \_ -> do
         if cvtstatus /= 0
           then return $ "uvwv convertor failed with: " ++ show cvtstatus
           else do
-            (ptru, rawsizeu, offsetu, sizeu) <- liftIO $ mmapFilePtr (uvw_filename vis_file_name) ReadOnly Nothing
-            (ptra, rawsizea, offseta, sizea) <- liftIO $ mmapFilePtr (amp_filename vis_file_name) ReadOnly Nothing
-            if sizeu /= uvw_bytes_in_chnl || sizea /= amp_bytes_in_chnl
-              then return $ printf "Wrong input dimensions: %d instead of %d, %d instead of %d" sizeu uvw_bytes_in_chnl sizea amp_bytes_in_chnl
-              else do
+            -- (ptru, rawsizeu, offsetu, sizeu) <- liftIO $ mmapFilePtr (uvw_filename vis_file_name) ReadOnly Nothing
+            -- (ptra, rawsizea, offseta, sizea) <- liftIO $ mmapFilePtr (amp_filename vis_file_name) ReadOnly Nothing
+            -- if sizeu /= uvw_bytes_in_chnl || sizea /= amp_bytes_in_chnl
+            --   then return $ printf "Wrong input dimensions: %d instead of %d, %d instead of %d" sizeu uvw_bytes_in_chnl sizea amp_bytes_in_chnl
+            --   else do
                 let
-                   buffers = (ptru `plusPtr` offsetu, ptra `plusPtr` offseta)
+                   -- buffers = (ptru `plusPtr` offsetu, ptra `plusPtr` offseta)
+                   fnames = (uvw_filename vis_file_name, amp_filename vis_file_name)
                    write_closure = $(mkStaticClosure 'writeResultsActor)
                    grid_closure = $(mkStaticClosure 'gridActor)
                 --
@@ -82,13 +83,15 @@ doThemAll = actor $ \_ -> do
                 gridder2  <- startActor rgridder2 grid_closure
                 waiter_gridder2 <- delay gridder2
                 --
-                sendParam ("Romein", $(mkStaticClosure 'romeinActor), buffers, wri1) gridder1
-                sendParam ("Halide", $(mkStaticClosure 'halideActor), buffers, wri2) gridder2
+                -- sendParam ("Romein", $(mkStaticClosure 'romeinActor), buffers, wri1) gridder1
+                -- sendParam ("Halide", $(mkStaticClosure 'halideActor), buffers, wri2) gridder2
+                sendParam ("Romein", $(mkStaticClosure 'romeinActor), fnames, wri1) gridder1
+                sendParam ("Halide", $(mkStaticClosure 'halideActor), fnames, wri2) gridder2
                 -- Ignore them for now. Writer should spit some diagnostics.
                 _rcode1 <- await waiter_gridder1
                 _rcode2 <- await waiter_gridder2
                 --
-                liftIO $ munmapFilePtr ptru rawsizeu >> munmapFilePtr ptra rawsizea
+                -- liftIO $ munmapFilePtr ptru rawsizeu >> munmapFilePtr ptra rawsizea
                 --
                 msg1 <- await waiter_wri1
                 msg2 <- await waiter_wri2
