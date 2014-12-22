@@ -112,7 +112,7 @@ instance Binary Res
 -- | Command to spawn shell actor. Contains pair of
 data ReqSpawnShell = ReqSpawnShell
     (Closure (Process ()))      -- Actor's closure
-    (SendPort (Maybe Message))  -- Port to send Shell to
+    (SendPort Message)          -- Port to send wrapped Shell to
     Resources                   -- Resources ID for an actor
     deriving (Show,Typeable,Generic)
 instance Binary ReqSpawnShell
@@ -442,7 +442,7 @@ handleChannelMsg (pid,msg) = do
         (fatal "Shell: unknown process")
         (\p -> case p of
            ShellProc ch -> do
-               lift $ sendChan ch (Just msg)
+               lift $ sendChan ch msg
                return $ Just Running
            Failed -> return $ Just Failed
            _      -> fatal "Shell received twice"
@@ -539,7 +539,7 @@ data StateACP = StateACP
 
 -- State of process.
 data ProcState
-    = ShellProc (SendPort (Maybe Message))
+    = ShellProc (SendPort Message)
       -- We started process but didn't receive status update from it
     | Running
       -- Process is running but we don't know its sink yet

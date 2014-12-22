@@ -477,13 +477,10 @@ startActor res child = do
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runActor) `closureApply` child
     liftP $ send acp $ ReqSpawnShell clos shellS res
-    mmsg <- liftP (receiveChan shellR)
-    case mmsg of
-      Nothing -> error "Ooops! Cannot obtain shell"
-      Just msg -> do m <- unwrapMessage msg
-                     case m of
-                       Nothing -> error "Bad shell message"
-                       Just  s -> return s
+    msg <- unwrapMessage =<< liftP (receiveChan shellR)
+    case msg of
+      Nothing -> error "Bad shell message"
+      Just  s -> return s
 
 
 -- | Start single collector actor
@@ -496,13 +493,10 @@ startCollector res child = do
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
     liftP $ send acp $ ReqSpawnShell clos shellS res
-    mmsg <- liftP (receiveChan shellR)
-    case mmsg of
-      Nothing -> error "Ooops! Cannot obtain shell"
-      Just msg -> do m <- unwrapMessage msg
-                     case m of
-                       Nothing -> error "Bad shell message"
-                       Just  s -> return s
+    msg <- unwrapMessage =<< liftP (receiveChan shellR)
+    case msg of
+      Nothing -> error "Bad shell message"
+      Just  s -> return s
 
 
 -- | Start group of processes
