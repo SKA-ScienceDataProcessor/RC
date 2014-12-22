@@ -45,6 +45,7 @@ import GHC.Generics (Generic)
 
 import DNA.Lens
 import DNA.Types
+import DNA.Logging
 
 
 
@@ -79,11 +80,8 @@ startAcpLoop self pid (VirtualCAD _ n nodes) = do
             case ms of
               Right s' -> loop s'
               -- FIXME: check status of child processes
-              -- FIXME: log status of actors?
-              Left Done -> return ()
-                  -- send (loggerProc n) =<< makeLogMessage "ACP" "DONE"
-              Left (Fatal s) -> return ()
-                  -- send (loggerProc n) =<< makeLogMessage "ACP" ("Failure: "++s)
+              Left  Done     -> logMessage "ACP" "Done"
+              Left (Fatal m) -> logMessage "ACP" ("Crash: " ++ m)
     loop StateACP { _stCounter        = 0
                   , _stAcpClosure     = self
                   , _stActor          = pid

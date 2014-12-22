@@ -7,10 +7,14 @@
 module DNA.Logging where
 
 import Control.Monad.IO.Class
+import Control.Distributed.Process (getSelfPid)
 import Data.Time
 import System.IO.Unsafe   (unsafeDupablePerformIO)
 import System.Locale      (defaultTimeLocale)
+import Text.Printf        (printf)
 import Debug.Trace        (traceEventIO)
+
+import DNA.Types
 
 
 
@@ -46,3 +50,8 @@ synchronizationPoint msg = liftIO $ do
 -- |Message to eventlog.
 eventMessage :: MonadIO m => String -> m ()
 eventMessage msg = liftIO $ traceEventIO $ "MESSAGE "++msg
+
+logMessage :: MonadProcess m => String -> String -> m ()
+logMessage tag msg = do
+    pid <- liftP getSelfPid
+    liftIO $ traceEventIO $ printf "%s [%s] %s" tag (show pid) msg
