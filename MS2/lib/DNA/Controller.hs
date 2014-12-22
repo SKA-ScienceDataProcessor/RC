@@ -264,7 +264,7 @@ handleReqResourcesGrp (ReqResourcesGrp req) = do
 --
 -- Write down how processes are connected
 handleConnect :: ReqConnect -> Controller ()
--- FIXME: understand what to when connecting to group
+-- FIXME: understand what to do when connecting to group
 handleConnect (ReqConnectTo (ACP pid) dst) = do
     Just st <- use $ stChildren . at pid
     case st of
