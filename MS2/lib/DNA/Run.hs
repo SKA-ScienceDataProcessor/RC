@@ -8,7 +8,7 @@ module DNA.Run (
 
 import Control.Monad
 import Control.Exception
-import Control.Distributed.Process      hiding (finally)
+import Control.Distributed.Process      hiding (onException)
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Node (initRemoteTable)
 import System.Environment (getExecutablePath,getEnv)
@@ -100,18 +100,19 @@ runUnixWorker rtable opts common dna = do
             case st of
               Just _  -> return ()
               Nothing -> terminateProcess pid
-    -- FIXME: this is source of potential problems if we get exception
-    --        during checking children state
-    let reapChildren = mapM_ killChild pids
     -- Initialize backend
     let ports = map (+ basePort) [0 .. nProc - 1]
     backend <- initializeBackend (CH.Local ports) "localhost" (show port) rtable
+    -- FIXME: this is source of potential problems if we get exception
+    --        during checking children state
+    let reapChildren = mapM_ killChild pids
+        start = startMaster backend $ \n -> do
+            synchronizationPoint "CH"
+            executeDNA dna n
+            terminateAllSlaves backend
     -- Start master or slave program
     case rank of
-      0 -> startMaster backend $ \n -> do
-               synchronizationPoint "CH"
-               executeDNA dna n
-               terminateAllSlaves backend
+      0 -> start `onException` reapChildren
       _ -> startSlave backend
 
 
