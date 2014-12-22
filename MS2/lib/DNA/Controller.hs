@@ -270,7 +270,7 @@ handleConnect (ReqConnectTo (ACP pid) dst) = do
     case st of
       Right _ -> fatal "Impossible: group instead of process"
       Left ShellProc{} -> fatal "Impossible: shell could not be connected"
-      Left Running     -> stChildren . at pid .= Just (Left (Connected [dst]))
+      Left Unconnected -> stChildren . at pid .= Just (Left (Connected [dst]))
       Left _           -> fatal "Double connect"
 handleConnect (ReqConnectToGrp (ACP pid) gid) = do
     Just st <- use $ stChildren . at pid
@@ -278,7 +278,7 @@ handleConnect (ReqConnectToGrp (ACP pid) gid) = do
     case st of
       Right _          -> fatal "Impossible: group instead of process"
       Left ShellProc{} -> fatal "Impossible: shell could not be connected"
-      Left Running     -> undefined
+      Left Unconnected -> undefined
       Left _           -> fatal "Double connect"
 handleConnect (ReqConnectGrp gid _ port) = do
     Just grp <- use $ stGroups . at gid
@@ -377,7 +377,7 @@ handleNormalTermination pid = do
         (return ())
         (\p -> case p of
            ShellProc _ -> fatal "Impossible: shell process terminated normally"
-           Running     -> fatal "Impossible: Unconnected process terminated normally"
+           Unconnected -> fatal "Impossible: Unconnected process terminated normally"
            Connected _ -> return Nothing
            Failed      -> fatal "Impossible: Normal termination after crash"
         )
@@ -404,7 +404,7 @@ handleProcessCrash pid = do
         (\p -> case p of
            -- FIXME: we should notify someone probably...
            ShellProc _  -> undefined
-           Running      -> return $ Just Failed
+           Unconnected  -> return $ Just Failed
            Connected acps -> do
                lift $ forM_ acps terminateACP
                return Nothing
@@ -443,7 +443,7 @@ handleChannelMsg (pid,msg) = do
         (\p -> case p of
            ShellProc ch -> do
                lift $ sendChan ch msg
-               return $ Just Running
+               return $ Just Unconnected
            Failed -> return $ Just Failed
            _      -> fatal "Shell received twice"
         )
@@ -541,7 +541,7 @@ data StateACP = StateACP
 data ProcState
     = ShellProc (SendPort Message)
       -- We started process but didn't receive status update from it
-    | Running
+    | Unconnected
       -- Process is running but we don't know its sink yet
     | Connected [ACP]
       -- Process is running and we know its sink[s]
