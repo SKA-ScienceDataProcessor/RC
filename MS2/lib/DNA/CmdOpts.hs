@@ -24,6 +24,7 @@ data StartOpt
     = Unix       Int            -- ^ UNIX start
     | UnixWorker UnixStart
     | Slurm
+    | SlurmWorker FilePath
     deriving (Show)
 
 -- | Options for UNIX start
@@ -64,9 +65,11 @@ dnaParseOptions = do
       Success a -> return a
       _ -> case run (optUnix <.> optCommon) of
              Success a -> return a
-             _ -> case run (optSlurm <.> optCommon) of
-                    Success a -> return a
-                    _ -> error "Cannot parse command line parameters"
+             _ -> case run (optSlurmWorker <.> optCommon) of
+                   Success a -> return a
+                   _ -> case run (optSlurm <.> optCommon) of
+                       Success a -> return a
+                       _ -> error "Cannot parse command line parameters"
   where
     wrapParser p = info (helper <*> p)
         (  fullDesc
@@ -83,6 +86,7 @@ dnaParseOptions = do
        <*> optWDir
         )
     optSlurm  = pure Slurm
+    optSlurmWorker = SlurmWorker <$> optWDir
     optCommon = CommonOpt <$> optBasePort
     -- Parsers for
     optWDir = option str
@@ -126,9 +130,4 @@ readPort :: ReadM Int
 readPort = do
     a <- auto
     guard (a > 0 && a < 65535)
-    return a
-
-safeRead :: Read a => String -> Maybe a
-safeRead s = do
-    [(a,"")] <- Just $ reads s
     return a

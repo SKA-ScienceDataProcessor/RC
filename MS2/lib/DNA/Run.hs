@@ -1,3 +1,4 @@
+{-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE TemplateHaskell #-}
 -- | Run.hs
 --
@@ -6,17 +7,22 @@ module DNA.Run (
     dnaRun
   ) where
 
+import Control.Applicative
 import Control.Monad
 import Control.Exception (onException,SomeException)
 import Control.Distributed.Process      hiding (onException)
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Node (initRemoteTable)
-import System.Environment (getExecutablePath,getEnv)
+import System.Environment (getExecutablePath,getEnv,lookupEnv)
 import System.Directory
 import System.Process
 import System.FilePath    ((</>))
 import System.Posix.Process (getProcessID,executeFile)
 import qualified Data.Foldable as T
+
+import Foreign.Ptr
+import Foreign.C.String
+import Foreign.C.Types
 
 import DNA.SlurmBackend (initializeBackend,startMaster,startSlave,terminateAllSlaves)
 import qualified DNA.SlurmBackend as CH
@@ -35,14 +41,110 @@ dnaRun :: (RemoteTable -> RemoteTable) -> DNA () -> IO ()
 dnaRun remoteTable dna = do
     (opts,common) <- dnaParseOptions
     case opts of
-      Unix n       -> runUnix n common
-      UnixWorker o -> runUnixWorker rtable o common dna
-      Slurm        -> error "SLURM startup is not implemented"
+      Unix n        -> runUnix n common
+      UnixWorker o  -> runUnixWorker rtable o common dna
+      Slurm         -> runSlurm common
+      SlurmWorker d -> runSlurmWorker rtable d common dna
   where
     rtable = ( remoteTable
              . DNA.DNA.__remoteTable
              . DNA.Controller.__remoteTable
              ) initRemoteTable
+
+
+----------------------------------------------------------------
+-- SLURM
+----------------------------------------------------------------
+
+runSlurm :: CommonOpt -> IO ()
+runSlurm common = do
+    dir       <- getCurrentDirectory
+    mslurmJID <- lookupEnv "SLURM_JOBID"
+    slurmRnk <- slurmRank
+    let slurmJID = case mslurmJID of
+            Just s  -> s ++ "-s"
+            Nothing -> error "SLURM_JOBID is not set!"
+    -- Cd to log dir and reexec
+    home <- getEnv "HOME"
+    let logDir = home </> "_dna" </> "logs" </> slurmJID </> show slurmRnk
+    createDirectoryIfMissing True logDir
+    setCurrentDirectory logDir
+    program <- getExecutablePath
+    executeFile program True
+        [ "+RTS", "-l-au", "-RTS"
+        , "--workdir", dir
+        ] Nothing
+
+runSlurmWorker :: RemoteTable -> FilePath -> CommonOpt -> DNA () -> IO ()
+runSlurmWorker rtable dir common dna = do
+    setCurrentDirectory dir
+    --
+    rank    <- slurmRank
+    localID <- slurmLocalID
+    hosts   <- slurmHosts
+    let port = dnaBasePort common + localID
+        -- FIXME: is localhost OK?
+        host = "localhost"
+    -- FIXME: treat several tasks per node correctly
+    backend <- initializeBackend
+                 (CH.SLURM (dnaBasePort common) [(h,1) | h <- hosts])
+                 host (show port) rtable
+    case rank of
+      0 -> startMaster backend $ \n -> do
+               synchronizationPoint "CH"
+               executeDNA dna n
+               terminateAllSlaves backend
+      _ -> startSlave backend
+
+slurmRank :: IO Int
+slurmRank = do
+    mslurmRnk <- (safeRead =<<) <$> lookupEnv "SLURM_PROCID" :: IO (Maybe Int)
+    case mslurmRnk of
+      Just r  -> return r
+      Nothing -> error "SLURM_PROCID is not set!"
+
+slurmLocalID :: IO Int
+slurmLocalID = do
+    mslurmRnk <- (safeRead =<<) <$> lookupEnv "SLURM_LOCALID" :: IO (Maybe Int)
+    case mslurmRnk of
+      Just r  -> return r
+      Nothing -> error "SLURM_LOCALID is not set!"
+
+
+-- | Obtain list of hosts from SLURM
+slurmHosts :: IO [String]
+slurmHosts = do
+    nodeStr <- getEnv "SLURM_NODELIST"
+    nodes   <- withCString nodeStr $ \s -> c_slurm_hostlist_create s
+    let loop = do
+            p <- c_slurm_hostlist_shift nodes
+            if p == nullPtr
+               then return []
+               else do ss <- loop
+                       s  <- peekCString p
+                       return (s : ss)
+    s <- loop
+    c_slurm_hostlist_destroy nodes
+    return s
+
+
+-- | Tag for hostlist_t. Note hostlist_t is pointer to struct hostlist
+data Hostlist
+
+foreign import ccall safe "slurm_hostlist_create"
+    c_slurm_hostlist_create :: CString -> IO (Ptr Hostlist)
+
+foreign import ccall safe "slurm_hostlist_shift"
+    c_slurm_hostlist_shift :: Ptr Hostlist -> IO CString
+
+foreign import ccall safe "slurm_hostlist_destroy"
+    c_slurm_hostlist_destroy :: Ptr Hostlist -> IO ()
+
+
+
+----------------------------------------------------------------
+-- UNIX start
+----------------------------------------------------------------
 
 -- Startup of program
 runUnix :: Int -> CommonOpt -> IO ()
@@ -139,3 +241,9 @@ executeDNA dna nodes = do
     -- Start master ACP
     _ <- try $ runMasterACP param dna :: Process (Either SomeException ())
     return ()
+
+safeRead :: Read a => String -> Maybe a
+safeRead s = do
+    [(a,"")] <- Just $ reads s
+    return a
+

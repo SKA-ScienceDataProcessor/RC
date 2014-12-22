@@ -176,6 +176,8 @@ getHostList:: IO (String)
 -- | Cluster
 data CAD
     = Local [Int]          -- ^ Spawn program on localhost on list of ports
+    | SLURM Int [(String,Int)]
+      -- ^ Base port and number of tasks per node
 
 -- | Initialize the backend
 initializeBackend
@@ -190,9 +192,16 @@ initializeBackend cad host port rtable = do
             -- passing 0 as a endpointid is a hack. Again, I haven't found any better way.
             Local ports -> [ NodeId $ NT.encodeEndPointAddress "localhost" theirPort 0
                            | p <- ports
-                           , let theirPort = (show p)
+                           , let theirPort = show p
                            , theirPort /= port
                            ]
+            SLURM basePort nodes -> concat
+                -- FIXME: filter out our address
+                [ [ NodeId $ NT.encodeEndPointAddress hst (show (basePort+n)) 0
+                  | n <- [0 .. nTasks - 1]
+                  ]
+                | (hst,nTasks) <- nodes
+                ]
     backendState <- newMVar BackendState
                       { _localNodes      = []
                       , _peers           = addresses
