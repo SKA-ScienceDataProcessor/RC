@@ -67,11 +67,6 @@ newtype ActorID = ActorID Int
 newtype Resources = Resources Int
                   deriving (Show,Eq,Ord,Typeable,Binary)
 
--- | Command for ACP to terminate
-data Terminate = Terminate
-                deriving (Show,Eq,Ord,Typeable,Generic)
-instance Binary Terminate
-
 
 
 ----------------------------------------------------------------

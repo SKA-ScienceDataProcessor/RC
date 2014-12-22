@@ -8,9 +8,11 @@
 {-# LANGUAGE RankNTypes #-}
 -- | Controller processes for node and actor
 module DNA.Controller (
+      -- * Interaction with remote ACP
+      ACP(..)
+    , terminateACP
       -- * Starting ACP
-      startAcpLoop
-    , ACP(..)
+    , startAcpLoop
       -- * Control messages for ACP
     , Res(..)
     , ReqSpawnShell(..)
@@ -43,12 +45,27 @@ import GHC.Generics (Generic)
 
 import DNA.Lens
 import DNA.Types
-import DNA.Logging
 
 
 
 ----------------------------------------------------------------
--- ACP
+-- Interaction with 
+----------------------------------------------------------------
+
+-- | Send command to remote ACP to terminate abnormally
+terminateACP :: MonadProcess m => ACP -> m ()
+terminateACP (ACP pid) = liftP $ do
+  send pid Terminate
+
+
+-- | Command for ACP to terminate
+data Terminate = Terminate
+                deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary Terminate
+
+
+----------------------------------------------------------------
+-- ACP implementation
 ----------------------------------------------------------------
 
 -- | Start execution of actor controller process
@@ -389,8 +406,7 @@ handleProcessCrash pid = do
            ShellProc _  -> undefined
            Running      -> return $ Just Failed
            Connected acps -> do
-               lift $ forM_ acps $ \(ACP acp) ->
-                   send acp Terminate
+               lift $ forM_ acps terminateACP
                return Nothing
            Failed       -> fatal "Impossible: Process crashed twice"
         )
