@@ -81,7 +81,9 @@ startAcpLoop self pid (VirtualCAD _ n nodes) = do
               Right s' -> loop s'
               -- FIXME: check status of child processes
               Left  Done     -> logMessage "ACP" "Done"
-              Left (Fatal m) -> logMessage "ACP" ("Crash: " ++ m)
+              Left (Fatal m) -> do
+                  logMessage "ACP" ("Crash: " ++ m)
+                  error "Terminate"
     loop StateACP { _stCounter        = 0
                   , _stAcpClosure     = self
                   , _stActor          = pid
