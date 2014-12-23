@@ -7,7 +7,7 @@ module DNA.Run (
   ) where
 
 import Control.Monad
-import Control.Exception
+import Control.Exception (onException,SomeException)
 import Control.Distributed.Process      hiding (onException)
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Node (initRemoteTable)
@@ -137,4 +137,5 @@ executeDNA dna nodes = do
             }
         acpClos = $(mkStaticClosure 'runACP)
     -- Start master ACP
-    runMasterACP param dna
+    _ <- try $ runMasterACP param dna :: Process (Either SomeException ())
+    return ()
