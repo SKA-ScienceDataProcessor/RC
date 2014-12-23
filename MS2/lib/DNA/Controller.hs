@@ -133,8 +133,8 @@ instance Binary ReqSpawnGroup
 data ReqConnect
     = ReqConnectTo       ACP     ACP
     | ReqConnectToGrp    ACP     GroupID
-    | ReqConnectGrp      GroupID ACP     [SendPort (Maybe Int)]
-    | ReqConnectGrpToGrp GroupID GroupID [SendPort (Maybe Int)]
+    | ReqConnectGrp      GroupID ACP     [SendPort Int]
+    | ReqConnectGrpToGrp GroupID GroupID [SendPort Int]
     deriving (Show,Typeable,Generic)
 instance Binary ReqConnect
 
@@ -281,20 +281,26 @@ handleConnect (ReqConnectToGrp (ACP pid) gid) = do
       Left ShellProc{} -> fatal "Impossible: shell could not be connected"
       Left Unconnected -> stChildren . at pid .= Just (Left (Connected (map ACP pids)))
       Left _           -> fatal "Double connect"
-handleConnect (ReqConnectGrp gid _ port) = do
+handleConnect (ReqConnectGrp gid acp port) = do
     Just grp <- use $ stGroups . at gid
     case grp of
-      GroupShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
-      GroupState ty p _ -> stGroups . at gid .= Just (GroupState ty p (Just port))
-      CompletedGroup{}  -> fatal "Cannot connect group which already completed"
+    -- FIXME:
+      GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
+      GrUnconnected ty nR ->
+          stGroups . at gid .= Just (GrConnected ty (nR,0) port [acp])
+      GrConnected{}  -> fatal "Double connect"
+      GrFailed       -> do terminateACP acp
+                           dropGroup gid
 handleConnect (ReqConnectGrpToGrp gid dstGid port) = do
     pids <- getGroupPids dstGid
     Just grp <- use $ stGroups . at gid
     case grp of
-      GroupShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
-      GroupState ty p _ -> stGroups . at gid .= Just (GroupState ty p (Just port))
-      CompletedGroup{}  -> fatal "Cannot connect group which already completed"
-
+      GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
+      GrUnconnected ty nR ->
+          stGroups . at gid .= Just (GrConnected ty (nR,0) port (map ACP pids))
+      GrConnected{} -> fatal "Double connect"
+      GrFailed      -> do forM_ pids $ \p -> terminateACP (ACP p)
+                          dropGroup gid
 
 
 -- > ReqSpawnShell
@@ -356,8 +362,8 @@ handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
         stAllocResources . at rid .= Nothing
         stUsedResources  . at acp .= Just r
     -- FIXME: pass type of group
-    stGroups . at gid .= Just
-        (GroupShell NormalGroup chShell (length res) [])
+    -- stGroups . at gid .= Just
+    --     (GroupShell NormalGroup chShell (length res) [])
 --        (GroupState NormalGroup (GroupProcs (length res) 0) Nothing)
 
 
@@ -389,14 +395,14 @@ handleNormalTermination pid = do
            Failed      -> fatal "Impossible: Normal termination after crash"
         )
         (\g _ -> case g of
-           GroupShell{}           -> fatal "Impossible: Normal termination in shell group"
-           GroupState _ _ Nothing -> fatal "Impossible: Unconnected process in group terminated normally"
-           GroupState _ (1, nD) (Just ch) -> do
-               lift $ forM_ ch $ \c -> sendChan c (Just (nD + 1))
+           GrShell{}       -> fatal "Impossible: Normal termination in shell group"
+           GrUnconnected{} -> fatal "Impossible: Unconnected process in group terminated normally"
+           GrConnected _ (1, nD) ch _ -> do
+               liftP $ forM_ ch $ \c -> sendChan c (nD + 1)
                return Nothing
-           GroupState ty (nR, nD) mch -> do
-               return $ Just (GroupState ty (nR-1, nD+1) mch)
-           CompletedGroup{} -> fatal "Impossible: Process terminated in complete group"
+           GrConnected ty (nR, nD) ch acps -> do
+               return $ Just $ GrConnected ty (nR-1, nD+1) ch acps
+           GrFailed -> fatal "Impossible: Process terminated in complete group"
         )
     dropPID pid
 
@@ -418,25 +424,29 @@ handleProcessCrash pid = do
                return Nothing
            Failed       -> fatal "Impossible: Process crashed twice"
         )
-        (\g _ -> case g of
-           -- FIXME: What to do when shell process in group crashes?
-           GroupShell{} -> return Nothing
+        (\g gid -> case g of
+           GrShell NormalGroup _ _ _ -> do
+               terminateGroup gid
+               fatal "Shell group crashed. Cannot do anything"
+           GrShell FailoutGroup ch n msgs ->
+               return $ Just $ GrShell FailoutGroup ch (n-1) msgs
            -- Normal groups
-           GroupState NormalGroup _ (Just ch) -> do
-               lift $ forM_ ch $ \c -> sendChan c Nothing
+           GrUnconnected NormalGroup _ -> do
+               terminateGroup gid
+               return $ Just $ GrFailed
+           GrConnected NormalGroup _ _ acps -> do
+               terminateGroup gid
+               forM_ acps terminateACP
                return Nothing
-           GroupState NormalGroup _ Nothing -> do
-               return $ Just $ CompletedGroup Nothing
            -- Failout groups
-           GroupState FailoutGroup (1, nD) (Just ch) -> do
-               lift $ forM_ ch $ \c -> sendChan c (Just nD)
+           GrUnconnected FailoutGroup n -> do
+               return $ Just $ GrUnconnected FailoutGroup (n-1)
+           GrConnected FailoutGroup (1, nD) ch _ -> do
+               liftP $ forM_ ch $ \c -> sendChan c nD
                return Nothing
-           GroupState FailoutGroup (1, nD) Nothing -> do
-               return $ Just $ CompletedGroup (Just nD)
-           GroupState FailoutGroup (nR, nD) mch -> do
-               return $ Just $ GroupState FailoutGroup (nR-1, nD) mch
-           -- Completed group
-           CompletedGroup {} -> return (Just g)
+           GrConnected FailoutGroup (nR, nD) ch acps -> do
+               return $ Just $ GrConnected FailoutGroup (nR-1,nD) ch acps
+           GrFailed -> return $ Just GrFailed
         )
     dropPID pid
 
@@ -450,18 +460,17 @@ handleChannelMsg (pid,msg) = do
         (fatal "Shell: unknown process")
         (\p -> case p of
            ShellProc ch -> do
-               lift $ sendChan ch msg
+               liftP $ sendChan ch msg
                return $ Just Unconnected
-           Failed -> return $ Just Failed
-           _      -> fatal "Shell received twice"
+           _ -> fatal "Shell received twice"
         )
         (\g gid -> case g of
-           GroupShell ty ch 1 msgs -> do
-               let msgs' = msg : msgs
-               lift $ sendChan ch (gid, msgs')
-               return $ Just $ GroupState ty (length msgs', 0) Nothing
-           GroupShell ty ch n msgs -> do
-               return $ Just $ GroupShell ty ch (n-1) (msg : msgs)
+           GrShell ty ch nR msgs -> case msg : msgs of
+               msgs' | length msgs' == nR -> do
+                           liftP $ sendChan ch (gid, msgs')
+                           return $ Just $ GrUnconnected ty nR
+                     | otherwise -> do
+                           return $ Just $ GrShell ty ch nR msgs'
            _ -> fatal "Invalid shell for group is received"
         )
 
@@ -475,21 +484,21 @@ handlePidEvent
     :: ProcessId
     -> (Controller ())
     -- What to do when PID not found
-    -> (ProcState  -> ExceptT Err Process (Maybe ProcState))
+    -> (ProcState  -> Controller (Maybe ProcState))
     -- What to do with single process
-    -> (GroupState -> GroupID -> ExceptT Err Process (Maybe GroupState))
+    -> (GroupState -> GroupID -> Controller (Maybe GroupState))
     -- What to do with group of processes
     -> StateT StateACP (ExceptT Err Process) ()
 handlePidEvent pid none onProc onGrp = do
     r <- use $ stChildren . at pid
     case r of
       Nothing          -> none
-      Just (Left  p  ) -> do mp' <- lift $ onProc p
+      Just (Left  p  ) -> do mp' <- onProc p
                              case mp' of
                                Nothing -> dropPID pid
                                Just p' -> stChildren . at pid .= Just (Left p')
       Just (Right gid) -> do Just g <- use $ stGroups . at gid
-                             mg' <- lift $ onGrp g gid
+                             mg' <- onGrp g gid
                              case mg' of
                                Nothing -> dropGroup gid
                                Just g' -> stGroups . at gid .= Just g'
@@ -522,6 +531,11 @@ getGroupPids gid = do
     return [ pid | (pid, Right g) <- Map.toList ch
                  , g == gid
                  ]
+
+terminateGroup :: GroupID -> Controller ()
+terminateGroup gid = do
+    pids <- getGroupPids gid
+    forM_ pids $ \p -> terminateACP (ACP p)
 
 
 ----------------------------------------------------------------
@@ -566,15 +580,23 @@ data ProcState
 
 -- State of group of processes
 data GroupState
-    = GroupShell GroupType (SendPort (GroupID,[Message])) Int [Message]
+    = GrShell GroupType (SendPort (GroupID,[Message])) Int [Message]
       -- We started processes but didn't assembled processes yet
-    | GroupState GroupType (Int,Int) (Maybe [SendPort (Maybe Int)])
-      -- Running group. It contains following fields:
-      --  + Type of group of processes
-      --  + (N completed, N crashed)
-      --  + channel to send information on completion
-    | CompletedGroup (Maybe Int)
-      -- Group which completed execution normally of abnormally
+      --  + Type of group
+      --  + Port to send resulting shell
+      --  + N running processes
+      --  + Accumulated shells
+    | GrUnconnected GroupType Int
+      -- Group which is not connected yet
+      --  + Type of group
+      --  + N running processes
+    | GrConnected GroupType (Int,Int) [SendPort Int] [ACP]
+      -- Connected group
+      --  + Type of group
+      --  + (N running, N completed)
+      --  + Destinations
+    | GrFailed
+      -- Group which crashed
     deriving (Show)
 
 data GroupType
