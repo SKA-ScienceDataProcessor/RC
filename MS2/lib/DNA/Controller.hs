@@ -1,4 +1,3 @@
-
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE DeriveFunctor, DeriveGeneric, DeriveDataTypeable #-}
@@ -80,11 +79,11 @@ startAcpLoop self pid (VirtualCAD _ n nodes) = do
             case ms of
               Right s' -> loop s'
               Left  Done
-                  | Map.null (s^.stChildren) -> logMessage "ACP" "Done"
-                  | otherwise -> do logMessage "ACP" "Unterminated children"
+                  | Map.null (s^.stChildren) -> taggedMessage "ACP" "Done"
+                  | otherwise -> do taggedMessage "ACP" "Unterminated children"
                                     error "Unterminated children"
               Left (Fatal m) -> do
-                  logMessage "ACP" ("Crash: " ++ m)
+                  taggedMessage "ACP" ("Crash: " ++ m)
                   error "Terminate"
     loop StateACP { _stCounter        = 0
                   , _stAcpClosure     = self
@@ -341,7 +340,7 @@ handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
     -- Spawn remote actors
     --
     -- FIXME: Here we require that none of nodes will fail while we
-    --        creating processes
+    -- creating processes
     let k = length res
     forM_ ([0..] `zip` res) $ \(i, rid) -> do
         Just r@(VirtualCAD _ n _) <- use $ stAllocResources . at rid

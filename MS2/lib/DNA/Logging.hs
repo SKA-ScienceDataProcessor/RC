@@ -51,7 +51,7 @@ synchronizationPoint msg = liftIO $ do
 eventMessage :: MonadIO m => String -> m ()
 eventMessage msg = liftIO $ traceEventIO $ "MESSAGE "++msg
 
-logMessage :: MonadProcess m => String -> String -> m ()
-logMessage tag msg = do
+taggedMessage :: MonadProcess m => String -> String -> m ()
+taggedMessage tag msg = do
     pid <- liftP getSelfPid
     liftIO $ traceEventIO $ printf "%s [%s] %s" tag (show pid) msg

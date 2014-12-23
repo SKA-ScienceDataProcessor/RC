@@ -277,7 +277,7 @@ destFromLoc Remote = SendRemote . (:[])
 
 newtype Promise a = Promise (ReceivePort a)
 
-data Group a = Group (ReceivePort a) (ReceivePort (Maybe Int))
+data Group a = Group (ReceivePort a) (ReceivePort Int)
 
 
 await :: Serializable a => Promise a -> DNA a
@@ -297,9 +297,8 @@ gatherM (Group chA chN) f x0 = do
                                      , matchChan chN (return . Left)
                                      ]
             case r of
-              Right a       -> loop (n + 1) tot =<< f b a
-              Left Nothing  -> error "FIXME: do something more meaningful"
-              Left (Just k) -> loop n k b
+              Right a -> loop (n + 1) tot =<< f b a
+              Left  k -> loop n k b
     loop 0 (-1) x0
 
 
@@ -511,7 +510,8 @@ startGroup res child = do
     liftP $ send acp $ ReqSpawnGroup clos shellS res
     -- FIXME: here we spawn groups in very unreliable manner. We
     --        assume that nothingf will crash which is plain wrong
-    (gid,msgs) <- unwrapMessage =<< liftP (receiveChan shellR)
+    (gid,mbox) <- liftP (receiveChan shellR)
+    msgs <- mapM unwrapMessage mbox
     case sequence msgs of
       Nothing -> error "Bad shell message"
       Just  s -> return (ShellGroup gid s)
@@ -529,11 +529,8 @@ startCollectorGroup res child = do
     let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
     liftP $ send acp $ ReqSpawnGroup clos shellS res
     -- FIXME: See above
-    mmsg <- liftP (receiveChan shellR)
-    case mmsg of
-      Nothing -> error "Ooops! Cannot obtain shell"
-      Just (gid,msgs) -> do
-          ms <- mapM unwrapMessage msgs
-          case sequence ms of
-            Nothing -> error "Bad shell message"
-            Just  s -> return (GroupCollect gid s)
+    (gid,mbox) <- liftP (receiveChan shellR)
+    msgs <- mapM unwrapMessage mbox
+    case sequence msgs of
+      Nothing -> error "Bad shell message"
+      Just  s -> return (GroupCollect gid s)

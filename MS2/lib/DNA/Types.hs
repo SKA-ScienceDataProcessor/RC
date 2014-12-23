@@ -168,7 +168,7 @@ instance (Serializable a, Serializable b) => Binary (Shell a b)
 -- | Simple collector process
 data CollectorShell a b = CollectorShell
      (SendPort a)
-     (SendPort (Maybe Int))
+     (SendPort Int)
      (SendPort (Dest b))
      ACP
      deriving (Show,Typeable,Generic)
