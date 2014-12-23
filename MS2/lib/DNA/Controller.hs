@@ -284,7 +284,6 @@ handleConnect (ReqConnectToGrp (ACP pid) gid) = do
 handleConnect (ReqConnectGrp gid acp port) = do
     Just grp <- use $ stGroups . at gid
     case grp of
-    -- FIXME:
       GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
       GrUnconnected ty nR ->
           stGroups . at gid .= Just (GrConnected ty (nR,0) port [acp])
@@ -341,7 +340,8 @@ handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
     acpClos <- use stAcpClosure
     -- Spawn remote actors
     --
-    -- FIXME: Here we require that none of nodes will fail during
+    -- FIXME: Here we require that none of nodes will fail while we
+    --        creating processes
     let k = length res
     forM_ ([0..] `zip` res) $ \(i, rid) -> do
         Just r@(VirtualCAD _ n _) <- use $ stAllocResources . at rid
@@ -362,10 +362,8 @@ handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
         stAllocResources . at rid .= Nothing
         stUsedResources  . at acp .= Just r
     -- FIXME: pass type of group
-    -- stGroups . at gid .= Just
-    --     (GroupShell NormalGroup chShell (length res) [])
---        (GroupState NormalGroup (GroupProcs (length res) 0) Nothing)
-
+    stGroups . at gid .= Just
+        (GrShell NormalGroup chShell (length res) [])
 
 
 -- > ProcessMonitorNotification
