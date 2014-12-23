@@ -409,8 +409,9 @@ handleProcessCrash pid = do
     handlePidEvent pid
         (return ())
         (\p -> case p of
-           -- FIXME: we should notify someone probably...
-           ShellProc _  -> undefined
+           -- When process from which we didn't receive channels
+           -- crashes we have no other recourse but to terminate.
+           ShellProc _  -> fatal "Shell crashed. No other thing to do"
            Unconnected  -> return $ Just Failed
            Connected acps -> do
                lift $ forM_ acps terminateACP
