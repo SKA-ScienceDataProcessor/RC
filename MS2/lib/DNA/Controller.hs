@@ -79,8 +79,10 @@ startAcpLoop self pid (VirtualCAD _ n nodes) = do
             case ms of
               Right s' -> loop s'
               Left  Done
+                  -- FIXME: checking that all children completed
+                  --        execution is potentially racy
                   | Map.null (s^.stChildren) -> taggedMessage "ACP" "Done"
-                  | otherwise -> do taggedMessage "ACP" "Unterminated children"
+                  | otherwise -> do taggedMessage "ACP" $ "Unterminated children: " ++ show (s^.stChildren)
                                     error "Unterminated children"
               Left (Fatal m) -> do
                   taggedMessage "ACP" ("Crash: " ++ m)
