@@ -50,7 +50,7 @@ import DNA.Logging
 
 
 ----------------------------------------------------------------
--- Interaction with 
+-- Interaction with
 ----------------------------------------------------------------
 
 -- | Send command to remote ACP to terminate abnormally
@@ -266,7 +266,6 @@ handleReqResourcesGrp (ReqResourcesGrp req) = do
 --
 -- Write down how processes are connected
 handleConnect :: ReqConnect -> Controller ()
--- FIXME: understand what to do when connecting to group
 handleConnect (ReqConnectTo (ACP pid) dst) = do
     Just st <- use $ stChildren . at pid
     case st of
@@ -276,11 +275,11 @@ handleConnect (ReqConnectTo (ACP pid) dst) = do
       Left _           -> fatal "Double connect"
 handleConnect (ReqConnectToGrp (ACP pid) gid) = do
     Just st <- use $ stChildren . at pid
-    Just gr <- use $ stGroups   . at gid
+    pids    <- getGroupPids gid
     case st of
       Right _          -> fatal "Impossible: group instead of process"
       Left ShellProc{} -> fatal "Impossible: shell could not be connected"
-      Left Unconnected -> undefined
+      Left Unconnected -> stChildren . at pid .= Just (Left (Connected (map ACP pids)))
       Left _           -> fatal "Double connect"
 handleConnect (ReqConnectGrp gid _ port) = do
     Just grp <- use $ stGroups . at gid
@@ -288,7 +287,13 @@ handleConnect (ReqConnectGrp gid _ port) = do
       GroupShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
       GroupState ty p _ -> stGroups . at gid .= Just (GroupState ty p (Just port))
       CompletedGroup{}  -> fatal "Cannot connect group which already completed"
-handleConnect (ReqConnectGrpToGrp _ _ _) = undefined
+handleConnect (ReqConnectGrpToGrp gid dstGid port) = do
+    pids <- getGroupPids dstGid
+    Just grp <- use $ stGroups . at gid
+    case grp of
+      GroupShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
+      GroupState ty p _ -> stGroups . at gid .= Just (GroupState ty p (Just port))
+      CompletedGroup{}  -> fatal "Cannot connect group which already completed"
 
 
 
@@ -510,6 +515,12 @@ dropGroup gid = do
                   ]
     forM_ pids dropPID
 
+getGroupPids :: GroupID -> Controller [ProcessId]
+getGroupPids gid = do
+    ch <- use stChildren
+    return [ pid | (pid, Right g) <- Map.toList ch
+                 , g == gid
+                 ]
 
 
 ----------------------------------------------------------------
