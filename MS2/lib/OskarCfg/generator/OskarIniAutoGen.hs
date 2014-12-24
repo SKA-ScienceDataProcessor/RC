@@ -83,14 +83,14 @@ gen_fun (DataD _cxt tname _tys [RecC _cname vartyps] _drv) =
       (appT (conT ''ShowRecWithPrefix) (conT tname)) [valD (varP 'showRecWithPrefix) (normalB fexp) []]
   where
     fexp = mkAll (map showvar vartyps)
-    showvar (vname, _, vtyp) = let name = pprint vname in apps (select_fun vtyp) name
-    apps fq pfx = appE (varE fq) (stringE pfx)
+    showvar (vname, _, vtyp) = select_fun vtyp (cut_suffix $ pprint vname)
+    cut_suffix = reverse . drop 1 . dropWhile (/= '_') . reverse
     select_mb t
-      | "Oskar" `isPrefixOf` (pprint t) = 'show_req_maybe_q
-      | otherwise = 'show_immediate_maybe_q
+      | "Oskar" `isPrefixOf` (pprint t) = show_req_maybe_q
+      | otherwise = show_immediate_maybe_q
     select_plain t
-      | "Oskar" `isPrefixOf` (pprint t) = 'show_req_q
-      | otherwise = 'show_immediate_q
+      | "Oskar" `isPrefixOf` (pprint t) = show_req_q
+      | otherwise = show_immediate_q
     select_fun (AppT (ConT n) t)
       | n == ''Maybe = select_mb t
       | otherwise = error "Unimplemented 137!"
