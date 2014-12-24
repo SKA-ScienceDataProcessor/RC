@@ -85,7 +85,7 @@ gen_fun (DataD _cxt tname _tys [RecC _cname vartyps] _drv) =
     apps fq pfx = appE (varE fq) (stringE pfx)
     select_mb t
       | "Oskar" `isPrefixOf` (pprint t) = 'show_req_maybe_q
-      | otherwise = 'show_req_maybe_q
+      | otherwise = 'show_immediate_maybe_q
     select_plain t
       | "Oskar" `isPrefixOf` (pprint t) = 'show_req_q
       | otherwise = 'show_immediate_q
