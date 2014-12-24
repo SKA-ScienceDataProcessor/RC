@@ -72,6 +72,7 @@ runSlurm common = do
     program <- getExecutablePath
     executeFile program True
         [ "+RTS", "-l-au", "-RTS"
+        , "--base-port", show (dnaBasePort common)
         , "--workdir", dir
         ] Nothing
 
