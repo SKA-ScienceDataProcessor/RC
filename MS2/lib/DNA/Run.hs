@@ -19,6 +19,7 @@ import System.Process
 import System.FilePath    ((</>))
 import System.Posix.Process (getProcessID,executeFile)
 import qualified Data.Foldable as T
+import Text.ParserCombinators.ReadP
 
 import Foreign.Ptr
 import Foreign.C.String
@@ -79,7 +80,7 @@ runSlurm common = do
 runSlurmWorker :: RemoteTable -> FilePath -> CommonOpt -> DNA () -> IO ()
 runSlurmWorker rtable dir common dna = do
     setCurrentDirectory dir
-    --
+    -- Obtain data from SLURM
     rank    <- slurmRank
     localID <- slurmLocalID
     hosts   <- slurmHosts
@@ -88,7 +89,7 @@ runSlurmWorker rtable dir common dna = do
         host = "localhost"
     -- FIXME: treat several tasks per node correctly
     backend <- initializeBackend
-                 (CH.SLURM (dnaBasePort common) [(h,1) | h <- hosts])
+                 (CH.SLURM (dnaBasePort common) hosts)
                  host (show port) rtable
     case rank of
       0 -> startMaster backend $ \n -> do
@@ -112,11 +113,13 @@ slurmLocalID = do
       Nothing -> error "SLURM_LOCALID is not set!"
 
 
--- | Obtain list of hosts from SLURM
-slurmHosts :: IO [String]
+-- | Obtain list of hosts from SLURM together with number of tasks per
+--   host
+slurmHosts :: IO [(String,Int)]
 slurmHosts = do
-    nodeStr <- getEnv "SLURM_NODELIST"
-    nodes   <- withCString nodeStr $ \s -> c_slurm_hostlist_create s
+    nodeStr  <- getEnv "SLURM_NODELIST"
+    numNodes <- split ',' <$> getEnv "SLURM_TASKS_PER_NODE"
+    nodes    <- withCString nodeStr $ \s -> c_slurm_hostlist_create s
     let loop = do
             p <- c_slurm_hostlist_shift nodes
             if p == nullPtr
@@ -126,8 +129,22 @@ slurmHosts = do
                        return (s : ss)
     s <- loop
     c_slurm_hostlist_destroy nodes
-    return s
+    return $ s `zip` (runReadP nnode =<< numNodes)
 
+nnode :: ReadP [Int]
+nnode =  (pure <$> readS_to_P reads <* eof)
+     <|> do n <- readS_to_P reads
+            char '('
+            char 'x'
+            r <- readS_to_P reads
+            char ')'
+            eof
+            return $ replicate r n
+
+runReadP :: ReadP a -> String -> a
+runReadP p s = case readP_to_S p s of
+    [(a,"")] -> a
+    _        -> error "Cannot parse!"
 
 -- | Tag for hostlist_t. Note hostlist_t is pointer to struct hostlist
 data Hostlist
@@ -248,3 +265,8 @@ safeRead s = do
     [(a,"")] <- Just $ reads s
     return a
 
+split :: Char -> String -> [String]
+split c str =
+    case break (==c) str of
+      (a,"")  -> [a]
+      (a,_:s) -> a : split c s
