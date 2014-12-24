@@ -133,10 +133,10 @@ slurmHosts = do
 nnode :: ReadP [Int]
 nnode =  (pure <$> readS_to_P reads <* eof)
      <|> do n <- readS_to_P reads
-            char '('
-            char 'x'
+            _ <- char '('
+            _ <-  char 'x'
             r <- readS_to_P reads
-            char ')'
+            _ <- char ')'
             eof
             return $ replicate r n
 
