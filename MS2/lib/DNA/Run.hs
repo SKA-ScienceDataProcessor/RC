@@ -13,6 +13,7 @@ import Control.Exception (onException,SomeException)
 import Control.Distributed.Process      hiding (onException)
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Node (initRemoteTable)
+import Network.BSD        (getHostName)
 import System.Environment (getExecutablePath,getEnv,lookupEnv)
 import System.Directory
 import System.Process
@@ -23,7 +24,6 @@ import Text.ParserCombinators.ReadP
 
 import Foreign.Ptr
 import Foreign.C.String
-import Foreign.C.Types
 
 import DNA.SlurmBackend (initializeBackend,startMaster,startSlave,terminateAllSlaves)
 import qualified DNA.SlurmBackend as CH
@@ -81,15 +81,14 @@ runSlurmWorker :: RemoteTable -> FilePath -> CommonOpt -> DNA () -> IO ()
 runSlurmWorker rtable dir common dna = do
     setCurrentDirectory dir
     -- Obtain data from SLURM
-    rank    <- slurmRank
-    localID <- slurmLocalID
-    hosts   <- slurmHosts
+    rank     <- slurmRank
+    localID  <- slurmLocalID
+    hostList <- slurmHosts
+    host     <- getHostName
     let port = dnaBasePort common + localID
-        -- FIXME: is localhost OK?
-        host = "localhost"
     -- FIXME: treat several tasks per node correctly
     backend <- initializeBackend
-                 (CH.SLURM (dnaBasePort common) hosts)
+                 (CH.SLURM (dnaBasePort common) hostList)
                  host (show port) rtable
     case rank of
       0 -> startMaster backend $ \n -> do
