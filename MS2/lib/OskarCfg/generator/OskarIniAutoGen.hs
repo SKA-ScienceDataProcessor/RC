@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module OskarIniAutoGen where
+module OskarIniAutoGen (gen_all) where
 
 import Data.List (isPrefixOf)
 import Language.Haskell.TH
@@ -8,6 +8,7 @@ import Language.Haskell.TH
 class ShowRecWithPrefix a where
   showRecWithPrefix :: String -> a -> [String]
 
+{-
 data OskarTyp2
 
 test :: DecsQ
@@ -26,6 +27,7 @@ test_res fun = runQ $ fmap (fun . sndl) test
 
 test_ast = test_res show
 test_ppt = test_res pprint
+ -}
 
 scat :: String -> String -> String
 scat [] s = s
