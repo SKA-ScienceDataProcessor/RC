@@ -26,8 +26,6 @@ library
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded
   Hs-source-dirs:      lib
-  extra-libraries:
-    slurm
   build-depends:
     base         >=4.6,
     unix,

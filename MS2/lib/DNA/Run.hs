@@ -20,7 +20,8 @@ import System.Process
 import System.FilePath    ((</>))
 import System.Posix.Process (getProcessID,executeFile)
 import qualified Data.Foldable as T
-import Text.ParserCombinators.ReadP
+import Text.ParserCombinators.ReadP hiding (many)
+import Text.Printf
 
 import Foreign.Ptr
 import Foreign.C.String
@@ -116,22 +117,17 @@ slurmLocalID = do
 --   host
 slurmHosts :: IO [(String,Int)]
 slurmHosts = do
-    nodeStr  <- getEnv "SLURM_NODELIST"
-    numNodes <- split ',' <$> getEnv "SLURM_TASKS_PER_NODE"
-    nodes    <- withCString nodeStr $ \s -> c_slurm_hostlist_create s
-    let loop = do
-            p <- c_slurm_hostlist_shift nodes
-            if p == nullPtr
-               then return []
-               else do ss <- loop
-                       s  <- peekCString p
-                       return (s : ss)
-    s <- loop
-    c_slurm_hostlist_destroy nodes
-    return $ s `zip` (runReadP nnode =<< numNodes)
+    nodeListStr <- split ',' <$> getEnv "SLURM_NODELIST"
+    numNodesStr <- split ',' <$> getEnv "SLURM_TASKS_PER_NODE"
+    let nodeList = runReadP parseNodeList =<< nodeListStr
+        numNodes = runReadP parseNumNode  =<< numNodesStr
+    when (length nodeList /= length numNodes) $
+        error "Length of SLURM_NODELIST and SLURM_TASKS_PER_NODE does not match"
+    return $ nodeList `zip` numNodes
 
-nnode :: ReadP [Int]
-nnode =  (pure <$> readS_to_P reads <* eof)
+-- Parser for SLURM_TASKS_PER_NODE envvar
+parseNumNode :: ReadP [Int]
+parseNumNode =  (pure <$> readS_to_P reads <* eof)
      <|> do n <- readS_to_P reads
             _ <- char '('
             _ <-  char 'x'
@@ -140,22 +136,44 @@ nnode =  (pure <$> readS_to_P reads <* eof)
             eof
             return $ replicate r n
 
+-- Parser for SLURM_NODELIST
+parseNodeList :: ReadP [String]
+parseNodeList = do
+    chunks <- many ((Str <$> str) <|> range)
+    eof
+    let toStr (Str s)           = [s]
+        toStr (Range len (n,m)) = [printf (printf "%%0%ii" len) i | i <- [n .. m]]
+    let step res a = liftA2 (++) res a
+    return $ foldl step [""] $ map toStr chunks
+  where
+    str   = munch1 $ \c -> or [ c >= 'a' && c <= 'z'
+                              , c >= 'A' && c <= 'Z'
+                              , c >= '0' && c <= '9'
+                              , c == '-'
+                              ]
+    range = do _  <- char '['
+               sn <- many1 $ satisfy $ \c -> c >= '0' && c <= '9'
+               n  <- case safeRead sn of
+                       Just n  -> return n
+                       Nothing -> empty
+               let len = case sn of
+                           '0':_ -> length sn
+                           _     -> 0
+               _  <- char '-'
+               m  <- readS_to_P reads
+               _  <- char ']'
+               return $ Range len (n,m)
+
+
+-- Chunk of NODELIST entry
+data Chunk = Str String          -- String chunk
+           | Range Int (Int,Int) -- Range chunk: width, (range)
+           deriving (Show)
+
 runReadP :: ReadP a -> String -> a
 runReadP p s = case readP_to_S p s of
     [(a,"")] -> a
     _        -> error "Cannot parse!"
-
--- | Tag for hostlist_t. Note hostlist_t is pointer to struct hostlist
-data Hostlist
-
-foreign import ccall safe "slurm_hostlist_create"
-    c_slurm_hostlist_create :: CString -> IO (Ptr Hostlist)
-
-foreign import ccall safe "slurm_hostlist_shift"
-    c_slurm_hostlist_shift :: Ptr Hostlist -> IO CString
-
-foreign import ccall safe "slurm_hostlist_destroy"
-    c_slurm_hostlist_destroy :: Ptr Hostlist -> IO ()
 
 
 
