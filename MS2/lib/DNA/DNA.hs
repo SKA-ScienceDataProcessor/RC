@@ -120,6 +120,7 @@ rank = do
     (_,_,Rank n,_) <- DNA ask
     return n
 
+-- | Get size of process group
 groupSize :: DNA Int
 groupSize = do
     (_,_,_,GroupSize n) <- DNA ask
@@ -147,6 +148,8 @@ duration msg dna = do
     pid <- liftP getSelfPid
     let msg' = "[" ++ show pid ++ "] " ++ msg
     timePeriod msg' dna
+
+
 
 ----------------------------------------------------------------
 -- Data types for actors
@@ -199,16 +202,30 @@ makeCAD (x:xs) = CAD x [CAD a [] | a <- xs]
 
 
 -- | Allocate N nodes to single actor
-select :: Location -> Res -> DNA Resources
+select
+    :: Location
+       -- ^ Should actor be executed on local node or on remote one
+    -> Res
+       -- ^ How many nodes allocate to actor. Local node is not
+       --   counted here.
+    -> DNA Resources
 select loc n = do
     sendACP $ ReqResources loc n
     liftP expect
 
 -- | Allocate N nodes for group of actors. Each will have only single
 --   node
-selectMany :: Res -> DNA [Resources]
-selectMany n = do
-    sendACP $ ReqResourcesGrp n
+selectMany
+    :: Res
+       -- ^ How many nodes allocate to the group
+    -> ResGroup
+       -- ^ How to allocate resources for individual processes in
+       --   group
+    -> [GrpFlag]
+       -- ^ Additional flags which influence resource allocation
+    -> DNA [Resources]
+selectMany n g f = do
+    sendACP $ ReqResourcesGrp n g f
     liftP expect
 
 
@@ -401,15 +418,13 @@ sendToDest dst a =
 --         we cannot create closure of our function ourselves.
 runACP :: Process ()
 runACP = do
+    taggedMessage "ACP" "Starting ACP"
     -- Get parameters for ACP and actor
     ParamACP self act resources actorP <- expect
     let VirtualCAD _ ninfo _ = resources
     -- Start actor process
     nid <- getSelfNode
     me  <- getSelfPid
-    -- FIXME: Logging message
-    -- send (loggerProc ninfo) =<< makeLogMessage "ACP" "Starting ACP"
-    --
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.
@@ -432,12 +447,10 @@ runUnit action = do
 -- FIXME: duplication
 runMasterACP :: ParamACP () -> DNA () -> Process ()
 runMasterACP (ParamACP self () resources actorP) act = do
+    taggedMessage "ACP" "Starting master ACP"
     let VirtualCAD _ ninfo _ = resources
     -- Start actor process
     me  <- getSelfPid
-    -- FIXME: Ugly logger!!!
-    -- send (loggerProc ninfo) =<< makeLogMessage "ACP" "Starting ACP"
-    --
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.

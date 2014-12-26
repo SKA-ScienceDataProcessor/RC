@@ -14,6 +14,8 @@ module DNA.Controller (
     , startAcpLoop
       -- * Control messages for ACP
     , Res(..)
+    , ResGroup(..)
+    , GrpFlag(..)
     , ReqSpawnShell(..)
     , ReqSpawnGroup(..)
     , ReqConnect(..)
@@ -34,6 +36,7 @@ import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Serializable (Serializable)
 import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
+import Data.Monoid   ((<>))
 import qualified Data.Foldable   as T
 import qualified Data.Set        as Set
 import           Data.Set          (Set)
@@ -93,7 +96,7 @@ startAcpLoop self pid (VirtualCAD _ n nodes) = do
                   , _stLocalNode      = n
                   , _stChildren       = Map.empty
                   , _stGroups         = Map.empty
-                  , _stNodePool       = nodes
+                  , _stNodePool       = Set.fromList nodes
                   , _stAllocResources = Map.empty
                   , _stUsedResources  = Map.empty
                   }
@@ -106,11 +109,23 @@ startAcpLoop self pid (VirtualCAD _ n nodes) = do
 
 -- | What part of process pool is to use
 data Res
-    = NNodes Int                -- ^ Fixed number of nodes
-    | NFrac  Double             -- ^ Fraction of nodes
+    = N    Int                -- ^ Fixed number of nodes
+    | Frac Double             -- ^ Fraction of nodes
     deriving (Show,Typeable,Generic)
 instance Binary Res
 
+-- | What part of process pool is to use
+data ResGroup
+    = NWorkers Int   -- ^ Allocate no less than N workers
+    | NNodes   Int   -- ^ Allocate no less than N nodes to each worker
+    deriving (Show,Typeable,Generic)
+instance Binary ResGroup
+
+-- | Flags for selection resources for groups
+data GrpFlag
+    = UseLocal                  -- ^ Use local node as well
+    deriving (Show,Typeable,Generic)
+instance Binary GrpFlag
 
 -- | Command to spawn shell actor. Contains pair of
 data ReqSpawnShell = ReqSpawnShell
@@ -147,7 +162,7 @@ data ReqResources = ReqResources Location Res
 instance Binary ReqResources
 
 -- | Request resourses for group of processes
-data ReqResourcesGrp = ReqResourcesGrp Res
+data ReqResourcesGrp = ReqResourcesGrp Res ResGroup [GrpFlag]
                     deriving (Show,Typeable,Generic)
 instance Binary ReqResourcesGrp
 
@@ -161,6 +176,7 @@ type Controller = StateT StateACP (ExceptT Err Process)
 
 data Err = Fatal String
          | Done
+         deriving (Show)
 
 fatal :: MonadError Err m => String -> m a
 fatal msg = throwError (Fatal msg)
@@ -198,35 +214,6 @@ acpStep st = receiveWait
 -- Handlers for individual messages
 ----------------------------------------------------------------
 
--- Get N nodes from pool
-getNNodes :: Int -> Controller [NodeInfo]
-getNNodes n = do
-    free <- use stNodePool
-    when (length free < n) $
-        fatal $ printf "Cannot allocate %i nodes" n
-    let (used,rest) = splitAt n free
-    stNodePool .= rest
-    return used
-
--- Get fraction of free nodes from pool
-getFracNodes :: Double -> Controller [NodeInfo]
-getFracNodes frac = do
-    free <- use stNodePool
-    let n = length free
-        k = round $ fromIntegral n * frac
-    let (used,rest) = splitAt k free
-    liftIO $ print (k,n)
-    stNodePool .= rest
-    return used
-
-
-makeResource :: Location -> [NodeInfo] -> Controller VirtualCAD
-makeResource Remote []     = fatal "Need positive number of nodes"
-makeResource Remote (n:ns) = return (VirtualCAD Remote n ns)
-makeResource Local  ns     = do
-    n <- use stLocalNode
-    return $ VirtualCAD Local n ns
-
 -- > ReqResources
 --
 -- Request for resources
@@ -236,8 +223,8 @@ handleReqResources (ReqResources loc req) = do
     -- FIXME: What to do when we don't have enough resources to
     --        satisfy request?
     resourse <- case req of
-        NNodes n -> makeResource loc =<< getNNodes n
-        NFrac  f -> makeResource loc =<< getFracNodes f
+        N    n -> makeResource loc =<< getNNodes n
+        Frac f -> makeResource loc =<< getFracNodes f
     stAllocResources . at res .= Just resourse
     -- Send back reply
     pid <- use stActor
@@ -248,20 +235,93 @@ handleReqResources (ReqResources loc req) = do
 --
 -- Request for resources for group of processes
 handleReqResourcesGrp :: ReqResourcesGrp -> Controller ()
-handleReqResourcesGrp (ReqResourcesGrp req) = do
-    -- Allocate resources
-    nodes <- case req of
-        NNodes n -> getNNodes n
-        NFrac  f -> getFracNodes f
-    res <- forM nodes $ \n -> do
-        let r = VirtualCAD Remote n []
-        i <- Resources <$> uniqID
-        stAllocResources . at i .= Just r
-        return i
+handleReqResourcesGrp (ReqResourcesGrp req resGrp flags) = do
+    -- Get nodes to allocate
+    let withLocal ns
+            | null [()| UseLocal <- flags] = return ns
+            | otherwise                    = do n <- use stLocalNode
+                                                return (n:ns)
+
+    nodes <- withLocal =<< case req of
+        N    n -> getNNodes n
+        Frac f -> getFracNodes f
+    -- Divide resources
+    res <- case resGrp of
+      NWorkers k -> do
+          chunks <- toNChunks k nodes
+          forM chunks $ \ns -> case ns of
+              []     -> fatal "Impossible: empty nodelist"
+              n:rest -> allocResource n rest
+      NNodes k -> do
+          chunks <- toSizedChunks k nodes
+          forM chunks $ \ns -> case ns of
+              []     -> fatal "Impossible: empty nodelist"
+              n:rest -> allocResource n rest
     -- Send back reply
     pid <- use stActor
-    liftP $ send pid (res :: [Resources])
+    liftP $ send pid res
 
+-- Get N nodes from pool
+getNNodes :: Int -> Controller [NodeInfo]
+getNNodes n = do
+    free <- Set.toList <$> use stNodePool
+    when (length free < n) $
+        fatal $ printf "Cannot allocate %i nodes" n
+    let (used,rest) = splitAt n free
+    stNodePool .= Set.fromList rest
+    return used
+
+-- Get fraction of free nodes from pool
+getFracNodes :: Double -> Controller [NodeInfo]
+getFracNodes frac = do
+    free <- Set.toList <$> use stNodePool
+    let n = length free
+        k = round $ fromIntegral n * frac
+    let (used,rest) = splitAt k free
+    liftIO $ print (k,n)
+    stNodePool .= Set.fromList rest
+    return used
+
+makeResource :: Location -> [NodeInfo] -> Controller VirtualCAD
+makeResource Remote []     = fatal "Need positive number of nodes"
+makeResource Remote (n:ns) = return (VirtualCAD Remote n ns)
+makeResource Local  ns     = do
+    n <- use stLocalNode
+    return $ VirtualCAD Local n ns
+
+allocResource :: NodeInfo -> [NodeInfo] -> Controller Resources
+allocResource n nodes = do
+    local <- use stLocalNode
+    i     <- Resources <$> uniqID
+    let loc | local == n = Local
+            | otherwise  = Remote
+    let r = VirtualCAD loc n nodes
+    stAllocResources . at i .= Just r
+    return i
+
+
+-- Split list to N chunks
+toNChunks :: MonadError Err m => Int -> [a] -> m [[a]]
+toNChunks n items
+    | n <= 0    = fatal "Non-positive number of chunks"
+    | n >  len  = fatal "Cannot allocate enough items"
+    | otherwise = return $ go size rest items
+  where
+    len = length items
+    (size,rest) = len `divMod` n
+    go _  _ [] = []
+    go sz 0 xs = case splitAt  sz    xs of (as,rm) -> as : go sz 0     rm
+    go sz r xs = case splitAt (sz+1) xs of (as,rm) -> as : go sz (r-1) rm
+
+
+-- Split list to chunks of size N
+toSizedChunks :: MonadError Err m => Int -> [a] -> m [[a]]
+toSizedChunks n items
+    | n <= 0    = fatal "Non-positive size of chunk"
+    | n >  len  = fatal "Chunk size is too large"
+    | otherwise = toNChunks (len `div` n) items
+  where
+    len = length items
 
 -- > ReqConnect
 --
@@ -510,8 +570,8 @@ dropPID pid = do
     mr <- use $ stUsedResources . at pid
     case mr of
       Nothing -> return ()
-      Just (VirtualCAD Local  _ ns) -> stNodePool %= (ns ++)
-      Just (VirtualCAD Remote n ns) -> stNodePool %= (\xs -> n : (ns ++ xs))
+      Just (VirtualCAD Local  _ ns) -> stNodePool %= (Set.fromList ns <>)
+      Just (VirtualCAD Remote n ns) -> stNodePool %= (\xs -> Set.singleton n <> Set.fromList ns <> xs)
 
 
 -- Remove GID from process registry
@@ -554,7 +614,7 @@ data StateACP = StateACP
       -- State of monitored processes
     , _stGroups   :: !(Map GroupID GroupState)
       -- State of groups of processes
-    , _stNodePool :: ![NodeInfo]
+    , _stNodePool :: !(Set NodeInfo)
       -- Unused nodes which could be reused
     , _stAllocResources :: !(Map Resources VirtualCAD)
       -- Resources which have been allocated but we didn't start use
@@ -621,7 +681,7 @@ stChildren = lens _stChildren (\a x -> x { _stChildren = a})
 stGroups :: Lens' StateACP (Map GroupID GroupState)
 stGroups = lens _stGroups (\a x -> x { _stGroups = a})
 
-stNodePool :: Lens' StateACP [NodeInfo]
+stNodePool :: Lens' StateACP (Set NodeInfo)
 stNodePool = lens _stNodePool (\a x -> x { _stNodePool = a})
 
 stAllocResources :: Lens' StateACP (Map Resources VirtualCAD)

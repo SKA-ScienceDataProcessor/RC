@@ -41,8 +41,8 @@ ddpProductSlice = actor $ \(fname, size) -> duration "vector slice" $ do
     -- FIXME: Bad!
     let (off,n) = scatterShape (fromIntegral nProc) size !! rnk
     -- Start local processes
-    resVA <- select Local (NNodes 0)
-    resVB <- select Local (NNodes 0)
+    resVA <- select Local (N 0)
+    resVB <- select Local (N 0)
     shellVA <- startActor resVA $(mkStaticClosure 'ddpComputeVector)
     shellVB <- startActor resVB $(mkStaticClosure 'ddpReadVector   )
     -- Connect actors
@@ -65,13 +65,13 @@ remotable [ 'ddpProductSlice
 ddpDotProduct :: Actor (String,Int64) Double
 ddpDotProduct = actor $ \(fname,size) -> do
     -- Run generator & delay
-    resG   <- select Local (NNodes 0)
+    resG   <- select Local (N 0)
     shellG <- startActor resG $(mkStaticClosure 'ddpGenerateVector)
     sendParam (fname, size) shellG
     _ <- duration "generate" . await =<< delay Remote shellG
 
     -- Chunk & send out
-    res   <- selectMany (NFrac 1)
+    res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
     shell <- startGroup res $(mkStaticClosure 'ddpProductSlice)
     broadcastParam (fname,size) shell
     partials <- delayGroup shell

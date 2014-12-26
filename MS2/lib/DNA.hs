@@ -26,6 +26,8 @@ module DNA (
     , CAD
     , Location(..)
     , Res(..)
+    , ResGroup(..)
+    , GrpFlag(..)
     , select
     , selectMany
       -- * Connecting actors
