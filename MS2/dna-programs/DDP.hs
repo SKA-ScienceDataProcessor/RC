@@ -17,6 +17,18 @@ import DNA
 -- Workers for distributed dot product
 ----------------------------------------------------------------
 
+-- | Split vector into set of slices.
+scatterShape :: Int64 -> Int64 -> [(Int64,Int64)]
+scatterShape n size
+  = zipWith (,) chunkOffs chunkSizes
+  where
+    (chunk,rest) = size `divMod` n
+    extra        = replicate (fromIntegral rest) 1 ++ repeat 0
+    chunkSizes   = zipWith (+) (replicate (fromIntegral n) chunk) extra
+    chunkOffs    = scanl (+) 0 chunkSizes
+
+
+
 -- | Compute vector and send it back to master using unsafe send.
 ddpComputeVector :: Actor (Int64,Int64) (S.Vector Double)
 ddpComputeVector = actor $ \(off,n) -> duration "compute vector" $ do
