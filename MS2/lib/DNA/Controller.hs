@@ -81,12 +81,12 @@ startAcpLoop self pid (VirtualCAD _ n nodes) = do
             ms <- acpStep s
             case ms of
               Right s' -> loop s'
-              Left  Done
-                  -- FIXME: checking that all children completed
-                  --        execution is potentially racy
-                  | Map.null (s^.stChildren) -> taggedMessage "ACP" "Done"
-                  | otherwise -> do taggedMessage "ACP" $ "Unterminated children: " ++ show (s^.stChildren)
-                                    error "Unterminated children"
+              -- FIXME: checking that all children completed
+              --        execution is race condition. It's possible
+              --        that we didn't receive message that
+              --        children completed execution. And it's
+              --        very easy to trigger
+              Left Done -> taggedMessage "ACP" "Done"
               Left (Fatal m) -> do
                   taggedMessage "ACP" ("Crash: " ++ m)
                   error "Terminate"
