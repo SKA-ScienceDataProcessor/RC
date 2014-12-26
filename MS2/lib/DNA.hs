@@ -28,6 +28,7 @@ module DNA (
     , Res(..)
     , ResGroup(..)
     , GrpFlag(..)
+    , availableNodes
     , select
     , selectMany
       -- * Connecting actors

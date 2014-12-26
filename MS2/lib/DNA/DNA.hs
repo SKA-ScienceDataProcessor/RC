@@ -45,6 +45,7 @@ module DNA.DNA (
     , CAD(..)
     , makeCAD
     , Location(..)
+    , availableNodes
     , select
     , selectMany
       -- * Connecting actors
@@ -70,18 +71,14 @@ module DNA.DNA (
     , __remoteTable
     , runACP__static
     ) where
--- FIXME: understand how to implement local spawn
-
 
 import Control.Applicative
 import Control.Monad
-import Control.Monad.Trans.Class
 import Control.Monad.Trans.Reader
 import Control.Monad.IO.Class
 import Control.Distributed.Static (closureApply)
 import Control.Distributed.Process
 import Control.Distributed.Process.Closure
-import qualified Control.Distributed.Process.Platform.UnsafePrimitives as Unsafe
 import Control.Distributed.Process.Serializable (Serializable)
 
 import Data.Binary   (Binary)
@@ -200,6 +197,11 @@ makeCAD :: [a] -> CAD a
 makeCAD []     = error "DNA.CAD.makeCAD: empty list of nodes"
 makeCAD (x:xs) = CAD x [CAD a [] | a <- xs]
 
+-- | Number of available nodes
+availableNodes :: DNA Int
+availableNodes = do
+    sendACP ReqNumNodes
+    liftP expect
 
 -- | Allocate N nodes to single actor
 select

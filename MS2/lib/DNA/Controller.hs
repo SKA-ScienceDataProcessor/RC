@@ -19,6 +19,7 @@ module DNA.Controller (
     , ReqSpawnShell(..)
     , ReqSpawnGroup(..)
     , ReqConnect(..)
+    , ReqNumNodes(..)
     , ReqResources(..)
     , ReqResourcesGrp(..)
       -- * Node controller
@@ -154,7 +155,10 @@ data ReqConnect
     deriving (Show,Typeable,Generic)
 instance Binary ReqConnect
 
-
+-- | Query number of available nodes
+data ReqNumNodes = ReqNumNodes
+    deriving (Show,Typeable,Generic)
+instance Binary ReqNumNodes
 
 -- | Request resourses for single process.
 data ReqResources = ReqResources Location Res
@@ -187,6 +191,10 @@ acpStep st = receiveWait
     [ -- Requests for resources
       msg handleReqResources
     , msg handleReqResourcesGrp
+    , msg $ \ReqNumNodes -> do
+        pool <- use stNodePool
+        pid  <- use stActor
+        liftP $ send pid (Set.size pool)
       -- Requests for spawning children\
     , msg handleSpawnShell
     , msg handleSpawnShellGroup
