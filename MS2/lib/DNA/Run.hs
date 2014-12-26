@@ -245,8 +245,11 @@ runUnixWorker rtable opts common dna = do
     let reapChildren = mapM_ killChild pids
         start = startMaster backend $ \n -> do
             synchronizationPoint "CH"
-            executeDNA dna n
+            r <- executeDNA dna n
             terminateAllSlaves backend
+            case r of
+              Just e  -> liftIO $ print e
+              Nothing -> return ()
     -- Start master or slave program
     case rank of
       0 -> start `onException` reapChildren
@@ -254,7 +257,7 @@ runUnixWorker rtable opts common dna = do
 
 
 
-executeDNA :: DNA () -> [NodeId] -> Process ()
+executeDNA :: DNA () -> [NodeId] -> Process (Maybe SomeException)
 executeDNA dna nodes = do
     me  <- getSelfPid
     nid <- getSelfNode
@@ -274,8 +277,9 @@ executeDNA dna nodes = do
             }
         acpClos = $(mkStaticClosure 'runACP)
     -- Start master ACP
-    _ <- try $ runMasterACP param dna :: Process (Either SomeException ())
-    return ()
+    r <- try $ runMasterACP param dna :: Process (Either SomeException ())
+    return $ either Just (const Nothing) r
+
 
 safeRead :: Read a => String -> Maybe a
 safeRead s = do
