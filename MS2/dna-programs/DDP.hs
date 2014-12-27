@@ -1,4 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 module DDP where
 
 import Control.Applicative
@@ -9,6 +11,9 @@ import qualified Data.Vector.Storable as S
 import qualified Data.ByteString.Lazy as BS
 import Data.Binary.Put
 import Data.Binary.IEEE754
+import Data.Binary   (Binary)
+import Data.Typeable (Typeable)
+import GHC.Generics  (Generic)
 
 import DNA.Channel.File (readDataMMap)
 import DNA
@@ -17,12 +22,20 @@ import DNA
 -- Workers for distributed dot product
 ----------------------------------------------------------------
 
+-- | Single slice of 1D dimensional vector.
+--
+-- > Slice offset size
+data Slice = Slice Int64 Int64
+             deriving (Show,Typeable,Generic)
+instance Binary Slice
+
+
 -- | Split vector into set of slices.
-scatterShape :: Int64 -> Int64 -> [(Int64,Int64)]
-scatterShape n size
-  = zipWith (,) chunkOffs chunkSizes
+scatterSlice :: Int -> Slice -> [Slice]
+scatterSlice n (Slice off0 size)
+  = zipWith (\o s -> Slice (off0 + o) s) chunkOffs chunkSizes
   where
-    (chunk,rest) = size `divMod` n
+    (chunk,rest) = size `divMod` fromIntegral n
     extra        = replicate (fromIntegral rest) 1 ++ repeat 0
     chunkSizes   = zipWith (+) (replicate (fromIntegral n) chunk) extra
     chunkOffs    = scanl (+) 0 chunkSizes

@@ -12,7 +12,7 @@ import System.Directory ( removeFile )
 import DNA
 
 import DDP
-
+import DDP_Slice
 
 
 ----------------------------------------------------------------
@@ -22,38 +22,9 @@ import DDP
 -- receive CAD.
 ----------------------------------------------------------------
 
--- | Caclculate dot product of slice of vector
-ddpProductSlice :: Actor (String,Int64) Double
-ddpProductSlice = actor $ \(fname, size) -> duration "vector slice" $ do
-    -- Calculate offsets
-    nProc <- groupSize
-    rnk   <- rank
-    -- FIXME: Bad!
-    let (off,n) = scatterShape (fromIntegral nProc) size !! rnk
-    -- Start local processes
-    resVA <- select Local (N 0)
-    resVB <- select Local (N 0)
-    shellVA <- startActor resVA $(mkStaticClosure 'ddpComputeVector)
-    shellVB <- startActor resVB $(mkStaticClosure 'ddpReadVector   )
-    -- Connect actors
-    sendParam (off,n)          shellVA 
-    sendParam (fname, (off,n)) shellVB
-    --
-    futVA <- delay Local shellVA
-    futVB <- delay Local shellVB
-    --
-    va <- duration "receive compute" $ await futVA
-    vb <- duration "receive read"    $ await futVB
-    --
-    duration "compute sum" $
-      return $ (S.sum $ S.zipWith (*) va vb :: Double)
-
-remotable [ 'ddpProductSlice
-          ]
-
 -- | Actor for calculating dot product
-ddpDotProduct :: Actor (String,Int64) Double
-ddpDotProduct = actor $ \(fname,size) -> do
+ddpDotProduct :: Actor (String,Slice) Double
+ddpDotProduct = actor $ \(fname, vec@(Slice 0 size)) -> do
     -- Run generator & delay
     resG   <- select Local (N 0)
     shellG <- startActor resG $(mkStaticClosure 'ddpGenerateVector)
@@ -63,16 +34,19 @@ ddpDotProduct = actor $ \(fname,size) -> do
     -- Chunk & send out
     res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
     shell <- startGroup res $(mkStaticClosure 'ddpProductSlice)
-    broadcastParam (fname,size) shell
+    broadcastParam (fname,vec) shell
     partials <- delayGroup shell
     x <- duration "collecting vectors" $ gather partials (+) 0
     return x
 
 main :: IO ()
 main = do
-  (fname, h) <- openTempFile "." "temp.dat"
-  dnaRun (DDP.__remoteTable . Main.__remoteTable) $ do
-    b <- eval ddpDotProduct (fname,20000000)
-    liftIO $ putStrLn $ "RESULT: " ++ show b
-  hClose h
-  removeFile fname
+    (fname, h) <- openTempFile "." "temp.dat"
+    dnaRun rtable $ do
+        b <- eval ddpDotProduct (fname,Slice 0 20000000)
+        liftIO $ putStrLn $ "RESULT: " ++ show b
+    hClose h
+    removeFile fname
+  where
+    rtable = DDP.__remoteTable
+           . DDP_Slice.__remoteTable
