@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <fcntl.h>
 #include <assert.h>
 #include <sys/types.h>
@@ -16,20 +17,22 @@
 #define	MAP_ANONYMOUS	MAP_ANON
 #endif
 
-/* XXX error handling: should we return an ssize_t
-   XXX types: buffer size is a ssize_t, not int
+/* FIXME: error handling: should we return an ssize_t
+   FIXME: types: buffer size is a ssize_t, not int
 */
 
 void read_data(double *buf, long n, long o, char *p)
 {
-  int fd;
+    int fd;
+    fd = open(p, O_RDONLY);
+    assert(fd > 0);
 
-  fd = open(p, O_RDONLY);
-  assert(fd > 0);
-  /*  printf("reading %lu bytes at offset %d\n", n* sizeof(double), o); */
-  assert( pread(fd, buf, n * sizeof(double), o) == n * sizeof(double) );
-  close(fd);
-  return;
+    const size_t n_bytes = n * sizeof(double);
+    const size_t offset  = o * sizeof(double);
+    ssize_t n_read;
+    n_read = pread(fd, buf, n_bytes, offset);
+    assert( n_read == n_bytes );
+    close(fd);
 }
 
 
