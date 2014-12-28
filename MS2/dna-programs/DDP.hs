@@ -43,14 +43,14 @@ scatterSlice n (Slice off0 size)
 
 
 -- | Compute vector and send it back to master using unsafe send.
-ddpComputeVector :: Actor (Int64,Int64) (S.Vector Double)
-ddpComputeVector = actor $ \(off,n) -> duration "compute vector" $ do
+ddpComputeVector :: Actor Slice (S.Vector Double)
+ddpComputeVector = actor $ \(Slice off n) -> duration "compute vector" $ do
     return $ S.generate (fromIntegral n)
                (\i -> fromIntegral (fromIntegral i + off))
 
 -- | Read vector slice from the data file.
-ddpReadVector :: Actor (String,(Int64,Int64)) (S.Vector Double)
-ddpReadVector = actor $ \(fname, (off,n)) -> duration "read vector" $ do
+ddpReadVector :: Actor (String, Slice) (S.Vector Double)
+ddpReadVector = actor $ \(fname, Slice off n) -> duration "read vector" $ do
     liftIO $ readDataMMap n off fname "FIXME"
 
 -- | Fill the file with an example vector of the given size

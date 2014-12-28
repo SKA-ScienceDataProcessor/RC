@@ -12,20 +12,20 @@ import DDP
 
 -- | Caclculate dot product of slice of vector
 ddpProductSlice :: Actor (String,Slice) Double
-ddpProductSlice = actor $ \(fname, slice) -> duration "vector slice" $ do
+ddpProductSlice = actor $ \(fname, fullSlice) -> duration "vector slice" $ do
     -- Calculate offsets
     nProc <- groupSize
     rnk   <- rank
     -- FIXME: Bad!
-    let Slice off n = scatterSlice (fromIntegral nProc) slice !! rnk
+    let slice = scatterSlice (fromIntegral nProc) fullSlice !! rnk
     -- Start local processes
     resVA <- select Local (N 0)
     resVB <- select Local (N 0)
     shellVA <- startActor resVA $(mkStaticClosure 'ddpComputeVector)
     shellVB <- startActor resVB $(mkStaticClosure 'ddpReadVector   )
     -- Connect actors
-    sendParam (off,n)          shellVA 
-    sendParam (fname, (off,n)) shellVB
+    sendParam slice          shellVA
+    sendParam (fname, slice) shellVB
     --
     futVA <- delay Local shellVA
     futVB <- delay Local shellVB
