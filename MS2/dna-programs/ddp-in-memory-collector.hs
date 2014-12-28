@@ -3,12 +3,6 @@
 {-# LANGUAGE BangPatterns #-}
 module Main(main) where
 
-import Control.Applicative
-import Control.Monad
-
-import Data.Int
-import qualified Data.Vector.Storable as S
-
 import DNA.Channel.File (readDataMMap)
 import DNA
 

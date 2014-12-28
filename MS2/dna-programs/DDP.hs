@@ -3,7 +3,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 module DDP where
 
-import Control.Applicative
 import Control.Monad
 import Data.Int
 import qualified Data.Vector.Storable as S

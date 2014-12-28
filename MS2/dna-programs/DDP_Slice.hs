@@ -2,7 +2,6 @@
 {-# LANGUAGE BangPatterns    #-}
 module DDP_Slice where
 
-import Data.Int
 import qualified Data.Vector.Storable as S
 
 import DNA
