@@ -14,7 +14,7 @@ import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
 import GHC.Generics  (Generic)
 
-import DNA.Channel.File (readDataMMap)
+import DNA.Channel.File (readData,readDataMMap)
 import DNA
 
 ----------------------------------------------------------------
@@ -40,7 +40,6 @@ scatterSlice n (Slice off0 size)
     chunkOffs    = scanl (+) 0 chunkSizes
 
 
-
 -- | Compute vector and send it back to master using unsafe send.
 ddpComputeVector :: Actor Slice (S.Vector Double)
 ddpComputeVector = actor $ \(Slice off n) -> duration "compute vector" $ do
@@ -50,7 +49,8 @@ ddpComputeVector = actor $ \(Slice off n) -> duration "compute vector" $ do
 -- | Read vector slice from the data file.
 ddpReadVector :: Actor (String, Slice) (S.Vector Double)
 ddpReadVector = actor $ \(fname, Slice off n) -> duration "read vector" $ do
-    liftIO $ readDataMMap n off fname "FIXME"
+    liftIO $ readData n off fname
+    -- liftIO $ readDataMMap n off fname "FIXME"
 
 -- | Fill the file with an example vector of the given size
 ddpGenerateVector :: Actor (String,Int64) ()
