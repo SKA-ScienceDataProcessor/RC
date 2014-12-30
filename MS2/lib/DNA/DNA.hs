@@ -503,10 +503,9 @@ startCollector :: (Serializable a, Serializable b)
                -> Closure (CollectActor a b)
                -> DNA (CollectorShell a b)
 startCollector res child = do
-    ACP acp         <- getMonitor
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
-    liftP $ send acp $ ReqSpawnShell clos shellS res
+    sendACP $ ReqSpawnShell clos shellS res
     msg <- unwrapMessage =<< liftP (receiveChan shellR)
     case msg of
       Nothing -> error "Bad shell message"
@@ -520,10 +519,9 @@ startGroup :: (Serializable a, Serializable b)
            -> Closure (Actor a b)
            -> DNA (ShellGroup a b)
 startGroup res groupTy child = do
-    ACP acp         <- getMonitor
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runActor) `closureApply` child
-    liftP $ send acp $ ReqSpawnGroup clos shellS res groupTy
+    sendACP $ ReqSpawnGroup clos shellS res groupTy
     (gid,mbox) <- liftP (receiveChan shellR)
     msgs <- mapM unwrapMessage mbox
     case sequence msgs of
@@ -539,10 +537,9 @@ startCollectorGroup
     -> Closure (CollectActor a b)
     -> DNA (GroupCollect a b)
 startCollectorGroup res groupTy child = do
-    ACP acp         <- getMonitor
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
-    liftP $ send acp $ ReqSpawnGroup clos shellS res groupTy
+    sendACP $ ReqSpawnGroup clos shellS res groupTy
     (gid,mbox) <- liftP (receiveChan shellR)
     msgs <- mapM unwrapMessage mbox
     case sequence msgs of
