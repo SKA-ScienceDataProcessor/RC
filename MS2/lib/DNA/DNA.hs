@@ -524,8 +524,6 @@ startGroup res groupTy child = do
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runActor) `closureApply` child
     liftP $ send acp $ ReqSpawnGroup clos shellS res groupTy
-    -- FIXME: here we spawn groups in very unreliable manner. We
-    --        assume that nothingf will crash which is plain wrong
     (gid,mbox) <- liftP (receiveChan shellR)
     msgs <- mapM unwrapMessage mbox
     case sequence msgs of
@@ -545,7 +543,6 @@ startCollectorGroup res groupTy child = do
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
     liftP $ send acp $ ReqSpawnGroup clos shellS res groupTy
-    -- FIXME: See above
     (gid,mbox) <- liftP (receiveChan shellR)
     msgs <- mapM unwrapMessage mbox
     case sequence msgs of
