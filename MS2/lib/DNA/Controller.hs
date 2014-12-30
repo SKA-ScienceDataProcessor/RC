@@ -16,6 +16,7 @@ module DNA.Controller (
     , Res(..)
     , ResGroup(..)
     , GrpFlag(..)
+    , GroupType(..)
     , ReqSpawnShell(..)
     , ReqSpawnGroup(..)
     , ReqConnect(..)
@@ -122,6 +123,13 @@ data ResGroup
     deriving (Show,Typeable,Generic)
 instance Binary ResGroup
 
+-- | How process crashes should be treated in the group
+data GroupType
+    = Normal
+    | Failout
+    deriving (Show,Typeable,Generic)
+instance Binary GroupType
+
 -- | Flags for selection resources for groups
 data GrpFlag
     = UseLocal                  -- ^ Use local node as well
@@ -142,6 +150,7 @@ data ReqSpawnGroup = ReqSpawnGroup
     (Closure (Process ()))      -- Actor's closure
     (SendPort (GroupID,[Message]))  -- Port to send Shell to
     [Resources]                 -- Resources ID for all actors
+    GroupType                   -- 
     deriving (Show,Typeable,Generic)
 instance Binary ReqSpawnGroup
 
@@ -403,8 +412,7 @@ handleSpawnShell (ReqSpawnShell actor chShell resID) = do
 --
 -- Spawn group of processes
 handleSpawnShellGroup :: ReqSpawnGroup -> Controller ()
-handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
-    -- FIXME: How to assemble a group?
+handleSpawnShellGroup (ReqSpawnGroup actor chShell res groupTy) = do
     gid     <- GroupID <$> uniqID
     acpClos <- use stAcpClosure
     -- Spawn remote actors
@@ -432,7 +440,7 @@ handleSpawnShellGroup (ReqSpawnGroup actor chShell res) = do
         stUsedResources  . at acp .= Just r
     -- FIXME: pass type of group
     stGroups . at gid .= Just
-        (GrShell NormalGroup chShell (length res) [])
+        (GrShell groupTy chShell (length res) [])
 
 
 -- > ProcessMonitorNotification
@@ -492,27 +500,27 @@ handleProcessCrash pid = do
            Failed       -> fatal "Impossible: Process crashed twice"
         )
         (\g gid -> case g of
-           GrShell NormalGroup _ _ _ -> do
+           GrShell Normal _ _ _ -> do
                terminateGroup gid
                fatal "Shell group crashed. Cannot do anything"
-           GrShell FailoutGroup ch n msgs ->
-               return $ Just $ GrShell FailoutGroup ch (n-1) msgs
+           GrShell Failout ch n msgs ->
+               return $ Just $ GrShell Failout ch (n-1) msgs
            -- Normal groups
-           GrUnconnected NormalGroup _ -> do
+           GrUnconnected Normal _ -> do
                terminateGroup gid
                return $ Just $ GrFailed
-           GrConnected NormalGroup _ _ acps -> do
+           GrConnected Normal _ _ acps -> do
                terminateGroup gid
                forM_ acps terminateACP
                return Nothing
            -- Failout groups
-           GrUnconnected FailoutGroup n -> do
-               return $ Just $ GrUnconnected FailoutGroup (n-1)
-           GrConnected FailoutGroup (1, nD) ch _ -> do
+           GrUnconnected Failout n -> do
+               return $ Just $ GrUnconnected Failout (n-1)
+           GrConnected Failout (1, nD) ch _ -> do
                liftP $ forM_ ch $ \c -> sendChan c nD
                return Nothing
-           GrConnected FailoutGroup (nR, nD) ch acps -> do
-               return $ Just $ GrConnected FailoutGroup (nR-1,nD) ch acps
+           GrConnected Failout (nR, nD) ch acps -> do
+               return $ Just $ GrConnected Failout (nR-1,nD) ch acps
            GrFailed -> return $ Just GrFailed
         )
     dropPID pid
@@ -666,10 +674,6 @@ data GroupState
       -- Group which crashed
     deriving (Show)
 
-data GroupType
-    = NormalGroup
-    | FailoutGroup
-    deriving (Show)
 
 stCounter :: Lens' StateACP Int
 stCounter = lens _stCounter (\a x -> x { _stCounter = a})

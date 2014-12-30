@@ -31,7 +31,7 @@ ddpDotProduct :: Actor (String,Slice) Double
 ddpDotProduct = actor $ \(fname,size) -> do
     res <- selectMany (Frac 1) (NNodes 1) [UseLocal]
     r   <- select Local (N 0)
-    shell <- startGroup res $(mkStaticClosure 'ddpProductSlice)
+    shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSlice)
     shCol <- startCollector r $(mkStaticClosure 'ddpCollector)
     broadcastParam (fname,size) shell
     collect shell shCol

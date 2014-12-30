@@ -28,7 +28,7 @@ ddpDotProduct = actor $ \(fname, size) -> do
     let slice = scatterSlice gSize size !! rnk
     -- Chunk & send out
     res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
-    shell <- startGroup res $(mkStaticClosure 'ddpProductSlice)
+    shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSlice)
     broadcastParam (fname,slice) shell
     partials <- delayGroup shell
     x <- duration "collecting vectors" $ gather partials (+) 0
@@ -40,7 +40,7 @@ remotable [ 'ddpDotProduct
 ddpDotProductMaster :: Actor (String,Slice) Double
 ddpDotProductMaster = actor $ \(fname,size) -> do
     res   <- selectMany (Frac 1) (NWorkers 3) [UseLocal]
-    shell <- startGroup res $(mkStaticClosure 'ddpDotProduct)
+    shell <- startGroup res Normal $(mkStaticClosure 'ddpDotProduct)
     broadcastParam (fname,size) shell
     partials <- delayGroup shell
     x <- duration "collection partials" $ gather partials (+) 0

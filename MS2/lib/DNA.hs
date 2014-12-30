@@ -28,6 +28,7 @@ module DNA (
     , Res(..)
     , ResGroup(..)
     , GrpFlag(..)
+    , GroupType(..)
     , availableNodes
     , select
     , selectMany

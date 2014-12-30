@@ -338,7 +338,7 @@ delayCollector loc (CollectorShell _ _ chDst acp) = do
     liftP $ sendChan chDst $ destFromLoc loc chSend
     sendACP $ ReqConnectTo acp myACP
     return  $ Promise chRecv
-    
+
 
 -- | Create promise from group of processes which allows to collect
 --   data from them later.
@@ -516,13 +516,14 @@ startCollector res child = do
 -- | Start group of processes
 startGroup :: (Serializable a, Serializable b)
            => [Resources]
+           -> GroupType
            -> Closure (Actor a b)
            -> DNA (ShellGroup a b)
-startGroup res child = do
+startGroup res groupTy child = do
     ACP acp         <- getMonitor
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runActor) `closureApply` child
-    liftP $ send acp $ ReqSpawnGroup clos shellS res
+    liftP $ send acp $ ReqSpawnGroup clos shellS res groupTy
     -- FIXME: here we spawn groups in very unreliable manner. We
     --        assume that nothingf will crash which is plain wrong
     (gid,mbox) <- liftP (receiveChan shellR)
@@ -536,13 +537,14 @@ startGroup res child = do
 startCollectorGroup
     :: (Serializable a, Serializable b)
     => [Resources]
+    -> GroupType
     -> Closure (CollectActor a b)
     -> DNA (GroupCollect a b)
-startCollectorGroup res child = do
+startCollectorGroup res groupTy child = do
     ACP acp         <- getMonitor
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
-    liftP $ send acp $ ReqSpawnGroup clos shellS res
+    liftP $ send acp $ ReqSpawnGroup clos shellS res groupTy
     -- FIXME: See above
     (gid,mbox) <- liftP (receiveChan shellR)
     msgs <- mapM unwrapMessage mbox

@@ -33,7 +33,7 @@ ddpDotProduct = actor $ \(fname, vec@(Slice 0 size)) -> do
 
     -- Chunk & send out
     res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
-    shell <- startGroup res $(mkStaticClosure 'ddpProductSlice)
+    shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSlice)
     broadcastParam (fname,vec) shell
     partials <- delayGroup shell
     x <- duration "collecting vectors" $ gather partials (+) 0
