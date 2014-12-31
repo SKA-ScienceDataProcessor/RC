@@ -55,7 +55,7 @@ show_immediate_maybe_q :: String -> ExpQ
 show_immediate_maybe_q sel_fn_name =
    [| \pfx v -> case ($(var sel_fn_name) v) of
          Nothing -> []
-         Just s -> show_immediate pfx (strip_rec_uniq_prefix sel_fn_name) s ($(var sel_fn_name) v)
+         Just s -> [show_immediate pfx (strip_rec_uniq_prefix sel_fn_name) s]
     |]
 
 show_req_q :: String -> ExpQ
