@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module OskarIniAutoGen (gen_all) where
+module OskarIniAutoGen where
 
 import Data.List (isPrefixOf)
 import Language.Haskell.TH
