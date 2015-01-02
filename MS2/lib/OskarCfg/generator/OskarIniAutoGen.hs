@@ -31,7 +31,7 @@ test_ppt = test_res pprint
 
 scat :: String -> String -> String
 scat [] s = s
-scat ps s = ps ++ '\':s
+scat ps s = ps ++ '\\':s
 
 show_immediate :: Show a => String -> String -> a -> String
 show_immediate pfx field_name v = scat pfx field_name ++ '=' : show v
