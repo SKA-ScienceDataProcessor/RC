@@ -80,7 +80,9 @@ showTn (TyFloating TyDouble) = "Double"
 showTn _ = error "Unrecognized type name"
 
 printfPtr :: String -> String
-printfPtr = printf "[%s]"
+-- printfPtr = printf "[%s]"
+-- Use custom list to overload 'show'.
+printfPtr = printf "OList %s"
 
 showPtr :: Type -> String
 showPtr (DirectType (TyIntegral TyChar) _ _) = "String"

@@ -2,8 +2,15 @@
 
 module OskarIniAutoGen where
 
-import Data.List (isPrefixOf)
+import Data.List (
+    isPrefixOf
+  , intercalate
+  )
 import Language.Haskell.TH
+
+newtype OList a = OList [a]
+instance Show a => Show (OList a) where
+  show (OList l) = intercalate " " (map show l)
 
 class ShowRecWithPrefix a where
   showRecWithPrefix :: String -> a -> [String]
@@ -93,7 +100,8 @@ gen_fun (DataD _cxt tname _tys [RecC _cname vartyps] _drv) =
       | otherwise = show_immediate_q
     select_fun (AppT (ConT n) t)
       | n == ''Maybe = select_mb t
-      | otherwise = error "Unimplemented 137!"
+      | n == ''OList = select_plain t
+      | otherwise = error ("Unimplemented: " ++ pprint n)
     select_fun t = select_plain t
 gen_fun _ = error "Can't handle data declaration in this form"
 
