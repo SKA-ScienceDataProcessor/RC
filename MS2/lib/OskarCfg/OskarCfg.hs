@@ -1,5 +1,7 @@
 module OskarCfg where
 
+import Text.Printf (printf)
+
 import OskarIniAutoGen
 
 data OSKAR_BEAM_PATTERN_COORDS =
@@ -7,17 +9,21 @@ data OSKAR_BEAM_PATTERN_COORDS =
   | OSKAR_BEAM_PATTERN_COORDS_BEAM_IMAGE
   | OSKAR_BEAM_PATTERN_COORDS_HEALPIX
   | OSKAR_BEAM_PATTERN_COORDS_SKY_MODEL
+  deriving Enum
 data OSKAR_BEAM_PATTERN_FRAME =
     OSKAR_BEAM_PATTERN_FRAME_UNDEF
   | OSKAR_BEAM_PATTERN_FRAME_EQUATORIAL
   | OSKAR_BEAM_PATTERN_FRAME_HORIZON
+  deriving Enum
 data OSKAR_IMAGE_FT =
     OSKAR_IMAGE_DFT_2D
   | OSKAR_IMAGE_DFT_3D
   | OSKAR_IMAGE_FFT
+  deriving Enum
 data OSKAR_IMAGE_DIRECTION =
     OSKAR_IMAGE_DIRECTION_OBSERVATION
   | OSKAR_IMAGE_DIRECTION_RA_DEC
+  deriving Enum
 data OSKAR_SYSTEM_NOISE =
     OSKAR_SYSTEM_NOISE_TELESCOPE_MODEL
   | OSKAR_SYSTEM_NOISE_OBS_SETTINGS
@@ -27,10 +33,12 @@ data OSKAR_SYSTEM_NOISE =
   | OSKAR_SYSTEM_NOISE_SENSITIVITY
   | OSKAR_SYSTEM_NOISE_SYS_TEMP
   | OSKAR_SYSTEM_NOISE_NO_OVERRIDE
+  deriving Enum
 data OSKAR_MAP_UNITS =
     OSKAR_MAP_UNITS_JY
   | OSKAR_MAP_UNITS_K_PER_SR
   | OSKAR_MAP_UNITS_MK_PER_SR
+  deriving Enum
 data OskarSettingsSkyExtendedSources = OskarSettingsSkyExtendedSources {
     osses_FWHM_major_rad :: Double
   , osses_FWHM_minor_rad :: Double
@@ -75,7 +83,7 @@ data OskarSettingsBeamPattern = OskarSettingsBeamPattern {
   }
 data OskarSettingsSkyHealpixFits = OskarSettingsSkyHealpixFits {
     osshf_num_files :: Int
-  , osshf_file :: [String]
+  , osshf_file :: OList String
   , osshf_coord_sys :: Int
   , osshf_map_units :: Int
   , osshf_filter :: OskarSettingsSkyFilter
@@ -91,10 +99,10 @@ data OskarSettingsSkyPolarisation = OskarSettingsSkyPolarisation {
 data OskarSettingsTIDscreen = OskarSettingsTIDscreen {
     ostid_height_km :: Double
   , ostid_num_components :: Int
-  , ostid_amp :: [Double]
-  , ostid_wavelength :: [Double]
-  , ostid_speed :: [Double]
-  , ostid_theta :: [Double]
+  , ostid_amp :: OList Double
+  , ostid_wavelength :: OList Double
+  , ostid_speed :: OList Double
+  , ostid_theta :: OList Double
   }
 data OskarSettingsPiercePoints = OskarSettingsPiercePoints {
     ospp_filename :: String
@@ -124,7 +132,7 @@ data OskarSettingsSkyGeneratorGrid = OskarSettingsSkyGeneratorGrid {
   }
 data OskarSettingsSkyFitsImage = OskarSettingsSkyFitsImage {
     ossfi_num_files :: Int
-  , ossfi_file :: [String]
+  , ossfi_file :: OList String
   , ossfi_spectral_index :: Double
   , ossfi_noise_floor :: Double
   , ossfi_min_peak_fraction :: Double
@@ -135,8 +143,8 @@ data OskarSettingsIonosphere = OskarSettingsIonosphere {
   , osi_min_elevation :: Double
   , osi_TEC0 :: Double
   , osi_num_TID_screens :: Int
-  , osi_TID_files :: [String]
-  -- , osi_TID :: [OskarSettingsTIDscreen] -- FIXME!
+  , osi_TID_files :: OList String
+  -- , osi_TID :: OList OskarSettingsTIDscreen -- FIXME!
   , osi_TECImage :: OskarSettingsTECImage
   , osi_pierce_points :: OskarSettingsPiercePoints
   }
@@ -160,9 +168,9 @@ data OskarSettingsSystemNoiseValue = OskarSettingsSystemNoiseValue {
   , ossnv_efficiency :: OskarSettingsSystemNoiseType
   }
 data OskarSettingsObservation = OskarSettingsObservation {
-    oso_num_pointing_levels :: Int
-  , oso_ra0_rad :: [Double]
-  , oso_dec0_rad :: [Double]
+    -- oso_num_pointing_levels :: Int
+    oso_ra0_rad :: OList Double
+  , oso_dec0_rad :: OList Double
   , oso_pointing_file :: Maybe String
   , oso_start_frequency_hz :: Double
   , oso_num_channels :: Int
@@ -200,7 +208,7 @@ data OskarSettingsSimulator = OskarSettingsSimulator {
   , oss_max_sources_per_chunk :: Int
   , oss_num_cuda_devices :: Int
   , oss_keep_log_file :: Int
-  , oss_cuda_device_ids :: [Int]
+  , oss_cuda_device_ids :: OList Int
   }
 data OskarSettingsSkyGenerator = OskarSettingsSkyGenerator {
     ossg_healpix :: OskarSettingsSkyGeneratorHealpix
@@ -221,10 +229,10 @@ data OskarSettingsElementFit = OskarSettingsElementFit {
   , osef_average_fractional_error_factor_increase :: Double
   }
 data OskarSettingsSkyOskar = OskarSettingsSkyOskar {
-    osso_num_files :: Int
-  , osso_file :: [String]
-  , osso_filter :: OskarSettingsSkyFilter
-  , osso_extended_sources :: OskarSettingsSkyExtendedSources
+    -- osso_num_files :: Int
+    osso_file :: OList String
+  , osso_filter :: Maybe OskarSettingsSkyFilter
+  , osso_extended_sources :: Maybe OskarSettingsSkyExtendedSources
   }
 data OskarSettingsSkyFilter = OskarSettingsSkyFilter {
     ossf_flux_min :: Double
@@ -381,57 +389,43 @@ instance ShowRecWithPrefix OskarSettingsInterferometer where
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_time_average_sec")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_time_average_sec") s],
               \ pfx v
                 -> case osi_uv_filter_min v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_uv_filter_min")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_uv_filter_min") s],
               \ pfx v
                 -> case osi_uv_filter_max v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_uv_filter_max")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_uv_filter_max") s],
               \ pfx v
                 -> case osi_uv_filter_units v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_uv_filter_units")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_uv_filter_units") s],
               \ pfx v
                 -> case osi_num_vis_ave v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_num_vis_ave")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_num_vis_ave") s],
               \ pfx v
                 -> case osi_num_fringe_ave v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_num_fringe_ave")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_num_fringe_ave") s],
               \ pfx v
                 -> case osi_noise v of
                      Nothing -> []
                      Just rr
                        -> showRecWithPrefix
-                            ((scat pfx)
-                             $ (strip_rec_uniq_prefix "osi_noise"))
-                            rr,
+                            ((scat pfx) $ (strip_rec_uniq_prefix "osi_noise")) rr,
               \ pfx v
                 -> case osi_oskar_vis_filename v of
                      Nothing -> []
@@ -445,25 +439,19 @@ instance ShowRecWithPrefix OskarSettingsInterferometer where
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_ms_filename")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_ms_filename") s],
               \ pfx v
                 -> case osi_use_common_sky v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_use_common_sky")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_use_common_sky") s],
               \ pfx v
                 -> case osi_scalar_mode v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_scalar_mode")
-                             s]]
+                             pfx (strip_rec_uniq_prefix "osi_scalar_mode") s]]
 instance ShowRecWithPrefix OskarSettingsBeamPattern where
   showRecWithPrefix
     = \ pfx v
@@ -491,9 +479,7 @@ instance ShowRecWithPrefix OskarSettingsBeamPattern where
                       (osbp_fov_deg v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "osbp_size")
-                      (osbp_size v)],
+                      pfx (strip_rec_uniq_prefix "osbp_size") (osbp_size v)],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -501,9 +487,7 @@ instance ShowRecWithPrefix OskarSettingsBeamPattern where
                       (osbp_healpix_coord_type v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "osbp_nside")
-                      (osbp_nside v)],
+                      pfx (strip_rec_uniq_prefix "osbp_nside") (osbp_nside v)],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -517,8 +501,7 @@ instance ShowRecWithPrefix OskarSettingsBeamPattern where
               \ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osbp_output_beam_text_file")
+                      (strip_rec_uniq_prefix "osbp_output_beam_text_file")
                       (osbp_output_beam_text_file v)],
               \ pfx v
                 -> [show_immediate
@@ -538,8 +521,7 @@ instance ShowRecWithPrefix OskarSettingsBeamPattern where
               \ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osbp_oskar_image_total_intensity")
+                      (strip_rec_uniq_prefix "osbp_oskar_image_total_intensity")
                       (osbp_oskar_image_total_intensity v)],
               \ pfx v
                 -> [show_immediate
@@ -554,8 +536,7 @@ instance ShowRecWithPrefix OskarSettingsBeamPattern where
               \ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osbp_fits_image_total_intensity")
+                      (strip_rec_uniq_prefix "osbp_fits_image_total_intensity")
                       (osbp_fits_image_total_intensity v)]]
 instance ShowRecWithPrefix OskarSettingsSkyHealpixFits where
   showRecWithPrefix
@@ -569,9 +550,7 @@ instance ShowRecWithPrefix OskarSettingsSkyHealpixFits where
                       (osshf_num_files v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "osshf_file")
-                      (osshf_file v)],
+                      pfx (strip_rec_uniq_prefix "osshf_file") (osshf_file v)],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -584,8 +563,7 @@ instance ShowRecWithPrefix OskarSettingsSkyHealpixFits where
                       (osshf_map_units v)],
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "osshf_filter"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "osshf_filter"))
                      (osshf_filter v),
               \ pfx v
                 -> showRecWithPrefix
@@ -619,9 +597,7 @@ instance ShowRecWithPrefix OskarSettingsSkyPolarisation where
                       (ossp_std_pol_angle_rad v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ossp_seed")
-                      (ossp_seed v)]]
+                      pfx (strip_rec_uniq_prefix "ossp_seed") (ossp_seed v)]]
 instance ShowRecWithPrefix OskarSettingsTIDscreen where
   showRecWithPrefix
     = \ pfx v
@@ -639,9 +615,7 @@ instance ShowRecWithPrefix OskarSettingsTIDscreen where
                       (ostid_num_components v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ostid_amp")
-                      (ostid_amp v)],
+                      pfx (strip_rec_uniq_prefix "ostid_amp") (ostid_amp v)],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -675,8 +649,7 @@ instance ShowRecWithPrefix OskarSettingsElementPattern where
              [\ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osep_enable_numerical_patterns")
+                      (strip_rec_uniq_prefix "osep_enable_numerical_patterns")
                       (osep_enable_numerical_patterns v)],
               \ pfx v
                 -> [show_immediate
@@ -696,17 +669,13 @@ instance ShowRecWithPrefix OskarSettingsElementPattern where
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osep_dipole_length")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osep_dipole_length") s],
               \ pfx v
                 -> case osep_taper v of
                      Nothing -> []
                      Just rr
                        -> showRecWithPrefix
-                            ((scat pfx)
-                             $ (strip_rec_uniq_prefix "osep_taper"))
-                            rr]
+                            ((scat pfx) $ (strip_rec_uniq_prefix "osep_taper")) rr]
 instance ShowRecWithPrefix OskarSettingsSystemNoiseFreq where
   showRecWithPrefix
     = \ pfx v
@@ -719,9 +688,7 @@ instance ShowRecWithPrefix OskarSettingsSystemNoiseFreq where
                       (ossnf_specification v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ossnf_file")
-                      (ossnf_file v)],
+                      pfx (strip_rec_uniq_prefix "ossnf_file") (ossnf_file v)],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -734,9 +701,7 @@ instance ShowRecWithPrefix OskarSettingsSystemNoiseFreq where
                       (ossnf_start v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ossnf_inc")
-                      (ossnf_inc v)]]
+                      pfx (strip_rec_uniq_prefix "ossnf_inc") (ossnf_inc v)]]
 instance ShowRecWithPrefix OskarSettingsSkyGeneratorGrid where
   showRecWithPrefix
     = \ pfx v
@@ -749,8 +714,7 @@ instance ShowRecWithPrefix OskarSettingsSkyGeneratorGrid where
                      (ossgg_extended_sources v),
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossgg_pol"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossgg_pol"))
                      (ossgg_pol v),
               \ pfx v
                 -> [show_immediate
@@ -774,9 +738,7 @@ instance ShowRecWithPrefix OskarSettingsSkyGeneratorGrid where
                       (ossgg_std_flux_jy v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ossgg_seed")
-                      (ossgg_seed v)]]
+                      pfx (strip_rec_uniq_prefix "ossgg_seed") (ossgg_seed v)]]
 instance ShowRecWithPrefix OskarSettingsSkyFitsImage where
   showRecWithPrefix
     = \ pfx v
@@ -789,9 +751,7 @@ instance ShowRecWithPrefix OskarSettingsSkyFitsImage where
                       (ossfi_num_files v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ossfi_file")
-                      (ossfi_file v)],
+                      pfx (strip_rec_uniq_prefix "ossfi_file") (ossfi_file v)],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -819,9 +779,7 @@ instance ShowRecWithPrefix OskarSettingsIonosphere where
              (\ f -> f pfx v)
              [\ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "osi_enable")
-                      (osi_enable v)],
+                      pfx (strip_rec_uniq_prefix "osi_enable") (osi_enable v)],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -829,9 +787,7 @@ instance ShowRecWithPrefix OskarSettingsIonosphere where
                       (osi_min_elevation v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "osi_TEC0")
-                      (osi_TEC0 v)],
+                      pfx (strip_rec_uniq_prefix "osi_TEC0") (osi_TEC0 v)],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -844,13 +800,11 @@ instance ShowRecWithPrefix OskarSettingsIonosphere where
                       (osi_TID_files v)],
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "osi_TECImage"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "osi_TECImage"))
                      (osi_TECImage v),
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "osi_pierce_points"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "osi_pierce_points"))
                      (osi_pierce_points v)]
 instance ShowRecWithPrefix OskarSettingsSkyGeneratorRandomBrokenPowerLaw where
   showRecWithPrefix
@@ -859,14 +813,12 @@ instance ShowRecWithPrefix OskarSettingsSkyGeneratorRandomBrokenPowerLaw where
              (\ f -> f pfx v)
              [\ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossgrbpl_filter"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossgrbpl_filter"))
                      (ossgrbpl_filter v),
               \ pfx v
                 -> showRecWithPrefix
                      ((scat pfx)
-                      $ (strip_rec_uniq_prefix
-                           "ossgrbpl_extended_sources"))
+                      $ (strip_rec_uniq_prefix "ossgrbpl_extended_sources"))
                      (ossgrbpl_extended_sources v),
               \ pfx v
                 -> [show_immediate
@@ -915,28 +867,23 @@ instance ShowRecWithPrefix OskarSettingsSystemNoiseValue where
                       (ossnv_specification v)],
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossnv_rms"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossnv_rms"))
                      (ossnv_rms v),
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossnv_sensitivity"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossnv_sensitivity"))
                      (ossnv_sensitivity v),
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossnv_t_sys"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossnv_t_sys"))
                      (ossnv_t_sys v),
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossnv_area"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossnv_area"))
                      (ossnv_area v),
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossnv_efficiency"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossnv_efficiency"))
                      (ossnv_efficiency v)]
 instance ShowRecWithPrefix OskarSettingsObservation where
   showRecWithPrefix
@@ -944,11 +891,6 @@ instance ShowRecWithPrefix OskarSettingsObservation where
         -> concatMap
              (\ f -> f pfx v)
              [\ pfx v
-                -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "oso_num_pointing_levels")
-                      (oso_num_pointing_levels v)],
-              \ pfx v
                 -> [show_immediate
                       pfx
                       (strip_rec_uniq_prefix "oso_ra0_rad")
@@ -963,9 +905,7 @@ instance ShowRecWithPrefix OskarSettingsObservation where
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "oso_pointing_file")
-                             s],
+                             pfx (strip_rec_uniq_prefix "oso_pointing_file") s],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -1006,9 +946,7 @@ instance ShowRecWithPrefix OskarSettingsObservation where
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "oso_dt_dump_days")
-                             s]]
+                             pfx (strip_rec_uniq_prefix "oso_dt_dump_days") s]]
 instance ShowRecWithPrefix OskarSettingsTelescope where
   showRecWithPrefix
     = \ pfx v
@@ -1024,9 +962,7 @@ instance ShowRecWithPrefix OskarSettingsTelescope where
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "ost_output_directory")
-                             s],
+                             pfx (strip_rec_uniq_prefix "ost_output_directory") s],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -1042,38 +978,31 @@ instance ShowRecWithPrefix OskarSettingsTelescope where
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "ost_altitude_m")
-                             s],
+                             pfx (strip_rec_uniq_prefix "ost_altitude_m") s],
               \ pfx v
                 -> case ost_station_type v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "ost_station_type")
-                             s],
+                             pfx (strip_rec_uniq_prefix "ost_station_type") s],
               \ pfx v
                 -> case ost_normalise_beams_at_phase_centre v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
                              pfx
-                             (strip_rec_uniq_prefix
-                                "ost_normalise_beams_at_phase_centre")
+                             (strip_rec_uniq_prefix "ost_normalise_beams_at_phase_centre")
                              s],
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ost_aperture_array"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ost_aperture_array"))
                      (ost_aperture_array v),
               \ pfx v
                 -> case ost_gaussian_beam v of
                      Nothing -> []
                      Just rr
                        -> showRecWithPrefix
-                            ((scat pfx)
-                             $ (strip_rec_uniq_prefix "ost_gaussian_beam"))
+                            ((scat pfx) $ (strip_rec_uniq_prefix "ost_gaussian_beam"))
                             rr]
 instance ShowRecWithPrefix OskarSettingsElementTaper where
   showRecWithPrefix
@@ -1082,9 +1011,7 @@ instance ShowRecWithPrefix OskarSettingsElementTaper where
              (\ f -> f pfx v)
              [\ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "oset_type")
-                      (oset_type v)],
+                      pfx (strip_rec_uniq_prefix "oset_type") (oset_type v)],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -1107,9 +1034,7 @@ instance ShowRecWithPrefix OskarSettingsSystemNoiseType where
                       (ossnt_override v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ossnt_file")
-                      (ossnt_file v)],
+                      pfx (strip_rec_uniq_prefix "ossnt_file") (ossnt_file v)],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -1117,9 +1042,7 @@ instance ShowRecWithPrefix OskarSettingsSystemNoiseType where
                       (ossnt_start v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ossnt_end")
-                      (ossnt_end v)]]
+                      pfx (strip_rec_uniq_prefix "ossnt_end") (ossnt_end v)]]
 instance ShowRecWithPrefix OskarSettingsSimulator where
   showRecWithPrefix
     = \ pfx v
@@ -1157,24 +1080,20 @@ instance ShowRecWithPrefix OskarSettingsSkyGenerator where
              (\ f -> f pfx v)
              [\ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossg_healpix"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossg_healpix"))
                      (ossg_healpix v),
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossg_grid"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossg_grid"))
                      (ossg_grid v),
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossg_random_power_law"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossg_random_power_law"))
                      (ossg_random_power_law v),
               \ pfx v
                 -> showRecWithPrefix
                      ((scat pfx)
-                      $ (strip_rec_uniq_prefix
-                           "ossg_random_broken_power_law"))
+                      $ (strip_rec_uniq_prefix "ossg_random_broken_power_law"))
                      (ossg_random_broken_power_law v)]
 instance ShowRecWithPrefix OskarSettingsElementFit where
   showRecWithPrefix
@@ -1214,8 +1133,7 @@ instance ShowRecWithPrefix OskarSettingsElementFit where
               \ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osef_ignore_data_below_horizon")
+                      (strip_rec_uniq_prefix "osef_ignore_data_below_horizon")
                       (osef_ignore_data_below_horizon v)],
               \ pfx v
                 -> [show_immediate
@@ -1225,8 +1143,7 @@ instance ShowRecWithPrefix OskarSettingsElementFit where
               \ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osef_average_fractional_error")
+                      (strip_rec_uniq_prefix "osef_average_fractional_error")
                       (osef_average_fractional_error v)],
               \ pfx v
                 -> [show_immediate
@@ -1241,24 +1158,21 @@ instance ShowRecWithPrefix OskarSettingsSkyOskar where
              (\ f -> f pfx v)
              [\ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "osso_num_files")
-                      (osso_num_files v)],
+                      pfx (strip_rec_uniq_prefix "osso_file") (osso_file v)],
               \ pfx v
-                -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "osso_file")
-                      (osso_file v)],
+                -> case osso_filter v of
+                     Nothing -> []
+                     Just rr
+                       -> showRecWithPrefix
+                            ((scat pfx) $ (strip_rec_uniq_prefix "osso_filter"))
+                            rr,
               \ pfx v
-                -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "osso_filter"))
-                     (osso_filter v),
-              \ pfx v
-                -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "osso_extended_sources"))
-                     (osso_extended_sources v)]
+                -> case osso_extended_sources v of
+                     Nothing -> []
+                     Just rr
+                       -> showRecWithPrefix
+                            ((scat pfx) $ (strip_rec_uniq_prefix "osso_extended_sources"))
+                            rr]
 instance ShowRecWithPrefix OskarSettingsSkyFilter where
   showRecWithPrefix
     = \ pfx v
@@ -1291,18 +1205,14 @@ instance ShowRecWithPrefix OskarSettingsSkyGsm where
              (\ f -> f pfx v)
              [\ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ossg_file")
-                      (ossg_file v)],
+                      pfx (strip_rec_uniq_prefix "ossg_file") (ossg_file v)],
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossg_filter"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossg_filter"))
                      (ossg_filter v),
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossg_extended_sources"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossg_extended_sources"))
                      (ossg_extended_sources v)]
 instance ShowRecWithPrefix OskarSettingsApertureArray where
   showRecWithPrefix
@@ -1311,13 +1221,11 @@ instance ShowRecWithPrefix OskarSettingsApertureArray where
              (\ f -> f pfx v)
              [\ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "osaa_array_pattern"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "osaa_array_pattern"))
                      (osaa_array_pattern v),
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "osaa_element_pattern"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "osaa_element_pattern"))
                      (osaa_element_pattern v)]
 instance ShowRecWithPrefix OskarSettingsSystemNoise where
   showRecWithPrefix
@@ -1331,18 +1239,14 @@ instance ShowRecWithPrefix OskarSettingsSystemNoise where
                       (ossn_enable v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ossn_seed")
-                      (ossn_seed v)],
+                      pfx (strip_rec_uniq_prefix "ossn_seed") (ossn_seed v)],
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossn_freq"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossn_freq"))
                      (ossn_freq v),
               \ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossn_value"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossn_value"))
                      (ossn_value v)]
 instance ShowRecWithPrefix OskarSettingsSky where
   showRecWithPrefix
@@ -1351,57 +1255,48 @@ instance ShowRecWithPrefix OskarSettingsSky where
              (\ f -> f pfx v)
              [\ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "oss_oskar_sky_model"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "oss_oskar_sky_model"))
                      (oss_oskar_sky_model v),
               \ pfx v
                 -> case oss_gsm v of
                      Nothing -> []
                      Just rr
                        -> showRecWithPrefix
-                            ((scat pfx)
-                             $ (strip_rec_uniq_prefix "oss_gsm"))
-                            rr,
+                            ((scat pfx) $ (strip_rec_uniq_prefix "oss_gsm")) rr,
               \ pfx v
                 -> case oss_fits_image v of
                      Nothing -> []
                      Just rr
                        -> showRecWithPrefix
-                            ((scat pfx)
-                             $ (strip_rec_uniq_prefix "oss_fits_image"))
+                            ((scat pfx) $ (strip_rec_uniq_prefix "oss_fits_image"))
                             rr,
               \ pfx v
                 -> case oss_healpix_fits v of
                      Nothing -> []
                      Just rr
                        -> showRecWithPrefix
-                            ((scat pfx)
-                             $ (strip_rec_uniq_prefix "oss_healpix_fits"))
+                            ((scat pfx) $ (strip_rec_uniq_prefix "oss_healpix_fits"))
                             rr,
               \ pfx v
                 -> case oss_generator v of
                      Nothing -> []
                      Just rr
                        -> showRecWithPrefix
-                            ((scat pfx)
-                             $ (strip_rec_uniq_prefix "oss_generator"))
+                            ((scat pfx) $ (strip_rec_uniq_prefix "oss_generator"))
                             rr,
               \ pfx v
                 -> case oss_spectral_index v of
                      Nothing -> []
                      Just rr
                        -> showRecWithPrefix
-                            ((scat pfx)
-                             $ (strip_rec_uniq_prefix "oss_spectral_index"))
+                            ((scat pfx) $ (strip_rec_uniq_prefix "oss_spectral_index"))
                             rr,
               \ pfx v
                 -> case oss_output_text_file v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "oss_output_text_file")
-                             s],
+                             pfx (strip_rec_uniq_prefix "oss_output_text_file") s],
               \ pfx v
                 -> case oss_output_binary_file v of
                      Nothing -> []
@@ -1416,8 +1311,7 @@ instance ShowRecWithPrefix OskarSettingsSky where
                      Just s
                        -> [show_immediate
                              pfx
-                             (strip_rec_uniq_prefix
-                                "oss_common_flux_filter_min_jy")
+                             (strip_rec_uniq_prefix "oss_common_flux_filter_min_jy")
                              s],
               \ pfx v
                 -> case oss_common_flux_filter_max_jy v of
@@ -1425,8 +1319,7 @@ instance ShowRecWithPrefix OskarSettingsSky where
                      Just s
                        -> [show_immediate
                              pfx
-                             (strip_rec_uniq_prefix
-                                "oss_common_flux_filter_max_jy")
+                             (strip_rec_uniq_prefix "oss_common_flux_filter_max_jy")
                              s],
               \ pfx v
                 -> case oss_zero_failed_gaussians v of
@@ -1446,17 +1339,13 @@ instance ShowRecWithPrefix OskarSettingsImage where
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_fov_deg")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_fov_deg") s],
               \ pfx v
                 -> case osi_size v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_size")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_size") s],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -1467,89 +1356,67 @@ instance ShowRecWithPrefix OskarSettingsImage where
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_channel_snapshots")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_channel_snapshots") s],
               \ pfx v
                 -> case osi_channel_range v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_channel_range")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_channel_range") s],
               \ pfx v
                 -> case osi_time_snapshots v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_time_snapshots")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_time_snapshots") s],
               \ pfx v
                 -> case osi_time_range v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_time_range")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_time_range") s],
               \ pfx v
                 -> case osi_transform_type v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_transform_type")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_transform_type") s],
               \ pfx v
                 -> case osi_input_vis_data v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_input_vis_data")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_input_vis_data") s],
               \ pfx v
                 -> case osi_direction_type v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_direction_type")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_direction_type") s],
               \ pfx v
                 -> case osi_ra_deg v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_ra_deg")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_ra_deg") s],
               \ pfx v
                 -> case osi_dec_deg v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_dec_deg")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_dec_deg") s],
               \ pfx v
                 -> case osi_oskar_image v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_oskar_image")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osi_oskar_image") s],
               \ pfx v
                 -> case osi_fits_image v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osi_fits_image")
-                             s]]
+                             pfx (strip_rec_uniq_prefix "osi_fits_image") s]]
 instance ShowRecWithPrefix OskarSettingsSkyGeneratorRandomPowerLaw where
   showRecWithPrefix
     = \ pfx v
@@ -1557,14 +1424,12 @@ instance ShowRecWithPrefix OskarSettingsSkyGeneratorRandomPowerLaw where
              (\ f -> f pfx v)
              [\ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossgrpl_filter"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossgrpl_filter"))
                      (ossgrpl_filter v),
               \ pfx v
                 -> showRecWithPrefix
                      ((scat pfx)
-                      $ (strip_rec_uniq_prefix
-                           "ossgrpl_extended_sources"))
+                      $ (strip_rec_uniq_prefix "ossgrpl_extended_sources"))
                      (ossgrpl_extended_sources v),
               \ pfx v
                 -> [show_immediate
@@ -1608,9 +1473,7 @@ instance ShowRecWithPrefix OskarSettingsSkySpectralIndex where
                       (osssi_ref_frequency_hz v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "osssi_mean")
-                      (osssi_mean v)],
+                      pfx (strip_rec_uniq_prefix "osssi_mean") (osssi_mean v)],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -1618,9 +1481,7 @@ instance ShowRecWithPrefix OskarSettingsSkySpectralIndex where
                       (osssi_std_dev v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "osssi_seed")
-                      (osssi_seed v)]]
+                      pfx (strip_rec_uniq_prefix "osssi_seed") (osssi_seed v)]]
 instance ShowRecWithPrefix OskarSettingsArrayElement where
   showRecWithPrefix
     = \ pfx v
@@ -1633,9 +1494,7 @@ instance ShowRecWithPrefix OskarSettingsArrayElement where
                       (osae_apodisation_type v)],
               \ pfx v
                 -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "osae_gain")
-                      (osae_gain v)],
+                      pfx (strip_rec_uniq_prefix "osae_gain") (osae_gain v)],
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -1649,8 +1508,7 @@ instance ShowRecWithPrefix OskarSettingsArrayElement where
               \ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osae_phase_error_fixed_rad")
+                      (strip_rec_uniq_prefix "osae_phase_error_fixed_rad")
                       (osae_phase_error_fixed_rad v)],
               \ pfx v
                 -> [show_immediate
@@ -1665,14 +1523,12 @@ instance ShowRecWithPrefix OskarSettingsArrayElement where
               \ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osae_x_orientation_error_rad")
+                      (strip_rec_uniq_prefix "osae_x_orientation_error_rad")
                       (osae_x_orientation_error_rad v)],
               \ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osae_y_orientation_error_rad")
+                      (strip_rec_uniq_prefix "osae_y_orientation_error_rad")
                       (osae_y_orientation_error_rad v)],
               \ pfx v
                 -> [show_immediate
@@ -1687,26 +1543,22 @@ instance ShowRecWithPrefix OskarSettingsArrayElement where
               \ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osae_seed_time_variable_errors")
+                      (strip_rec_uniq_prefix "osae_seed_time_variable_errors")
                       (osae_seed_time_variable_errors v)],
               \ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osae_seed_position_xy_errors")
+                      (strip_rec_uniq_prefix "osae_seed_position_xy_errors")
                       (osae_seed_position_xy_errors v)],
               \ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osae_seed_x_orientation_error")
+                      (strip_rec_uniq_prefix "osae_seed_x_orientation_error")
                       (osae_seed_x_orientation_error v)],
               \ pfx v
                 -> [show_immediate
                       pfx
-                      (strip_rec_uniq_prefix
-                         "osae_seed_y_orientation_error")
+                      (strip_rec_uniq_prefix "osae_seed_y_orientation_error")
                       (osae_seed_y_orientation_error v)]]
 instance ShowRecWithPrefix OskarSettingsSkyGeneratorHealpix where
   showRecWithPrefix
@@ -1715,8 +1567,7 @@ instance ShowRecWithPrefix OskarSettingsSkyGeneratorHealpix where
              (\ f -> f pfx v)
              [\ pfx v
                 -> showRecWithPrefix
-                     ((scat pfx)
-                      $ (strip_rec_uniq_prefix "ossgh_filter"))
+                     ((scat pfx) $ (strip_rec_uniq_prefix "ossgh_filter"))
                      (ossgh_filter v),
               \ pfx v
                 -> showRecWithPrefix
@@ -1783,22 +1634,19 @@ instance ShowRecWithPrefix OskarSettingsArrayPattern where
                      Nothing -> []
                      Just s
                        -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "osap_normalise")
-                             s],
+                             pfx (strip_rec_uniq_prefix "osap_normalise") s],
               \ pfx v
                 -> case osap_element v of
                      Nothing -> []
                      Just rr
                        -> showRecWithPrefix
-                            ((scat pfx)
-                             $ (strip_rec_uniq_prefix "osap_element"))
+                            ((scat pfx) $ (strip_rec_uniq_prefix "osap_element"))
                             rr]
 
 -- It is shown differently
 data OskarSettings = OskarSettings {
-    os_settings_path :: String
-  , os_sim :: Maybe OskarSettingsSimulator
+    -- os_settings_path :: String
+    os_sim :: Maybe OskarSettingsSimulator
   , os_sky :: OskarSettingsSky
   , os_obs :: OskarSettingsObservation
   , os_telescope :: OskarSettingsTelescope
@@ -1809,5 +1657,81 @@ data OskarSettings = OskarSettings {
   , os_ionosphere :: Maybe OskarSettingsIonosphere
   }
 
+keyCvt :: ShowRecWithPrefix a => String -> a -> [String]
+keyCvt key v = let skey = printf "[%s]" key in "" : skey : showRecWithPrefix "" v
+
+mbKeyCvt :: ShowRecWithPrefix a => String -> Maybe a -> [String]
+mbKeyCvt _ Nothing = []
+mbKeyCvt key (Just v) = keyCvt key v
+
+showSettings :: OskarSettings -> String
+showSettings os = unlines $
+     ["[General]", "version=2.5.1"]
+  ++ mbKeyCvt "simulator"      (os_sim os)
+  ++   keyCvt "sky"            (os_sky os)
+  ++   keyCvt "observation"    (os_obs os)
+  ++   keyCvt "telescope"      (os_telescope os)
+  ++ mbKeyCvt "element_fit"    (os_element_fit os)
+  ++   keyCvt "interferometer" (os_interferometer os)
+  ++ mbKeyCvt "beam_pattern"   (os_beam_pattern os)
+  ++   keyCvt "image"          (os_image os)
+  ++ mbKeyCvt "ionosphere"     (os_ionosphere os)
+
 test :: [String]
 test = showRecWithPrefix "" (OskarSettingsElementPattern 5 6 Nothing (Just 1.1) (Just $ OskarSettingsElementTaper 5 5.5 6.7))
+
+-- TODO: generate defaults with Nothing's
+test1 :: String
+test1 = showSettings 
+  OskarSettings {
+      os_sim = Nothing
+    , os_sky = OskarSettingsSky (OskarSettingsSkyOskar (OList ["temp.sky"]) Nothing Nothing)
+                 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+    -- TODO: OskarSettingsObservation in fact should be
+    -- shown differently (need manual edit).
+    -- This is only to test if all things are in place.
+    , os_obs = OskarSettingsObservation {
+                   oso_ra0_rad  = OList [0]
+                 , oso_dec0_rad = OList [87]
+                 , oso_pointing_file = Nothing
+                 , oso_start_frequency_hz = 100000000
+                 , oso_num_channels = 1
+                 , oso_frequency_inc_hz = 1000
+                 , oso_num_time_steps = 360
+                 , oso_start_mjd_utc = 99999
+                 , oso_length_seconds = 30
+                 , oso_length_days = 0
+                 , oso_dt_dump_days = Nothing
+                 }
+    -- TODO: OskarSettingsTelescope in fact should be
+    -- shown differently (need manual edit).
+    -- This is only to test if all things are in place.
+    , os_telescope = OskarSettingsTelescope {
+                         ost_input_directory = "./telescope"
+                       , ost_output_directory = Nothing
+                       , ost_longitude_rad = 0
+                       , ost_latitude_rad = 2
+                       , ost_altitude_m = Nothing
+                       , ost_station_type = Nothing
+                       , ost_normalise_beams_at_phase_centre = Nothing
+                       , ost_aperture_array = OskarSettingsApertureArray {
+                                                  osaa_array_pattern = OskarSettingsArrayPattern 0 Nothing Nothing
+                                                , osaa_element_pattern = OskarSettingsElementPattern 0 1 Nothing Nothing Nothing
+                                                }
+                       , ost_gaussian_beam = Nothing
+                       }
+    , os_element_fit = Nothing
+    -- TODO: OskarSettingsInterferometer in fact should be
+    -- shown differently (need manual edit).
+    -- This is only to test if all things are in place.
+    , os_interferometer = OskarSettingsInterferometer Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing (Just "0-0.vis") Nothing Nothing Nothing
+    , os_beam_pattern = Nothing
+    -- TODO: OskarSettingsImage in fact should be
+    -- shown differently (need manual edit).
+    -- This is only to test if all things are in place.
+    , os_image = OskarSettingsImage Nothing Nothing 1 Nothing Nothing Nothing Nothing Nothing Nothing (Just $ fromEnum OSKAR_IMAGE_DIRECTION_RA_DEC) Nothing Nothing Nothing Nothing
+    , os_ionosphere = Nothing
+  }
+
+mkOut :: IO ()
+mkOut = writeFile "test.txt" test1
