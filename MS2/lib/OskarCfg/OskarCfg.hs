@@ -1,8 +1,18 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE
+      TemplateHaskell
+    , OverloadedStrings
+  #-}
 
 module OskarCfg where
 
 import Text.Printf (printf)
+import Data.Time (
+    UTCTime(..)
+  , fromGregorian
+  , secondsToDiffTime
+  , formatTime
+  )
+import System.Locale (defaultTimeLocale)
 
 import OskarIniAutoGen
 
@@ -62,7 +72,7 @@ $(gen_all
       , osi_num_vis_ave :: Maybe Int
       , osi_num_fringe_ave :: Maybe Int
       , osi_noise :: Maybe OskarSettingsSystemNoise
-      , osi_oskar_vis_filename :: Maybe String -- when Just also set image_output=true
+      , osi_oskar_vis_filename :: Maybe OStr -- when Just also set image_output=true
       , osi_ms_filename :: Maybe String
       , osi_use_common_sky :: Maybe Int
       , osi_scalar_mode :: Maybe Int
@@ -114,8 +124,10 @@ $(gen_all
         ospp_filename :: String
       }
     data OskarSettingsElementPattern = OskarSettingsElementPattern {
-        osep_enable_numerical_patterns :: Int
-      , osep_functional_type :: Int
+        -- osep_enable_numerical_patterns :: Int
+        osep_enable_numerical :: OBool
+      -- , osep_functional_type :: Int
+      , osep_functional_type :: OStr
       , osep_dipole_length_units :: Maybe Int
       , osep_dipole_length :: Maybe Double
       , osep_taper :: Maybe OskarSettingsElementTaper
@@ -175,31 +187,37 @@ $(gen_all
       }
     data OskarSettingsObservation = OskarSettingsObservation {
         -- oso_num_pointing_levels :: Int
-        oso_ra0_rad :: OList Double
-      , oso_dec0_rad :: OList Double
+      --   oso_ra0_rad :: OList Double
+      -- , oso_dec0_rad :: OList Double
+        oso_coords_deg :: [(Double, Double)]
       , oso_pointing_file :: Maybe String
       , oso_start_frequency_hz :: Double
       , oso_num_channels :: Int
       , oso_frequency_inc_hz :: Double
       , oso_num_time_steps :: Int
-      , oso_start_mjd_utc :: Double
-      , oso_length_seconds :: Double
-      , oso_length_days :: Double
+      -- , oso_start_mjd_utc :: Double
+      , oso_start_utc :: UTCTime
+      -- , oso_length_seconds :: Double
+      -- , oso_length_days :: Double
+      -- FIXME: move to DiffTime
+      , oso_length :: UTCTime
       , oso_dt_dump_days :: Maybe Double
       }
     instance NoAuto OskarSettingsObservation
     data OskarSettingsTelescope = OskarSettingsTelescope {
-        ost_input_directory :: String
+        -- ost_input_directory :: String
+        ost_input_directory :: OStr
       , ost_output_directory :: Maybe String
-      , ost_longitude_rad :: Double
-      , ost_latitude_rad :: Double
+      -- , ost_longitude_rad :: Double
+      , ost_longitude_deg :: Double
+      -- , ost_latitude_rad :: Double
+      , ost_latitude_deg :: Double
       , ost_altitude_m :: Maybe Double
       , ost_station_type :: Maybe Int
       , ost_normalise_beams_at_phase_centre :: Maybe Int
       , ost_aperture_array :: OskarSettingsApertureArray
       , ost_gaussian_beam :: Maybe OskarSettingsGaussianBeam
       }
-    instance NoAuto OskarSettingsTelescope
     data OskarSettingsElementTaper = OskarSettingsElementTaper {
         oset_type :: Int
       , oset_cosine_power :: Double
@@ -238,7 +256,8 @@ $(gen_all
       }
     data OskarSettingsSkyOskar = OskarSettingsSkyOskar {
         -- osso_num_files :: Int
-        osso_file :: OList String
+        -- osso_file :: OList String
+        osso_file :: OList OStr
       , osso_filter :: Maybe OskarSettingsSkyFilter
       , osso_extended_sources :: Maybe OskarSettingsSkyExtendedSources
       }
@@ -279,7 +298,9 @@ $(gen_all
     data OskarSettingsImage = OskarSettingsImage {
         osi_fov_deg :: Maybe Double
       , osi_size :: Maybe Int
-      , osi_image_type :: Int
+      -- , osi_image_type :: Int
+      , osi_image_type :: OImageType
+      , osi_root_path :: OStr -- Added Manually
       , osi_channel_snapshots :: Maybe Int
       , osi_channel_range :: Maybe (Int, Int)
       , osi_time_snapshots :: Maybe Int
@@ -292,7 +313,6 @@ $(gen_all
       , osi_oskar_image :: Maybe String
       , osi_fits_image :: Maybe String
       }
-    instance NoAuto OskarSettingsImage
     data OskarSettingsSkyGeneratorRandomPowerLaw = OskarSettingsSkyGeneratorRandomPowerLaw {
         ossgrpl_filter :: OskarSettingsSkyFilter
       , ossgrpl_extended_sources :: OskarSettingsSkyExtendedSources
@@ -341,8 +361,10 @@ $(gen_all
       , osteci_img_file :: String
       }
     data OskarSettingsArrayPattern = OskarSettingsArrayPattern {
-        osap_enable :: Int
-      , osap_normalise :: Maybe Int
+        -- osap_enable :: Int
+        osap_enable :: OBool
+      -- , osap_normalise :: Maybe Int
+      , osap_normalise :: Maybe OBool
       , osap_element :: Maybe OskarSettingsArrayElement
       }
     data OskarSettings = OskarSettings {
@@ -424,7 +446,8 @@ instance ShowRecWithPrefix OskarSettingsInterferometer where
                 -> case osi_oskar_vis_filename v of
                      Nothing -> []
                      Just s
-                       -> [show_immediate
+                       -> [show_immediate pfx "image_output" OTrue, -- manually edited!
+                            show_immediate
                              pfx
                              (strip_rec_uniq_prefix "osi_oskar_vis_filename")
                              s],
@@ -451,7 +474,9 @@ instance ShowRecWithPrefix OskarSettingsObservation where
     = \ pfx v
         -> concatMap
              (\ f -> f pfx v)
-             [\ pfx v
+             [
+              {-
+              \ pfx v
                 -> [show_immediate
                       pfx
                       (strip_rec_uniq_prefix "oso_ra0_rad")
@@ -461,6 +486,17 @@ instance ShowRecWithPrefix OskarSettingsObservation where
                       pfx
                       (strip_rec_uniq_prefix "oso_dec0_rad")
                       (oso_dec0_rad v)],
+               -}
+              \ pfx v ->
+                    let
+                      coords = oso_coords_deg v
+                      ralist = map fst coords
+                      declist = map snd coords
+                    in [ show_immediate
+                           pfx "phase_centre_ra_deg" (OList ralist)
+                       , show_immediate
+                           pfx "phase_centre_dec_deg" (OList declist)
+                       ],
               \ pfx v
                 -> case oso_pointing_file v of
                      Nothing -> []
@@ -487,11 +523,19 @@ instance ShowRecWithPrefix OskarSettingsObservation where
                       pfx
                       (strip_rec_uniq_prefix "oso_num_time_steps")
                       (oso_num_time_steps v)],
+              {-
               \ pfx v
                 -> [show_immediate
                       pfx
                       (strip_rec_uniq_prefix "oso_start_mjd_utc")
                       (oso_start_mjd_utc v)],
+               -}
+              \ pfx v
+                -> [show_immediate
+                      pfx
+                      "start_time_utc"
+                      (OStr $ formatTime defaultTimeLocale "%d-%m-%Y %T.%q" $ oso_start_utc v)],
+              {-
               \ pfx v
                 -> [show_immediate
                       pfx
@@ -502,157 +546,19 @@ instance ShowRecWithPrefix OskarSettingsObservation where
                       pfx
                       (strip_rec_uniq_prefix "oso_length_days")
                       (oso_length_days v)],
+               -}
+              \ pfx v
+                -> [show_immediate
+                      pfx
+                      "length"
+                      (OStr $ formatTime defaultTimeLocale "%T.%q" $ oso_length v)],
               \ pfx v
                 -> case oso_dt_dump_days v of
                      Nothing -> []
                      Just s
                        -> [show_immediate
                              pfx (strip_rec_uniq_prefix "oso_dt_dump_days") s]]
-instance ShowRecWithPrefix OskarSettingsImage where
-  showRecWithPrefix
-    = \ pfx v
-        -> concatMap
-             (\ f -> f pfx v)
-             [\ pfx v
-                -> case osi_fov_deg v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_fov_deg") s],
-              \ pfx v
-                -> case osi_size v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_size") s],
-              \ pfx v
-                -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "osi_image_type")
-                      (osi_image_type v)],
-              \ pfx v
-                -> case osi_channel_snapshots v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_channel_snapshots") s],
-              \ pfx v
-                -> case osi_channel_range v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_channel_range") s],
-              \ pfx v
-                -> case osi_time_snapshots v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_time_snapshots") s],
-              \ pfx v
-                -> case osi_time_range v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_time_range") s],
-              \ pfx v
-                -> case osi_transform_type v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_transform_type") s],
-              \ pfx v
-                -> case osi_input_vis_data v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_input_vis_data") s],
-              \ pfx v
-                -> case osi_direction_type v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_direction_type") s],
-              \ pfx v
-                -> case osi_ra_deg v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_ra_deg") s],
-              \ pfx v
-                -> case osi_dec_deg v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_dec_deg") s],
-              \ pfx v
-                -> case osi_oskar_image v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_oskar_image") s],
-              \ pfx v
-                -> case osi_fits_image v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "osi_fits_image") s]]
-instance ShowRecWithPrefix OskarSettingsTelescope where
-  showRecWithPrefix
-    = \ pfx v
-        -> concatMap
-             (\ f -> f pfx v)
-             [\ pfx v
-                -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ost_input_directory")
-                      (ost_input_directory v)],
-              \ pfx v
-                -> case ost_output_directory v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "ost_output_directory") s],
-              \ pfx v
-                -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ost_longitude_rad")
-                      (ost_longitude_rad v)],
-              \ pfx v
-                -> [show_immediate
-                      pfx
-                      (strip_rec_uniq_prefix "ost_latitude_rad")
-                      (ost_latitude_rad v)],
-              \ pfx v
-                -> case ost_altitude_m v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "ost_altitude_m") s],
-              \ pfx v
-                -> case ost_station_type v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx (strip_rec_uniq_prefix "ost_station_type") s],
-              \ pfx v
-                -> case ost_normalise_beams_at_phase_centre v of
-                     Nothing -> []
-                     Just s
-                       -> [show_immediate
-                             pfx
-                             (strip_rec_uniq_prefix "ost_normalise_beams_at_phase_centre")
-                             s],
-              \ pfx v
-                -> showRecWithPrefix
-                     ((scat pfx) $ (strip_rec_uniq_prefix "ost_aperture_array"))
-                     (ost_aperture_array v),
-              \ pfx v
-                -> case ost_gaussian_beam v of
-                     Nothing -> []
-                     Just rr
-                       -> showRecWithPrefix
-                            ((scat pfx) $ (strip_rec_uniq_prefix "ost_gaussian_beam"))
-                            rr]
+
 
 keyCvt :: ShowRecWithPrefix a => String -> a -> [String]
 keyCvt key v = let skey = printf "[%s]" key in "" : skey : showRecWithPrefix "" v
@@ -674,44 +580,39 @@ showSettings os = unlines $
   ++   keyCvt "image"          (os_image os)
   ++ mbKeyCvt "ionosphere"     (os_ionosphere os)
 
-test :: [String]
-test = showRecWithPrefix "" (OskarSettingsElementPattern 5 6 Nothing (Just 1.1) (Just $ OskarSettingsElementTaper 5 5.5 6.7))
-
-test1 :: String
-test1 = showSettings $
+test :: String
+test = showSettings $
   def {
     os_sky = def {
       oss_oskar_sky_model = def {osso_file = OList ["temp.sky"]}
     }
   , os_obs = def {
-               oso_ra0_rad  = OList [0]
-             , oso_dec0_rad = OList [87]
+               oso_coords_deg  = [(0, 87)]
              , oso_start_frequency_hz = 100000000
              , oso_num_channels = 1
-             , oso_frequency_inc_hz = 1000
              , oso_num_time_steps = 360
-             , oso_start_mjd_utc = 99999
-             , oso_length_seconds = 30
-             , oso_length_days = 0
+             , oso_start_utc = UTCTime day (secondsToDiffTime 0)
+             , oso_length = UTCTime day (secondsToDiffTime 30)
              }
   , os_telescope = def {
                      ost_input_directory = "./telescope"
-                   , ost_longitude_rad = 0
-                   , ost_latitude_rad = 2
+                   , ost_longitude_deg = 0
+                   , ost_latitude_deg = 89.9
                    , ost_aperture_array = def {
-                                            osaa_array_pattern = def {osap_enable = 0}
+                                            osaa_array_pattern = def {osap_enable = OFalse}
                                           , osaa_element_pattern = def {
-                                                                     osep_enable_numerical_patterns = 0
-                                                                   , osep_functional_type = 1
+                                                                     osep_enable_numerical = OFalse
+                                                                   , osep_functional_type = "Geometric dipole"
                                                                    }
                                           }
                    }
   , os_interferometer = def {osi_oskar_vis_filename = Just "0-0.vis"}
   , os_image = def {
-                 osi_image_type = 1
-               , osi_direction_type = Just (fromEnum OSKAR_IMAGE_DIRECTION_RA_DEC)
+                 osi_image_type = OImageTypeStokesQ
+               , osi_root_path = "RA_0_Stokes"
                }
   }
+  where day = fromGregorian 2000 09 21
 
 mkOut :: IO ()
-mkOut = writeFile "test.txt" test1
+mkOut = writeFile "test.txt" test

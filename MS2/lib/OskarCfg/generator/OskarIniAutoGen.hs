@@ -2,9 +2,14 @@
 
 module OskarIniAutoGen where
 
+import GHC.Exts (IsString(..))
 import Data.List (
     isPrefixOf
   , intercalate
+  )
+import Data.Time (
+    UTCTime(..)
+  , fromGregorian
   )
 import Language.Haskell.TH
 
@@ -14,15 +19,54 @@ newtype OList a = OList [a]
 instance Show a => Show (OList a) where
   show (OList l) = intercalate " " (map show l)
 
+newtype OStr = OStr String
+instance Show OStr where show (OStr s) = s
+instance IsString OStr where fromString = OStr
+
+data OBool = OTrue | OFalse
+instance Show OBool where
+  show OTrue = "true"
+  show OFalse = "false"
+
+data OImageType =
+    OImageTypeStokes
+  | OImageTypeStokesI
+  | OImageTypeStokesQ
+  | OImageTypeStokesU
+  | OImageTypeStokesV
+  | OImageTypePolLinear
+  | OImageTypePolXX
+  | OImageTypePolYY
+  | OImageTypePolXY
+  | OImageTypePolYX
+  | OImageTypePSF
+
+instance Show OImageType where
+  show OImageTypeStokes    = "STOKES"
+  show OImageTypeStokesI   = "I"
+  show OImageTypeStokesQ   = "Q"
+  show OImageTypeStokesU   = "U"
+  show OImageTypeStokesV   = "V"
+  show OImageTypePolLinear = "LINEAR"
+  show OImageTypePolXX     = "XX"
+  show OImageTypePolYY     = "YY"
+  show OImageTypePolXY     = "XY"
+  show OImageTypePolYX     = "YX"
+  show OImageTypePSF       = "PSF"
+
 class Def a where
   def :: a
 
 instance Def [a] where def = []
+instance Def OStr where def = OStr []
 instance Def (OList a) where def = OList []
 instance Def (Maybe a) where def = Nothing
 instance (Def a, Def b) => Def (a,b) where def = (def, def)
 instance Def Int where def = 0
 instance Def Double where def = 0
+instance Def UTCTime where def = UTCTime (fromGregorian 0 0 0) 0
+instance Def OBool where def = OFalse
+instance Def OImageType where def = OImageTypeStokesI
 
 class ShowRecWithPrefix a where
   showRecWithPrefix :: String -> a -> [String]
@@ -105,10 +149,10 @@ gen_fun (DataD _cxt tname _tys [RecC _cname vartyps] _drv) =
     showvar (vname, _, vtyp) = select_fun vtyp (cut_suffix $ pprint vname)
     cut_suffix = reverse . drop 1 . dropWhile (/= '_') . reverse
     select_mb t
-      | "Oskar" `isPrefixOf` (pprint t) = show_req_maybe_q
+      | "OskarSettings" `isPrefixOf` (pprint t) = show_req_maybe_q
       | otherwise = show_immediate_maybe_q
     select_plain t
-      | "Oskar" `isPrefixOf` (pprint t) = show_req_q
+      | "OskarSettings" `isPrefixOf` (pprint t) = show_req_q
       | otherwise = show_immediate_q
     select_fun (AppT (ConT n) t)
       | n == ''Maybe = select_mb t
