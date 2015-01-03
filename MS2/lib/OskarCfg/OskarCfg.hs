@@ -361,7 +361,7 @@ $(gen_all
   |]
   )
 
--- We excluded these from auto instance generation with
+-- We excluded these from auto instance generation by
 -- making them instances of NoAuto class.
 -- Thus we shall provide instances manually.
 -- FIXME: Edit this according to Oskar logics.
