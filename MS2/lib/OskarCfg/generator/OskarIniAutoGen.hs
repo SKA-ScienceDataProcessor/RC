@@ -8,9 +8,21 @@ import Data.List (
   )
 import Language.Haskell.TH
 
+class NoAuto a
+
 newtype OList a = OList [a]
 instance Show a => Show (OList a) where
   show (OList l) = intercalate " " (map show l)
+
+class Def a where
+  def :: a
+
+instance Def [a] where def = []
+instance Def (OList a) where def = OList []
+instance Def (Maybe a) where def = Nothing
+instance (Def a, Def b) => Def (a,b) where def = (def, def)
+instance Def Int where def = 0
+instance Def Double where def = 0
 
 class ShowRecWithPrefix a where
   showRecWithPrefix :: String -> a -> [String]
@@ -105,8 +117,37 @@ gen_fun (DataD _cxt tname _tys [RecC _cname vartyps] _drv) =
     select_fun t = select_plain t
 gen_fun _ = error "Can't handle data declaration in this form"
 
+gen_default :: Dec -> DecQ
+gen_default (DataD _cxt tname _tys [RecC cname vartyps] _drv) =
+    instanceD
+      (return [])
+      (appT (conT ''Def) (conT tname)) [
+          valD (varP 'def) (normalB $ return $ foldl AppE (ConE cname) (map VarE $ replicate (length vartyps) 'def))
+        []]
+gen_default _ = error "Can't handle data declaration in this form when generating default."
+
 gen_all :: DecsQ -> DecsQ
 gen_all decsq = do
   decs <- decsq
-  decsi <- mapM gen_fun decs
-  return (decs ++ decsi)
+  let exclude_names = concatMap checkNoauto decs
+  runIO (putStrLn $ "Excluded:\n" ++ pprint exclude_names)
+  decssi <- mapM gen_fun (filter (toInclude exclude_names) decs)
+  let decsd = filter isData decs
+  decsdi <- mapM gen_default decsd
+  return (decsd ++ decssi ++ decsdi)
+
+isData :: Dec -> Bool
+isData DataD{} = True
+isData _ = False
+
+checkNoauto :: Dec -> [Name]
+checkNoauto (InstanceD [] (AppT (ConT classname) (ConT n)) [])
+  | classname == ''NoAuto = [n]
+  | otherwise = []
+checkNoauto _ = []
+
+toInclude :: [Name] -> Dec -> Bool
+toInclude exclude_set (DataD _cxt tname _tys _cons _drv)
+  | tname `elem` exclude_set = False
+  | otherwise = True
+toInclude _ _ = False
