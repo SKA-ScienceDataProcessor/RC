@@ -105,6 +105,7 @@ prtag (EnumDef (EnumType sueref (e:erest) _attrs _info)) =
   text "data" <+> text (fixName sueref) <+> char '='
   $+$ (nest 4 $ pprEnumVal e)
   $+$ (nest 2 $ foldr (\enum doc -> text "|" <+> pprEnumVal enum $+$ doc) empty erest)
+  $+$ (nest 2 $ text "deriving Enum")
 -- We ignore _cty_kind because have only relevant structs here -- no unions.
 prtag (CompDef (CompType sueref _cty_kind (m:mrest) _attrs _info)) =
   let
