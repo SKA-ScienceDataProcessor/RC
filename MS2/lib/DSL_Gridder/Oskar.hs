@@ -10,16 +10,9 @@
 
 module Oskar where
 
-import Control.Exception (finally)
-import System.IO.MMap (
-    Mode(..)
-  , mmapFilePtr
-  , munmapFilePtr
-  )
 import GHC.Ptr (
     Ptr(..)
   , FunPtr(..)
-  , plusPtr
   )
 import GHC.Types(
     IO(..)
@@ -37,6 +30,8 @@ import Foreign.Storable (sizeOf)
 import Foreign.C.Types (CDouble)
 import Foreign.C.String (withCString)
 import System.FilePath (addExtension)
+
+import DistData
 
 data OData
 type OHandle = Ptr OData
@@ -75,14 +70,15 @@ writeOSKAR
     -> FilePath
     -> FilePath
     -> IO OStatus
-writeOSKAR (OVD ts_x_bl chans write_and_fin) path_amp path_uvw = do
-    (ptru, rawsizeu, offsetu, _sizeu) <- mmapFilePtr path_uvw ReadWriteEx (Just (0, 3 * ts_x_bl_bytes))
-    (ptra, rawsizea, offseta, _sizea) <- mmapFilePtr path_amp ReadWriteEx (Just (0, 8 * ts_x_bl_bytes * chans))
-    finally
-      (write_and_fin (ptra `plusPtr` offseta) (ptru `plusPtr` offsetu))
-      (munmapFilePtr ptru rawsizeu >> munmapFilePtr ptra rawsizea)
+writeOSKAR (OVD ts_x_bl chans write_and_fin) path_amp path_uvw =
+  withDistData2
+    (RemoteDataSimple path_amp $ Just (8 * ts_x_bl_bytes * chans))
+      (RemoteDataSimple path_uvw $ Just (3 * ts_x_bl_bytes))
+         doit
   where
+    doit pa _ pu _ = write_and_fin pa pu
     ts_x_bl_bytes = ts_x_bl * sizeOf (undefined :: CDouble)
+
 
 uvw_filename, amp_filename :: String -> String
 uvw_filename = (`addExtension` "uvw")

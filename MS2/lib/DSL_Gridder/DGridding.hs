@@ -14,16 +14,10 @@ import System.IO (
   )
 import Control.Exception (
     bracket
-  , finally
-  )
-import System.IO.MMap (
-    Mode(..)
-  , mmapFilePtr
-  , munmapFilePtr
   )
 import Foreign.Ptr (
     Ptr
-  , plusPtr
+  , castPtr
   )
 import Foreign.Storable (sizeOf)
 import Foreign.C.Types (CDouble)
@@ -36,6 +30,7 @@ import Control.Exception(
   )
 import Debug.Trace (traceEventIO)
 
+import DistData
 import DNA
 import GriddersFFI
 import Oskar
@@ -89,15 +84,15 @@ type GridderActor = Actor GridderParams (Either GStatus GridData)
 mkGridderActor :: String -> GridProcType -> GridderActor
 mkGridderActor gridder_name gridder_proc = actor $ log_duration "GridderActor" gridder_name . liftIO . gridProc -- $ \(uvwp, ampp) ->
   where
-    gridProc (path_uvw, path_amp) = do
-      (ptru, rawsizeu, offsetu, sizeu) <- mmapFilePtr path_uvw ReadOnly Nothing
-      (ptra, rawsizea, offseta, sizea) <- mmapFilePtr path_amp ReadOnly Nothing
+    gridProc (path_uvw, path_amp) =
+      withDistData2
+        (RemoteDataSimple path_amp Nothing)
+          (RemoteDataSimple path_uvw Nothing)
+            doit
+    doit pa sizea pu sizeu = do
       if sizeu /= uvw_bytes_in_chnl || sizea /= amp_bytes_in_chnl
         then return (Left (-999)) -- FIXME: better retcode
-        else
-        finally
-          (gridder_proc (ptru `plusPtr` offsetu) (ptra `plusPtr` offseta))
-          (munmapFilePtr ptru rawsizeu >> munmapFilePtr ptra rawsizea)
+        else gridder_proc (castPtr pu) (castPtr pa)
 
 romeinActor, halideActor :: GridderActor
 romeinActor = mkGridderActor "Romein" romeinComputeGridOnCuda
