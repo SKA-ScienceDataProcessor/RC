@@ -103,30 +103,30 @@ import DNA.Logging
 --
 --   Every actor owns set of nodes on which it could spawn other actors.
 --   Upon completion this set of nodes is returned to parent actor.
-newtype DNA a = DNA (ReaderT (ACP,NodeInfo,Rank,GroupSize) Process a)
+newtype DNA a = DNA (ReaderT (ACP,Rank,GroupSize) Process a)
                 deriving (Functor,Applicative,Monad,MonadIO,MonadProcess)
 
 -- | Execute DNA program
-runDNA :: ACP -> NodeInfo -> Rank -> GroupSize -> DNA a -> Process a
-runDNA mon ninfo r grp (DNA dna)
-    = flip runReaderT (mon,ninfo,r,grp) dna
+runDNA :: ACP -> Rank -> GroupSize -> DNA a -> Process a
+runDNA mon r grp (DNA dna)
+    = flip runReaderT (mon,r,grp) dna
 
 -- | Get rank of process in group
 rank :: DNA Int
 rank = do
-    (_,_,Rank n,_) <- DNA ask
+    (_,Rank n,_) <- DNA ask
     return n
 
 -- | Get size of process group
 groupSize :: DNA Int
 groupSize = do
-    (_,_,_,GroupSize n) <- DNA ask
+    (_,_,GroupSize n) <- DNA ask
     return n
 
 -- | Get monitor process
 getMonitor :: DNA ACP
 getMonitor = do
-    (acp,_,_,_) <- DNA ask
+    (acp,_,_) <- DNA ask
     return acp
 
 -- | Send message to actor's controller
@@ -369,7 +369,7 @@ runActor :: Actor a b -> Process ()
 runActor (Actor action) = do
     -- Obtain parameters
     ParamActor parent rnk grp <- expect
-    (ACP acp,ninfo) <- expect
+    ACP acp <- expect
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
@@ -377,7 +377,7 @@ runActor (Actor action) = do
     send parent (acp, wrapMessage $ Shell chSendParam chSendDst (ACP acp))
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
-    !b  <- runDNA (ACP acp) ninfo rnk grp (action a)
+    !b  <- runDNA (ACP acp) rnk grp (action a)
     dst <- receiveChan chRecvDst
     sendToDest dst b
 
@@ -391,7 +391,7 @@ runCollectActor :: CollectActor a b -> Process ()
 runCollectActor (CollectActor step start fini) = do
     -- Obtain parameters
     ParamActor parent rnk grp <- expect
-    (ACP acp,ninfo) <- expect
+    ACP acp <- expect
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
@@ -400,7 +400,7 @@ runCollectActor (CollectActor step start fini) = do
     send parent (acp, wrapMessage $
                       CollectorShell chSendParam chSendN chSendDst (ACP acp))
     -- Start execution of an actor
-    !b <- runDNA (ACP acp) ninfo rnk grp $ do
+    !b <- runDNA (ACP acp) rnk grp $ do
         s0 <- start
         s  <- gatherM (Group chRecvParam chRecvN) step s0
         fini s
@@ -427,7 +427,6 @@ runACP = do
     taggedMessage "ACP" "Starting ACP"
     -- Get parameters for ACP and actor
     ParamACP self act resources actorP <- expect
-    let VirtualCAD _ ninfo _ = resources
     -- Start actor process
     nid <- getSelfNode
     me  <- getSelfPid
@@ -436,7 +435,7 @@ runACP = do
     --        we want to do something.
     (pid,_) <- spawnSupervised nid act
     send pid actorP
-    send pid ((ACP me,ninfo) :: (ACP,NodeInfo))
+    send pid (ACP me)
     -- Start listening on events
     startAcpLoop self pid resources
 
@@ -446,15 +445,14 @@ runUnit :: DNA () -> Process ()
 runUnit action = do
     -- Obtain parameters
     ParamActor _ rnk grp <- expect
-    (acp,ninfo) <- expect
-    runDNA acp ninfo rnk grp action
+    acp <- expect
+    runDNA acp rnk grp action
 
 
 -- FIXME: duplication
 runMasterACP :: ParamACP () -> DNA () -> Process ()
 runMasterACP (ParamACP self () resources actorP) act = do
     taggedMessage "ACP" "Starting master ACP"
-    let VirtualCAD _ ninfo _ = resources
     -- Start actor process
     me  <- getSelfPid
     -- FIXME: understand how do we want to monitor state of child
@@ -463,7 +461,7 @@ runMasterACP (ParamACP self () resources actorP) act = do
     pid <- spawnLocal (link me >> runUnit act)
     _   <- monitor pid
     send pid actorP
-    send pid (ACP me,ninfo)
+    send pid (ACP me)
     -- Start listening on events
     startAcpLoop self pid resources
 
