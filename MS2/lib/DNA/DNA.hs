@@ -400,6 +400,14 @@ runCollectActor (CollectActor step start fini) = do
     dst <- receiveChan chRecvDst
     sendToDest dst b
 
+-- | Start execution of DNA program
+runDnaProgram :: DNA () -> Process ()
+runDnaProgram action = do
+    -- Obtain parameters
+    (acp,ParamActor _ rnk grp) <- expect
+    runDNA acp rnk grp action
+
+
 -- Send value to the destination
 sendToDest :: (Serializable a) => Dest a -> a -> Process ()
 sendToDest dst a =
@@ -431,15 +439,6 @@ runACP = do
     -- Start listening on events
     startAcpLoop self pid resources
 
-
--- | Start execution of standard actor.
-runUnit :: DNA () -> Process ()
-runUnit action = do
-    -- Obtain parameters
-    (acp,ParamActor _ rnk grp) <- expect
-    runDNA acp rnk grp action
-
-
 -- FIXME: duplication
 runMasterACP :: ParamACP () -> DNA () -> Process ()
 runMasterACP (ParamACP self () resources actorP) act = do
@@ -449,7 +448,7 @@ runMasterACP (ParamACP self () resources actorP) act = do
     -- FIXME: understand how do we want to monitor state of child
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.
-    pid <- spawnLocal (link me >> runUnit act)
+    pid <- spawnLocal (link me >> runDnaProgram act)
     _   <- monitor pid
     send pid (ACP me,actorP)
     -- Start listening on events

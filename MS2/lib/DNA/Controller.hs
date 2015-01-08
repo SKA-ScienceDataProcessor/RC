@@ -526,7 +526,7 @@ handleProcessCrash pid = do
     dropPID pid
 
 
--- > (ProcessId,Message)
+-- > (ACP,Message)
 --
 -- Child process sent shell process back.
 handleChannelMsg :: (ACP,Message) -> Controller ()
