@@ -8,15 +8,9 @@ import DNA
 
 import DDP
 
-
--- | Caclculate dot product of slice of vector
+-- | Calculate dot product of slice of vector
 ddpProductSlice :: Actor (String,Slice) Double
-ddpProductSlice = actor $ \(fname, fullSlice) -> duration "vector slice" $ do
-    -- Calculate offsets
-    nProc <- groupSize
-    rnk   <- rank
-    -- FIXME: Bad!
-    let slice = scatterSlice (fromIntegral nProc) fullSlice !! rnk
+ddpProductSlice = actor $ \(fname, slice) -> duration "vector slice" $ do
     -- Start local processes
     resVA <- select Local (N 0)
     resVB <- select Local (N 0)

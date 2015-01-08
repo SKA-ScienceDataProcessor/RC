@@ -14,6 +14,8 @@ import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
 import GHC.Generics  (Generic)
 
+import System.IO        ( openBinaryTempFile, hClose )
+
 import DNA.Channel.File (readData,readDataMMap)
 import DNA
 
@@ -53,10 +55,17 @@ ddpReadVector = actor $ \(fname, Slice off n) -> duration "read vector" $ do
     -- liftIO $ readDataMMap n off fname "FIXME"
 
 -- | Fill the file with an example vector of the given size
-ddpGenerateVector :: Actor (String,Int64) ()
-ddpGenerateVector = actor $ \(fname, n) -> duration "generate vector" $ do
-    liftIO $ BS.writeFile fname $ runPut $
-      replicateM_ (fromIntegral n) (putFloat64le 0.1)
+ddpGenerateVector :: Actor (Int64) (String)
+ddpGenerateVector = actor $ \(n) -> duration "generate vector" $ do
+    liftIO $ do
+      (fname, h) <- liftIO $ openBinaryTempFile "." "temp.dat"
+      BS.hPut h $ runPut $ do
+        replicateM_ (fromIntegral $ n `div` 4) $ putFloat64le 0.1
+        replicateM_ (fromIntegral $ n `div` 4) $ putFloat64le 0.2
+        replicateM_ (fromIntegral $ n `div` 4) $ putFloat64le 0.3
+        replicateM_ (fromIntegral $ n `div` 4) $ putFloat64le 0.4
+      hClose h
+      return fname
 
 remotable [ 'ddpComputeVector
           , 'ddpReadVector

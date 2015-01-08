@@ -51,6 +51,7 @@ module DNA.DNA (
       -- * Connecting actors
     , sendParam
     , broadcastParam
+    , broadcastParamSlice
     , connect
     , broadcast
     , collect
@@ -246,6 +247,12 @@ broadcastParam :: Serializable a => a -> ShellGroup a b -> DNA ()
 broadcastParam a (ShellGroup _ shells) = do
     forM_ shells (sendParam a)
 
+-- | Send parameter to the group of actors. A slicing function can
+-- modify the data sent to each node.
+broadcastParamSlice :: Serializable a
+                    => (Int -> [a]) -> ShellGroup a b -> DNA ()
+broadcastParamSlice slice (ShellGroup _ shells) = do
+    zipWithM_ sendParam (slice (length shells)) shells
 
 -- | Connect two processes together
 connect :: Serializable b => Shell a b -> Shell b c -> DNA ()
