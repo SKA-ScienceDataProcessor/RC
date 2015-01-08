@@ -368,46 +368,39 @@ delayGroup (ShellGroup gid shells) = do
 runActor :: Actor a b -> Process ()
 runActor (Actor action) = do
     -- Obtain parameters
-    ParamActor parent rnk grp <- expect
-    ACP acp <- expect
+    (acp,ParamActor parent rnk grp) <- expect
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
     -- Send shell process back
-    send parent (acp, wrapMessage $ Shell chSendParam chSendDst (ACP acp))
+    send parent (acp, wrapMessage $ Shell chSendParam chSendDst acp)
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
-    !b  <- runDNA (ACP acp) rnk grp (action a)
+    !b  <- runDNA acp rnk grp (action a)
     dst <- receiveChan chRecvDst
     sendToDest dst b
-
--- | Run actor in the pool of actors
-runPoolActor :: Actor a b -> Process ()
-runPoolActor (Actor action) = do
-    undefined
 
 -- | Start execution of collector actor
 runCollectActor :: CollectActor a b -> Process ()
 runCollectActor (CollectActor step start fini) = do
     -- Obtain parameters
-    ParamActor parent rnk grp <- expect
-    ACP acp <- expect
+    (acp,ParamActor parent rnk grp) <- expect
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
     send parent (acp, wrapMessage $
-                      CollectorShell chSendParam chSendN chSendDst (ACP acp))
+                      CollectorShell chSendParam chSendN chSendDst acp)
     -- Start execution of an actor
-    !b <- runDNA (ACP acp) rnk grp $ do
+    !b <- runDNA acp rnk grp $ do
         s0 <- start
         s  <- gatherM (Group chRecvParam chRecvN) step s0
         fini s
     dst <- receiveChan chRecvDst
     sendToDest dst b
 
-
+-- Send value to the destination
 sendToDest :: (Serializable a) => Dest a -> a -> Process ()
 sendToDest dst a =
     case dst of
@@ -434,8 +427,7 @@ runACP = do
     --        process? Do we want to just die unconditionally or maybe
     --        we want to do something.
     (pid,_) <- spawnSupervised nid act
-    send pid actorP
-    send pid (ACP me)
+    send pid (ACP me, actorP)
     -- Start listening on events
     startAcpLoop self pid resources
 
@@ -444,8 +436,7 @@ runACP = do
 runUnit :: DNA () -> Process ()
 runUnit action = do
     -- Obtain parameters
-    ParamActor _ rnk grp <- expect
-    acp <- expect
+    (acp,ParamActor _ rnk grp) <- expect
     runDNA acp rnk grp action
 
 
@@ -460,8 +451,7 @@ runMasterACP (ParamACP self () resources actorP) act = do
     --        we want to do something.
     pid <- spawnLocal (link me >> runUnit act)
     _   <- monitor pid
-    send pid actorP
-    send pid (ACP me)
+    send pid (ACP me,actorP)
     -- Start listening on events
     startAcpLoop self pid resources
 

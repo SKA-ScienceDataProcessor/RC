@@ -529,8 +529,8 @@ handleProcessCrash pid = do
 -- > (ProcessId,Message)
 --
 -- Child process sent shell process back.
-handleChannelMsg :: (ProcessId,Message) -> Controller ()
-handleChannelMsg (pid,msg) = do
+handleChannelMsg :: (ACP,Message) -> Controller ()
+handleChannelMsg (ACP pid,msg) = do
     handlePidEvent pid
         (fatal "Shell: unknown process")
         (\p -> case p of
