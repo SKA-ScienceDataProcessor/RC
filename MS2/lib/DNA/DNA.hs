@@ -381,6 +381,10 @@ runActor (Actor action) = do
     dst <- receiveChan chRecvDst
     sendToDest dst b
 
+-- | Run actor in the pool of actors
+runPoolActor :: Actor a b -> Process ()
+runPoolActor (Actor action) = do
+    undefined
 
 -- | Start execution of collector actor
 runCollectActor :: CollectActor a b -> Process ()
@@ -510,6 +514,8 @@ startCollector res child = do
     case msg of
       Nothing -> error "Bad shell message"
       Just  s -> return s
+
+
 
 
 -- | Start group of processes

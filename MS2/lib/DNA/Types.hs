@@ -26,7 +26,8 @@ import GHC.Generics  (Generic)
 -- MonadProcess
 ----------------------------------------------------------------
 
-class MonadIO m =>  MonadProcess m where
+-- | Monad to which computations in the 'Process' could be lifted
+class MonadIO m => MonadProcess m where
     liftP :: Process a -> m a
 
 instance MonadProcess Process where
