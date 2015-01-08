@@ -1,9 +1,72 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module OskarIniAutoGen (gen_all) where
+module OskarIniAutoGen where
 
-import Data.List (isPrefixOf)
+import GHC.Exts (IsString(..))
+import Data.List (
+    isPrefixOf
+  , intercalate
+  )
+import Data.Time (
+    UTCTime(..)
+  , fromGregorian
+  )
 import Language.Haskell.TH
+
+class NoAuto a
+
+newtype OList a = OList [a]
+instance Show a => Show (OList a) where
+  show (OList l) = intercalate " " (map show l)
+
+newtype OStr = OStr String
+instance Show OStr where show (OStr s) = s
+instance IsString OStr where fromString = OStr
+
+data OBool = OTrue | OFalse
+instance Show OBool where
+  show OTrue = "true"
+  show OFalse = "false"
+
+data OImageType =
+    OImageTypeStokes
+  | OImageTypeStokesI
+  | OImageTypeStokesQ
+  | OImageTypeStokesU
+  | OImageTypeStokesV
+  | OImageTypePolLinear
+  | OImageTypePolXX
+  | OImageTypePolYY
+  | OImageTypePolXY
+  | OImageTypePolYX
+  | OImageTypePSF
+
+instance Show OImageType where
+  show OImageTypeStokes    = "STOKES"
+  show OImageTypeStokesI   = "I"
+  show OImageTypeStokesQ   = "Q"
+  show OImageTypeStokesU   = "U"
+  show OImageTypeStokesV   = "V"
+  show OImageTypePolLinear = "LINEAR"
+  show OImageTypePolXX     = "XX"
+  show OImageTypePolYY     = "YY"
+  show OImageTypePolXY     = "XY"
+  show OImageTypePolYX     = "YX"
+  show OImageTypePSF       = "PSF"
+
+class Def a where
+  def :: a
+
+instance Def [a] where def = []
+instance Def OStr where def = OStr []
+instance Def (OList a) where def = OList []
+instance Def (Maybe a) where def = Nothing
+instance (Def a, Def b) => Def (a,b) where def = (def, def)
+instance Def Int where def = 0
+instance Def Double where def = 0
+instance Def UTCTime where def = UTCTime (fromGregorian 0 0 0) 0
+instance Def OBool where def = OFalse
+instance Def OImageType where def = OImageTypeStokesI
 
 class ShowRecWithPrefix a where
   showRecWithPrefix :: String -> a -> [String]
@@ -31,7 +94,7 @@ test_ppt = test_res pprint
 
 scat :: String -> String -> String
 scat [] s = s
-scat ps s = ps ++ '/':s
+scat ps s = ps ++ '\\':s
 
 show_immediate :: Show a => String -> String -> a -> String
 show_immediate pfx field_name v = scat pfx field_name ++ '=' : show v
@@ -55,7 +118,7 @@ show_immediate_maybe_q :: String -> ExpQ
 show_immediate_maybe_q sel_fn_name =
    [| \pfx v -> case ($(var sel_fn_name) v) of
          Nothing -> []
-         Just s -> show_immediate pfx (strip_rec_uniq_prefix sel_fn_name) s ($(var sel_fn_name) v)
+         Just s -> [show_immediate pfx (strip_rec_uniq_prefix sel_fn_name) s]
     |]
 
 show_req_q :: String -> ExpQ
@@ -86,19 +149,49 @@ gen_fun (DataD _cxt tname _tys [RecC _cname vartyps] _drv) =
     showvar (vname, _, vtyp) = select_fun vtyp (cut_suffix $ pprint vname)
     cut_suffix = reverse . drop 1 . dropWhile (/= '_') . reverse
     select_mb t
-      | "Oskar" `isPrefixOf` (pprint t) = show_req_maybe_q
+      | "OskarSettings" `isPrefixOf` (pprint t) = show_req_maybe_q
       | otherwise = show_immediate_maybe_q
     select_plain t
-      | "Oskar" `isPrefixOf` (pprint t) = show_req_q
+      | "OskarSettings" `isPrefixOf` (pprint t) = show_req_q
       | otherwise = show_immediate_q
     select_fun (AppT (ConT n) t)
       | n == ''Maybe = select_mb t
-      | otherwise = error "Unimplemented 137!"
+      | n == ''OList = select_plain t
+      | otherwise = error ("Unimplemented: " ++ pprint n)
     select_fun t = select_plain t
 gen_fun _ = error "Can't handle data declaration in this form"
+
+gen_default :: Dec -> DecQ
+gen_default (DataD _cxt tname _tys [RecC cname vartyps] _drv) =
+    instanceD
+      (return [])
+      (appT (conT ''Def) (conT tname)) [
+          valD (varP 'def) (normalB $ return $ foldl AppE (ConE cname) (map VarE $ replicate (length vartyps) 'def))
+        []]
+gen_default _ = error "Can't handle data declaration in this form when generating default."
 
 gen_all :: DecsQ -> DecsQ
 gen_all decsq = do
   decs <- decsq
-  decsi <- mapM gen_fun decs
-  return (decs ++ decsi)
+  let exclude_names = concatMap checkNoauto decs
+  runIO (putStrLn $ "Excluded:\n" ++ pprint exclude_names)
+  decssi <- mapM gen_fun (filter (toInclude exclude_names) decs)
+  let decsd = filter isData decs
+  decsdi <- mapM gen_default decsd
+  return (decsd ++ decssi ++ decsdi)
+
+isData :: Dec -> Bool
+isData DataD{} = True
+isData _ = False
+
+checkNoauto :: Dec -> [Name]
+checkNoauto (InstanceD [] (AppT (ConT classname) (ConT n)) [])
+  | classname == ''NoAuto = [n]
+  | otherwise = []
+checkNoauto _ = []
+
+toInclude :: [Name] -> Dec -> Bool
+toInclude exclude_set (DataD _cxt tname _tys _cons _drv)
+  | tname `elem` exclude_set = False
+  | otherwise = True
+toInclude _ _ = False

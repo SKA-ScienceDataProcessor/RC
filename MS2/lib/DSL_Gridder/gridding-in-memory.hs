@@ -25,10 +25,10 @@ import qualified DGridding as DG
 
 gridActor :: Actor (String, Closure GridderActor, GridderParams, Shell (Maybe (FilePath, GridData)) String) Int
 gridActor = actor $ \(gridder_name, closure, params, wri_shell) -> do
-    r <- select Local 0
+    r <- select Local (N 0)
     act <- startActor r closure
     sendParam params act
-    waiter <- delay act
+    waiter <- delay Local act
     res <- await waiter
     case res of
       Left status -> sendParam Nothing wri_shell >> return (fromGStatus status)
@@ -39,18 +39,18 @@ remotable [ 'gridActor
 
 doThemAll :: Actor () String
 doThemAll = actor $ \_ -> do
-    rsim <- select Local 0
+    rsim <- select Local (N 0)
     sim  <- startActor rsim $(mkStaticClosure 'rawSystemActor)
     sendParam ("oskar_sim_interferometer", ["temp.ini"]) sim
-    simwaiter <- delay sim
+    simwaiter <- delay Local sim
     retcode <- await simwaiter
     case retcode of
       Just err -> return $ "oskar_sim_interferometer failed with: " ++ show err
       Nothing -> do
-        rcvt <- select Local 0
+        rcvt <- select Local (N 0)
         cvt  <- startActor rcvt $(mkStaticClosure 'convertVisActor)
         sendParam vis_file_name cvt
-        cvtwaiter <- delay cvt
+        cvtwaiter <- delay Local cvt
         cvtstatus <- await cvtwaiter
         if cvtstatus /= 0
           then return $ "uvwv convertor failed with: " ++ show cvtstatus
@@ -66,21 +66,21 @@ doThemAll = actor $ \_ -> do
                    write_closure = $(mkStaticClosure 'writeResultsActor)
                    grid_closure = $(mkStaticClosure 'gridActor)
                 --
-                rwri1 <- select Local 0
+                rwri1 <- select Local (N 0)
                 wri1 <- startActor rwri1 write_closure
-                waiter_wri1 <- delay wri1
+                waiter_wri1 <- delay Local wri1
                 --
-                rwri2 <- select Local 0
+                rwri2 <- select Local (N 0)
                 wri2 <- startActor rwri2 write_closure
-                waiter_wri2 <- delay wri2
+                waiter_wri2 <- delay Local wri2
                 --
-                rgridder1 <- select Local 0
+                rgridder1 <- select Local (N 0)
                 gridder1  <- startActor rgridder1 grid_closure
-                waiter_gridder1 <- delay gridder1
+                waiter_gridder1 <- delay Local gridder1
                 --
-                rgridder2 <- select Local 0
+                rgridder2 <- select Local (N 0)
                 gridder2  <- startActor rgridder2 grid_closure
-                waiter_gridder2 <- delay gridder2
+                waiter_gridder2 <- delay Local gridder2
                 --
                 -- sendParam ("Romein", $(mkStaticClosure 'romeinActor), buffers, wri1) gridder1
                 -- sendParam ("Halide", $(mkStaticClosure 'halideActor), buffers, wri2) gridder2
