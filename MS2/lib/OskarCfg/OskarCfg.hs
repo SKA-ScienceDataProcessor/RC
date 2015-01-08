@@ -376,7 +376,7 @@ $(gen_all
       , os_element_fit :: Maybe OskarSettingsElementFit
       , os_interferometer :: OskarSettingsInterferometer
       , os_beam_pattern :: Maybe OskarSettingsBeamPattern
-      , os_image :: OskarSettingsImage
+      , os_image :: Maybe OskarSettingsImage
       , os_ionosphere :: Maybe OskarSettingsIonosphere
       }
     instance NoAuto OskarSettings
@@ -577,42 +577,67 @@ showSettings os = unlines $
   ++ mbKeyCvt "element_fit"    (os_element_fit os)
   ++   keyCvt "interferometer" (os_interferometer os)
   ++ mbKeyCvt "beam_pattern"   (os_beam_pattern os)
-  ++   keyCvt "image"          (os_image os)
+  ++ mbKeyCvt "image"          (os_image os)
   ++ mbKeyCvt "ionosphere"     (os_ionosphere os)
 
-test :: String
-test = showSettings $
-  def {
-    os_sky = def {
-      oss_oskar_sky_model = def {osso_file = OList ["temp.sky"]}
-    }
-  , os_obs = def {
-               oso_coords_deg  = [(0, 87)]
-             , oso_start_frequency_hz = 100000000
-             , oso_num_channels = 1
-             , oso_num_time_steps = 360
-             , oso_start_utc = UTCTime day (secondsToDiffTime 0)
-             , oso_length = UTCTime day (secondsToDiffTime 30)
-             }
-  , os_telescope = def {
-                     ost_input_directory = "./telescope"
-                   , ost_longitude_deg = 0
-                   , ost_latitude_deg = 89.9
-                   , ost_aperture_array = def {
-                                            osaa_array_pattern = def {osap_enable = OFalse}
-                                          , osaa_element_pattern = def {
-                                                                     osep_enable_numerical = OFalse
-                                                                   , osep_functional_type = "Geometric dipole"
-                                                                   }
-                                          }
+ska1low_template :: (OskarSettings, String)
+ska1low_template = goWith (-65) 116.631289 (-26.697024)
+  where
+    goWith phase_centre_dec tele_lon tele_lat = (
+        def {
+          os_obs = def {
+                     oso_coords_deg  = [(0, phase_centre_dec)]
                    }
-  , os_interferometer = def {osi_oskar_vis_filename = Just "0-0.vis"}
-  , os_image = def {
-                 osi_image_type = OImageTypeStokesQ
-               , osi_root_path = "RA_0_Stokes"
-               }
-  }
-  where day = fromGregorian 2000 09 21
+        , os_telescope = def {
+                           ost_longitude_deg = tele_lon
+                         , ost_latitude_deg = tele_lat
+                         , ost_aperture_array = def {
+                                                  osaa_array_pattern = def {osap_enable = OFalse}
+                                                , osaa_element_pattern = def {
+                                                                           osep_enable_numerical = OFalse
+                                                                         , osep_functional_type = "Geometric dipole"
+                                                                         }
+                                                }
+                         }
+        }
+      , printf "0 %f 1 1" phase_centre_dec
+      )
 
+mk_ska1low_test_cfg :: OStr -> Double -> Int -> Int -> Integer -> OStr -> (OskarSettings, String, FilePath, FilePath)
+mk_ska1low_test_cfg sky_model_fname start_freq num_chans num_timesteps length_t tele_layout_dir =
+  let
+    file_prefix = printf "%d-%d-%f" num_chans num_timesteps start_freq :: String
+    vis_file_path = printf "%s.vis" file_prefix
+    ini_file_path = printf "%s.ini" file_prefix
+    precfg = fst ska1low_template
+  in ( precfg {
+         os_sky = (os_sky precfg) {
+           oss_oskar_sky_model = def {osso_file = OList [sky_model_fname]}
+         }
+       , os_obs = (os_obs precfg) {
+                    oso_start_frequency_hz = start_freq
+                  , oso_num_channels = num_chans
+                  , oso_num_time_steps = num_timesteps
+                  , oso_start_utc = UTCTime day (secondsToDiffTime 0)
+                  , oso_length = UTCTime day (secondsToDiffTime length_t)
+                  }
+       , os_telescope = (os_telescope precfg) {
+                          ost_input_directory = tele_layout_dir
+                        }
+       , os_interferometer = (os_interferometer precfg) {osi_oskar_vis_filename = Just (OStr vis_file_path)}
+       }
+     , snd ska1low_template
+     , vis_file_path
+     , ini_file_path
+     )
+  where day = fromGregorian 2015 01 10
+
+-- test
 mkOut :: IO ()
-mkOut = writeFile "test.txt" test
+mkOut =
+  let
+   (os, sky_model, vis_name, ini_name) = mk_ska1low_test_cfg "ska1low.sky" 100000000 1 72 (12*3600) "./telescope"
+  in do
+       writeFile "ska1low.sky" sky_model
+       writeFile ini_name (showSettings os)
+       putStrLn $ printf "Output filename is: %s" vis_name
