@@ -28,23 +28,15 @@ import Control.Exception(
     handle
   , SomeException
   )
-import Debug.Trace (traceEventIO)
 
 import DistData
 import DNA
 import GriddersFFI
 import Oskar
 
--- Event logging util.
-log_duration :: MonadIO m => String -> String -> m a -> m a
-log_duration cxt param act = do
-    logevent "<< Start %s with %s >>"
-    !r <- act
-    logevent "<<  End  %s with %s >>"
-    return r
-  where
-    logevent fmt = liftIO $ traceEventIO $ printf fmt cxt param
 
+log_duration :: String -> String -> DNA a -> DNA a
+log_duration cxt param = duration (printf "<< %s with %s >>" cxt param)
 
 rawSystemActor :: Actor (String, [String]) (Maybe Int)
 rawSystemActor = actor $ \(cmd, args) ->
