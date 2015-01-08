@@ -377,8 +377,7 @@ runActor (Actor action) = do
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
     !b  <- runDNA acp rnk grp (action a)
-    dst <- receiveChan chRecvDst
-    sendToDest dst b
+    sendToDest chRecvDst b
 
 -- | Start execution of collector actor
 runCollectActor :: CollectActor a b -> Process ()
@@ -397,8 +396,7 @@ runCollectActor (CollectActor step start fini) = do
         s0 <- start
         s  <- gatherM (Group chRecvParam chRecvN) step s0
         fini s
-    dst <- receiveChan chRecvDst
-    sendToDest dst b
+    sendToDest chRecvDst b
 
 -- | Start execution of DNA program
 runDnaProgram :: DNA () -> Process ()
@@ -409,8 +407,9 @@ runDnaProgram action = do
 
 
 -- Send value to the destination
-sendToDest :: (Serializable a) => Dest a -> a -> Process ()
-sendToDest dst a =
+sendToDest :: (Serializable a) => ReceivePort (Dest a) -> a -> Process ()
+sendToDest chDst a = do
+    dst <- receiveChan chDst
     case dst of
       SendLocally ch  -> unsafeSendChan ch a
       SendRemote  chs -> forM_ chs $ \c -> sendChan c a
