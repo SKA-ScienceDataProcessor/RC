@@ -88,7 +88,7 @@ mkGridderActor gridder_name gridder_proc = actor $ log_duration "GridderActor" g
 
 romeinActor, halideActor :: GridderActor
 romeinActor = mkGridderActor "Romein" romeinComputeGridOnCuda
-halideActor = mkGridderActor "Romein" halideComputeGridOnCuda
+halideActor = mkGridderActor "Halide" halideComputeGridOnCuda
 
 convertVisActor :: Actor String OStatus
 convertVisActor = actor $ \fname -> log_duration "convertVisActor" fname $ liftIO (convertVis fname)
