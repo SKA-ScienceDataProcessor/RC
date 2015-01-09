@@ -86,9 +86,6 @@ convertVisActor = actor $ \fname -> log_duration "convertVisActor" fname $ liftI
 grid_size :: Int
 grid_size = 2048 * 2048 * 8 * sizeOf (undefined :: CDouble)
 
-vis_file_name :: String
-vis_file_name = "360-1.vis"
-
 ts_per_block, blocks, stations, channels :: Int
 ts_per_block = TIMESTEPS
 blocks = BLOCKS

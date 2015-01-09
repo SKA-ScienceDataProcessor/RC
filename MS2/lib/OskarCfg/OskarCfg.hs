@@ -632,7 +632,7 @@ mk_ska1low_test_cfg sky_model_fname start_freq num_chans num_timesteps length_t 
      )
   where day = fromGregorian 2015 01 10
 
--- test
+{- test
 mkOut :: IO ()
 mkOut =
   let
@@ -641,3 +641,4 @@ mkOut =
        writeFile "ska1low.sky" sky_model
        writeFile ini_name (showSettings os)
        putStrLn $ printf "Output filename is: %s" vis_name
+ -}

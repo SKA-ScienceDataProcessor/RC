@@ -1,4 +1,7 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE
+      TemplateHaskell
+    , OverloadedStrings
+  #-}
 
 module Main(main) where
 
@@ -17,6 +20,17 @@ import DNA
 import DGridding hiding (__remoteTable)
 import qualified DGridding as DG
 
+import OskarCfg
+
+mkCfg :: IO (FilePath, FilePath)
+mkCfg =
+  let
+   (os, sky_model, vis_name, ini_name) = mk_ska1low_test_cfg "ska1low.sky" 100000000 1 72 1800 "../../../../uvwsim/telescope"
+  in do
+       writeFile "ska1low.sky" sky_model
+       writeFile ini_name (showSettings os)
+       return (vis_name, ini_name)
+
 gridActor :: Actor (String, Closure GridderActor, GridderParams, Shell (Maybe (FilePath, GridData)) String) Int
 gridActor = actor $ \(gridder_name, closure, params, wri_shell) -> do
     r <- select Local (N 0)
@@ -33,9 +47,10 @@ remotable [ 'gridActor
 
 doThemAll :: Actor () String
 doThemAll = actor $ \_ -> do
+    (vis_file_name, ini_name) <- liftIO mkCfg
     rsim <- select Local (N 0)
     sim  <- startActor rsim $(mkStaticClosure 'rawSystemActor)
-    sendParam ("oskar_sim_interferometer", ["temp.ini"]) sim
+    sendParam ("oskar_sim_interferometer", [ini_name]) sim
     simwaiter <- delay Local sim
     retcode <- await simwaiter
     case retcode of
