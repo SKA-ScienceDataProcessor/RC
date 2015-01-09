@@ -35,6 +35,7 @@ module DNA (
       -- * Connecting actors
     , sendParam
     , broadcastParam
+    , broadcastParamSlice
     , connect
     , broadcast
     , collect
