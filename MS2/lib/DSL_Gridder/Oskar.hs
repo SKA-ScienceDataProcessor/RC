@@ -8,7 +8,10 @@
   , AutoDeriveTypeable
   #-}
 
-module Oskar where
+module Oskar (
+    module Oskar
+  , module OskarCfg
+  ) where
 
 import GHC.Ptr (
     Ptr(..)
@@ -32,6 +35,7 @@ import Foreign.C.String (withCString)
 import System.FilePath (addExtension)
 
 import DistData
+import OskarCfg
 
 data OData
 type OHandle = Ptr OData

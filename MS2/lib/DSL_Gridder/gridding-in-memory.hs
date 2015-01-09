@@ -14,13 +14,13 @@ import GriddersFFI(
 import Oskar (
     uvw_filename
   , amp_filename
+  , mk_ska1low_test_cfg
+  , showSettings
   )
 
 import DNA
 import DGridding hiding (__remoteTable)
 import qualified DGridding as DG
-
-import OskarCfg
 
 mkCfg :: IO (FilePath, FilePath)
 mkCfg =
