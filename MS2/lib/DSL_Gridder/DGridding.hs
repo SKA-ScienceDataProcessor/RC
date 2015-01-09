@@ -4,6 +4,10 @@
   , BangPatterns
   #-}
 
+#if !(defined (TIMESTEPS) && defined (BLOCKS) && defined (NR_STATIONS) && defined (CHANNELS))
+#error "Not enough metrics for the task !!!"
+#endif
+
 module DGridding where
 
 import System.IO (
@@ -101,10 +105,10 @@ vis_file_name :: String
 vis_file_name = "360-1.vis"
 
 ts_per_block, blocks, stations, channels :: Int
-ts_per_block = 10
-blocks = 36
-stations = 30
-channels = 1
+ts_per_block = TIMESTEPS
+blocks = BLOCKS
+stations = NR_STATIONS
+channels = CHANNELS
 
 baselines :: Int
 baselines = stations * (stations - 1) `div` 2
