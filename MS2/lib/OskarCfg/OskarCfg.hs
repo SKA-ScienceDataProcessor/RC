@@ -534,7 +534,8 @@ instance ShowRecWithPrefix OskarSettingsObservation where
                 -> [show_immediate
                       pfx
                       "start_time_utc"
-                      (OStr $ formatTime defaultTimeLocale "%d-%m-%Y %T.%q" $ oso_start_utc v)],
+                      -- .000 instead of %q because Oskar is extremely capricious
+                      (OStr $ formatTime defaultTimeLocale "%d-%m-%Y %T.000" $ oso_start_utc v)],
               {-
               \ pfx v
                 -> [show_immediate
@@ -551,7 +552,8 @@ instance ShowRecWithPrefix OskarSettingsObservation where
                 -> [show_immediate
                       pfx
                       "length"
-                      (OStr $ formatTime defaultTimeLocale "%T.%q" $ oso_length v)],
+                      -- .000 instead of %q because Oskar is extremely capricious
+                      (OStr $ formatTime defaultTimeLocale "%T.000" $ oso_length v)],
               \ pfx v
                 -> case oso_dt_dump_days v of
                      Nothing -> []
