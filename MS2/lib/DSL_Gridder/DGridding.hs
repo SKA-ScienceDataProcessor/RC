@@ -10,19 +10,8 @@
 
 module DGridding where
 
-import System.IO (
-    openBinaryFile
-  , hClose
-  , IOMode(..)
-  , hPutBuf
-  )
-import Control.Exception (
-    bracket
-  )
-import Foreign.Ptr (
-    Ptr
-  , castPtr
-  )
+import Foreign.Marshal.Utils (copyBytes)
+import Foreign.Ptr (castPtr)
 import Foreign.Storable (sizeOf)
 import Foreign.C.Types (CDouble)
 import System.Process (rawSystem)
@@ -50,10 +39,6 @@ rawSystemActor = actor $ \(cmd, args) ->
     ec2mb ExitSuccess = Nothing
     ec2mb (ExitFailure n) = Just n
 
-writeBinFile :: FilePath -> Ptr CDouble -> Int -> IO ()
-writeBinFile f p n = bracket (openBinaryFile f WriteMode) hClose
-    (\h -> hPutBuf h p n)
-
 -- No bother with special return type. 'String' at the moment.
 writeResultsActor :: Actor (Maybe (FilePath, GridData)) String
 writeResultsActor = actor doIt
@@ -61,7 +46,7 @@ writeResultsActor = actor doIt
     doIt Nothing = return "Nothing to write."
     doIt (Just (f, gd)) = log_duration "writeResultsActor" f $ liftIO $ 
       handle handleEx $ do
-         writeBinFile f (gdData gd) grid_size
+         withDistData (RemoteDataSimple f $ Just grid_size) (`copyBytes` (castPtr $ gdData gd))
          gdFinalize gd
          return $ f ++ " written successfully."
     handleEx :: SomeException -> IO String
