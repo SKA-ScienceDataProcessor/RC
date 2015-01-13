@@ -33,9 +33,9 @@ ddpDotProduct = actor $ \(fname,size) -> do
     r   <- select Local (N 0)
     shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSlice)
     shCol <- startCollector r $(mkStaticClosure 'ddpCollector)
-    broadcastParam (fname,size) shell
-    collect shell shCol
-    res <- delayCollector Remote shCol
+    sendParam (fname,size) $ broadcast shell
+    connect shell shCol
+    res <- delay Remote shCol
     await res
 
 main :: IO ()

@@ -33,14 +33,13 @@ module DNA.DNA (
     , collectActor
       -- ** Shell actors
     , Shell(..)
-    , CollectorShell(..)
-    , ShellGroup(..)
-    , GroupCollect(..)
+    , Val
+    , Grp
     , eval
     , startActor
     , startCollector
     , startGroup
-    , startCollectorGroup
+    -- , startCollectorGroup
       -- * CAD & Co
     , CAD(..)
     , makeCAD
@@ -49,19 +48,15 @@ module DNA.DNA (
     , select
     , selectMany
       -- * Connecting actors
-    , sendParam
-    , broadcastParam
-    , connect
     , broadcast
-    , collect
-    , connectCollectorGroup
+    , sendParam
+    , connect
       -- ** Promises
     , Promise
     , Group
     , await
     , gather
     , delay
-    , delayCollector
     , delayGroup
       -- * Starting actors
     , runActor
@@ -236,57 +231,36 @@ selectMany n g f = do
 ----------------------------------------------------------------
 
 -- | Send parameter to the actor
-sendParam :: Serializable a => a -> Shell a b -> DNA ()
-sendParam a (Shell ch _ _) = do
-    liftP $ sendChan ch a
+sendParam :: Serializable a => a -> Shell (Val a) b -> DNA ()
+sendParam a (Shell _ recv _) = case recv of
+    RecvVal       ch  -> liftP $ sendChan ch a
+    RecvBroadcast grp -> case grp of
+        RecvGrp p -> liftP $ forM_ p $ \ch -> sendChan ch a
 
+-- | Broadcast same parameter to all actors in group
+broadcast :: Shell (Scatter a) b -> Shell (Val a) b
+broadcast (Shell a r s) = Shell a (RecvBroadcast r) s
 
--- | Send parameter to the group of actors. All will receive same value.
-broadcastParam :: Serializable a => a -> ShellGroup a b -> DNA ()
-broadcastParam a (ShellGroup _ shells) = do
-    forM_ shells (sendParam a)
-
-
--- | Connect two processes together
-connect :: Serializable b => Shell a b -> Shell b c -> DNA ()
-connect (Shell _ chDst childA) (Shell chB _ childB) = do
-    -- FIXME: Do we want to allow unsafe send here?
-    liftP $ sendChan chDst $ SendRemote [chB]
-    sendACP $ ReqConnectTo childA childB
-
-
--- | Connect single process to the group of processes. All processes
---   in the group will receive same data.
-broadcast :: Serializable b => Shell a b -> ShellGroup b c -> DNA ()
-broadcast (Shell _ chDst childA) (ShellGroup gid chansB) = do
-    liftP $ sendChan chDst $ SendRemote [ch | Shell ch _ _ <- chansB]
-    sendACP $ ReqConnectToGrp childA gid
-
-
--- | Connect group of processes to collector process
-collect :: Serializable b => ShellGroup a b -> CollectorShell b c -> DNA ()
-collect (ShellGroup gid shells) (CollectorShell chB chN _ childB) = do
-    liftP $ forM_ shells $ \(Shell _ dst _) -> do
-        sendChan dst $ SendRemote [chB]
-    sendACP $ ReqConnectGrp gid childB [chN]
-
-
--- | Connect group of processes to the group of collector
---   processes. All collectors will receive each message from each
---   actor in first group.
-connectCollectorGroup
-    :: Serializable b => ShellGroup a b -> GroupCollect b c -> DNA ()
-connectCollectorGroup (ShellGroup gidA shells) (GroupCollect gidB colSh) = do
-    let dsts   = [ch | CollectorShell ch _ _ _ <- colSh]
-        chansN = [ch | CollectorShell _ ch _ _ <- colSh]
-    liftP $ forM_ shells $ \(Shell _ ch _) ->
-        sendChan ch $ SendRemote dsts
-    sendACP $ ReqConnectGrpToGrp gidA gidB chansN
-
-
-destFromLoc :: Location -> SendPort a -> Dest a
-destFromLoc Local  = SendLocally
-destFromLoc Remote = SendRemote . (:[])
+-- | Connect output of one shell process to input of another.
+connect :: Serializable b => Shell a (tag b) -> Shell (tag b) c -> DNA ()
+connect (Shell childA _ sendEnd) (Shell childB recvEnd _) = do
+    case (sendEnd,recvEnd) of
+      -- Val
+      (SendVal chDst, RecvVal chB) -> do
+          -- FIXME: Do we want to allow unsafe send here?
+          liftP $ sendChan chDst $ SendRemote [chB]
+          sendACP $ ReqConnect childA childB []
+      (SendVal chDst, RecvBroadcast (RecvGrp chans)) -> do
+          liftP $ sendChan chDst $ SendRemote chans
+          sendACP $ ReqConnect childA childB []
+      -- Grp
+      (SendGrp chDst, RecvReduce chN chB) -> do
+          liftP $ forM_ chDst $ \ch -> sendChan ch $ SendRemote [chB]
+          sendACP $ ReqConnect childA childB [chN]
+      -- IMPOSSIBLE
+      --
+      -- GHC cannot understand that pattern match is exhaustive
+      _ -> error "Impossible"
 
 
 
@@ -321,35 +295,33 @@ gatherM (Group chA chN) f x0 = do
     loop 0 (-1) x0
 
 
+destFromLoc :: Location -> SendPort a -> Dest a
+destFromLoc Local  = SendLocally
+destFromLoc Remote = SendRemote . (:[])
+
 -- | Create promise for single actor. It allows to receive data from
 --   it later.
-delay :: Serializable b => Location -> Shell a b -> DNA (Promise b)
-delay loc (Shell _ chDst acp) = do
+delay :: Serializable b => Location -> Shell a (Val b) -> DNA (Promise b)
+delay loc (Shell child _ src) = do
     myACP           <- getMonitor
     (chSend,chRecv) <- liftP newChan
-    liftP $ sendChan chDst $ destFromLoc loc chSend
-    sendACP $ ReqConnectTo acp myACP
+    let param :: Serializable b => SendEnd (Val b) -> SendPort b -> Process ()
+        param (SendVal ch) p = sendChan ch $ destFromLoc loc p
+    liftP   $ param src chSend
+    sendACP $ ReqConnect child (SingleActor myACP) []
     return  $ Promise chRecv
-
-delayCollector :: Serializable b => Location -> CollectorShell a b -> DNA (Promise b)
-delayCollector loc (CollectorShell _ _ chDst acp) = do
-    myACP           <- getMonitor
-    (chSend,chRecv) <- liftP newChan
-    liftP $ sendChan chDst $ destFromLoc loc chSend
-    sendACP $ ReqConnectTo acp myACP
-    return  $ Promise chRecv
-
 
 -- | Create promise from group of processes which allows to collect
 --   data from them later.
-delayGroup :: Serializable b => ShellGroup a b -> DNA (Group b)
-delayGroup (ShellGroup gid shells) = do
+delayGroup :: Serializable b => Shell a (Grp b) -> DNA (Group b)
+delayGroup (Shell child _ src) = do
     myACP         <- getMonitor
     (sendB,recvB) <- liftP newChan
     (sendN,recvN) <- liftP newChan
-    liftP $ forM_ shells $ \(Shell _ chDst _) ->
-        sendChan chDst $ SendRemote [sendB]
-    sendACP $ ReqConnectGrp gid myACP [sendN]
+    let param :: Serializable b => SendEnd (Grp b) -> SendPort b -> Process ()
+        param (SendGrp chans) chB = forM_ chans $ \ch -> sendChan ch (SendRemote [chB])
+    liftP $ param src sendB
+    sendACP $ ReqConnect child (SingleActor myACP) [sendN]
     return  $ Group recvB recvN
 
 
@@ -373,11 +345,24 @@ runActor (Actor action) = do
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
     -- Send shell process back
-    send parent (acp, wrapMessage $ Shell chSendParam chSendDst acp)
+    let shell = Shell (SingleActor acp)
+                      (RecvVal chSendParam)
+                      (SendVal chSendDst  )
+    send parent (acp, wrapMessage shell)
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
     !b  <- runDNA acp rnk grp (action a)
     sendToDest chRecvDst b
+
+-- | Run actor in the pool of actors
+runPoolActor :: Actor a b -> Process ()
+runPoolActor (Actor action) = do
+    -- Obtain parameters
+    -- (acp,ParamActor parent rnk grp) <- expect
+    -- Create channels for communication
+    -- Send back shell process back
+    return ()
+
 
 -- | Start execution of collector actor
 runCollectActor :: CollectActor a b -> Process ()
@@ -389,8 +374,10 @@ runCollectActor (CollectActor step start fini) = do
     (chSendDst,  chRecvDst  ) <- newChan
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
-    send parent (acp, wrapMessage $
-                      CollectorShell chSendParam chSendN chSendDst acp)
+    let shell = Shell (SingleActor acp)
+                      (RecvReduce chSendN chSendParam)
+                      (SendVal    chSendDst)
+    send parent (acp, wrapMessage shell)
     -- Start execution of an actor
     !b <- runDNA acp rnk grp $ do
         s0 <- start
@@ -475,7 +462,7 @@ eval (Actor act) a = do
 
 -- | Start single actor
 startActor :: (Serializable a, Serializable b)
-           => Resources -> Closure (Actor a b) -> DNA (Shell a b)
+           => Resources -> Closure (Actor a b) -> DNA (Shell (Val a) (Val b))
 startActor res child = do
     ACP acp         <- getMonitor
     (shellS,shellR) <- liftP newChan
@@ -491,7 +478,7 @@ startActor res child = do
 startCollector :: (Serializable a, Serializable b)
                => Resources
                -> Closure (CollectActor a b)
-               -> DNA (CollectorShell a b)
+               -> DNA (Shell (Grp a) (Val b))
 startCollector res child = do
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
@@ -502,14 +489,12 @@ startCollector res child = do
       Just  s -> return s
 
 
-
-
 -- | Start group of processes
 startGroup :: (Serializable a, Serializable b)
            => [Resources]
            -> GroupType
            -> Closure (Actor a b)
-           -> DNA (ShellGroup a b)
+           -> DNA (Shell (Scatter a) (Grp b))
 startGroup res groupTy child = do
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runActor) `closureApply` child
@@ -518,16 +503,31 @@ startGroup res groupTy child = do
     msgs <- mapM unwrapMessage mbox
     case sequence msgs of
       Nothing -> error "Bad shell message"
-      Just  s -> return (ShellGroup gid s)
+      Just  s -> return $ assembleShellGroup gid s
 
 
+assembleShellGroup :: GroupID -> [Shell (Val a) (Val b)] -> Shell (Scatter a) (Grp b)
+assembleShellGroup gid shells =
+    Shell (ActorGroup gid)
+          (RecvGrp $ map getRecv shells)
+          (SendGrp $ map getSend shells)
+  where
+    getRecv :: Shell (Val a) b -> SendPort a
+    getRecv (Shell _ (RecvVal ch) _) = ch
+    getRecv _ = error "assembleShellGroup: unexpected type of shell process"
+    getSend :: Shell a (Val b) -> SendPort (Dest b)
+    getSend (Shell _ _ (SendVal ch)) = ch
+
+
+
+{-
 -- | Start group of collector processes
 startCollectorGroup
     :: (Serializable a, Serializable b)
     => [Resources]
     -> GroupType
     -> Closure (CollectActor a b)
-    -> DNA (GroupCollect a b)
+    -> DNA (GroupCollect (Grp a) (Grp b))
 startCollectorGroup res groupTy child = do
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
@@ -537,3 +537,4 @@ startCollectorGroup res groupTy child = do
     case sequence msgs of
       Nothing -> error "Bad shell message"
       Just  s -> return (GroupCollect gid s)
+-}

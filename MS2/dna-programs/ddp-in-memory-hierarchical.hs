@@ -29,7 +29,7 @@ ddpDotProduct = actor $ \(fname, size) -> do
     -- Chunk & send out
     res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
     shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSlice)
-    broadcastParam (fname,slice) shell
+    sendParam (fname,slice) $ broadcast shell
     partials <- delayGroup shell
     x <- duration "collecting vectors" $ gather partials (+) 0
     return x
@@ -41,7 +41,7 @@ ddpDotProductMaster :: Actor (String,Slice) Double
 ddpDotProductMaster = actor $ \(fname,size) -> do
     res   <- selectMany (Frac 1) (NWorkers 3) [UseLocal]
     shell <- startGroup res Normal $(mkStaticClosure 'ddpDotProduct)
-    broadcastParam (fname,size) shell
+    sendParam (fname,size) $ broadcast shell
     partials <- delayGroup shell
     x <- duration "collection partials" $ gather partials (+) 0
     return x

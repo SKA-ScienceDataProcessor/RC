@@ -150,17 +150,14 @@ data ReqSpawnGroup = ReqSpawnGroup
     (Closure (Process ()))      -- Actor's closure
     (SendPort (GroupID,[Message]))  -- Port to send Shell to
     [Resources]                 -- Resources ID for all actors
-    GroupType                   -- 
+    GroupType                   --
     deriving (Show,Typeable,Generic)
 instance Binary ReqSpawnGroup
 
 
 -- | Command to mark process as connected to another actor
-data ReqConnect
-    = ReqConnectTo       ACP     ACP
-    | ReqConnectToGrp    ACP     GroupID
-    | ReqConnectGrp      GroupID ACP     [SendPort Int]
-    | ReqConnectGrpToGrp GroupID GroupID [SendPort Int]
+data ReqConnect =
+    ReqConnect ActorACP ActorACP [SendPort Int]
     deriving (Show,Typeable,Generic)
 instance Binary ReqConnect
 
@@ -344,40 +341,42 @@ toSizedChunks n items
 --
 -- Write down how processes are connected
 handleConnect :: ReqConnect -> Controller ()
-handleConnect (ReqConnectTo (ACP pid) dst) = do
-    Just st <- use $ stChildren . at pid
-    case st of
-      Right _ -> fatal "Impossible: group instead of process"
-      Left ShellProc{} -> fatal "Impossible: shell could not be connected"
-      Left Unconnected -> stChildren . at pid .= Just (Left (Connected [dst]))
-      Left _           -> fatal "Double connect"
-handleConnect (ReqConnectToGrp (ACP pid) gid) = do
-    Just st <- use $ stChildren . at pid
-    pids    <- getGroupPids gid
-    case st of
-      Right _          -> fatal "Impossible: group instead of process"
-      Left ShellProc{} -> fatal "Impossible: shell could not be connected"
-      Left Unconnected -> stChildren . at pid .= Just (Left (Connected (map ACP pids)))
-      Left _           -> fatal "Double connect"
-handleConnect (ReqConnectGrp gid acp port) = do
-    Just grp <- use $ stGroups . at gid
-    case grp of
-      GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
-      GrUnconnected ty nR ->
-          stGroups . at gid .= Just (GrConnected ty (nR,0) port [acp])
-      GrConnected{}  -> fatal "Double connect"
-      GrFailed       -> do terminateACP acp
-                           dropGroup gid
-handleConnect (ReqConnectGrpToGrp gid dstGid port) = do
-    pids <- getGroupPids dstGid
-    Just grp <- use $ stGroups . at gid
-    case grp of
-      GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
-      GrUnconnected ty nR ->
-          stGroups . at gid .= Just (GrConnected ty (nR,0) port (map ACP pids))
-      GrConnected{} -> fatal "Double connect"
-      GrFailed      -> do forM_ pids $ \p -> terminateACP (ACP p)
-                          dropGroup gid
+handleConnect (ReqConnect (SingleActor (ACP pid)) dest _) = case dest of
+    SingleActor dst -> do
+        Just st <- use $ stChildren . at pid
+        case st of
+          Right _          -> fatal "Impossible: group instead of process"
+          Left ShellProc{} -> fatal "Impossible: shell could not be connected"
+          Left Unconnected -> stChildren . at pid .= Just (Left (Connected [dst]))
+          Left _           -> fatal "Double connect"
+    ActorGroup gid -> do
+        Just st <- use $ stChildren . at pid
+        pids    <- getGroupPids gid
+        case st of
+          Right _          -> fatal "Impossible: group instead of process"
+          Left ShellProc{} -> fatal "Impossible: shell could not be connected"
+          Left Unconnected -> stChildren . at pid .= Just (Left (Connected (map ACP pids)))
+          Left _           -> fatal "Double connect"
+handleConnect (ReqConnect (ActorGroup gid) dest port) = case dest of
+    SingleActor acp -> do
+        Just grp <- use $ stGroups . at gid
+        case grp of
+          GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
+          GrUnconnected ty nR ->
+              stGroups . at gid .= Just (GrConnected ty (nR,0) port [acp])
+          GrConnected{}  -> fatal "Double connect"
+          GrFailed       -> do terminateACP acp
+                               dropGroup gid
+    ActorGroup dstGid -> do
+        pids <- getGroupPids dstGid
+        Just grp <- use $ stGroups . at gid
+        case grp of
+          GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
+          GrUnconnected ty nR ->
+              stGroups . at gid .= Just (GrConnected ty (nR,0) port (map ACP pids))
+          GrConnected{} -> fatal "Double connect"
+          GrFailed      -> do forM_ pids $ \p -> terminateACP (ACP p)
+                              dropGroup gid
 
 
 -- > ReqSpawnShell
