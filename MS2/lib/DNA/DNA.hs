@@ -39,7 +39,7 @@ module DNA.DNA (
     , startActor
     , startCollector
     , startGroup
-    -- , startCollectorGroup
+    , startCollectorGroup
       -- * CAD & Co
     , CAD(..)
     , makeCAD
@@ -254,9 +254,10 @@ connect (Shell childA _ sendEnd) (Shell childB recvEnd _) = do
           liftP $ sendChan chDst $ SendRemote chans
           sendACP $ ReqConnect childA childB []
       -- Grp
-      (SendGrp chDst, RecvReduce chN chB) -> do
-          liftP $ forM_ chDst $ \ch -> sendChan ch $ SendRemote [chB]
-          sendACP $ ReqConnect childA childB [chN]
+      (SendGrp chDst, RecvReduce chReduce) -> do
+          let chB = map snd chReduce
+          liftP $ forM_ chDst $ \ch -> sendChan ch $ SendRemote chB
+          sendACP $ ReqConnect childA childB [chN | (chN,_) <- chReduce ]
       -- IMPOSSIBLE
       --
       -- GHC cannot understand that pattern match is exhaustive
@@ -375,7 +376,7 @@ runCollectActor (CollectActor step start fini) = do
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
     let shell = Shell (SingleActor acp)
-                      (RecvReduce chSendN chSendParam)
+                      (RecvReduce [(chSendN,chSendParam)])
                       (SendVal    chSendDst)
     send parent (acp, wrapMessage shell)
     -- Start execution of an actor
@@ -519,15 +520,13 @@ assembleShellGroup gid shells =
     getSend (Shell _ _ (SendVal ch)) = ch
 
 
-
-{-
 -- | Start group of collector processes
 startCollectorGroup
     :: (Serializable a, Serializable b)
     => [Resources]
     -> GroupType
     -> Closure (CollectActor a b)
-    -> DNA (GroupCollect (Grp a) (Grp b))
+    -> DNA (Shell (Grp a) (Grp b))
 startCollectorGroup res groupTy child = do
     (shellS,shellR) <- liftP newChan
     let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
@@ -536,5 +535,15 @@ startCollectorGroup res groupTy child = do
     msgs <- mapM unwrapMessage mbox
     case sequence msgs of
       Nothing -> error "Bad shell message"
-      Just  s -> return (GroupCollect gid s)
--}
+      Just  s -> return $ assembleShellGroupCollect gid s
+
+assembleShellGroupCollect :: GroupID -> [Shell (Grp a) (Val b)] -> Shell (Grp a) (Grp b)
+assembleShellGroupCollect gid shells =
+    Shell (ActorGroup gid)
+          undefined
+          (SendGrp $ map getSend shells)
+  where
+    getRecv :: Shell (Grp a) b -> [(SendPort Int, SendPort a)]
+    getRecv (Shell _ (RecvReduce ch) _) = ch
+    getSend :: Shell a (Val b) -> SendPort (Dest b)
+    getSend (Shell _ _ (SendVal ch)) = ch

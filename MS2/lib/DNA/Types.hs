@@ -217,9 +217,8 @@ data RecvEnd a where
     -- | Same value is broadcasted to all actors in group
     RecvBroadcast :: RecvEnd (Scatter a)
                   -> RecvEnd (Val a)
-    -- | Actor which reduces set of values
-    RecvReduce :: SendPort Int
-               -> SendPort a
+    -- | Actor(s) which reduces set of values
+    RecvReduce :: [(SendPort Int,SendPort a)]
                -> RecvEnd (Grp a)
     deriving (Typeable)
 
@@ -253,11 +252,11 @@ instance (Typeable a, Binary a) => Binary (RecvEnd (Scatter a)) where
           _ -> fail "Bad tag"
 
 instance (Typeable a, Binary a) => Binary (RecvEnd (Grp a)) where
-    put (RecvReduce a b) = putWord8 4 >> put a >> put b
+    put (RecvReduce a) = putWord8 4 >> put a
     get = do
         t <- getWord8
         case t of
-          4 -> RecvReduce <$> get <*> get
+          4 -> RecvReduce <$> get
           _ -> fail "Bad tag"
 
 
