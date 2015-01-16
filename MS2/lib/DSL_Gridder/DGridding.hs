@@ -4,21 +4,14 @@
   , BangPatterns
   #-}
 
+#if !(defined (TIMESTEPS) && defined (BLOCKS) && defined (NR_STATIONS) && defined (CHANNELS))
+#error "Not enough metrics for the task !!!"
+#endif
+
 module DGridding where
 
-import System.IO (
-    openBinaryFile
-  , hClose
-  , IOMode(..)
-  , hPutBuf
-  )
-import Control.Exception (
-    bracket
-  )
-import Foreign.Ptr (
-    Ptr
-  , castPtr
-  )
+import Foreign.Marshal.Utils (copyBytes)
+import Foreign.Ptr (castPtr)
 import Foreign.Storable (sizeOf)
 import Foreign.C.Types (CDouble)
 import System.Process (rawSystem)
@@ -28,23 +21,15 @@ import Control.Exception(
     handle
   , SomeException
   )
-import Debug.Trace (traceEventIO)
 
 import DistData
 import DNA
 import GriddersFFI
 import Oskar
 
--- Event logging util.
-log_duration :: MonadIO m => String -> String -> m a -> m a
-log_duration cxt param act = do
-    logevent "<< Start %s with %s >>"
-    !r <- act
-    logevent "<<  End  %s with %s >>"
-    return r
-  where
-    logevent fmt = liftIO $ traceEventIO $ printf fmt cxt param
 
+log_duration :: String -> String -> DNA a -> DNA a
+log_duration cxt param = duration (printf "<< %s with %s >>" cxt param)
 
 rawSystemActor :: Actor (String, [String]) (Maybe Int)
 rawSystemActor = actor $ \(cmd, args) ->
@@ -54,10 +39,6 @@ rawSystemActor = actor $ \(cmd, args) ->
     ec2mb ExitSuccess = Nothing
     ec2mb (ExitFailure n) = Just n
 
-writeBinFile :: FilePath -> Ptr CDouble -> Int -> IO ()
-writeBinFile f p n = bracket (openBinaryFile f WriteMode) hClose
-    (\h -> hPutBuf h p n)
-
 -- No bother with special return type. 'String' at the moment.
 writeResultsActor :: Actor (Maybe (FilePath, GridData)) String
 writeResultsActor = actor doIt
@@ -65,7 +46,7 @@ writeResultsActor = actor doIt
     doIt Nothing = return "Nothing to write."
     doIt (Just (f, gd)) = log_duration "writeResultsActor" f $ liftIO $ 
       handle handleEx $ do
-         writeBinFile f (gdData gd) grid_size
+         withDistData (RemoteDataSimple f $ Just grid_size) (`copyBytes` (castPtr $ gdData gd))
          gdFinalize gd
          return $ f ++ " written successfully."
     handleEx :: SomeException -> IO String
@@ -96,7 +77,7 @@ mkGridderActor gridder_name gridder_proc = actor $ log_duration "GridderActor" g
 
 romeinActor, halideActor :: GridderActor
 romeinActor = mkGridderActor "Romein" romeinComputeGridOnCuda
-halideActor = mkGridderActor "Romein" halideComputeGridOnCuda
+halideActor = mkGridderActor "Halide" halideComputeGridOnCuda
 
 convertVisActor :: Actor String OStatus
 convertVisActor = actor $ \fname -> log_duration "convertVisActor" fname $ liftIO (convertVis fname)
@@ -105,14 +86,11 @@ convertVisActor = actor $ \fname -> log_duration "convertVisActor" fname $ liftI
 grid_size :: Int
 grid_size = 2048 * 2048 * 8 * sizeOf (undefined :: CDouble)
 
-vis_file_name :: String
-vis_file_name = "360-1.vis"
-
 ts_per_block, blocks, stations, channels :: Int
-ts_per_block = 10
-blocks = 36
-stations = 30
-channels = 1
+ts_per_block = TIMESTEPS
+blocks = BLOCKS
+stations = NR_STATIONS
+channels = CHANNELS
 
 baselines :: Int
 baselines = stations * (stations - 1) `div` 2

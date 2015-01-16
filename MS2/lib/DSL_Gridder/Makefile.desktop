@@ -4,7 +4,7 @@ LIB=$(OPT)/lib
 CC=g++
 INCFLAGS=-Io2a -I$(INC) -I$(INC)/apps/log -I$(INC)/utility -I$(INC)/interferometry -I$(INC)/station -I$(INC)/element -I$(INC)/splines -I$(INC)/settings/struct
 CXXFLAGS=-O3 -Wall -std=c++14 $(INCFLAGS)
-METRICS=-DSUPPORT_U=64 -DSUPPORT_V=64 -DTIMESTEPS=10 -DBLOCKS=36 -DNR_STATIONS=30 -DCHANNELS=1
+METRICS=-DSUPPORT_U=64 -DSUPPORT_V=64 -DTIMESTEPS=10 -DBLOCKS=36 -DNR_STATIONS=30 -DFREQ_START=100000000.0 -DCHANNELS=1
 
 CUDA_LIB_PATH=$(HOME)/data/cuda65/lib64
 HALIDE_PATH=$(OPT)
@@ -13,7 +13,9 @@ HALIDE_BIN = $(HALIDE_PATH)/bin
 HALIDE_LIB_PATH = $(HALIDE_BIN)
 HALIDE_LIB = $(HALIDE_LIB_PATH)/libHalide.a
 
-GHC_OPTS=-O2 -Wall -eventlog -threaded -hidir ./tmp -odir ./tmp -stubdir ./tmp -i.. -no-user-package-db -package-db ../../.cabal-sandbox/x86_64-linux-ghc-7.8.3-packages.conf.d
+INC_DNA=-i..
+INC_OCFG=-i../OskarCfg -i../OskarCfg/generator
+GHC_OPTS=$(METRICS) -O2 -Wall -eventlog -threaded -hidir ./tmp -odir ./tmp -stubdir ./tmp $(INC_DNA) $(INC_OCFG) -no-user-package-db -package-db ../../.cabal-sandbox/x86_64-linux-ghc-7.8.3-packages.conf.d
 
 RG_REPO=https://github.com/awson/Romein-gridding/raw/doubles/Gridding-0.2
 WG=wget --no-check-certificate

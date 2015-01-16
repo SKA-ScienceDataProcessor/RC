@@ -34,6 +34,7 @@ module DNA (
     , selectMany
       -- * Connecting actors
     , sendParam
+    , broadcastParamSlice
     , broadcast
     , connect
       -- ** Promises

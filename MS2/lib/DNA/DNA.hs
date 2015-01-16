@@ -50,6 +50,7 @@ module DNA.DNA (
       -- * Connecting actors
     , broadcast
     , sendParam
+    , broadcastParamSlice
     , connect
       -- ** Promises
     , Promise
@@ -240,6 +241,16 @@ sendParam a (Shell _ recv _) = case recv of
 -- | Broadcast same parameter to all actors in group
 broadcast :: Shell (Scatter a) b -> Shell (Val a) b
 broadcast (Shell a r s) = Shell a (RecvBroadcast r) s
+
+-- | Send parameter to the group of actors. A slicing function can
+-- modify the data sent to each node.
+broadcastParamSlice :: Serializable a
+                    => (Int -> [a]) -> Shell (Scatter a) b -> DNA ()
+broadcastParamSlice slice (Shell _ (RecvGrp chans) _) = do
+    zipWithM_ (\a ch -> liftP $ sendChan ch a)
+      (slice (length chans))
+      chans
+
 
 -- | Connect output of one shell process to input of another.
 connect :: Serializable b => Shell a (tag b) -> Shell (tag b) c -> DNA ()

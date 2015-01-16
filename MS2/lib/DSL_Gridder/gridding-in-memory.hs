@@ -1,14 +1,16 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE
+      CPP
+    , TemplateHaskell
+    , OverloadedStrings
+  #-}
+
+#if !defined FREQ_START
+#error "Starting frequency is undefined !!!"
+#endif
 
 module Main(main) where
 
--- import Foreign.Ptr (plusPtr)
 import Text.Printf (printf)
-{- import System.IO.MMap (
-    Mode(..)
-  , mmapFilePtr
-  , munmapFilePtr
-  ) -}
 import Control.Distributed.Static (Closure)
 
 import GriddersFFI(
@@ -17,11 +19,22 @@ import GriddersFFI(
 import Oskar (
     uvw_filename
   , amp_filename
+  , mk_ska1low_test_cfg
+  , showSettings
   )
 
 import DNA
 import DGridding hiding (__remoteTable)
 import qualified DGridding as DG
+
+mkCfg :: IO (FilePath, FilePath)
+mkCfg =
+  let
+   (os, sky_model, vis_name, ini_name) = mk_ska1low_test_cfg "ska1low.sky" FREQ_START 1 72 1800 "../../../../uvwsim/telescope"
+  in do
+       writeFile "ska1low.sky" sky_model
+       writeFile ini_name (showSettings os)
+       return (vis_name, ini_name)
 
 gridActor :: Actor (String, Closure GridderActor, GridderParams, Shell (Maybe (FilePath, GridData)) String) Int
 gridActor = actor $ \(gridder_name, closure, params, wri_shell) -> do
@@ -39,9 +52,10 @@ remotable [ 'gridActor
 
 doThemAll :: Actor () String
 doThemAll = actor $ \_ -> do
+    (vis_file_name, ini_name) <- liftIO mkCfg
     rsim <- select Local (N 0)
     sim  <- startActor rsim $(mkStaticClosure 'rawSystemActor)
-    sendParam ("oskar_sim_interferometer", ["temp.ini"]) sim
+    sendParam ("oskar_sim_interferometer", [ini_name]) sim
     simwaiter <- delay Local sim
     retcode <- await simwaiter
     case retcode of
@@ -55,13 +69,7 @@ doThemAll = actor $ \_ -> do
         if cvtstatus /= 0
           then return $ "uvwv convertor failed with: " ++ show cvtstatus
           else do
-            -- (ptru, rawsizeu, offsetu, sizeu) <- liftIO $ mmapFilePtr (uvw_filename vis_file_name) ReadOnly Nothing
-            -- (ptra, rawsizea, offseta, sizea) <- liftIO $ mmapFilePtr (amp_filename vis_file_name) ReadOnly Nothing
-            -- if sizeu /= uvw_bytes_in_chnl || sizea /= amp_bytes_in_chnl
-            --   then return $ printf "Wrong input dimensions: %d instead of %d, %d instead of %d" sizeu uvw_bytes_in_chnl sizea amp_bytes_in_chnl
-            --   else do
                 let
-                   -- buffers = (ptru `plusPtr` offsetu, ptra `plusPtr` offseta)
                    fnames = (uvw_filename vis_file_name, amp_filename vis_file_name)
                    write_closure = $(mkStaticClosure 'writeResultsActor)
                    grid_closure = $(mkStaticClosure 'gridActor)
@@ -82,15 +90,11 @@ doThemAll = actor $ \_ -> do
                 gridder2  <- startActor rgridder2 grid_closure
                 waiter_gridder2 <- delay Local gridder2
                 --
-                -- sendParam ("Romein", $(mkStaticClosure 'romeinActor), buffers, wri1) gridder1
-                -- sendParam ("Halide", $(mkStaticClosure 'halideActor), buffers, wri2) gridder2
                 sendParam ("Romein", $(mkStaticClosure 'romeinActor), fnames, wri1) gridder1
                 sendParam ("Halide", $(mkStaticClosure 'halideActor), fnames, wri2) gridder2
                 -- Ignore them for now. Writer should spit some diagnostics.
                 _rcode1 <- await waiter_gridder1
                 _rcode2 <- await waiter_gridder2
-                --
-                -- liftIO $ munmapFilePtr ptru rawsizeu >> munmapFilePtr ptra rawsizea
                 --
                 msg1 <- await waiter_wri1
                 msg2 <- await waiter_wri2

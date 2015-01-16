@@ -3,6 +3,8 @@
 {-# LANGUAGE BangPatterns #-}
 module Main(main) where
 
+import Control.Monad ( forM )
+
 import Data.Int
 
 import System.Directory ( removeFile )
@@ -30,24 +32,33 @@ ddpDotProduct = actor $ \size -> do
     sendParam size shellG
     fname <- duration "generate" . await =<< delay Remote shellG
 
-    -- Chunk & send out
-    res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
-    shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSlice)
-    -- FIXME: cannot merge fully
-    let slicer n = map ((,) fname) $ scatterSlice n (Slice 0 size)
-    broadcastParamSlice slicer shell
+    -- Chunk into steps
+    let maxWorkSize = 10000000 -- Maxmimum elements to work on at a time
+        stepCount = fromIntegral $ ((size-1) `div` maxWorkSize)+1
+    liftIO $ putStrLn $ "Step count: " ++ show stepCount
+    stepResults <- forM (scatterSlice stepCount (Slice 0 size)) $ \slice -> do
 
-    partials <- delayGroup shell
-    x <- duration "collecting vectors" $ gather partials (+) 0
+      -- Chunk & send out. Note that we are re-starting the actors for
+      -- every iteration. This is hardly ideal.
+      res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
+      shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSlice)
+      let slicer n = map ((,) fname) $ scatterSlice n slice
+      broadcastParamSlice slicer shell
+
+      -- Gather
+      partials <- delayGroup shell
+      x <- duration "collecting vectors" $ gather partials (+) 0
+      liftIO $ putStrLn $ "Partial sum: " ++ show x
+      return x
 
     liftIO $ removeFile fname
-    return x
+    return $ sum stepResults
 
 main :: IO ()
 main =  dnaRun rtable $ do
 
     -- Size of vectors. We can pre-compute the expected result.
-    let n = 20000000
+    let n = 800000000
         ns = n `div` 4
         seg_sum i = (2*i*ns + ns - 1) * ns `div` 2 * (i+1)
         expected = fromIntegral $ sum (map seg_sum [0,1,2,3]) `div` 10
