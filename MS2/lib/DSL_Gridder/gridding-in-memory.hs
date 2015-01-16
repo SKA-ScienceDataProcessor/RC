@@ -1,7 +1,12 @@
 {-# LANGUAGE
-      TemplateHaskell
+      CPP
+    , TemplateHaskell
     , OverloadedStrings
   #-}
+
+#if !defined FREQ_START
+#error "Starting frequency is undefined !!!"
+#endif
 
 module Main(main) where
 
@@ -25,7 +30,7 @@ import qualified DGridding as DG
 mkCfg :: IO (FilePath, FilePath)
 mkCfg =
   let
-   (os, sky_model, vis_name, ini_name) = mk_ska1low_test_cfg "ska1low.sky" 100000000 1 72 1800 "../../../../uvwsim/telescope"
+   (os, sky_model, vis_name, ini_name) = mk_ska1low_test_cfg "ska1low.sky" FREQ_START 1 72 1800 "../../../../uvwsim/telescope"
   in do
        writeFile "ska1low.sky" sky_model
        writeFile ini_name (showSettings os)
