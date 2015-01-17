@@ -1,6 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE BangPatterns #-}
 module Main(main) where
 
 import DNA.Channel.File (readDataMMap)
@@ -12,9 +10,6 @@ import DDP_Slice
 
 ----------------------------------------------------------------
 -- Distributed dot product
---
--- Note that actors which do not spawn actors on other nodes do not
--- receive CAD.
 ----------------------------------------------------------------
 
 ddpCollector :: CollectActor Double Double
