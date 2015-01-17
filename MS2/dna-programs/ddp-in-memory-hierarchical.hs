@@ -20,8 +20,8 @@ import DDP_Slice
 ----------------------------------------------------------------
 
 -- | Actor for calculating dot product
-ddpDotProduct :: Actor (String,Slice) Double
-ddpDotProduct = actor $ \(fname, size) -> do
+ddpDotProduct :: Actor Slice Double
+ddpDotProduct = actor $ \size -> do
     -- Chunk local product
     rnk   <- rank
     gSize <- groupSize
@@ -29,7 +29,7 @@ ddpDotProduct = actor $ \(fname, size) -> do
     -- Chunk & send out
     res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
     shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSlice)
-    sendParam (fname,slice) $ broadcast shell
+    sendParam slice $ broadcast shell
     partials <- delayGroup shell
     x <- duration "collecting vectors" $ gather partials (+) 0
     return x
@@ -37,11 +37,11 @@ ddpDotProduct = actor $ \(fname, size) -> do
 remotable [ 'ddpDotProduct
           ]
 
-ddpDotProductMaster :: Actor (String,Slice) Double
-ddpDotProductMaster = actor $ \(fname,size) -> do
+ddpDotProductMaster :: Actor Slice Double
+ddpDotProductMaster = actor $ \size -> do
     res   <- selectMany (Frac 1) (NWorkers 3) [UseLocal]
     shell <- startGroup res Normal $(mkStaticClosure 'ddpDotProduct)
-    sendParam (fname,size) $ broadcast shell
+    sendParam size $ broadcast shell
     partials <- delayGroup shell
     x <- duration "collection partials" $ gather partials (+) 0
     return x
@@ -50,7 +50,7 @@ ddpDotProductMaster = actor $ \(fname,size) -> do
 main :: IO ()
 main = do
     dnaRun rtable $ do
-        b <- eval ddpDotProductMaster ("file.dat", Slice 0 20000000)
+        b <- eval ddpDotProductMaster (Slice 0 20000000)
         liftIO $ putStrLn $ "RESULT: " ++ show b
   where
     rtable = DDP.__remoteTable

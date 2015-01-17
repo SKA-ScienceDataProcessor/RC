@@ -42,7 +42,7 @@ ddpDotProduct = actor $ \size -> do
       -- every iteration. This is hardly ideal.
       res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
       shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSlice)
-      let slicer n = map ((,) fname) $ scatterSlice n slice
+      let slicer n = scatterSlice n slice
       broadcastParamSlice slicer shell
 
       -- Gather

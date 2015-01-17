@@ -27,20 +27,20 @@ remotable [ 'ddpCollector
           ]
 
 -- | Actor for calculating dot product
-ddpDotProduct :: Actor (String,Slice) Double
-ddpDotProduct = actor $ \(fname,size) -> do
+ddpDotProduct :: Actor Slice Double
+ddpDotProduct = actor $ \size -> do
     res <- selectMany (Frac 1) (NNodes 1) [UseLocal]
     r   <- select Local (N 0)
     shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSlice)
     shCol <- startCollector r $(mkStaticClosure 'ddpCollector)
-    sendParam (fname,size) $ broadcast shell
+    sendParam size $ broadcast shell
     connect shell shCol
     res <- delay Remote shCol
     await res
 
 main :: IO ()
 main = dnaRun rtable $ do
-    b <- eval ddpDotProduct ("file.dat",Slice 0 20000000)
+    b <- eval ddpDotProduct (Slice 0 20000000)
     liftIO $ putStrLn $ "RESULT: " ++ show b
   where
     rtable = DDP.__remoteTable
