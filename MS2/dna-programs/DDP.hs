@@ -15,6 +15,7 @@ import Data.Typeable (Typeable)
 import GHC.Generics  (Generic)
 
 import System.IO        ( openBinaryTempFile, hClose )
+import System.Directory ( doesDirectoryExist)
 
 import DNA.Channel.File (readData,readDataMMap)
 import DNA
@@ -43,27 +44,40 @@ scatterSlice n (Slice off0 size)
 
 
 -- | Compute vector and send it back to master using unsafe send.
+--
+--   > Input:  part of vector to generate
+--   > Output: data
 ddpComputeVector :: Actor Slice (S.Vector Double)
 ddpComputeVector = actor $ \(Slice off n) -> duration "compute vector" $ do
     return $ S.generate (fromIntegral n)
                (\i -> fromIntegral (fromIntegral i + off))
 
 -- | Read vector slice from the data file.
+--
+--    * Input:  (file name and slice to read from vector)
+--    * Output: data
 ddpReadVector :: Actor (String, Slice) (S.Vector Double)
 ddpReadVector = actor $ \(fname, Slice off n) -> duration "read vector" $ do
+    -- FIXME: mmaping of vector is not implemented
     liftIO $ readData n off fname
     -- liftIO $ readDataMMap n off fname "FIXME"
 
 -- | Fill the file with an example vector of the given size
-ddpGenerateVector :: Actor (Int64) (String)
+--
+--    * Input:  size of vector to generate
+--    * Output: name of generated file
+ddpGenerateVector :: Actor Int64 String
 ddpGenerateVector = actor $ \(n) -> duration "generate vector" $ do
     liftIO $ do
-      (fname, h) <- liftIO $ openBinaryTempFile "." "temp.dat"
+      -- On Cambridge cluster we we write to the /ramdisk directory
+      -- Otherwise we write to local directory
+      let ramdisk = "/ramdisks"
+      isCambridge <- doesDirectoryExist ramdisk
+      (fname, h)  <- openBinaryTempFile
+                       (if isCambridge then ramdisk else ".")
+                       "temp.dat"
       BS.hPut h $ runPut $ do
-        replicateM_ (fromIntegral $ n `div` 4) $ putFloat64le 0.1
-        replicateM_ (fromIntegral $ n `div` 4) $ putFloat64le 0.2
-        replicateM_ (fromIntegral $ n `div` 4) $ putFloat64le 0.3
-        replicateM_ (fromIntegral $ n `div` 4) $ putFloat64le 0.4
+        replicateM_ (fromIntegral n) $ putFloat64le 0.1
       hClose h
       return fname
 

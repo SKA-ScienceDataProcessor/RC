@@ -14,9 +14,9 @@ module DNA (
     , collectActor
       -- ** Shell actors
     , Shell
-    , CollectorShell
-    , ShellGroup
-    , GroupCollect
+    , Val
+    , Grp
+    , Scatter
     , eval
     , startActor
     , startCollector
@@ -34,19 +34,15 @@ module DNA (
     , selectMany
       -- * Connecting actors
     , sendParam
-    , broadcastParam
     , broadcastParamSlice
-    , connect
     , broadcast
-    , collect
-    , connectCollectorGroup
+    , connect
       -- ** Promises
     , Promise
     , Group
     , await
     , gather
     , delay
-    , delayCollector
     , delayGroup
       -- * Start DNA program
     , dnaRun

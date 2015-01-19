@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE BangPatterns #-}
@@ -7,18 +8,19 @@
 {-# LANGUAGE DeriveGeneric #-}
 module DNA.Types where
 
+import Control.Applicative
 import Control.Monad.IO.Class
-import Control.Monad.State
+import Control.Monad.State (StateT)
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable (Serializable)
-import Data.Binary   (Binary)
+import Data.Binary.Get
+import Data.Binary.Put
+import Data.Binary   (Binary(..))
 import Data.Typeable (Typeable)
 import Data.Foldable (Foldable)
 import Data.Traversable (Traversable)
-import qualified Data.Set        as Set
-import           Data.Set          (Set)
 import GHC.Generics  (Generic)
 
 
@@ -26,7 +28,8 @@ import GHC.Generics  (Generic)
 -- MonadProcess
 ----------------------------------------------------------------
 
-class MonadIO m =>  MonadProcess m where
+-- | Monad to which computations in the 'Process' could be lifted
+class MonadIO m => MonadProcess m where
     liftP :: Process a -> m a
 
 instance MonadProcess Process where
@@ -140,6 +143,8 @@ data Dest a
       -- ^ Send result using using unsafe primitive
     | SendRemote [SendPort a]
       -- ^ Send result using standard primitives
+    | SendPool
+      -- ^ Send value to a pool of worker processes
     deriving (Show,Typeable,Generic)
 
 instance Binary a => Binary (CAD a)
@@ -156,34 +161,117 @@ instance Serializable a => Binary (Dest a)
 -- Shell actors
 ----------------------------------------------------------------
 
--- | Simple shell process
-data Shell a b = Shell
-    (SendPort a)
-    (SendPort (Dest b))
-    ACP
+-- | Tag for single value.
+--
+--    * Receive: actor accept single value as parameter
+--    * Send: actor produces single value as result
+data Val a
+    deriving (Typeable)
+
+-- | Tag for unordered group of values.
+--
+--    * Receive: ???
+--    * Send: actor produces set of messages in arbitrary order.
+data Grp a
+    deriving (Typeable)
+
+-- | Tags for ordered set of values
+data Scatter a
+    deriving (Typeable)
+
+
+-- | Way to encode
+data ActorACP = SingleActor ACP
+              | ActorGroup  GroupID
     deriving (Show,Typeable,Generic)
-instance (Serializable a, Serializable b) => Binary (Shell a b)
+instance Binary ActorACP
+
+-- | Shell actor. It's actor which hasn't been connected anywhere.
+data Shell a b = Shell
+     ActorACP
+    (RecvEnd a)
+    (SendEnd b)
+    deriving (Typeable,Generic)
+
+-- Quadratic number of instances in number of type tags. Sigh
+instance (Serializable a, Serializable b) => Binary (Shell (Val     a) (Val     b))
+instance (Serializable a, Serializable b) => Binary (Shell (Val     a) (Grp     b))
+-- instance (Serializable a, Serializable b) => Binary (Shell (Val     a) (Scatter b))
+instance (Serializable a, Serializable b) => Binary (Shell (Grp     a) (Val     b))
+instance (Serializable a, Serializable b) => Binary (Shell (Grp     a) (Grp     b))
+-- instance (Serializable a, Serializable b) => Binary (Shell (Grp     a) (Scatter b))
+instance (Serializable a, Serializable b) => Binary (Shell (Scatter a) (Val     b))
+instance (Serializable a, Serializable b) => Binary (Shell (Scatter a) (Grp     b))
+-- instance (Serializable a, Serializable b) => Binary (Shell (Scatter a) (Scatter b))
 
 
--- | Simple collector process
-data CollectorShell a b = CollectorShell
-     (SendPort a)
-     (SendPort Int)
-     (SendPort (Dest b))
-     ACP
-     deriving (Show,Typeable,Generic)
-instance (Serializable a, Serializable b) => Binary (CollectorShell a b)
+
+-- | Describe how actor accepts 
+data RecvEnd a where
+    -- | Actor receives single value
+    RecvVal :: SendPort a
+            -> RecvEnd (Val a)
+    -- | Actor receives group of values
+    RecvGrp :: [SendPort a]
+            -> RecvEnd (Scatter a)
+    -- | Same value is broadcasted to all actors in group
+    RecvBroadcast :: RecvEnd (Scatter a)
+                  -> RecvEnd (Val a)
+    -- | Actor(s) which reduces set of values
+    RecvReduce :: [(SendPort Int,SendPort a)]
+               -> RecvEnd (Grp a)
+    deriving (Typeable)
 
 
+-- | Description of send end of actor
+data SendEnd a where
+    -- | Actor sends single value
+    SendVal :: SendPort (Dest a)
+            -> SendEnd (Val a)
+    -- | Actor sends group of values
+    SendGrp :: [SendPort (Dest a)]
+            -> SendEnd (Grp a)
+    deriving (Typeable)
 
--- | Group of shell processes
-data ShellGroup a b = ShellGroup GroupID [Shell a b]
-                    deriving (Show,Typeable,Generic)
-instance (Serializable a, Serializable b) => Binary (ShellGroup a b)
+instance (Typeable a, Binary a) => Binary (RecvEnd (Val a)) where
+    put (RecvVal       p) = putWord8 1 >> put p
+    put (RecvBroadcast p) = putWord8 3 >> put p
+    get = do
+        t <- getWord8
+        case t of
+          1 -> RecvVal <$> get
+          3 -> RecvBroadcast <$> get
+          _ -> fail "Bad tag"
+
+instance (Typeable a, Binary a) => Binary (RecvEnd (Scatter a)) where
+    put (RecvGrp    p  ) = putWord8 2 >> put p
+    get = do
+        t <- getWord8
+        case t of
+          2 -> RecvGrp <$> get
+          _ -> fail "Bad tag"
+
+instance (Typeable a, Binary a) => Binary (RecvEnd (Grp a)) where
+    put (RecvReduce a) = putWord8 4 >> put a
+    get = do
+        t <- getWord8
+        case t of
+          4 -> RecvReduce <$> get
+          _ -> fail "Bad tag"
 
 
+instance (Typeable a, Binary a) => Binary (SendEnd (Val a)) where
+    put (SendVal ch) = putWord8 1 >> put ch
+    get = do
+        t <- getWord8
+        case t of
+          1 -> SendVal <$> get
+          _ -> fail "Bad tag"
 
--- | Group of collector processes
-data GroupCollect a b = GroupCollect GroupID [CollectorShell a b]
-                    deriving (Show,Typeable,Generic)
-instance (Serializable a, Serializable b) => Binary (GroupCollect a b)
+instance (Typeable a, Binary a) => Binary (SendEnd (Grp a)) where
+    put (SendGrp ch) = putWord8 2 >> put ch
+    get = do
+        t <- getWord8
+        case t of
+          2 -> SendGrp <$> get
+          _ -> fail "Bad tag"

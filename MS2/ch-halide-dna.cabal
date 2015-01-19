@@ -93,7 +93,8 @@ executable ddp-in-memory-collector
     binary,
     bytestring,
     data-binary-ieee754,
-    vector >= 0.10
+    vector >= 0.10,
+    directory
   other-modules:
     DDP
     DDP_Slice
@@ -109,7 +110,8 @@ executable ddp-in-memory-hierachical
     binary,
     bytestring,
     data-binary-ieee754,
-    vector >= 0.10
+    vector >= 0.10,
+    directory
   other-modules:
     DDP
 
