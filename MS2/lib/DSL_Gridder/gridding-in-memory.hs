@@ -36,7 +36,7 @@ mkCfg =
        writeFile ini_name (showSettings os)
        return (vis_name, ini_name)
 
-gridActor :: Actor (String, Closure GridderActor, GridderParams, Shell (Maybe (FilePath, GridData)) String) Int
+gridActor :: Actor (String, Closure GridderActor, GridderParams, Shell (Val (Maybe (FilePath, GridData))) (Val String)) Int
 gridActor = actor $ \(gridder_name, closure, params, wri_shell) -> do
     r <- select Local (N 0)
     act <- startActor r closure
