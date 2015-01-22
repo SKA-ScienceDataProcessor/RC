@@ -308,7 +308,6 @@ getFracNodes frac = do
     let n = length free
         k = round $ fromIntegral n * frac
     let (used,rest) = splitAt k free
-    liftIO $ print (k,n)
     stNodePool .= Set.fromList rest
     return used
 
@@ -468,6 +467,8 @@ handleSpawnShellGroupN (ReqSpawnGroupN actor chShell res nTasks groupTy) = do
     --
     -- FIXME: Here we require that none of nodes will fail while we
     -- creating processes
+    stCountRank   . at gid .= Just (0,nTasks)
+    stPooledProcs . at gid .= Just []
     forM_ res $ \rid -> do
         Just r@(VirtualCAD _ n _) <- use $ stAllocResources . at rid
         (acp,_) <- liftP $ spawnSupervised (nodeID n) acpClos
@@ -618,16 +619,17 @@ handleChannelMsgN (ACP pid, chRank, msg) = do
         )
 
 -- (ProcessId, SendPort (Maybe Rank))
-handleReady :: (ProcessId, SendPort (Maybe Rank)) -> Controller ()
-handleReady (pid,ch) = do
+handleReady :: (ACP, SendPort (Maybe Rank)) -> Controller ()
+handleReady (ACP pid,ch) = do
     Just (Right gid) <- use $ stChildren  . at pid
     Just (n,nMax)    <- use $ stCountRank . at gid
     case () of
       _| n >= nMax -> do
           Just chans <- use $ stPooledProcs . at gid
-          liftP $ forM_ chans $ \ch ->
-              sendChan ch Nothing
+          liftP $ forM_ chans $ \c ->
+              sendChan c Nothing
        | otherwise -> do
+          liftP $ sendChan ch (Just $ Rank n)
           stCountRank . at gid .= Just (n+1,nMax)
 
 

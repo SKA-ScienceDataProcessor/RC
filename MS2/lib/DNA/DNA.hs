@@ -297,6 +297,7 @@ gatherM :: Serializable a => Group a -> (b -> a -> DNA b) -> b -> DNA b
 gatherM (Group chA chN) f x0 = do
     let loop n tot !b
             | n >= tot && tot >= 0= do
+                  liftIO $ print (n,tot) 
                   return b
         loop n tot !b = do
             r <- liftP $ receiveWait [ matchChan chA (return . Right)
@@ -365,7 +366,7 @@ runActor (Actor action) = do
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
     !b  <- runDNA acp rnk grp (action a)
-    sendToDest chRecvDst b
+    sendToDestChan chRecvDst b
 
 -- | Run actor in the pool of actors
 runPoolActor :: Actor a b -> Process ()
@@ -394,16 +395,16 @@ runActorManyRanks (Actor action) = do
     send parent (acp, chSendRnk, wrapMessage shell)
     a   <- receiveChan chRecvParam
     -- Now we can start execution and send back data
+    dst <- receiveChan chRecvDst
     let loop = do
             send parent (acp,chSendRnk)
             mrnk <- receiveChan chRecvRnk
             case mrnk of
                 Nothing  -> return ()
                 Just rnk -> do !b  <- runDNA acp rnk grp (action a)
-                               sendToDest chRecvDst b
+                               sendToDest dst b
                                loop
     loop
-
 
 -- | Start execution of collector actor
 runCollectActor :: CollectActor a b -> Process ()
@@ -424,7 +425,7 @@ runCollectActor (CollectActor step start fini) = do
         s0 <- start
         s  <- gatherM (Group chRecvParam chRecvN) step s0
         fini s
-    sendToDest chRecvDst b
+    sendToDestChan chRecvDst b
 
 -- | Start execution of DNA program
 runDnaProgram :: DNA () -> Process ()
@@ -433,14 +434,17 @@ runDnaProgram action = do
     (acp,ParamActor _ rnk grp) <- expect
     runDNA acp rnk grp action
 
+-- Send value to the destination
+sendToDestChan :: (Serializable a) => ReceivePort (Dest a) -> a -> Process ()
+sendToDestChan chDst a = do
+    dst <- receiveChan chDst
+    sendToDest dst a
 
 -- Send value to the destination
-sendToDest :: (Serializable a) => ReceivePort (Dest a) -> a -> Process ()
-sendToDest chDst a = do
-    dst <- receiveChan chDst
-    case dst of
-      SendLocally ch  -> unsafeSendChan ch a
-      SendRemote  chs -> forM_ chs $ \c -> sendChan c a
+sendToDest :: (Serializable a) => Dest a -> a -> Process ()
+sendToDest dst a = case dst of
+    SendLocally ch  -> unsafeSendChan ch a
+    SendRemote  chs -> forM_ chs $ \c -> sendChan c a
 
 
 -- | Start execution of actor controller process (ACP). Takes triple

@@ -26,7 +26,7 @@ import DDP_Slice
 ddpDotProduct :: Actor Int64 Double
 ddpDotProduct = actor $ \size -> do
     -- Find how into how  many chunks we need to split vector
-    let nChunk = fromIntegral $ size `div` 1000
+    let nChunk = fromIntegral $ size `div` 100000
     -- Chunk & send out
     res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
     shell <- startGroupN res Failout nChunk $(mkStaticClosure 'ddpProductSlice)
