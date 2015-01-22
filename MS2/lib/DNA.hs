@@ -21,6 +21,7 @@ module DNA (
     , startActor
     , startCollector
     , startGroup
+    , startGroupN
     , startCollectorGroup
       -- * CAD & Co
     , CAD

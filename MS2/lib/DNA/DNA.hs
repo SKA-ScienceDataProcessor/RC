@@ -39,6 +39,7 @@ module DNA.DNA (
     , startActor
     , startCollector
     , startGroup
+    , startGroupN
     , startCollectorGroup
       -- * CAD & Co
     , CAD(..)
@@ -375,6 +376,34 @@ runPoolActor (Actor action) = do
     -- Send back shell process back
     return ()
 
+-- | Run actor for group of processes which allow more than 1 task per
+--   actor.
+runActorManyRanks :: Actor a b -> Process ()
+runActorManyRanks (Actor action) = do
+    -- Obtain parameters
+    (acp,ParamActor parent _ grp) <- expect
+    -- Create channels for communication
+    (chSendParam,chRecvParam) <- newChan
+    (chSendDst,  chRecvDst  ) <- newChan
+    (chSendRnk,  chRecvRnk  ) <- newChan
+    -- Send shell process back
+    let shell = Shell (SingleActor acp)
+                      (RecvVal chSendParam)
+                      (SendVal chSendDst  )
+    -- Communicate back to ACP
+    send parent (acp, chSendRnk, wrapMessage shell)
+    a   <- receiveChan chRecvParam
+    -- Now we can start execution and send back data
+    let loop = do
+            send parent (acp,chSendRnk)
+            mrnk <- receiveChan chRecvRnk
+            case mrnk of
+                Nothing  -> return ()
+                Just rnk -> do !b  <- runDNA acp rnk grp (action a)
+                               sendToDest chRecvDst b
+                               loop
+    loop
+
 
 -- | Start execution of collector actor
 runCollectActor :: CollectActor a b -> Process ()
@@ -453,6 +482,7 @@ runMasterACP (ParamACP self () resources actorP) act = do
     startAcpLoop self pid resources
 
 remotable [ 'runActor
+          , 'runActorManyRanks
           , 'runCollectActor
           , 'runACP
           ]
@@ -530,6 +560,25 @@ assembleShellGroup gid shells =
     getSend :: Shell a (Val b) -> SendPort (Dest b)
     getSend (Shell _ _ (SendVal ch)) = ch
 
+
+-- | Start group of processes where 
+startGroupN
+    :: (Serializable a, Serializable b)
+    => [Resources] -- ^ Resources for actors
+    -> GroupType   -- ^ How individual failures should be handled
+    -> Int         -- ^ Number of tasks to run
+    -> Closure (Actor a b)
+    -> DNA (Shell (Val a) (Grp b))
+startGroupN res groupTy nTasks child = do
+    (shellS,shellR) <- liftP newChan
+    let clos = $(mkStaticClosure 'runActorManyRanks) `closureApply` child
+    sendACP $ ReqSpawnGroupN clos shellS res nTasks groupTy
+    (gid,mbox) <- liftP (receiveChan shellR)
+    msgs <- mapM unwrapMessage mbox
+    case sequence msgs of
+      Nothing -> error "Bad shell message"
+      Just  s -> return $ broadcast $ assembleShellGroup gid s
+    
 
 -- | Start group of collector processes
 startCollectorGroup
