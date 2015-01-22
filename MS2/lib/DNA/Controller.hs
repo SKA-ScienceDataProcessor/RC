@@ -24,6 +24,7 @@ module DNA.Controller (
     , ReqNumNodes(..)
     , ReqResources(..)
     , ReqResourcesGrp(..)
+    , DoneTask(..)
       -- * Node controller
     , nodeController
     , spawnHierachically
@@ -68,6 +69,7 @@ terminateACP (ACP pid) = liftP $ do
 data Terminate = Terminate
                 deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary Terminate
+
 
 
 ----------------------------------------------------------------
@@ -189,6 +191,11 @@ data ReqResourcesGrp = ReqResourcesGrp Res ResGroup [GrpFlag]
                     deriving (Show,Typeable,Generic)
 instance Binary ReqResourcesGrp
 
+-- | Command that process is ready
+data DoneTask = DoneTask
+                deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary DoneTask
+
 
 
 ----------------------------------------------------------------
@@ -221,6 +228,7 @@ acpStep st = receiveWait
     , msg handleChannelMsg
     , msg handleChannelMsgN
     , msg handleReady
+    , msg handleDone
       -- Connect children
     , msg handleConnect
       -- Monitoring notifications
@@ -377,8 +385,8 @@ handleConnect (ReqConnect (ActorGroup gid) dest port) = case dest of
         Just grp <- use $ stGroups . at gid
         case grp of
           GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
-          GrUnconnected ty nR ->
-              stGroups . at gid .= Just (GrConnected ty (nR,0) port [acp])
+          GrUnconnected ty nProc ->
+              stGroups . at gid .= Just (GrConnected ty nProc port [acp])
           GrConnected{}  -> fatal "Double connect"
           GrFailed       -> do terminateACP acp
                                dropGroup gid
@@ -387,8 +395,8 @@ handleConnect (ReqConnect (ActorGroup gid) dest port) = case dest of
         Just grp <- use $ stGroups . at gid
         case grp of
           GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
-          GrUnconnected ty nR ->
-              stGroups . at gid .= Just (GrConnected ty (nR,0) port (map ACP pids))
+          GrUnconnected ty nProc ->
+              stGroups . at gid .= Just (GrConnected ty nProc port (map ACP pids))
           GrConnected{} -> fatal "Double connect"
           GrFailed      -> do forM_ pids $ \p -> terminateACP (ACP p)
                               dropGroup gid
@@ -454,7 +462,7 @@ handleSpawnShellGroup (ReqSpawnGroup actor chShell res groupTy) = do
         stUsedResources  . at acp .= Just r
     -- FIXME: pass type of group
     stGroups . at gid .= Just
-        (GrShell groupTy chShell (length res) [])
+        (GrShell groupTy chShell (length res,0) [])
 
 -- > ReqSpawnGroupN
 --
@@ -489,7 +497,7 @@ handleSpawnShellGroupN (ReqSpawnGroupN actor chShell res nTasks groupTy) = do
         stUsedResources  . at acp .= Just r
     -- FIXME: pass type of group
     stGroups . at gid .= Just
-        (GrShell groupTy chShell (length res) [])
+        (GrShell groupTy chShell (length res, negate (length res)) [])
 
 
 -- > ProcessMonitorNotification
@@ -552,8 +560,8 @@ handleProcessCrash pid = do
            GrShell Normal _ _ _ -> do
                terminateGroup gid
                fatal "Shell group crashed. Cannot do anything"
-           GrShell Failout ch n msgs ->
-               return $ Just $ GrShell Failout ch (n-1) msgs
+           GrShell Failout ch (n,k) msgs ->
+               return $ Just $ GrShell Failout ch (n-1,k) msgs
            -- Normal groups
            GrUnconnected Normal _ -> do
                terminateGroup gid
@@ -563,8 +571,8 @@ handleProcessCrash pid = do
                forM_ acps terminateACP
                return Nothing
            -- Failout groups
-           GrUnconnected Failout n -> do
-               return $ Just $ GrUnconnected Failout (n-1)
+           GrUnconnected Failout (n,k) -> do
+               return $ Just $ GrUnconnected Failout (n-1,k)
            GrConnected Failout (1, nD) ch _ -> do
                liftP $ forM_ ch $ \c -> sendChan c nD
                return Nothing
@@ -589,12 +597,12 @@ handleChannelMsg (ACP pid,msg) = do
            _ -> fatal "Shell received twice"
         )
         (\g gid -> case g of
-           GrShell ty ch nR msgs -> case msg : msgs of
+           GrShell ty ch nProc@(nR,_) msgs -> case msg : msgs of
                msgs' | length msgs' == nR -> do
                            liftP $ sendChan ch (gid, msgs')
-                           return $ Just $ GrUnconnected ty nR
+                           return $ Just $ GrUnconnected ty nProc
                      | otherwise -> do
-                           return $ Just $ GrShell ty ch nR msgs'
+                           return $ Just $ GrShell ty ch nProc msgs'
            _ -> fatal "Invalid shell for group is received"
         )
 
@@ -607,18 +615,18 @@ handleChannelMsgN (ACP pid, chRank, msg) = do
         (fatal "Shell: unknown process")
         (\_ -> fatal "Shell: must be group")
         (\g gid -> case g of
-           GrShell ty ch nR msgs -> do
+           GrShell ty ch nProc@(nR,_) msgs -> do
                stPooledProcs . at gid %= fmap (chRank:)
                case msg : msgs of
                  msgs' | length msgs' == nR -> do
                              liftP $ sendChan ch (gid, msgs')
-                             return $ Just $ GrUnconnected ty nR
+                             return $ Just $ GrUnconnected ty nProc
                        | otherwise -> do
-                             return $ Just $ GrShell ty ch nR msgs'
+                             return $ Just $ GrShell ty ch nProc msgs'
            _ -> fatal "Invalid shell for group is received"
         )
 
--- (ProcessId, SendPort (Maybe Rank))
+-- (ACP, SendPort (Maybe Rank))
 handleReady :: (ACP, SendPort (Maybe Rank)) -> Controller ()
 handleReady (ACP pid,ch) = do
     Just (Right gid) <- use $ stChildren  . at pid
@@ -632,6 +640,17 @@ handleReady (ACP pid,ch) = do
           liftP $ sendChan ch (Just $ Rank n)
           stCountRank . at gid .= Just (n+1,nMax)
 
+-- (ACP, DoneTask)
+handleDone :: (ACP,DoneTask) -> Controller ()
+handleDone (ACP pid,_) = do
+    handlePidEvent pid
+        (fatal "Shell: unknown process")
+        (\_ -> fatal "Shell: must be group")
+        (\g _ -> case g of
+           GrConnected ty (nR,nD) ch acps -> do
+               return $ Just $ GrConnected ty (nR,nD+1) ch acps
+           _ -> fatal "Invalid shell for group is received"
+        )
 
 ----------------------------------------------------------------
 -- Operations on internal state
@@ -742,16 +761,16 @@ data ProcState
 
 -- State of group of processes
 data GroupState
-    = GrShell GroupType (SendPort (GroupID,[Message])) Int [Message]
+    = GrShell GroupType (SendPort (GroupID,[Message])) (Int,Int) [Message]
       -- We started processes but didn't assembled processes yet
       --  + Type of group
       --  + Port to send resulting shell
-      --  + N running processes
+      --  + N running processes, N completed[hack]
       --  + Accumulated shells
-    | GrUnconnected GroupType Int
+    | GrUnconnected GroupType (Int,Int)
       -- Group which is not connected yet
       --  + Type of group
-      --  + N running processes
+      --  + (N running processes, N completed[hack])
     | GrConnected GroupType (Int,Int) [SendPort Int] [ACP]
       -- Connected group
       --  + Type of group

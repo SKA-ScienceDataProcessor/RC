@@ -297,7 +297,6 @@ gatherM :: Serializable a => Group a -> (b -> a -> DNA b) -> b -> DNA b
 gatherM (Group chA chN) f x0 = do
     let loop n tot !b
             | n >= tot && tot >= 0= do
-                  liftIO $ print (n,tot) 
                   return b
         loop n tot !b = do
             r <- liftP $ receiveWait [ matchChan chA (return . Right)
@@ -403,6 +402,7 @@ runActorManyRanks (Actor action) = do
                 Nothing  -> return ()
                 Just rnk -> do !b  <- runDNA acp rnk grp (action a)
                                sendToDest dst b
+                               send parent (acp,DoneTask)
                                loop
     loop
 
