@@ -53,19 +53,11 @@ remotable [ 'gridActor
 doThemAll :: Actor () String
 doThemAll = actor $ \_ -> do
     (vis_file_name, ini_name) <- liftIO mkCfg
-    rsim <- select Local (N 0)
-    sim  <- startActor rsim $(mkStaticClosure 'rawSystemActor)
-    sendParam ("oskar_sim_interferometer", [ini_name]) sim
-    simwaiter <- delay Local sim
-    retcode <- await simwaiter
+    retcode <- eval rawSystemActor ("oskar_sim_interferometer", [ini_name])
     case retcode of
       Just err -> return $ "oskar_sim_interferometer failed with: " ++ show err
       Nothing -> do
-        rcvt <- select Local (N 0)
-        cvt  <- startActor rcvt $(mkStaticClosure 'convertVisActor)
-        sendParam vis_file_name cvt
-        cvtwaiter <- delay Local cvt
-        cvtstatus <- await cvtwaiter
+        cvtstatus <- eval convertVisActor vis_file_name
         if cvtstatus /= 0
           then return $ "uvwv convertor failed with: " ++ show cvtstatus
           else do
