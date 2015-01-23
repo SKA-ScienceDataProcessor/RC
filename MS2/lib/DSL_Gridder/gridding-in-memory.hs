@@ -65,11 +65,11 @@ doThemAll = actor $ \_ -> do
                    fnames = (uvw_filename vis_file_name, amp_filename vis_file_name)
                    grid_closure = $(mkStaticClosure 'gridActor)
                 --
-                rgridder1 <- select Remote (N 0)
+                rgridder1 <- select Remote (N 1)
                 gridder1  <- startActor rgridder1 grid_closure
                 waiter_gridder1 <- delay Remote gridder1
                 --
-                rgridder2 <- select Remote (N 0)
+                rgridder2 <- select Remote (N 1)
                 gridder2  <- startActor rgridder2 grid_closure
                 waiter_gridder2 <- delay Remote gridder2
                 --
