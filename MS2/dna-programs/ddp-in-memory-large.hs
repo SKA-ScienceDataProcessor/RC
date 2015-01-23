@@ -25,44 +25,22 @@ import DDP_Slice
 -- | Actor for calculating dot product
 ddpDotProduct :: Actor Int64 Double
 ddpDotProduct = actor $ \size -> do
-
-    -- Run generator & delay
-    resG   <- select Local (N 0)
-    shellG <- startActor resG $(mkStaticClosure 'ddpGenerateVector)
-    sendParam size shellG
-    fname <- duration "generate" . await =<< delay Remote shellG
-
-    -- Chunk into steps
-    let maxWorkSize = 10000000 -- Maxmimum elements to work on at a time
-        stepCount = fromIntegral $ ((size-1) `div` maxWorkSize)+1
-    liftIO $ putStrLn $ "Step count: " ++ show stepCount
-    stepResults <- forM (scatterSlice stepCount (Slice 0 size)) $ \slice -> do
-
-      -- Chunk & send out. Note that we are re-starting the actors for
-      -- every iteration. This is hardly ideal.
-      res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
-      shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSlice)
-      let slicer n = map ((,) fname) $ scatterSlice n slice
-      broadcastParamSlice slicer shell
-
-      -- Gather
-      partials <- delayGroup shell
-      x <- duration "collecting vectors" $ gather partials (+) 0
-      liftIO $ putStrLn $ "Partial sum: " ++ show x
-      return x
-
-    liftIO $ removeFile fname
-    return $ sum stepResults
+    -- Find how into how  many chunks we need to split vector
+    let nChunk = fromIntegral $ size `div` 100000
+    -- Chunk & send out
+    res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
+    shell <- startGroupN res Failout nChunk $(mkStaticClosure 'ddpProductSlice)
+    sendParam (Slice 0 size) shell
+    -- Collect results
+    partials <- delayGroup shell
+    x <- duration "collecting vectors" $ gather partials (+) 0
+    return x
 
 main :: IO ()
 main =  dnaRun rtable $ do
-
     -- Size of vectors. We can pre-compute the expected result.
-    let n = 800000000
-        ns = n `div` 4
-        seg_sum i = (2*i*ns + ns - 1) * ns `div` 2 * (i+1)
-        expected = fromIntegral $ sum (map seg_sum [0,1,2,3]) `div` 10
-
+    let n        = 20000000
+        expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
     -- Run it
     b <- eval ddpDotProduct n
     liftIO $ putStrLn $ concat

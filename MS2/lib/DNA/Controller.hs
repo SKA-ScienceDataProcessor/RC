@@ -19,10 +19,12 @@ module DNA.Controller (
     , GroupType(..)
     , ReqSpawnShell(..)
     , ReqSpawnGroup(..)
+    , ReqSpawnGroupN(..)
     , ReqConnect(..)
     , ReqNumNodes(..)
     , ReqResources(..)
     , ReqResourcesGrp(..)
+    , DoneTask(..)
       -- * Node controller
     , nodeController
     , spawnHierachically
@@ -69,6 +71,7 @@ data Terminate = Terminate
 instance Binary Terminate
 
 
+
 ----------------------------------------------------------------
 -- ACP implementation
 ----------------------------------------------------------------
@@ -101,6 +104,8 @@ startAcpLoop self pid (VirtualCAD _ n nodes) = do
                   , _stNodePool       = Set.fromList nodes
                   , _stAllocResources = Map.empty
                   , _stUsedResources  = Map.empty
+                  , _stPooledProcs    = Map.empty
+                  , _stCountRank      = Map.empty
                   }
 
 
@@ -150,17 +155,24 @@ data ReqSpawnGroup = ReqSpawnGroup
     (Closure (Process ()))      -- Actor's closure
     (SendPort (GroupID,[Message]))  -- Port to send Shell to
     [Resources]                 -- Resources ID for all actors
-    GroupType                   -- 
+    GroupType                   --
     deriving (Show,Typeable,Generic)
 instance Binary ReqSpawnGroup
 
+-- | Command to spawn group of shell actors
+data ReqSpawnGroupN = ReqSpawnGroupN
+    (Closure (Process ()))      -- Actor's closure
+    (SendPort (GroupID,[Message]))  -- Port to send Shell to
+    [Resources]                 -- Resources ID for all actors
+    Int                         -- Number of tasks to perform
+    GroupType                   --
+    deriving (Show,Typeable,Generic)
+instance Binary ReqSpawnGroupN
+
 
 -- | Command to mark process as connected to another actor
-data ReqConnect
-    = ReqConnectTo       ACP     ACP
-    | ReqConnectToGrp    ACP     GroupID
-    | ReqConnectGrp      GroupID ACP     [SendPort Int]
-    | ReqConnectGrpToGrp GroupID GroupID [SendPort Int]
+data ReqConnect =
+    ReqConnect ActorACP ActorACP [SendPort Int]
     deriving (Show,Typeable,Generic)
 instance Binary ReqConnect
 
@@ -178,6 +190,11 @@ instance Binary ReqResources
 data ReqResourcesGrp = ReqResourcesGrp Res ResGroup [GrpFlag]
                     deriving (Show,Typeable,Generic)
 instance Binary ReqResourcesGrp
+
+-- | Command that process is ready
+data DoneTask = DoneTask
+                deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary DoneTask
 
 
 
@@ -207,7 +224,11 @@ acpStep st = receiveWait
       -- Requests for spawning children\
     , msg handleSpawnShell
     , msg handleSpawnShellGroup
+    , msg handleSpawnShellGroupN
     , msg handleChannelMsg
+    , msg handleChannelMsgN
+    , msg handleReady
+    , msg handleDone
       -- Connect children
     , msg handleConnect
       -- Monitoring notifications
@@ -295,7 +316,6 @@ getFracNodes frac = do
     let n = length free
         k = round $ fromIntegral n * frac
     let (used,rest) = splitAt k free
-    liftIO $ print (k,n)
     stNodePool .= Set.fromList rest
     return used
 
@@ -344,40 +364,42 @@ toSizedChunks n items
 --
 -- Write down how processes are connected
 handleConnect :: ReqConnect -> Controller ()
-handleConnect (ReqConnectTo (ACP pid) dst) = do
-    Just st <- use $ stChildren . at pid
-    case st of
-      Right _ -> fatal "Impossible: group instead of process"
-      Left ShellProc{} -> fatal "Impossible: shell could not be connected"
-      Left Unconnected -> stChildren . at pid .= Just (Left (Connected [dst]))
-      Left _           -> fatal "Double connect"
-handleConnect (ReqConnectToGrp (ACP pid) gid) = do
-    Just st <- use $ stChildren . at pid
-    pids    <- getGroupPids gid
-    case st of
-      Right _          -> fatal "Impossible: group instead of process"
-      Left ShellProc{} -> fatal "Impossible: shell could not be connected"
-      Left Unconnected -> stChildren . at pid .= Just (Left (Connected (map ACP pids)))
-      Left _           -> fatal "Double connect"
-handleConnect (ReqConnectGrp gid acp port) = do
-    Just grp <- use $ stGroups . at gid
-    case grp of
-      GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
-      GrUnconnected ty nR ->
-          stGroups . at gid .= Just (GrConnected ty (nR,0) port [acp])
-      GrConnected{}  -> fatal "Double connect"
-      GrFailed       -> do terminateACP acp
-                           dropGroup gid
-handleConnect (ReqConnectGrpToGrp gid dstGid port) = do
-    pids <- getGroupPids dstGid
-    Just grp <- use $ stGroups . at gid
-    case grp of
-      GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
-      GrUnconnected ty nR ->
-          stGroups . at gid .= Just (GrConnected ty (nR,0) port (map ACP pids))
-      GrConnected{} -> fatal "Double connect"
-      GrFailed      -> do forM_ pids $ \p -> terminateACP (ACP p)
-                          dropGroup gid
+handleConnect (ReqConnect (SingleActor (ACP pid)) dest _) = case dest of
+    SingleActor dst -> do
+        Just st <- use $ stChildren . at pid
+        case st of
+          Right _          -> fatal "Impossible: group instead of process"
+          Left ShellProc{} -> fatal "Impossible: shell could not be connected"
+          Left Unconnected -> stChildren . at pid .= Just (Left (Connected [dst]))
+          Left _           -> fatal "Double connect"
+    ActorGroup gid -> do
+        Just st <- use $ stChildren . at pid
+        pids    <- getGroupPids gid
+        case st of
+          Right _          -> fatal "Impossible: group instead of process"
+          Left ShellProc{} -> fatal "Impossible: shell could not be connected"
+          Left Unconnected -> stChildren . at pid .= Just (Left (Connected (map ACP pids)))
+          Left _           -> fatal "Double connect"
+handleConnect (ReqConnect (ActorGroup gid) dest port) = case dest of
+    SingleActor acp -> do
+        Just grp <- use $ stGroups . at gid
+        case grp of
+          GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
+          GrUnconnected ty nProc ->
+              stGroups . at gid .= Just (GrConnected ty nProc port [acp])
+          GrConnected{}  -> fatal "Double connect"
+          GrFailed       -> do terminateACP acp
+                               dropGroup gid
+    ActorGroup dstGid -> do
+        pids <- getGroupPids dstGid
+        Just grp <- use $ stGroups . at gid
+        case grp of
+          GrShell{}      -> fatal "Impossible: group is still shell. Cannot connect"
+          GrUnconnected ty nProc ->
+              stGroups . at gid .= Just (GrConnected ty nProc port (map ACP pids))
+          GrConnected{} -> fatal "Double connect"
+          GrFailed      -> do forM_ pids $ \p -> terminateACP (ACP p)
+                              dropGroup gid
 
 
 -- > ReqSpawnShell
@@ -440,7 +462,42 @@ handleSpawnShellGroup (ReqSpawnGroup actor chShell res groupTy) = do
         stUsedResources  . at acp .= Just r
     -- FIXME: pass type of group
     stGroups . at gid .= Just
-        (GrShell groupTy chShell (length res) [])
+        (GrShell groupTy chShell (length res,0) [])
+
+-- > ReqSpawnGroupN
+--
+-- Spawn group of processes
+handleSpawnShellGroupN :: ReqSpawnGroupN -> Controller ()
+handleSpawnShellGroupN (ReqSpawnGroupN actor chShell res nTasks groupTy) = do
+    gid     <- GroupID <$> uniqID
+    acpClos <- use stAcpClosure
+    -- Spawn remote actors
+    --
+    -- FIXME: Here we require that none of nodes will fail while we
+    -- creating processes
+    stCountRank   . at gid .= Just (0,nTasks)
+    stPooledProcs . at gid .= Just []
+    forM_ res $ \rid -> do
+        Just r@(VirtualCAD _ n _) <- use $ stAllocResources . at rid
+        (acp,_) <- liftP $ spawnSupervised (nodeID n) acpClos
+        me <- liftP getSelfPid
+        liftP $ send acp ParamACP
+            { acpSelf         = acpClos
+            , acpActorClosure = actor
+            , acpVCAD  = r
+            , acpActor = ParamActor
+                { actorParentACP = me
+                , actorRank      = Rank (-1)
+                , actorGroupSize = GroupSize nTasks
+                }
+            }
+        -- Update process status
+        stChildren       . at acp .= Just (Right gid)
+        stAllocResources . at rid .= Nothing
+        stUsedResources  . at acp .= Just r
+    -- FIXME: pass type of group
+    stGroups . at gid .= Just
+        (GrShell groupTy chShell (length res, negate (length res)) [])
 
 
 -- > ProcessMonitorNotification
@@ -503,8 +560,8 @@ handleProcessCrash pid = do
            GrShell Normal _ _ _ -> do
                terminateGroup gid
                fatal "Shell group crashed. Cannot do anything"
-           GrShell Failout ch n msgs ->
-               return $ Just $ GrShell Failout ch (n-1) msgs
+           GrShell Failout ch (n,k) msgs ->
+               return $ Just $ GrShell Failout ch (n-1,k) msgs
            -- Normal groups
            GrUnconnected Normal _ -> do
                terminateGroup gid
@@ -514,8 +571,8 @@ handleProcessCrash pid = do
                forM_ acps terminateACP
                return Nothing
            -- Failout groups
-           GrUnconnected Failout n -> do
-               return $ Just $ GrUnconnected Failout (n-1)
+           GrUnconnected Failout (n,k) -> do
+               return $ Just $ GrUnconnected Failout (n-1,k)
            GrConnected Failout (1, nD) ch _ -> do
                liftP $ forM_ ch $ \c -> sendChan c nD
                return Nothing
@@ -526,11 +583,11 @@ handleProcessCrash pid = do
     dropPID pid
 
 
--- > (ProcessId,Message)
+-- > (ACP,Message)
 --
 -- Child process sent shell process back.
-handleChannelMsg :: (ProcessId,Message) -> Controller ()
-handleChannelMsg (pid,msg) = do
+handleChannelMsg :: (ACP,Message) -> Controller ()
+handleChannelMsg (ACP pid,msg) = do
     handlePidEvent pid
         (fatal "Shell: unknown process")
         (\p -> case p of
@@ -540,15 +597,60 @@ handleChannelMsg (pid,msg) = do
            _ -> fatal "Shell received twice"
         )
         (\g gid -> case g of
-           GrShell ty ch nR msgs -> case msg : msgs of
+           GrShell ty ch nProc@(nR,_) msgs -> case msg : msgs of
                msgs' | length msgs' == nR -> do
                            liftP $ sendChan ch (gid, msgs')
-                           return $ Just $ GrUnconnected ty nR
+                           return $ Just $ GrUnconnected ty nProc
                      | otherwise -> do
-                           return $ Just $ GrShell ty ch nR msgs'
+                           return $ Just $ GrShell ty ch nProc msgs'
            _ -> fatal "Invalid shell for group is received"
         )
 
+-- (ACP,SendPort (Maybe Rank),Message)
+--
+-- Child process sent shell process back
+handleChannelMsgN :: (ACP,SendPort (Maybe Rank),Message) -> Controller ()
+handleChannelMsgN (ACP pid, chRank, msg) = do
+    handlePidEvent pid
+        (fatal "Shell: unknown process")
+        (\_ -> fatal "Shell: must be group")
+        (\g gid -> case g of
+           GrShell ty ch nProc@(nR,_) msgs -> do
+               stPooledProcs . at gid %= fmap (chRank:)
+               case msg : msgs of
+                 msgs' | length msgs' == nR -> do
+                             liftP $ sendChan ch (gid, msgs')
+                             return $ Just $ GrUnconnected ty nProc
+                       | otherwise -> do
+                             return $ Just $ GrShell ty ch nProc msgs'
+           _ -> fatal "Invalid shell for group is received"
+        )
+
+-- (ACP, SendPort (Maybe Rank))
+handleReady :: (ACP, SendPort (Maybe Rank)) -> Controller ()
+handleReady (ACP pid,ch) = do
+    Just (Right gid) <- use $ stChildren  . at pid
+    Just (n,nMax)    <- use $ stCountRank . at gid
+    case () of
+      _| n >= nMax -> do
+          Just chans <- use $ stPooledProcs . at gid
+          liftP $ forM_ chans $ \c ->
+              sendChan c Nothing
+       | otherwise -> do
+          liftP $ sendChan ch (Just $ Rank n)
+          stCountRank . at gid .= Just (n+1,nMax)
+
+-- (ACP, DoneTask)
+handleDone :: (ACP,DoneTask) -> Controller ()
+handleDone (ACP pid,_) = do
+    handlePidEvent pid
+        (fatal "Shell: unknown process")
+        (\_ -> fatal "Shell: must be group")
+        (\g _ -> case g of
+           GrConnected ty (nR,nD) ch acps -> do
+               return $ Just $ GrConnected ty (nR,nD+1) ch acps
+           _ -> fatal "Invalid shell for group is received"
+        )
 
 ----------------------------------------------------------------
 -- Operations on internal state
@@ -593,7 +695,9 @@ dropPID pid = do
 -- Remove GID from process registry
 dropGroup :: GroupID -> Controller ()
 dropGroup gid = do
-    stGroups . at gid .= Nothing
+    stGroups      . at gid .= Nothing
+    stPooledProcs . at gid .= Nothing
+    stCountRank   . at gid .= Nothing
     children <- use stChildren
     let pids = [p | (p,Right gid') <- Map.toList children
                   , gid' == gid
@@ -637,6 +741,8 @@ data StateACP = StateACP
       -- them yet.
     , _stUsedResources :: !(Map ProcessId VirtualCAD)
       -- Resources used by some process
+    , _stPooledProcs   :: !(Map GroupID [SendPort (Maybe Rank)])
+    , _stCountRank     :: !(Map GroupID (Int,Int))
     }
     deriving (Show)
 
@@ -655,16 +761,16 @@ data ProcState
 
 -- State of group of processes
 data GroupState
-    = GrShell GroupType (SendPort (GroupID,[Message])) Int [Message]
+    = GrShell GroupType (SendPort (GroupID,[Message])) (Int,Int) [Message]
       -- We started processes but didn't assembled processes yet
       --  + Type of group
       --  + Port to send resulting shell
-      --  + N running processes
+      --  + N running processes, N completed[hack]
       --  + Accumulated shells
-    | GrUnconnected GroupType Int
+    | GrUnconnected GroupType (Int,Int)
       -- Group which is not connected yet
       --  + Type of group
-      --  + N running processes
+      --  + (N running processes, N completed[hack])
     | GrConnected GroupType (Int,Int) [SendPort Int] [ACP]
       -- Connected group
       --  + Type of group
@@ -702,7 +808,11 @@ stAllocResources = lens _stAllocResources (\a x -> x { _stAllocResources = a})
 stUsedResources :: Lens' StateACP (Map ProcessId VirtualCAD)
 stUsedResources = lens _stUsedResources (\a x -> x { _stUsedResources = a})
 
+stPooledProcs :: Lens' StateACP (Map GroupID [SendPort (Maybe Rank)])
+stPooledProcs = lens _stPooledProcs (\a x -> x { _stPooledProcs = a })
 
+stCountRank :: Lens' StateACP (Map GroupID (Int,Int))
+stCountRank = lens _stCountRank (\a x -> x { _stCountRank = a})
 
 
 -- Generate unique ID

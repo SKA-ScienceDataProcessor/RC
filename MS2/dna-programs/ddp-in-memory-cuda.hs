@@ -5,11 +5,14 @@ import DNA.Channel.File (readDataMMap)
 import DNA
 
 import DDP
-import DDP_Slice
+import DDP_Slice_CUDA
 
 
 ----------------------------------------------------------------
 -- Distributed dot product
+--
+-- Note that actors which do not spawn actors on other nodes do not
+-- receive CAD.
 ----------------------------------------------------------------
 
 ddpCollector :: CollectActor Double Double
@@ -39,5 +42,5 @@ main = dnaRun rtable $ do
     liftIO $ putStrLn $ "RESULT: " ++ show b
   where
     rtable = DDP.__remoteTable
-           . DDP_Slice.__remoteTable
+           . DDP_Slice_CUDA.__remoteTable
            . Main.__remoteTable
