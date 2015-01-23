@@ -1,0 +1,19 @@
+OPT=$(HOME)/data/opt
+INC=$(OPT)/include/oskar
+LIB=$(OPT)/lib
+CXX=g++
+INCFLAGS=-I../o2a -I$(INC) -I$(INC)/apps/log -I$(INC)/utility -I$(INC)/interferometry -I$(INC)/station -I$(INC)/element -I$(INC)/splines -I$(INC)/settings/struct
+CXXFLAGS=-O3 -Wall -std=c++11 $(INCFLAGS)
+
+all: binner
+
+binner: binner.o o2a.o
+	$(CXX) -o binner binner.o o2a.o -L$(LIB) -loskar
+
+binner.o: binner.cpp binner.h
+
+o2a.o: ../o2a/o2a.cpp ../o2a/o2a.h
+	$(CXX) $(CXXFLAGS) -c ../o2a/o2a.cpp
+
+clean:
+	rm -f *.o

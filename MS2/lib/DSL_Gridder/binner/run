@@ -1,0 +1,4 @@
+#!/bin/bash
+rm -f -R bins
+mkdir bins
+../se.sh ./binner ../1-72-100000000.0.vis
