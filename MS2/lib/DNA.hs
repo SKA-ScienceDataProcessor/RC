@@ -18,6 +18,7 @@ module DNA (
     , Grp
     , Scatter
     , eval
+    , evalClosure
     , startActor
     , startCollector
     , startGroup

@@ -36,6 +36,7 @@ module DNA.DNA (
     , Val
     , Grp
     , eval
+    , evalClosure
     , startActor
     , startCollector
     , startGroup
@@ -503,6 +504,16 @@ eval :: (Serializable a, Serializable b)
      -> DNA b
 eval (Actor act) a = do
     logMessage "executing: eval"
+    act a
+
+-- | Evaluate actor without forking off enother thread
+evalClosure :: (Serializable a, Serializable b)
+            => Closure (Actor a b)
+            -> a
+            -> DNA b
+evalClosure clos a = do
+    logMessage "executing: eval"
+    Actor act <- liftP $ unClosure clos
     act a
 
 
