@@ -36,16 +36,16 @@ mkCfg =
        writeFile ini_name (showSettings os)
        return (vis_name, ini_name)
 
-gridActor :: Actor (String, Closure GridderActor, GridderParams, Shell (Val (Maybe (FilePath, GridData))) (Val String)) Int
-gridActor = actor $ \(gridder_name, closure, params, wri_shell) -> do
-    r <- select Local (N 0)
-    act <- startActor r closure
-    sendParam params act
-    waiter <- delay Local act
-    res <- await waiter
+gridActor :: Actor (String, Closure GridderActor, GridderParams) (Int,String)
+gridActor = actor $ \(gridder_name, closure, params) -> do
+    res <- evalClosure closure params
     case res of
-      Left status -> sendParam Nothing wri_shell >> return (fromGStatus status)
-      Right griddata -> sendParam (Just (gridder_name ++ ".dat", griddata)) wri_shell >> return 0
+      Left  status   -> do
+          r <- eval writeResultsActor Nothing
+          return (fromGStatus status, r)
+      Right griddata -> do
+          r  <- eval writeResultsActor (Just (gridder_name ++ ".dat", griddata))
+          return (0, r)
 
 remotable [ 'gridActor
           ]
@@ -71,33 +71,21 @@ doThemAll = actor $ \_ -> do
           else do
                 let
                    fnames = (uvw_filename vis_file_name, amp_filename vis_file_name)
-                   write_closure = $(mkStaticClosure 'writeResultsActor)
                    grid_closure = $(mkStaticClosure 'gridActor)
                 --
-                rwri1 <- select Local (N 0)
-                wri1 <- startActor rwri1 write_closure
-                waiter_wri1 <- delay Local wri1
-                --
-                rwri2 <- select Local (N 0)
-                wri2 <- startActor rwri2 write_closure
-                waiter_wri2 <- delay Local wri2
-                --
-                rgridder1 <- select Local (N 0)
+                rgridder1 <- select Remote (N 0)
                 gridder1  <- startActor rgridder1 grid_closure
-                waiter_gridder1 <- delay Local gridder1
+                waiter_gridder1 <- delay Remote gridder1
                 --
-                rgridder2 <- select Local (N 0)
+                rgridder2 <- select Remote (N 0)
                 gridder2  <- startActor rgridder2 grid_closure
-                waiter_gridder2 <- delay Local gridder2
+                waiter_gridder2 <- delay Remote gridder2
                 --
-                sendParam ("Romein", $(mkStaticClosure 'romeinActor), fnames, wri1) gridder1
-                sendParam ("Halide", $(mkStaticClosure 'halideActor), fnames, wri2) gridder2
+                sendParam ("Romein", $(mkStaticClosure 'romeinActor), fnames) gridder1
+                sendParam ("Halide", $(mkStaticClosure 'halideActor), fnames) gridder2
                 -- Ignore them for now. Writer should spit some diagnostics.
-                _rcode1 <- await waiter_gridder1
-                _rcode2 <- await waiter_gridder2
-                --
-                msg1 <- await waiter_wri1
-                msg2 <- await waiter_wri2
+                (_rcode1,msg1) <- await waiter_gridder1
+                (_rcode2,msg2) <- await waiter_gridder2
                 return $ printf "Finished with:\n\t%s from the 1st writer,\n\ts from the 2nd writer" msg1 msg2
 
 main :: IO ()
