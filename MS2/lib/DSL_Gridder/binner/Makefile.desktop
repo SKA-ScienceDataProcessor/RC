@@ -3,7 +3,7 @@ INC=$(OPT)/include/oskar
 LIB=$(OPT)/lib
 CXX=g++
 INCFLAGS=-I../o2a -I$(INC) -I$(INC)/apps/log -I$(INC)/utility -I$(INC)/interferometry -I$(INC)/station -I$(INC)/element -I$(INC)/splines -I$(INC)/settings/struct
-CXXFLAGS=-O3 -Wall -std=c++11 $(INCFLAGS)
+CXXFLAGS=-O3 -Wall -std=c++11 $(INCFLAGS) ## -DNO_MARGINS
 
 all: binner
 

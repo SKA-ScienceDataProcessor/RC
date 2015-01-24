@@ -228,6 +228,8 @@ int main(int argc, char * argv[]) {
             p = {us, vs, ws, amp};
             assert(uint(usi) < DIVIDERS && uint(vsi) < DIVIDERS);
             files.put_point(ch, /* ts, */ uint(usi), uint(vsi), p);
+
+#ifndef NO_MARGINS
             // Now we should also check if the point lies in the "margins" of adjacent bins
 
             bool leftm, rightm, topm, botm;
@@ -259,6 +261,7 @@ int main(int argc, char * argv[]) {
               files.put_point(ch, /* ts, */ uint(usi+1.0), uint(vsi+1.0), p);
             else if (rightm && botm)
               files.put_point(ch, /* ts, */ uint(usi+1.0), uint(vsi-1.0), p);
+#endif
           }
         }
       }
