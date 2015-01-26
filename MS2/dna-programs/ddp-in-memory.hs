@@ -27,8 +27,11 @@ ddpDotProduct = actor $ \size -> do
 
 main :: IO ()
 main =  dnaRun rtable $ do
-    -- Size of vectors. We can pre-compute the expected result.
-    let n        = 1*1000*1000
+    -- Vector size:
+    --
+    -- > 100e4 doubles per node = 800 MB per node
+    -- > 4 nodes
+    let n        = 400*1000*1000
         expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
     -- Run it
     b <- eval ddpDotProduct n
