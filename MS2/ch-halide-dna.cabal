@@ -99,6 +99,23 @@ executable ddp-in-memory-collector
     DDP
     DDP_Slice
 
+executable ddp-in-memory-failure
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             ddp-in-memory-failure.hs
+  build-depends:
+    base >=4.6,
+    ch-dna,
+    binary,
+    bytestring,
+    data-binary-ieee754,
+    vector >= 0.10,
+    directory
+  other-modules:
+    DDP
+    DDP_Slice
+
 executable ddp-in-memory-hierachical
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -eventlog
