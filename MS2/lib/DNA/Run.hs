@@ -118,9 +118,11 @@ slurmLocalID = do
 slurmHosts :: IO [(String,Int)]
 slurmHosts = do
     nodeListStr <- getEnv "SLURM_NODELIST"
-    numNodesStr <- split ',' <$> getEnv "SLURM_TASKS_PER_NODE"
+    numNodesStr <- getEnv "SLURM_TASKS_PER_NODE"
+    eventMessage $ "SLURM_NODELIST=" ++ nodeListStr
+    eventMessage $ "SLURM_TASKS_PER_NODE=" ++ numNodesStr
     let nodeList = runReadP parseNodeList nodeListStr
-        numNodes = runReadP parseNumNode  =<< numNodesStr
+        numNodes = runReadP parseNumNode  =<< split ','numNodesStr
     when (length nodeList /= length numNodes) $
         error "Length of SLURM_NODELIST and SLURM_TASKS_PER_NODE does not match"
     return $ nodeList `zip` numNodes
