@@ -173,7 +173,7 @@ data Chunk = Str String          -- String chunk
 runReadP :: ReadP a -> String -> a
 runReadP p s = case readP_to_S p s of
     [(a,"")] -> a
-    _        -> error "Cannot parse!"
+    _        -> error $ "Cannot parse string: '" ++ s ++ "'"
 
 
 
