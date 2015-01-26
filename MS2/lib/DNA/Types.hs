@@ -143,8 +143,6 @@ data Dest a
       -- ^ Send result using using unsafe primitive
     | SendRemote [SendPort a]
       -- ^ Send result using standard primitives
-    | SendPool
-      -- ^ Send value to a pool of worker processes
     deriving (Show,Typeable,Generic)
 
 instance Binary a => Binary (CAD a)
@@ -179,6 +177,9 @@ data Grp a
 data Scatter a
     deriving (Typeable)
 
+data MR a
+    deriving (Typeable)
+
 
 -- | Way to encode
 data ActorACP = SingleActor ACP
@@ -196,13 +197,19 @@ data Shell a b = Shell
 -- Quadratic number of instances in number of type tags. Sigh
 instance (Serializable a, Serializable b) => Binary (Shell (Val     a) (Val     b))
 instance (Serializable a, Serializable b) => Binary (Shell (Val     a) (Grp     b))
--- instance (Serializable a, Serializable b) => Binary (Shell (Val     a) (Scatter b))
+instance (Serializable a, Serializable b) => Binary (Shell (Val     a) (MR      b))
+--
 instance (Serializable a, Serializable b) => Binary (Shell (Grp     a) (Val     b))
 instance (Serializable a, Serializable b) => Binary (Shell (Grp     a) (Grp     b))
--- instance (Serializable a, Serializable b) => Binary (Shell (Grp     a) (Scatter b))
+instance (Serializable a, Serializable b) => Binary (Shell (Grp     a) (MR      b))
+--
 instance (Serializable a, Serializable b) => Binary (Shell (Scatter a) (Val     b))
 instance (Serializable a, Serializable b) => Binary (Shell (Scatter a) (Grp     b))
--- instance (Serializable a, Serializable b) => Binary (Shell (Scatter a) (Scatter b))
+instance (Serializable a, Serializable b) => Binary (Shell (Scatter a) (MR      b))
+--
+instance (Serializable a, Serializable b) => Binary (Shell (MR      a) (Val     b))
+instance (Serializable a, Serializable b) => Binary (Shell (MR      a) (Grp     b))
+instance (Serializable a, Serializable b) => Binary (Shell (MR      a) (MR      b))
 
 
 
@@ -220,6 +227,9 @@ data RecvEnd a where
     -- | Actor(s) which reduces set of values
     RecvReduce :: [(SendPort Int,SendPort a)]
                -> RecvEnd (Grp a)
+    -- | Actors which reduce output of mappers
+    RecvMR :: [(SendPort Int, SendPort (Maybe a))]
+           -> RecvEnd (MR a) 
     deriving (Typeable)
 
 
@@ -231,6 +241,9 @@ data SendEnd a where
     -- | Actor sends group of values
     SendGrp :: [SendPort (Dest a)]
             -> SendEnd (Grp a)
+    -- | Actor sends group of streams
+    SendMR  :: [SendPort [SendPort (Maybe a)]]
+            -> SendEnd (MR a)
     deriving (Typeable)
 
 instance (Typeable a, Binary a) => Binary (RecvEnd (Val a)) where
@@ -259,6 +272,15 @@ instance (Typeable a, Binary a) => Binary (RecvEnd (Grp a)) where
           4 -> RecvReduce <$> get
           _ -> fail "Bad tag"
 
+instance (Typeable a, Binary a) => Binary (RecvEnd (MR a)) where
+    put (RecvMR a) = putWord8 5 >> put a
+    get = do
+        t <- getWord8
+        case t of
+          5 -> RecvMR <$> get
+          _ -> fail "Bad tag"
+
+
 
 instance (Typeable a, Binary a) => Binary (SendEnd (Val a)) where
     put (SendVal ch) = putWord8 1 >> put ch
@@ -274,4 +296,12 @@ instance (Typeable a, Binary a) => Binary (SendEnd (Grp a)) where
         t <- getWord8
         case t of
           2 -> SendGrp <$> get
+          _ -> fail "Bad tag"
+
+instance (Typeable a, Binary a) => Binary (SendEnd (MR a)) where
+    put (SendMR a) = putWord8 3 >> put a
+    get = do
+        t <- getWord8
+        case t of
+          3 -> SendMR <$> get
           _ -> fail "Bad tag"

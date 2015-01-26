@@ -31,6 +31,8 @@ module DNA.DNA (
     , actor
     , CollectActor(..)
     , collectActor
+    , Mapper(..)
+    , mapper
       -- ** Shell actors
     , Shell(..)
     , Val
@@ -42,6 +44,8 @@ module DNA.DNA (
     , startGroup
     , startGroupN
     , startCollectorGroup
+    , startCollectorGroupMR
+    , startMappers
       -- * CAD & Co
     , CAD(..)
     , makeCAD
@@ -184,6 +188,23 @@ collectActor
 collectActor = CollectActor
 
 
+-- | Mapper actor. Essentially unfoldr
+data Mapper a b where
+    Mapper :: (Serializable a, Serializable b, Serializable s)
+           => (a -> DNA s)
+           -> (s -> DNA (Maybe (s,b)))
+           -> (Int -> b -> Int)
+           -> Mapper a b
+    deriving (Typeable)
+
+mapper :: (Serializable a, Serializable b, Serializable s)
+       => (a -> DNA s)
+       -> (s -> DNA (Maybe (s, b)))
+       -> (Int -> b -> Int)
+       -> Mapper a b
+mapper = Mapper
+
+
 
 ----------------------------------------------------------------
 -- CAD
@@ -271,10 +292,15 @@ connect (Shell childA _ sendEnd) (Shell childB recvEnd _) = do
           let chB = map snd chReduce
           liftP $ forM_ chDst $ \ch -> sendChan ch $ SendRemote chB
           sendACP $ ReqConnect childA childB [chN | (chN,_) <- chReduce ]
+      -- MR
+      (SendMR chDst, RecvMR chans) -> do
+          let chB = map snd chans
+          liftP $ forM_ chDst $ \ch -> sendChan ch chB
+          sendACP $ ReqConnect childA childB [chN | (chN,_) <- chans]
       -- IMPOSSIBLE
       --
       -- GHC cannot understand that pattern match is exhaustive
-      _ -> error "Impossible"
+      _ -> error "Impossible: pattern match is not exhaustive"
 
 
 
@@ -368,15 +394,6 @@ runActor (Actor action) = do
     !b  <- runDNA acp rnk grp (action a)
     sendToDestChan chRecvDst b
 
--- | Run actor in the pool of actors
-runPoolActor :: Actor a b -> Process ()
-runPoolActor (Actor action) = do
-    -- Obtain parameters
-    -- (acp,ParamActor parent rnk grp) <- expect
-    -- Create channels for communication
-    -- Send back shell process back
-    return ()
-
 -- | Run actor for group of processes which allow more than 1 task per
 --   actor.
 runActorManyRanks :: Actor a b -> Process ()
@@ -427,6 +444,64 @@ runCollectActor (CollectActor step start fini) = do
         s  <- gatherM (Group chRecvParam chRecvN) step s0
         fini s
     sendToDestChan chRecvDst b
+
+-- | Start execution of collector actor
+runCollectActorMR :: CollectActor a b -> Process ()
+runCollectActorMR (CollectActor step start fini) = do
+    -- Obtain parameters
+    (acp,ParamActor parent rnk grp) <- expect
+    -- Create channels for communication
+    (chSendParam,chRecvParam) <- newChan
+    (chSendDst,  chRecvDst  ) <- newChan
+    (chSendN,    chRecvN    ) <- newChan
+    -- Send shell process description back
+    let shell = Shell (SingleActor acp)
+                      (RecvMR    [(chSendN,chSendParam)])
+                      (SendVal    chSendDst)
+    send parent (acp, wrapMessage shell)
+    -- Start execution of an actor
+    let loop n tot !b
+          | n >= tot && tot >= 0 = return b
+          | otherwise = do
+              r <- liftP $ receiveWait [ matchChan chRecvParam (return . Right)
+                                       , matchChan chRecvN     (return . Left)
+                                       ]
+              case r of
+                Right (Just a) -> loop n tot =<< step b a
+                Right Nothing  -> loop (n+1) tot b
+                Left  k        -> loop n k b
+    b <- runDNA acp rnk grp $ fini =<< loop 0 (-1) =<< start
+    sendToDestChan chRecvDst b
+
+
+runMapperActor :: Mapper a b -> Process ()
+runMapperActor (Mapper start step shuffle) = do
+    -- Obtain parameters
+    (acp,ParamActor parent rnk grp) <- expect
+    -- Create channels for communication
+    (chSendParam,chRecvParam) <- newChan
+    (chSendDst,  chRecvDst  ) <- newChan
+    -- Send shell process description back
+    let shell = Shell (SingleActor acp)
+                      (RecvVal chSendParam)
+                      (SendMR [chSendDst])
+    send parent (acp, wrapMessage shell)
+    -- Get initial parameters for unfolding
+    a  <- receiveChan chRecvParam
+    s0 <- runDNA acp rnk grp $ start a
+    -- Get destination
+    dst <- receiveChan chRecvDst
+    -- Unfoldr loop
+    let n = length dst
+    let loop s = do
+            ms <- runDNA acp rnk grp $ step s
+            case ms of
+              Nothing     -> return ()
+              Just (s',b) -> do let i = shuffle n b
+                                sendChan (dst !! i) (Just b)
+                                loop s'
+    loop s0
+    forM_ dst $ \ch -> sendChan ch Nothing
 
 -- | Start execution of DNA program
 runDnaProgram :: DNA () -> Process ()
@@ -488,7 +563,9 @@ runMasterACP (ParamACP self () resources actorP) act = do
 
 remotable [ 'runActor
           , 'runActorManyRanks
+          , 'runCollectActorMR
           , 'runCollectActor
+          , 'runMapperActor
           , 'runACP
           ]
 
@@ -512,7 +589,7 @@ evalClosure :: (Serializable a, Serializable b)
             -> a
             -> DNA b
 evalClosure clos a = do
-    logMessage "executing: eval"
+    logMessage "executing: evalClosure"
     Actor act <- liftP $ unClosure clos
     act a
 
@@ -576,7 +653,7 @@ assembleShellGroup gid shells =
     getSend (Shell _ _ (SendVal ch)) = ch
 
 
--- | Start group of processes where 
+-- | Start group of processes where we have more tasks then processes.
 startGroupN
     :: (Serializable a, Serializable b)
     => [Resources] -- ^ Resources for actors
@@ -615,10 +692,70 @@ startCollectorGroup res groupTy child = do
 assembleShellGroupCollect :: GroupID -> [Shell (Grp a) (Val b)] -> Shell (Grp a) (Grp b)
 assembleShellGroupCollect gid shells =
     Shell (ActorGroup gid)
-          undefined
-          (SendGrp $ map getSend shells)
+          (RecvReduce $ getRecv =<< shells)
+          (SendGrp    $ map getSend shells)
   where
     getRecv :: Shell (Grp a) b -> [(SendPort Int, SendPort a)]
     getRecv (Shell _ (RecvReduce ch) _) = ch
     getSend :: Shell a (Val b) -> SendPort (Dest b)
     getSend (Shell _ _ (SendVal ch)) = ch
+
+
+-- | Start group of collector processes
+startCollectorGroupMR
+    :: (Serializable a, Serializable b)
+    => [Resources]
+    -> GroupType
+    -> Closure (CollectActor a b)
+    -> DNA (Shell (MR a) (Grp b))
+startCollectorGroupMR res groupTy child = do
+    (shellS,shellR) <- liftP newChan
+    let clos = $(mkStaticClosure 'runCollectActorMR) `closureApply` child
+    sendACP $ ReqSpawnGroup clos shellS res groupTy
+    (gid,mbox) <- liftP (receiveChan shellR)
+    msgs <- mapM unwrapMessage mbox
+    case sequence msgs of
+      Nothing -> error "Bad shell message"
+      Just  s -> return $ assembleShellGroupCollectMR gid s
+
+assembleShellGroupCollectMR :: GroupID -> [Shell (MR a) (Val b)] -> Shell (MR a) (Grp b)
+assembleShellGroupCollectMR gid shells =
+    Shell (ActorGroup gid)
+          (RecvMR  $ getRecv =<< shells)
+          (SendGrp $ map getSend shells)
+  where
+    getRecv :: Shell (MR a) b -> [(SendPort Int, SendPort (Maybe a))]
+    getRecv (Shell _ (RecvMR ch) _) = ch
+    getSend :: Shell a (Val b) -> SendPort (Dest b)
+    getSend (Shell _ _ (SendVal ch)) = ch
+
+
+-- | Start group of mapper processes
+startMappers
+    :: (Serializable a, Serializable b)
+    => [Resources]
+    -> GroupType
+    -> Closure (Mapper a b)
+    -> DNA (Shell (Scatter a) (MR b))
+startMappers res groupTy child = do
+    (shellS,shellR) <- liftP newChan
+    let clos = $(mkStaticClosure 'runMapperActor) `closureApply` child
+    sendACP $ ReqSpawnGroup clos shellS res groupTy
+    (gid,mbox) <- liftP (receiveChan shellR)
+    msgs <- mapM unwrapMessage mbox
+    case sequence msgs of
+      Nothing -> error "Bad shell message"
+      Just  s -> return $ assembleShellMapper gid s
+
+    
+assembleShellMapper :: GroupID -> [Shell (Val a) (MR b)] -> Shell (Scatter a) (MR b)
+assembleShellMapper gid shells =
+    Shell (ActorGroup gid)
+          (RecvGrp $ map getRecv shells)
+          (SendMR  $ getSend =<< shells)
+  where
+    getRecv :: Shell (Val a) b -> SendPort a
+    getRecv (Shell _ (RecvVal ch) _) = ch
+    getRecv _ = error "assembleShellGroup: unexpected type of shell process"
+    getSend :: Shell a (MR b) -> [SendPort [SendPort (Maybe b)]]
+    getSend (Shell _ _ (SendMR ch)) = ch

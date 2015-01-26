@@ -12,6 +12,8 @@ module DNA (
     , actor
     , CollectActor
     , collectActor
+    , Mapper
+    , mapper
       -- ** Shell actors
     , Shell
     , Val
@@ -24,6 +26,8 @@ module DNA (
     , startGroup
     , startGroupN
     , startCollectorGroup
+    , startCollectorGroupMR
+    , startMappers
       -- * CAD & Co
     , CAD
     , Location(..)

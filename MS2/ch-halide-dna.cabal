@@ -149,6 +149,21 @@ executable ddp-in-memory-large
     DDP
     DDP_Slice
 
+executable map-reduce
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             map-reduce.hs
+  build-depends:
+    base >=4.6,
+    ch-dna,
+    binary,
+    bytestring,
+    containers
+  other-modules:
+    DDP
+    DDP_Slice
+
 -- executable dna-gridding
 --   -- needs custom Setup.hs, I guess. Also needs stdc++ library.
 --   default-language:    Haskell2010
