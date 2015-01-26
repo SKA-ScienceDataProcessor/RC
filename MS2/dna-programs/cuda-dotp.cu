@@ -1,7 +1,7 @@
 
 #include <stdio.h>
 /* Global variable for returning result of computation */
-__device__ double g_res;
+__device__ float g_res;
 
 
 /* CUDA kernel for dot product. Optimized for brevity
@@ -42,7 +42,7 @@ double calculate_dot_p(double xs[], double ys[], int n) {
     // Free buffers & obtain data
     cudaFree( &buf_xs );
     cudaFree( &buf_ys );
-    double res;
-    GPU_ASSERT( cudaMemcpyFromSymbol(&res, g_res, sizeof(double), 0, cudaMemcpyDeviceToHost) );
+    float res;
+    GPU_ASSERT( cudaMemcpyFromSymbol(&res, g_res, sizeof(res), 0, cudaMemcpyDeviceToHost) );
     return res;
 }
