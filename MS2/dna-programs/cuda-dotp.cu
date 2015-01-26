@@ -1,7 +1,7 @@
 
 #include <stdio.h>
 /* Global variable for returning result of computation */
-__device__ float g_res;
+__device__ double g_res;
 
 
 /* CUDA kernel for dot product. Optimized for brevity
