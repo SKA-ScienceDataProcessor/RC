@@ -48,10 +48,20 @@ ddpDotProductMaster = actor $ \size -> do
 
 
 main :: IO ()
-main = do
-    dnaRun rtable $ do
-        b <- eval ddpDotProductMaster (Slice 0 20000000)
-        liftIO $ putStrLn $ "RESULT: " ++ show b
+main = dnaRun rtable $ do
+    -- Vector size:
+    --
+    -- > 100e4 doubles per node = 800 MB per node
+    -- > 20 nodes
+    let n        = 2000*1000*1000
+        expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
+    -- Run it
+    b <- eval ddpDotProduct (Slice 0 n)
+    liftIO $ putStrLn $ concat
+      [ "RESULT: ", show b
+      , " EXPECTED: ", show expected
+      , if b == expected then " -- ok" else " -- WRONG!"
+      ]
   where
     rtable = DDP.__remoteTable
            . DDP_Slice.__remoteTable  

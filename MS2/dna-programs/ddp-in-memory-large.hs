@@ -1,13 +1,7 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE BangPatterns #-}
 module Main(main) where
 
-import Control.Monad ( forM )
-
 import Data.Int
-
-import System.Directory ( removeFile )
 
 import DNA
 
@@ -26,7 +20,7 @@ import DDP_Slice
 ddpDotProduct :: Actor Int64 Double
 ddpDotProduct = actor $ \size -> do
     -- Find how into how  many chunks we need to split vector
-    let nChunk = fromIntegral $ size `div` 100000
+    let nChunk = fromIntegral $ size `div` (100*1000*1000)
     -- Chunk & send out
     res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
     shell <- startGroupN res Failout nChunk $(mkStaticClosure 'ddpProductSlice)
@@ -39,7 +33,11 @@ ddpDotProduct = actor $ \size -> do
 main :: IO ()
 main =  dnaRun rtable $ do
     -- Size of vectors. We can pre-compute the expected result.
-    let n        = 20000000
+    --
+    -- > + 100e4 doubles per node/per run
+    -- > + 4 runs per/node
+    -- > + 4 nodes
+    let n        = 1600*1000*1000
         expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
     -- Run it
     b <- eval ddpDotProduct n
