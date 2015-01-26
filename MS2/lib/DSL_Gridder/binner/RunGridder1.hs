@@ -46,18 +46,18 @@ main = let gridsize = 2048 * 2048 * vis_size in do
               if doMe
                 then do
                   (data_ptr_host, data_rawsize, data_offset, data_size) <- mmapFilePtr binfile ReadOnly Nothing
-                  CUDA.allocaArray data_size $ \(data_in :: RawPtr) -> do
-                     CUDA.pokeArray data_size (plusPtr data_ptr_host data_offset) data_in
-                     CUDA.launchKernel grid_kernel (16,16, 1) (8,8,1) 0 Nothing
-                       [CUDA.IArg 8, CUDA.IArg 7, CUDA.VArg data_in, CUDA.IArg(fromIntegral $ data_size `div` vis_data_size), CUDA.VArg gcf_in, CUDA.VArg grid_out]
-                     return $ Just (data_ptr_host, data_rawsize)
+                  data_in <- CUDA.mallocArray data_size :: IO RawPtr
+                  CUDA.pokeArray data_size (plusPtr data_ptr_host data_offset) data_in
+                  CUDA.launchKernel grid_kernel (16,16, 1) (8,8,1) 0 Nothing
+                    [CUDA.IArg 8, CUDA.IArg 7, CUDA.VArg data_in, CUDA.IArg(fromIntegral $ data_size `div` vis_data_size), CUDA.VArg gcf_in, CUDA.VArg grid_out]
+                  munmapFilePtr data_ptr_host data_rawsize
+                  return $ Just data_in
                 else return Nothing
-        -- (d1p, d1rs) <- processBin "bins/000000-008-007"
         resourcesToFree <- mapM processBin [printf "bins/000000-%03d-%03d" up vp | up <- [0..15::Int], vp <- [0..15::Int]]
 
         CUDA.peekArray grid_size grid_out (plusPtr grid_ptr_host grid_offset)
         munmapFilePtr grid_ptr_host grid_rawsize
         munmapFilePtr gcf_ptr_host gcf_rawsize
         -- Cleanup
-        mapM_ (uncurry munmapFilePtr) (catMaybes resourcesToFree)
+        mapM_ (CUDA.free) (catMaybes resourcesToFree)
     CUDA.destroy ctx
