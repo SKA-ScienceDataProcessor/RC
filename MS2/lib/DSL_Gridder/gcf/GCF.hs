@@ -21,8 +21,11 @@ import Data.Array.Accelerate.IO              as A
 import Data.Array.Accelerate.CUDA            as A
 
 import Foreign.Ptr (castPtr)
+import Foreign.ForeignPtr (withForeignPtr)
 import Foreign.Storable (Storable(..))
-import qualified Data.Vector.Storable as VS
+import qualified Data.Vector.Storable        as VS
+import qualified Data.ByteString.Unsafe      as BS
+import qualified Data.ByteString             as BS
 
 type CxDouble = Complex Double
 
@@ -138,8 +141,14 @@ toFlatVector a =
   let ((_, res), ims) = toVectors a
   in VS.zipWith (:+) res ims
 
+-- these are calculated for the last config
 main :: IO ()
 main =
-  -- Only to test the speed
-  let !res = VS.concat $ P.map toFlatVector $ stream (wkernaf_conj0 256 8 16 (unit 0.02239)) [ fromList Z [(i, j, w)] | w <- [10.0 .. 42.0], i <- [0..7], j <- [0..7] ]
-  in return ()
+  let
+    res = VS.concat $ P.map toFlatVector $ stream (wkernaf_conj0 256 16 8 (unit 0.024873)) [ fromList Z [(i, j, w)] | w <- P.take 32 (P.iterate (+61.884644) 0.0), i <- [0..7], j <- [0..7] ]
+    (fptr, len) = VS.unsafeToForeignPtr0 res
+  in do
+    withForeignPtr fptr $
+      \p -> do
+              gcfbs <- BS.unsafePackCStringLen (castPtr p, len * sizeOf (undefined :: CxDouble))
+              BS.writeFile "GCF.dat" gcfbs
