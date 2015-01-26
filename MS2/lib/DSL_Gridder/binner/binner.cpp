@@ -6,6 +6,7 @@
  */
 
 #include "binner.h"
+#include "metrix.h"
 
 #include <algorithm>
 #include <cassert>
@@ -39,7 +40,8 @@ struct filegrid {
 
   ~filegrid(){for (FILE * f : files){if (f > nullptr) fclose(f);}}
 
-  void put_point(uint ch, uint ts, uint x, uint y, const Point & p){
+  // void put_point(uint ch, uint ts, uint x, uint y, const Point & p){
+  void put_point(uint ch, uint ts, uint x, uint y, const vis_data & p){
     uint off;
     if (ch == last_ch && ts == last_ts)
       off = last_off;
@@ -79,7 +81,8 @@ struct filegrid {
 
   ~filegrid(){for (FILE * f : files){if (f > nullptr) fclose(f);}}
 
-  void put_point(uint ch, uint x, uint y, const Point & p){
+  // void put_point(uint ch, uint x, uint y, const Point & p){
+  void put_point(uint ch, uint x, uint y, const vis_data & p){
     uint off = (ch * divs + x) * divs + y ;
     if (files[off] == nullptr) {
       static char name[64];
@@ -98,19 +101,6 @@ private:
   vector<FILE*> files;
 };
 #endif
-
-// FIXME: Made them parameters!!!
-#ifndef GRID_U
-#define GRID_D 2048
-#else
-#define GRID_D GRID_U
-#endif
-#ifndef SUPPORT_U
-#define SUPP_D 32
-#else
-#define SUPP_D SUPPORT_V
-#endif
-#define DIVIDERS 16
 
 const double GRID_STEP = double(GRID_D) / double(DIVIDERS);
 const double HALF_SUPP = double(SUPP_D) / 2.0;
@@ -151,7 +141,7 @@ int main(int argc, char * argv[]) {
         , minu = * min_element(data.u, data.u + uvwnum)
         , maxv = * max_element(data.v, data.v + uvwnum)
         , minv = * min_element(data.v, data.v + uvwnum)
-        // , maxw = * max_element(data.w, data.w + uvwnum)
+        , maxw = * max_element(data.w, data.w + uvwnum)
         , minw = * min_element(data.w, data.w + uvwnum)
         ;
 
@@ -162,21 +152,31 @@ int main(int argc, char * argv[]) {
         ;
 
       double
-          max_coeff = 1.0 + freq_inc * double(dims.channels) / freq_start
-        , uvw_scale = double(GRID_D) / (2.0 * maxx * max_coeff + double(SUPP_D) + 1.0)
+          max_freq = freq_start + freq_inc * double(dims.channels)
+        , min_vawelength = SPEED_OF_LIGHT / max_freq
+        , maxx_in_vawelengths = maxx / min_vawelength
+        , uvw_scale = double(GRID_D) / (2.0 * maxx + 1.0) // No shift on support/2.
         , uv_shift = double(GRID_D) / 2.0
-        , w_shift = (-minw * max_coeff) * uvw_scale
+        , w_shift = -minw * uvw_scale
+        // This additional 0.1 introduced to mitigate rounding errors and stay within WPLANES.
+        , w_step = (maxw - minw) * uvw_scale / double(WPLANES) + 0.1
         ;
 
       printf(
-         "max_coeff: %f\n"
+         "max_freq: %f\n"
+         "min_vawelength: %f\n"
+         "maxx_in_vawelengths: %f\n"
          "uvw_scale: %f\n"
          "uv_shift: %f\n"
          "w_shift: %f\n"
-        , max_coeff
+         "w_step: %f\n"
+        , max_freq
+        , min_vawelength
+        , maxx_in_vawelengths
         , uvw_scale
         , uv_shift
         , w_shift
+        , w_step
         );
 
       
@@ -224,8 +224,19 @@ int main(int argc, char * argv[]) {
             usf = modf(us/GRID_STEP, &usi);
             vsf = modf(vs/GRID_STEP, &vsi);
 
-            Point p;
-            p = {us, vs, ws, amp};
+            int u_, v_, wplane_;
+            short fracu_, fracv_;
+            u_ = int(us);
+            v_ = int(vs);
+            wplane_ = int(ws / w_step);
+            fracu_ = short(double(OVER) * (us - double(u_)));
+            fracv_ = short(double(OVER) * (vs - double(v_)));
+
+            // Point p;
+            // p = {us, vs, ws, amp};
+            vis_data p;
+            p = {u_, v_, wplane_, fracu_, fracv_, amp};
+            assert(int(usi) >= 0 && int(vsi) >= 0);
             assert(uint(usi) < DIVIDERS && uint(vsi) < DIVIDERS);
             files.put_point(ch, /* ts, */ uint(usi), uint(vsi), p);
 
@@ -239,7 +250,7 @@ int main(int argc, char * argv[]) {
               files.put_point(ch, /* ts, */ uint(usi-1.0), uint(vsi), p);
               leftm = true;
             }
-            else if (usf > (1.0 - MARGIN) && usi <= double (DIVIDERS-1)) {
+            else if (usf > (1.0 - MARGIN) && usi < double (DIVIDERS-1)) {
               files.put_point(ch, /* ts, */ uint(usi+1.0), uint(vsi), p);
               rightm = true;
             }
@@ -248,7 +259,7 @@ int main(int argc, char * argv[]) {
               files.put_point(ch, /* ts, */ uint(usi), uint(vsi-1.0), p);
               botm = true;
             }
-            else if (vsf > (1.0 - MARGIN) && vsi <= double (DIVIDERS-1)) {
+            else if (vsf > (1.0 - MARGIN) && vsi < double (DIVIDERS-1)) {
               files.put_point(ch, /* ts, */ uint(usi), uint(vsi+1.0), p);
               topm = true;
             }
