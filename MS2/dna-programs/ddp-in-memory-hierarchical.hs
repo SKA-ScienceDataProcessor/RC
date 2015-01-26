@@ -50,7 +50,7 @@ ddpDotProductMaster = actor $ \size -> do
 main :: IO ()
 main = do
     dnaRun rtable $ do
-        b <- eval ddpDotProductMaster (Slice 0 20000000)
+        b <- eval ddpDotProductMaster (Slice 0 (20*1000*1000))
         liftIO $ putStrLn $ "RESULT: " ++ show b
   where
     rtable = DDP.__remoteTable
