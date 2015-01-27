@@ -1,3 +1,5 @@
 #!/bin/bash
-export LD_LIBRARY_PATH=$HOME/opt/lib:/usr/local/Cluster-Apps/cuda/6.5/lib64:$LD_LIBRARY_PATH
-gridding-in-memory +RTS -l-au -RTS --nprocs 1
+export LD_LIBRARY_PATH=$HOME/opt/lib:$HOME/RC/MS2/lib/DSL_Gridder:/usr/local/Cluster-Apps/cuda/6.5/lib64:$LD_LIBRARY_PATH
+export PATH=$HOME/RC/MS2/lib/DSL_Gridder:$HOME/RC/MS2/lib/DSL_Gridder/binner:$HOME/RC/MS2/lib/DSL_Gridder/gcf:$PATH
+cp binner/grid_kernel.cubin .
+gridding

@@ -30,7 +30,7 @@ import qualified DGridding as DG
 mkCfg :: IO (FilePath, FilePath)
 mkCfg =
   let
-   (os, sky_model, vis_name, ini_name) = mk_ska1low_test_cfg "ska1sur.sky" FREQ_START 1 72 1800 "../../../../../uvwsim/tele_sur"
+   (os, sky_model, vis_name, ini_name) = mk_ska1low_test_cfg "ska1sur.sky" FREQ_START 1 72 1800 "../../../../uvwsim/tele_sur"
   in do
        writeFile "ska1sur.sky" sky_model
        writeFile ini_name (showSettings os)
