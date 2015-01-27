@@ -5,14 +5,11 @@ import DNA.Channel.File (readDataMMap)
 import DNA
 
 import DDP
-import DDP_Slice_CUDA
+import DDP_Slice
 
 
 ----------------------------------------------------------------
 -- Distributed dot product
---
--- Note that actors which do not spawn actors on other nodes do not
--- receive CAD.
 ----------------------------------------------------------------
 
 ddpCollector :: CollectActor Double Double
@@ -29,7 +26,7 @@ ddpDotProduct :: Actor Slice Double
 ddpDotProduct = actor $ \size -> do
     res <- selectMany (Frac 1) (NNodes 1) [UseLocal]
     r   <- select Local (N 0)
-    shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSlice)
+    shell <- startGroup res Failout $(mkStaticClosure 'ddpProductSliceFailure)
     shCol <- startCollector r $(mkStaticClosure 'ddpCollector)
     sendParam size $ broadcast shell
     connect shell shCol
@@ -40,9 +37,9 @@ main :: IO ()
 main = dnaRun rtable $ do
     -- Vector size:
     --
-    -- > 20e4 doubles per node = 160 MB per node
+    -- > 100e4 doubles per node = 800 MB per node
     -- > 4 nodes
-    let n        = 1*1000*1000
+    let n        = 400*1000*1000
         expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
     -- Run it
     b <- eval ddpDotProduct (Slice 0 n)
@@ -53,5 +50,5 @@ main = dnaRun rtable $ do
       ]
   where
     rtable = DDP.__remoteTable
-           . DDP_Slice_CUDA.__remoteTable
+           . DDP_Slice.__remoteTable
            . Main.__remoteTable

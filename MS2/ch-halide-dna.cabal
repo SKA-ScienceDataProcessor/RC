@@ -45,12 +45,12 @@ library
     distributed-static,
     distributed-process          == 0.5.*,
     distributed-process-platform == 0.1.*,
-    network               == 2.4.2.*,
-    network-multicast     == 0.0.11.*,
-    network-transport     == 0.4.0.*,
-    network-transport-tcp == 0.4.0.*,
-    optparse-applicative  == 0.11.*,
-    data-accessor         == 0.2.2.*
+    network               >= 2.4,
+    network-uri           >= 2.6,
+    network-transport     >= 0.4,
+    network-transport-tcp >= 0.4,
+    optparse-applicative  >= 0.11,
+    data-accessor         >= 0.2.2
   Exposed-modules:
     DNA
     DNA.DNA
@@ -99,6 +99,23 @@ executable ddp-in-memory-collector
     DDP
     DDP_Slice
 
+executable ddp-in-memory-failure
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             ddp-in-memory-failure.hs
+  build-depends:
+    base >=4.6,
+    ch-dna,
+    binary,
+    bytestring,
+    data-binary-ieee754,
+    vector >= 0.10,
+    directory
+  other-modules:
+    DDP
+    DDP_Slice
+
 executable ddp-in-memory-hierachical
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -eventlog
@@ -128,6 +145,21 @@ executable ddp-in-memory-large
     binary,
     data-binary-ieee754,
     directory
+  other-modules:
+    DDP
+    DDP_Slice
+
+executable map-reduce
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             map-reduce.hs
+  build-depends:
+    base >=4.6,
+    ch-dna,
+    binary,
+    bytestring,
+    containers
   other-modules:
     DDP
     DDP_Slice

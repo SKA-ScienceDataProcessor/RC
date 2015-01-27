@@ -29,14 +29,23 @@ class LogEntry :
 
 def read_log_entries(stream) :
     "Read stream of LogEntry from textual stream of eventlog"
-    regex = re.compile(" *([0-9]+): cap [0-9]+: ([A-Z]+) +(.*)")
+    timestamp_re = re.compile(" *([0-9]+): (.*)")
+    dna_re = re.compile("cap [0-9]+: ([A-Z]+) +(.*)")
     for line in stream :
-        m = regex.match(line)
+        # Get timestamp
+        m = timestamp_re.match(line)
         if m is None :
             continue
-        t   = int( m.group(1) )
-        tag = m.group(2)
-        msg = m.group(3)
+        t = int( m.group(1) )
+        line = m.group(2)
+        # Is tagged message in DNA format?
+        m = dna_re.match(line)
+        if m is None :
+            tag = "RAW"
+            msg = line
+        else :
+            tag = m.group(1)
+            msg = m.group(2)
         yield LogEntry(t,tag,msg)
 
 
@@ -90,6 +99,7 @@ class Timeline :
         self.time     = []
         self.sync     = []
         self.messages = []
+        self.raw      = []
 
         stack = {}
         # Build list of events
@@ -105,6 +115,8 @@ class Timeline :
                 self.sync.append(Sync(e.t, e.msg))
             elif e.tag == "MESSAGE" :
                 self.messages.append(e)
+            elif e.tag == "RAW" :
+                self.raw.append(e);
             elif e.tag == "START" :
                 pid,msg = parse_msg( e.msg )
                 i = Interval(e.t, None, pid, msg )
@@ -128,6 +140,32 @@ class Timeline :
         "List of durations for given name"
         return [e for e in self.time if e.msg == nm]
 
+    def get_args(self) :
+        "Arguments passed to the program that produced the event-log"
+        args_re = re.compile('capset [0-9]+: args: \["(.*)"\]')
+        for e in self.raw :
+            m = args_re.match(e.msg)
+            if m is None:
+                continue
+            # Not quite 100% right, but it should do for now.
+            return m.group(1).split('","')
+        return []
+    def get_env(self) :
+        "Arguments passed to the program that produced the event-log"
+        args_re = re.compile('capset [0-9]+: env: \["(.*)"\]')
+        for e in self.raw :
+            m = args_re.match(e.msg)
+            if m is None:
+                continue
+            # See above. We additionally make a dictionary out of it.
+            env = {}
+            env_re = re.compile('(\w+)=(.*)')
+            for s in m.group(1).split('","'):
+                m = env_re.match(s)
+                if m is None: continue
+                env[m.group(1)] = m.group(2)
+            return env
+        return []
 
 
 def offset_timelines(logs) :

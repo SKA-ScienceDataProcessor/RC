@@ -117,10 +117,12 @@ slurmLocalID = do
 --   host
 slurmHosts :: IO [(String,Int)]
 slurmHosts = do
-    nodeListStr <- split ',' <$> getEnv "SLURM_NODELIST"
-    numNodesStr <- split ',' <$> getEnv "SLURM_TASKS_PER_NODE"
-    let nodeList = runReadP parseNodeList =<< nodeListStr
-        numNodes = runReadP parseNumNode  =<< numNodesStr
+    nodeListStr <- getEnv "SLURM_NODELIST"
+    numNodesStr <- getEnv "SLURM_TASKS_PER_NODE"
+    eventMessage $ "SLURM_NODELIST=" ++ nodeListStr
+    eventMessage $ "SLURM_TASKS_PER_NODE=" ++ numNodesStr
+    let nodeList = runReadP parseNodeList nodeListStr
+        numNodes = runReadP parseNumNode  =<< split ','numNodesStr
     when (length nodeList /= length numNodes) $
         error "Length of SLURM_NODELIST and SLURM_TASKS_PER_NODE does not match"
     return $ nodeList `zip` numNodes
@@ -139,41 +141,64 @@ parseNumNode =  (pure <$> readS_to_P reads <* eof)
 -- Parser for SLURM_NODELIST
 parseNodeList :: ReadP [String]
 parseNodeList = do
-    chunks <- many ((Str <$> str) <|> range)
-    eof
+    chunks <- list <* eof
     let toStr (Str s)           = [s]
         toStr (Range len (n,m)) = [printf (printf "%%0%ii" len) i | i <- [n .. m]]
-    let step res a = liftA2 (++) res a
-    return $ foldl step [""] $ map toStr chunks
+        toStr (List rs)         = toStr =<< rs
+        toStr (Seq  xs)         = foldl (liftA2 (++)) [""] $ map toStr xs
+    return $ toStr =<< chunks
+    -- return chunks
   where
-    str   = munch1 $ \c -> or [ c >= 'a' && c <= 'z'
-                              , c >= 'A' && c <= 'Z'
-                              , c >= '0' && c <= '9'
-                              , c == '-'
-                              ]
+    -- Comma-separated list
+    list = do r <- many ((Str <$> str) <|> range) `sepBy1` char ','
+              return $ map Seq r
+    -- Range expression
     range = do _  <- char '['
-               sn <- many1 $ satisfy $ \c -> c >= '0' && c <= '9'
-               n  <- case safeRead sn of
-                       Just n  -> return n
-                       Nothing -> empty
-               let len = case sn of
-                           '0':_ -> length sn
-                           _     -> 0
-               _  <- char '-'
-               m  <- readS_to_P reads
+               rs <- sepBy1 (rangeInt <|> singleInt) (char ',')
                _  <- char ']'
-               return $ Range len (n,m)
-
+               return $ List rs
+    -- Integer ranges
+    leadingInt :: ReadP (Int,Int)
+    leadingInt = do
+        sn <- munch1 $ \c -> c >= '0' && c <= '9'
+        n  <- case safeRead sn of
+                Just n  -> return n
+                Nothing -> empty
+        let len = case sn of
+                    '0':_ -> length sn
+                    _     -> 0
+        return (len,n)
+    singleInt :: ReadP Chunk
+    singleInt = do
+        (len,n) <- leadingInt
+        return $ Range len (n,n)
+    rangeInt :: ReadP Chunk
+    rangeInt = do
+        (len,n) <- leadingInt
+        _ <- char '-'
+        m <- int
+        return $ Range len (n,m)
+    -- String
+    str = munch1 $ \c -> or [ c >= 'a' && c <= 'z'
+                            , c >= 'A' && c <= 'Z'
+                            , c >= '0' && c <= '9'
+                            , c == '-'
+                            ]
+    -- Integer
+    int = do s <- munch1 $ \c -> c >= '0' && c <= '9'
+             return (read s :: Int)
 
 -- Chunk of NODELIST entry
 data Chunk = Str String          -- String chunk
            | Range Int (Int,Int) -- Range chunk: width, (range)
+           | List [Chunk]
+           | Seq  [Chunk]
            deriving (Show)
 
 runReadP :: ReadP a -> String -> a
 runReadP p s = case readP_to_S p s of
     [(a,"")] -> a
-    _        -> error "Cannot parse!"
+    _        -> error $ "Cannot parse string: '" ++ s ++ "'"
 
 
 

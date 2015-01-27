@@ -342,8 +342,10 @@ terminateSlave nid = nsendRemote nid "slaveController" SlaveTerminate
 findSlaves :: Backend -> Process [ProcessId]
 findSlaves backend = do
   nodes <- liftIO $ findPeers backend
+  -- Put delay to make sure that slaves started
+  -- FIXME: It doesn't strike as most clever idea...
+  liftIO $ threadDelay (500*1000)
   -- Fire off asynchronous requests for the slave controller
-
   bracket
    (mapM monitorNode nodes)
    (mapM unmonitor)

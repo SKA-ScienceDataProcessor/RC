@@ -6,7 +6,7 @@ nvcc -arch=sm_21 -c cuda-dotp.cu -o cuda-dotp.o \
     -Xcompiler -fPIC
 
 
-ghc --make -O2 \
+ghc --make -O2 -c \
     -no-user-package-db \
     -package-db "../.cabal-sandbox/$(uname -m)-linux-ghc-$(ghc -V | sed 's/[^0-9]*//')-packages.conf.d/" \
     -eventlog \

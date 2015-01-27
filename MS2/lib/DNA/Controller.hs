@@ -95,6 +95,7 @@ startAcpLoop self pid (VirtualCAD _ n nodes) = do
               Left (Fatal m) -> do
                   taggedMessage "ACP" ("Crash: " ++ m)
                   error "Terminate"
+    taggedMessage "ACP" $ "Start looping, pool: " ++ show (map nodeID nodes)
     loop StateACP { _stCounter        = 0
                   , _stAcpClosure     = self
                   , _stActor          = pid
@@ -257,7 +258,9 @@ acpStep st = receiveWait
 -- Request for resources
 handleReqResources :: ReqResources -> Controller ()
 handleReqResources (ReqResources loc req) = do
-    res <- Resources <$> uniqID
+    res  <- Resources <$> uniqID
+    free <- use stNodePool
+    taggedMessage "ACP" $ "Res.req. " ++ show (loc,req) ++ " pool " ++ show (Set.size free)
     -- FIXME: What to do when we don't have enough resources to
     --        satisfy request?
     resourse <- case req of
@@ -274,6 +277,8 @@ handleReqResources (ReqResources loc req) = do
 -- Request for resources for group of processes
 handleReqResourcesGrp :: ReqResourcesGrp -> Controller ()
 handleReqResourcesGrp (ReqResourcesGrp req resGrp flags) = do
+    free <- use stNodePool
+    taggedMessage "ACP" $ "Res.req.grp. " ++ show (req,resGrp,flags) ++ " pool " ++ show (Set.size free)
     -- Get nodes to allocate
     let withLocal ns
             | null [()| UseLocal <- flags] = return ns
