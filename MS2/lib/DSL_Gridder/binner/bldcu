@@ -1,0 +1,1 @@
+../se.sh nvcc grid_kernel.cu --cubin -gencode arch=compute_35,code=sm_35 -o grid_kernel.cubin
