@@ -1,0 +1,8 @@
+{
+global: 
+  romeinComputeGridOnCuda;
+  romeinGetGridData;
+  romeinFinalizeGrid;
+local: *;
+};
+

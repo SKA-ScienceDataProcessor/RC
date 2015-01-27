@@ -2,16 +2,11 @@ OPT=$(HOME)/opt
 INC=$(OPT)/include/oskar
 LIB=$(OPT)/lib
 CC=/usr/local/Cluster-Apps/gcc/4.8.1/bin/g++
+CXX=/usr/local/Cluster-Apps/gcc/4.8.1/bin/g++
 INCFLAGS=-Io2a -I$(INC) -I$(INC)/apps/log -I$(INC)/utility -I$(INC)/interferometry -I$(INC)/station -I$(INC)/element -I$(INC)/splines -I$(INC)/settings/struct
 CXXFLAGS=-O3 -Wall -std=c++11 $(INCFLAGS)
-METRICS=-DSUPPORT_U=64 -DSUPPORT_V=64 -DTIMESTEPS=2 -DBLOCKS=36 -DU_DIAMETER=42000.0 -DV_DIAMETER=42000.0 -DW_DIAMETER=28000.0 -DNR_STATIONS=753 -DFREQ_START=100000000.0 -DCHANNELS=1
-
+METRICS=-DSUPPORT_U=32 -DSUPPORT_V=32 -DTIMESTEPS=2 -DBLOCKS=36 -DU_DIAMETER=111000.0 -DV_DIAMETER=111000.0 -DW_DIAMETER=4200.0 -DNR_STATIONS=97 -DFREQ_START=400000000.0 -DCHANNELS=1
 CUDA_LIB_PATH=/usr/local/Cluster-Apps/cuda/6.5/lib64
-HALIDE_PATH=$(HOME)/halide
-HALIDE_INCLUDE=$(HALIDE_PATH)/include
-HALIDE_BIN = $(HALIDE_PATH)/bin
-HALIDE_LIB_PATH = $(HALIDE_BIN)
-HALIDE_LIB = $(HALIDE_LIB_PATH)/libHalide.a
 
 INC_DNA=-i..
 INC_OCFG=-i../OskarCfg -i../OskarCfg/generator
@@ -20,8 +15,8 @@ GHC_OPTS=$(METRICS) -O2 -Wall -eventlog -threaded -hidir ./tmp -odir ./tmp -stub
 RG_REPO=https://github.com/awson/Romein-gridding/raw/doubles/Gridding-0.2
 WG=wget --no-check-certificate
 
-dslgridder: ./tmp/Main.o ./tmp/DGridding.o ./tmp/GriddersFFI.o ./tmp/Oskar.o ./tmp/DistData.o romein_client.o halide_client.o writeOSKARc.o o2a.o OskarFFIprim.o GriddersFFIprim.o griddingSimple_double_CUDA.o
-	ghc $(GHC_OPTS) --make gridding-in-memory.hs writeOSKARc.o o2a.o OskarFFIprim.o GriddersFFIprim.o -L$(LIB) -loskar halide_client.o griddingSimple_double_CUDA.o romein_client.o -L$(CUDA_LIB_PATH) -lcuda -lcudart -lstdc++ -lgomp
+dslgridder: ./tmp/Main.o ./tmp/DGridding.o ./tmp/GriddersFFI.o ./tmp/Oskar.o ./tmp/DistData.o librom.so librom_f.so writeOSKARc.o o2a.o OskarFFIprim.o GriddersFFIprim.o
+	ghc $(GHC_OPTS) --make gridding-in-memory.hs writeOSKARc.o o2a.o OskarFFIprim.o GriddersFFIprim.o -L$(LIB) -loskar -L. -lrom -lrom_f -L$(CUDA_LIB_PATH) -lcuda -lcudart -lstdc++ -lgomp
 
 ./tmp/Main.o: gridding-in-memory.hs DGridding.hs Oskar.hs GriddersFFI.hs
 	ghc $(GHC_OPTS) --make -c gridding-in-memory.hs
@@ -44,8 +39,11 @@ GriddersFFIprim.o: GriddersFFIprim.cmm
 OskarFFIprim.o: OskarFFIprim.cmm
 	ghc -O2 -c OskarFFIprim.cmm
 
-romein_client.o: romein_client.cc Common.h Defines.h
-	nvcc -Xptxas -v  -x cu --compile -ccbin=g++ -g -D__CUDA__ -I. $(METRICS) -use_fast_math -arch=compute_35 -code=compute_35 -Xcompiler "-O3,-fopenmp" romein_client.cc -o romein_client.o
+librom.so: romein_client.cc Common.h Defines.h
+	nvcc -Xptxas -v  -x cu --shared -ccbin=g++ -g -D__CUDA__ -I. $(METRICS) -use_fast_math -arch=compute_35 -code=compute_35 -Xcompiler "-O3,-fopenmp,-fPIC" -Xlinker "--version-script=rom.exp" romein_client.cc -o librom.so
+
+librom_f.so: romein_client.cc Common.h Defines.h
+	nvcc -Xptxas -v  -x cu --shared -ccbin=g++ -g -DFAKE_ATOMIC -D__CUDA__ -I. $(METRICS) -use_fast_math -arch=compute_35 -code=compute_35 -Xcompiler "-O3,-fopenmp,-DFAKE_ATOMIC,-fPIC" -Xlinker "--version-script=rom_f.exp" romein_client.cc -o librom_f.so
 
 romein_client.cc:
 	$(WG) $(RG_REPO)/Gridding.cc && mv Gridding.cc romein_client.cc
@@ -56,20 +54,10 @@ Common.h:
 Defines.h:
 	$(WG) $(RG_REPO)/Defines.h
 
-griddingSimple_double_CUDA.h griddingSimple_double_CUDA.o: gridding
-	./gridding
-
-gridding: gridding.cpp
-	$(CC) -std=c++11 -o gridding gridding.cpp -DWILKES_CLUSTER -I$(HALIDE_INCLUDE) $(HALIDE_LIB) -ldl -lpthread -lz -ltinfo
-
-halide_client.o: halide_client.cpp griddingSimple_double_CUDA.h
-	$(CC) -std=c++11 -O2 -DWILKES_CLUSTER -I$(HALIDE_PATH)/apps/support -I. $(METRICS) -o halide_client.o -c halide_client.cpp
-
 writeOSKARc.o: writeOSKARc.cpp writeOSKARc.h o2a/o2a.h
-	$(CC) $(CXXFLAGS) -c -o writeOSKARc.o  writeOSKARc.cpp
-
 o2a.o: o2a/o2a.cpp o2a/o2a.h
 	$(CC) $(CXXFLAGS) -c -o o2a.o o2a/o2a.cpp
 
 clean:
 	rm -f *.so *.o gridding-in-memory gridding gridding.html griddingSimple_* dslgridder && rm -f -R tmp
+
