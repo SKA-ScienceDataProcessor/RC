@@ -45,12 +45,12 @@ library
     distributed-static,
     distributed-process          == 0.5.*,
     distributed-process-platform == 0.1.*,
-    network               == 2.4.2.*,
-    network-multicast     == 0.0.11.*,
-    network-transport     == 0.4.0.*,
-    network-transport-tcp == 0.4.0.*,
-    optparse-applicative  == 0.11.*,
-    data-accessor         == 0.2.2.*
+    network               >= 2.4,
+    network-uri           >= 2.6,
+    network-transport     >= 0.4,
+    network-transport-tcp >= 0.4,
+    optparse-applicative  >= 0.11,
+    data-accessor         >= 0.2.2
   Exposed-modules:
     DNA
     DNA.DNA
