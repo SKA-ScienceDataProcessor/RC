@@ -16,9 +16,9 @@
 #! QOS spec.
 #SBATCH --qos=GPU1
 #! How many whole nodes should be allocated?
-#SBATCH --nodes=1
+#SBATCH --nodes=6
 #! How many (MPI) tasks will there be in total? (<=nodes*12)
-#SBATCH --ntasks=1
+#SBATCH --ntasks=6
 #! How much wallclock time will be required?
 #SBATCH --time=00:40:00
 #! What types of email messages do you wish to receive?

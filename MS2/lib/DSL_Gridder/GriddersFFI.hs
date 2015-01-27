@@ -71,7 +71,7 @@ gdFinalize (GD hdl _ finptr) = mkGridFinalizer finptr hdl
 type CGPrim = Addr# -> Addr# -> State# RealWorld -> (# State# RealWorld, Addr#, Addr#, Addr#, Int# #)
 
 foreign import prim "romeinComputeGridOnCudazh" romeinComputeGridOnCuda# :: CGPrim
-foreign import prim "halideComputeGridOnCudazh" halideComputeGridOnCuda# :: CGPrim
+foreign import prim "romeinComputeGridOnCuda_fzh" romeinComputeGridOnCuda_f# :: CGPrim
 
 type GridProcType = Ptr CDouble -> Ptr CDouble -> IO (Either GStatus GridData)
 
@@ -85,12 +85,13 @@ romeinComputeGridOnCuda (Ptr uvwp) (Ptr ampp) = IO doit
                                _  -> Left (GSt (I# status))
                    in (# s1, res #)
 
-halideComputeGridOnCuda :: GridProcType
-halideComputeGridOnCuda (Ptr uvwp) (Ptr ampp) = IO doit
+romeinComputeGridOnCuda_f :: GridProcType
+romeinComputeGridOnCuda_f (Ptr uvwp) (Ptr ampp) = IO doit
   where
-    doit s0 = case halideComputeGridOnCuda# uvwp ampp s0 of
+    doit s0 = case romeinComputeGridOnCuda# uvwp ampp s0 of
                 (# s1, hdl, data_addr, fin, status #) ->
                    let res = case status of
                                0# -> Right (GD (Ptr hdl) (Ptr data_addr) (FunPtr fin))
                                _  -> Left (GSt (I# status))
                    in (# s1, res #)
+

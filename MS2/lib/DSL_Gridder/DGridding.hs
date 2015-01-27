@@ -75,9 +75,11 @@ mkGridderActor gridder_name gridder_proc = actor $ log_duration "GridderActor" g
         then return (Left (-999)) -- FIXME: better retcode
         else gridder_proc (castPtr pu) (castPtr pa)
 
-romeinActor, halideActor :: GridderActor
+romeinActor :: GridderActor
 romeinActor = mkGridderActor "Romein" romeinComputeGridOnCuda
-halideActor = mkGridderActor "Halide" halideComputeGridOnCuda
+
+romeinActor_f :: GridderActor
+romeinActor_f = mkGridderActor "Romein_f" romeinComputeGridOnCuda_f
 
 convertVisActor :: Actor String OStatus
 convertVisActor = actor $ \fname -> log_duration "convertVisActor" fname $ liftIO (convertVis fname)
@@ -109,6 +111,7 @@ amp_bytes_in_chnl = amp_doubles_in_chnl * sizeOf (undefined :: CDouble)
 remotable [ 'rawSystemActor
           , 'convertVisActor
           , 'romeinActor
-          , 'halideActor
+          , 'romeinActor_f
           , 'writeResultsActor
           ]
+
