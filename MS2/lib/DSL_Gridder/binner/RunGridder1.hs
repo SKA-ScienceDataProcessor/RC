@@ -41,7 +41,7 @@ main = let gridsize = 2048 * 2048 * vis_size in do
       CUDA.allocaArray gcf_size $ \(gcf_in :: RawPtr) -> do
         CUDA.pokeArray gcf_size (plusPtr gcf_ptr_host gcf_offset) gcf_in
         --
-        let processBin binfile = do
+        let processBin (up, vp) = let binfile = printf "bins/000000-%03d-%03d" up vp in do
               doMe <- doesFileExist binfile
               if doMe
                 then do
@@ -49,11 +49,11 @@ main = let gridsize = 2048 * 2048 * vis_size in do
                   data_in <- CUDA.mallocArray data_size :: IO RawPtr
                   CUDA.pokeArray data_size (plusPtr data_ptr_host data_offset) data_in
                   CUDA.launchKernel grid_kernel (16,16, 1) (8,8,1) 0 Nothing
-                    [CUDA.IArg 8, CUDA.IArg 7, CUDA.VArg data_in, CUDA.IArg(fromIntegral $ data_size `div` vis_data_size), CUDA.VArg gcf_in, CUDA.VArg grid_out]
+                    [CUDA.IArg up, CUDA.IArg vp, CUDA.VArg data_in, CUDA.IArg(fromIntegral $ data_size `div` vis_data_size), CUDA.VArg gcf_in, CUDA.VArg grid_out]
                   munmapFilePtr data_ptr_host data_rawsize
                   return $ Just data_in
                 else return Nothing
-        resourcesToFree <- mapM processBin [printf "bins/000000-%03d-%03d" up vp | up <- [0..15::Int], vp <- [0..15::Int]]
+        resourcesToFree <- mapM processBin [(up, vp) | up <- [0..15], vp <- [0..15]]
 
         CUDA.peekArray grid_size grid_out (plusPtr grid_ptr_host grid_offset)
         munmapFilePtr grid_ptr_host grid_rawsize
