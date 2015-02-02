@@ -16,10 +16,9 @@ cabal-version:       >=1.16
 --                     build.sh, clean.sh,
 --                     ddp.py, dna_cad.py, dna_lib.py
 
-Flag disableSIMD
-  description:       Disables ddp-erland-style-SIMD and ch-dna-SIMD-eventlog executables for faster compilation.
+Flag cuda
+  description:       Enables CUDA support
   default:           False
-
 
 ----------------------------------------------------------------
 library
@@ -137,6 +136,29 @@ executable ddp-in-memory-large
   ghc-options:         -O2 -Wall -threaded -eventlog
   Hs-source-dirs:      dna-programs
   main-is:             ddp-in-memory-large.hs
+  build-depends:
+    base >=4.6,
+    ch-dna,
+    vector >= 0.10,
+    bytestring,
+    binary,
+    data-binary-ieee754,
+    directory
+  other-modules:
+    DDP
+    DDP_Slice
+
+executable ddp-in-memory-cuda
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             ddp-in-memory-cuda.hs
+  x-cuda-sources:      dna-programs/cuda-dotp.cu
+  x-cuda-options:      -arch=sm_21 -Xcompiler -fPIC
+  extra-libraries:     cuda, cudart
+  if !flag(cuda) {
+    buildable:         False
+  }
   build-depends:
     base >=4.6,
     ch-dna,
