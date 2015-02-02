@@ -1,7 +1,15 @@
 {-# LANGUAGE BangPatterns #-}
 -- | Logging.hs
 --
--- Logging facilities.
+-- Logging facilities. Log messages are written to GHC's eventlog in
+-- following format:
+--
+-- > TAG [PID] message
+--
+-- Tag is sequence of of alphanumeric characters. Usually it's all
+-- caps. PID is cloud haskell process's ID and enclosed in square
+-- brackets. For messages about whole program it's set to empty
+-- string. Message is free form.
 --
 -- Copyright (C) 2014 Braam Research, LLC.
 module DNA.Logging where
