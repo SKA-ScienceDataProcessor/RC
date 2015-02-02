@@ -137,16 +137,9 @@ sendACP a = do
     ACP pid <- getMonitor
     liftP $ send pid a
 
-
 -- | Put message into log file
 logMessage :: String -> DNA ()
-logMessage = eventMessage
-
-duration :: String -> DNA a -> DNA a
-duration msg dna = do
-    pid <- liftP getSelfPid
-    let msg' = "[" ++ show pid ++ "] " ++ msg
-    timePeriod msg' dna
+logMessage = taggedMessage "MSG"
 
 
 
