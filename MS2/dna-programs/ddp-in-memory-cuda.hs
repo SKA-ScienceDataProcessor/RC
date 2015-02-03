@@ -38,13 +38,14 @@ ddpDotProduct = actor $ \size -> do
 
 main :: IO ()
 main = dnaRun rtable $ do
-    -- Vector size:
-    --
-    -- > 20e4 doubles per node = 160 MB per node
-    -- > 4 nodes
-    let n        = 1*1000*1000
+    let n        = 10*1000*1000
         expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
-    -- Run it
+    -- Show configuration
+    nodes <- groupSize
+    let size = n * 8; sizePerNode = size `div` fromIntegral nodes
+    liftIO $ putStrLn $ concat
+        [ "Data: ", show (size `div` 1000000), " MB total, "
+        , show (sizePerNode `div` 1000000), " MB per node"]
     b <- eval ddpDotProduct (Slice 0 n)
     liftIO $ putStrLn $ concat
       [ "RESULT: ", show b

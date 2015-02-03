@@ -28,6 +28,7 @@ import Distribution.Compat.ReadP
 
 import Data.Maybe
 import Data.Char
+import Data.List ( intersect )
 import Debug.Trace
 
 import System.Process
@@ -36,6 +37,13 @@ import System.FilePath
 -- |Change preconfigure hooks - build Halide objects, etc.
 dnaProgramsUserHooks = simpleUserHooks {
           confHook = preConfHalideConfigureBuild,
+          -- NB: The following allows us to override NVCC location and
+          -- options from the command line. The syntax is slightly
+          -- non-obious:
+          --
+          --  $ cabal configure -- --with-nvcc=[...] --nvcc-options=[...]
+          --
+          -- Note the extra "--".
           hookedPrograms = nvccProgram : hookedPrograms simpleUserHooks,
           buildHook = cudaBuildHook
         }
@@ -71,7 +79,13 @@ cudaBuildHook package lbi hooks flags = do
     Just lib -> do bi' <- cudaBuild lbi flags (buildDir lbi) (libBuildInfo lib)
                    return $ Just lib { libBuildInfo = bi' }
     Nothing  -> return Nothing
-  executables' <- forM (executables package) $ \exe -> do
+
+  -- Attempt to be smart about when to build CUDA sources for
+  -- executables...
+  let exesToBuild = map exeName (executables package) `intersect` buildArgs flags
+      shouldBuild e = null exesToBuild || exeName e `elem` exesToBuild
+
+  executables' <- forM (filter shouldBuild $ executables package) $ \exe -> do
     let dir = buildDir lbi </> exeName exe
     bi' <- cudaBuild lbi flags dir (buildInfo exe)
     return exe { buildInfo = bi' }
