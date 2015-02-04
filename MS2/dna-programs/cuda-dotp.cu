@@ -33,10 +33,12 @@ double calculate_dot_p(double xs[], double ys[], int n) {
     double *buf_xs = NULL;
     double *buf_ys = NULL;
     // Allocate memory and copy to device
-    GPU_ASSERT( cudaMalloc( &buf_xs, n*sizeof(double) ) );
-    GPU_ASSERT( cudaMalloc( &buf_ys, n*sizeof(double) ) );
+    GPU_ASSERT( cudaMalloc( &buf_xs, n_padded*sizeof(double) ) );
+    GPU_ASSERT( cudaMalloc( &buf_ys, n_padded*sizeof(double) ) );
     GPU_ASSERT( cudaMemcpy(buf_xs, xs, n*sizeof(double), cudaMemcpyHostToDevice) );
     GPU_ASSERT( cudaMemcpy(buf_ys, ys, n*sizeof(double), cudaMemcpyHostToDevice) );
+    GPU_ASSERT( cudaMemset(buf_xs + n, 0, (n_padded-n) * sizeof(double)) );
+    GPU_ASSERT( cudaMemset(buf_ys + n, 0, (n_padded-n) * sizeof(double)) );
     // Execute kernel
     dotp_kernel<<<grid, block>>>(buf_xs, buf_ys);
     // Free buffers & obtain data

@@ -5,7 +5,7 @@ import DNA.Channel.File (readDataMMap)
 import DNA
 
 import DDP
-import DDP_Slice_CUDA
+import DDP_Slice_Accelerate
 
 
 ----------------------------------------------------------------
@@ -46,6 +46,7 @@ main = dnaRun rtable $ do
     liftIO $ putStrLn $ concat
         [ "Data: ", show (size `div` 1000000), " MB total, "
         , show (sizePerNode `div` 1000000), " MB per node"]
+    -- Run it
     b <- eval ddpDotProduct (Slice 0 n)
     liftIO $ putStrLn $ concat
       [ "RESULT: ", show b
@@ -54,5 +55,5 @@ main = dnaRun rtable $ do
       ]
   where
     rtable = DDP.__remoteTable
-           . DDP_Slice_CUDA.__remoteTable
+           . DDP_Slice_Accelerate.__remoteTable
            . Main.__remoteTable

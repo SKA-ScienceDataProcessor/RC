@@ -16,10 +16,13 @@ cabal-version:       >=1.16
 --                     build.sh, clean.sh,
 --                     ddp.py, dna_cad.py, dna_lib.py
 
-Flag disableSIMD
-  description:       Disables ddp-erland-style-SIMD and ch-dna-SIMD-eventlog executables for faster compilation.
+Flag cuda
+  description:       Enables CUDA support
   default:           False
 
+Flag network-uri
+   description: Get Network.URI from the network-uri package
+   default: True
 
 ----------------------------------------------------------------
 library
@@ -45,12 +48,18 @@ library
     distributed-static,
     distributed-process          == 0.5.*,
     distributed-process-platform == 0.1.*,
-    network               >= 2.4,
-    network-uri           >= 2.6,
     network-transport     >= 0.4,
     network-transport-tcp >= 0.4,
     optparse-applicative  >= 0.11,
     data-accessor         >= 0.2.2
+
+  -- Deal with Network.URI appearing in different versions of network
+  -- and network-uri, as suggested by "network" package
+  if flag(network-uri)
+    build-depends: network >= 2.6, network-uri >= 2.6
+  else
+    build-depends: network < 2.6
+
   Exposed-modules:
     DNA
     DNA.DNA
@@ -148,6 +157,49 @@ executable ddp-in-memory-large
   other-modules:
     DDP
     DDP_Slice
+
+executable ddp-in-memory-cuda
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             ddp-in-memory-cuda.hs
+  x-cuda-sources:      dna-programs/cuda-dotp.cu
+  x-cuda-options:      -arch=sm_21 -Xcompiler -fPIC
+  if flag(cuda) {
+    extra-libraries:   cuda, cudart
+  } else {
+    buildable:         False
+  }
+  build-depends:
+    base >=4.6,
+    ch-dna,
+    vector >= 0.10,
+    bytestring,
+    binary,
+    data-binary-ieee754,
+    directory
+  other-modules:
+    DDP
+    DDP_Slice
+
+executable ddp-in-memory-accelerate
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             ddp-in-memory-accelerate.hs
+  build-depends:
+    base >=4.6,
+    ch-dna,
+    vector >= 0.10,
+    bytestring,
+    binary,
+    data-binary-ieee754,
+    directory
+  if flag(cuda) {
+    build-depends:     accelerate, accelerate-cuda, accelerate-io
+  } else {
+    buildable:         False
+  }
 
 executable map-reduce
   default-language:    Haskell2010
