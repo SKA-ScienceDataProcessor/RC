@@ -83,7 +83,6 @@ module DNA.SlurmBackend
   , initializeBackend
     -- * Slave nodes
   , startSlave
-  , startSlaveWithProc
   , terminateSlave
   , findSlaves
   , terminateAllSlaves
@@ -96,10 +95,9 @@ import Data.Binary (Binary(get, put), getWord8, putWord8)
 import Data.Accessor (Accessor, accessor, (^:), (^.))
 import Data.Foldable (forM_)
 import Data.Typeable (Typeable)
-import qualified Data.ByteString.Char8 as BSC
 import Control.Applicative ((<$>))
 import Control.Exception (throw)
-import Control.Monad (replicateM, replicateM_, forM, liftM)
+import Control.Monad (replicateM, replicateM_)
 import Control.Monad.IO.Class (liftIO)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, readMVar, modifyMVar_)
@@ -137,7 +135,6 @@ import qualified Control.Distributed.Process.Node as Node
   ( LocalNode
   , newLocalNode
   , runProcess
-  , forkProcess
   )
 import qualified Network.Socket as N
 import qualified Network.Transport.TCP as NT
@@ -145,8 +142,6 @@ import qualified Network.Transport.TCP as NT
   , defaultTCPParameters
   , encodeEndPointAddress
   )
-import Foreign.C.String(CString, peekCAString)
-import qualified Network.URI as URI
 import qualified Network.Transport as NT (Transport(..))
 
 
@@ -302,12 +297,6 @@ instance Binary RedirectLogsReply where
 startSlave :: Backend -> IO ()
 startSlave backend = do
   node <- newLocalNode backend
-  Node.runProcess node slaveController
-
-startSlaveWithProc :: Backend -> Process () -> IO ()
-startSlaveWithProc backend process = do
-  node <- newLocalNode backend
-  _ <- Node.forkProcess node process
   Node.runProcess node slaveController
 
 -- | The slave controller interprets 'SlaveControllerMsg's
