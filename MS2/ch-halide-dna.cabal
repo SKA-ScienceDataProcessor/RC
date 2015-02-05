@@ -239,3 +239,19 @@ executable ddp-gen-data-file
     bytestring,
     binary,
     data-binary-ieee754
+
+executable bench-message
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      bench-programs
+  main-is:             bench-message.hs
+  build-depends:
+    base >=4.6,
+    ch-dna,
+    vector >= 0.10,
+    bytestring,
+    binary,
+    data-binary-ieee754,
+    directory,
+    time,
+    unix
