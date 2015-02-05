@@ -144,6 +144,8 @@ import qualified Network.Transport.TCP as NT
   )
 import qualified Network.Transport as NT (Transport(..))
 
+import DNA.Logging (eventMessage)
+
 
 -- | Local backend
 data Backend = Backend {
@@ -321,7 +323,8 @@ slaveController = do
 terminateSlave :: NodeId -> Process ()
 terminateSlave nid = nsendRemote nid "slaveController" SlaveTerminate
 
--- | Find slave nodes
+-- | Find slave nodes. Function return list of slaveController
+--   processes.
 findSlaves :: Backend -> Process [ProcessId]
 findSlaves backend = do
   nodes <- liftIO $ findPeers backend
@@ -330,15 +333,19 @@ findSlaves backend = do
    (mapM monitorNode nodes)
    (mapM unmonitor)
    $ \_ -> do
-
    -- fire off whereis requests
    forM_ nodes $ \nid -> whereisRemoteAsync nid "slaveController"
-
    -- Wait for the replies
    catMaybes <$> replicateM (length nodes) (
      receiveWait
-       [ match (\(WhereIsReply "slaveController" mPid) -> return mPid)
-       , match (\(NodeMonitorNotification {}) -> return Nothing)
+       [ match $ \(WhereIsReply "slaveController" mPid) ->
+           case mPid of
+             Nothing  -> do eventMessage "No slave controller on remote node!"
+                            return Nothing
+             Just pid -> return (Just pid)
+       , match $ \n@(NodeMonitorNotification {}) -> do
+           eventMessage $ "Remote node is down? : " ++ show n
+           return Nothing
        ])
 
 -- | Terminate all slaves
