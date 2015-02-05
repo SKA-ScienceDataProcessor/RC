@@ -23,9 +23,6 @@ import qualified Data.Foldable as T
 import Text.ParserCombinators.ReadP hiding (many)
 import Text.Printf
 
-import Foreign.Ptr
-import Foreign.C.String
-
 import DNA.SlurmBackend (initializeBackend,startMaster,startSlave,terminateAllSlaves)
 import qualified DNA.SlurmBackend as CH
 import DNA.CmdOpts
@@ -209,6 +206,12 @@ runReadP p s = case readP_to_S p s of
 -- Startup of program
 runUnix :: Int -> CommonOpt -> IO ()
 runUnix n common = do
+    -- Check if SLURM envvars are set and fail they're
+    do v <- lookupEnv "SLURM_JOBID"
+       case v of
+         Nothing -> return ()
+         _       -> error "SLURM environment variable is set will not use UNIX startup"
+    --
     pid     <- getProcessID
     program <- getExecutablePath
     workdir <- getCurrentDirectory
