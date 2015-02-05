@@ -91,7 +91,10 @@ runSlurmWorker rtable dir common dna = do
     case rank of
       0 -> startMaster backend $ \n -> do
                synchronizationPoint "CH"
-               executeDNA dna n
+               r <- executeDNA dna n
+               case r of
+                 Just e  -> taggedMessage "FATAL" $ "main actor died: " ++ show e
+                 Nothing -> return ()
                terminateAllSlaves backend
       _ -> startSlave backend
 
@@ -276,7 +279,8 @@ runUnixWorker rtable opts common dna = do
             r <- executeDNA dna n
             terminateAllSlaves backend
             case r of
-              Just e  -> liftIO $ print e
+              Just e  -> do taggedMessage "FATAL" $ "main actor died: " ++ show e
+                            liftIO $ print e
               Nothing -> return ()
     -- Start master or slave program
     case rank of
