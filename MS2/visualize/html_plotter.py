@@ -166,7 +166,7 @@ def write_timeline_body(logs, conf) :
 
     # Get program environment (see above)
     env = logs[0].get_env()
-    if env.has_key('SLURM_STEP_NUM_TASKS') :
+    if env.has_key('SLURM_NODEID') :
         f.write('''
     <h4>SLURM Configuration</h4>
     <table class="slurm_conf">
