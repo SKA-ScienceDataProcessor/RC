@@ -161,12 +161,6 @@ data BackendState = BackendState {
  , _peers           :: [NodeId]
  }
 
-{-
--- | Build a list of hosts from SLURM_NODELIST or use localhost
-foreign import ccall dna_nodes:: IO CString
-getHostList:: IO (String)
-    return PeekCAString dna_nodes
--}
 
 -- | Cluster
 data CAD
@@ -331,9 +325,6 @@ terminateSlave nid = nsendRemote nid "slaveController" SlaveTerminate
 findSlaves :: Backend -> Process [ProcessId]
 findSlaves backend = do
   nodes <- liftIO $ findPeers backend
-  -- Put delay to make sure that slaves started
-  -- FIXME: It doesn't strike as most clever idea...
-  liftIO $ threadDelay (500*1000)
   -- Fire off asynchronous requests for the slave controller
   bracket
    (mapM monitorNode nodes)
