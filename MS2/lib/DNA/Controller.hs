@@ -296,6 +296,8 @@ handleReqResourcesGrp (ReqResourcesGrp req resGrp flags) = do
               []     -> fatal "Impossible: empty nodelist"
               n:rest -> allocResource n rest
       NNodes k -> do
+          when (length nodes < k) $
+            fatal "Not enough nodes to schedule"
           chunks <- toSizedChunks k nodes
           forM chunks $ \ns -> case ns of
               []     -> fatal "Impossible: empty nodelist"
@@ -871,3 +873,4 @@ spawnHierachically (CAD nid children) = do
     send pid (clos,me,children)
     cad <- expect
     return cad
+
