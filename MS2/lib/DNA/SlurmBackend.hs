@@ -325,8 +325,11 @@ terminateSlave nid = nsendRemote nid "slaveController" SlaveTerminate
 
 -- | Find slave nodes. Function return list of slaveController
 --   processes.
-findSlaves :: Backend -> Process [ProcessId]
-findSlaves backend = do
+findSlaves
+    :: Int                      -- ^ Number of retries
+    -> Backend
+    -> Process [ProcessId]
+findSlaves nRetry backend = do
   nodes <- liftIO $ findPeers backend
   -- Fire off asynchronous requests for the slave controller
   bracket
@@ -336,7 +339,7 @@ findSlaves backend = do
    -- fire off whereis requests
    forM_ nodes $ \nid -> whereisRemoteAsync nid "slaveController"
    -- Wait for the replies
-   catMaybes <$> replicateM (length nodes) (
+   pids <- catMaybes <$> replicateM (length nodes) (
      receiveWait
        [ match $ \(WhereIsReply "slaveController" mPid) ->
            case mPid of
@@ -347,11 +350,17 @@ findSlaves backend = do
            eventMessage $ "Remote node is down? : " ++ show n
            return Nothing
        ])
+   -- FIXME: how should we treat not found nodes?
+   if (length pids /= length nodes) && (nRetry > 0)
+       then do eventMessage $ "Retrying findSlaves (" ++ show (nRetry-1) ++ ") left"
+               liftIO $ threadDelay (500*1000)
+               findSlaves (nRetry-1) backend
+       else return pids
 
 -- | Terminate all slaves
 terminateAllSlaves :: Backend -> Process ()
 terminateAllSlaves backend = do
-  slaves <- findSlaves backend
+  slaves <- findSlaves 0 backend
   forM_ slaves $ \pid -> send pid SlaveTerminate
   liftIO $ threadDelay 1000000
 
@@ -378,7 +387,7 @@ startMaster :: Backend -> ([NodeId] -> Process ()) -> IO ()
 startMaster backend proc = do
   node <- newLocalNode backend
   Node.runProcess node $ do
-    slaves <- findSlaves backend
+    slaves <- findSlaves 1 backend
     redirectLogsHere backend slaves
     proc (map processNodeId slaves) `finally` shutdownLogger
 

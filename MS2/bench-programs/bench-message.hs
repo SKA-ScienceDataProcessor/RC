@@ -52,7 +52,7 @@ ddpSend = actor $ \size -> do
 
 -- | Data to send
 vectorSize :: Int
-vectorSize = 128 * 1024 * 1024
+vectorSize = 1 * 1024 * 1024
 vector :: B.ByteString
 vector = B.replicate vectorSize 0
 
