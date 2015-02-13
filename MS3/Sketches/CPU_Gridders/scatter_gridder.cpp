@@ -174,7 +174,7 @@ void gridKernel_scatter(
         __m256d weight_r = _mm256_set1_pd(gcf_layer[su][sv].real());
         __m256d weight_i = _mm256_set1_pd(gcf_layer[su][sv].imag());
 
-        /* _mm256_permute_pd(x, 5) adjacent doubles pairs of x:
+        /* _mm256_permute_pd(x, 5) swaps adjacent doubles pairs of x:
            d0, d1, d2, d3 goes to d1, d0, d3, d2
          */
         #define __DO(p,f)                                     \
