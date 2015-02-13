@@ -63,7 +63,6 @@ template <
     int w_planes
   , int max_supp
   , int grid_size
-  , int over
   >
 TaskCfg mkCfg (
     double min_u
