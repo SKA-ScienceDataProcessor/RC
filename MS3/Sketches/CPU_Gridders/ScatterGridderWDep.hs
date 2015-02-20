@@ -5,38 +5,51 @@
 
 module ScatterGridderWDep where
 
+import Text.Printf(printf)
+
 import "language-c-quote" Language.C.Syntax
 import Language.C.Quote.CUDA
 import Text.PrettyPrint.Mainland(
     Doc
   , ppr
+  , pretty
   )
+import Development.Shake
+import Development.Shake.FilePath
 
 speed_of_light, wstep_correct :: Double
 speed_of_light = 299792458.0
 wstep_correct = 0.00001
 
-vis_typ, pg_typ, uvw_typ, task_cfg :: Type
-vis_typ = [cty| typename complex [4] |]
-pg_typ = [cty|
-   typedef struct Pregridded_tag
+double4c, pregridded, double3, task_cfg :: Type
+double4c = [cty|
+   struct Double4c_tag
+   {
+     typename complexd XX;
+     typename complexd XY;
+     typename complexd YX;
+     typename complexd YY;
+   }
+  |]
+pregridded = [cty|
+   struct Pregridded_tag
    {
      short u;
      short v;
      short gcf_layer_index;
      short supp_size;
-   } Pregridded
+   }
   |]
-uvw_typ = [cty|
-   typedef struct Double3_tag
+double3 = [cty|
+   struct Double3_tag
    {
      double u;
      double v;
      double w;
-   } Double3
+   }
   |]
 task_cfg = [cty|
-  typedef struct TaskCfg_tag {
+  struct TaskCfg_tag {
     double
         min_wave_length
       , max_inverse_wave_length
@@ -49,12 +62,11 @@ task_cfg = [cty|
       , w_shift
       , w_shiftWL
       ;
-  } TaskCfg
+  }
   |]
 
 mkCfg :: Int -> Int -> Int -> Func
 mkCfg w_planes max_supp grid_size = [cfun|
-  /* $ty:task_cfg */
   typename TaskCfg
    mkCfg (
       double min_u
@@ -83,7 +95,6 @@ mkCfg w_planes max_supp grid_size = [cfun|
       , w_shift = -min_w
       , w_shiftWL = w_shift * scaleWL
       ;
-    /* return ($ty:task_cfg) { */
     return (typename TaskCfg) {
         min_wavelength
       , max_inverse_wave_length
@@ -99,5 +110,37 @@ mkCfg w_planes max_supp grid_size = [cfun|
     }
   |]
 
+data Inc = SI String | CI String
+
+mkInc :: Inc -> String
+mkInc (SI s) = printf "#include <%s>\n" s
+mkInc (CI s) = printf "#include \"%s\"\n" s
+
+mkIncs :: [Inc] -> String
+mkIncs = concatMap mkInc
+
+unit :: Int -> Int -> Int -> [Definition]
+unit w_planes max_supp grid_size = [cunit|
+  $esc:(mkIncs [SI "minmax.h", CI "scatter_gridder.h"])
+
+  typedef $ty:double4c Double4c;
+  typedef $ty:pregridded Pregridded;
+  typedef $ty:double3 Double3;
+  typedef $ty:task_cfg TaskCfg;
+
+  $func:(mkCfg w_planes max_supp grid_size)
+  |]
+
 mkCfgCode :: Doc
-mkCfgCode = ppr (mkCfg 32 128 2048)
+mkCfgCode = ppr (unit 32 128 2048)
+
+main :: IO ()
+main = shakeArgs shakeOptions $ do
+  want ["scatter_gridder.o"]
+  "scatter_gridder.c" %> \out -> do
+     need ["ScatterGridderWDep.hs"] -- look at myself
+     liftIO $ writeFile out (pretty 80 mkCfgCode)
+  "*.o" %> \out -> do
+      let src = out -<.> "c"
+      need [src]
+      cmd "gcc -std=gnu11 -c -o" [out] src
