@@ -3,15 +3,14 @@
 #endif
 
 #ifdef __CUDACC__
-#include <cuComplex.h>
+  #include <cuComplex.h>
+  typedef cuDoubleComplex complexd;
+#elif defined __cplusplus
+  #include <complex>
+  typedef std::complex<double> complexd;
 #else
-#include <complex>
-#endif
-
-#ifdef __CUDACC__
-typedef cuDoubleComplex complexd;
-#else
-typedef std::complex<double> complexd;
+  #include <complex.h>
+  typedef double complex complexd;
 #endif
 
 struct Double4c
