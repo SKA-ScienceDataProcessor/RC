@@ -80,10 +80,15 @@ void gridKernel_scatter(
     int myConvU, myConvV, myGridU, myGridV, u, v;
     u = uvw[bl][i].u;
     v = uvw[bl][i].v;
-    myConvU = (u + max_supp/2) % max_supp - myU;
-    myConvV = (v + max_supp/2) % max_supp - myV;
-    myGridU = u - myConvU;
-    myGridV = v - myConvV;
+    myConvU = myU - u % max_supp;
+    if (myConvU < 0) myConvU += max_supp;
+    myConvV = myV - v % max_supp;
+    if (myConvV < 0) myConvV += max_supp;
+    // Like Romein we leave grid shifted by max_supp/2 because
+    // we need to shift it anyway to 0-center it for FFT.
+    // We will make this in a single take later.
+    myGridU = u + myConvU;
+    myGridV = v + myConvV;
     complexd supportPixel = (gcf[0][0][0] + uvw[bl][i].gcf_layer_offset)[myConvU][myConvV];
     if (myGridU != grid_point_u || myGridV != grid_point_v) {
       atomicAdd(&grid[grid_point_u][grid_point_v], sumXX, sumXY, sumYX, sumYY);
