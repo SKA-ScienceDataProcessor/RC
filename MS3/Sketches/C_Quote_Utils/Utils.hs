@@ -19,39 +19,29 @@ import Text.PrettyPrint.Mainland(
   -- , pretty
   )
 
--- We relax loop dimensions types to be of any of ToExp class
---  and not only Int's here.
 data LB where
   LB :: (ToExp a, ToExp b, ToExp c) => a -> b -> c -> LB
 
 type LoopType = ([Exp] -> [Stm]) -> Stm
 
-loopstep :: Stm -> (LB, Id) -> Stm
+loopstep :: [Stm] -> (LB, Id) -> [Stm]
 loopstep code (LB ls lf li, loopndx) =
-  [cstm| for (int $id:loopndx = $ls; $id:loopndx < $lf; $id:loopndx += $li) {
-           $stm:code;
-         }
-       |]
+  [cstms| for (int $id:loopndx = $ls; $id:loopndx < $lf; $id:loopndx += $li) {
+            $stms:code
+          }
+        |]
 
-loop0 :: (LB, Id) -> [Exp] -> ([Exp] -> [Stm]) -> Stm
-loop0 (LB ls lf li, loopndx) args code =
-  [cstm| for (int $id:loopndx = $ls; $id:loopndx < $lf; $id:loopndx += $li) {
-           $stms:(code args)
-         }
-       |]
-
-loop :: [LB] -> ([Exp] -> [Stm]) -> Stm
-loop [] f = [cstm| do {$stms:(f [])} while (0); |]
-loop lbs f = foldl' loopstep (loop0 l0 args f) ls
+loop :: [LB] -> ([Exp] -> [Stm]) -> [Stm]
+loop [] f = [cstms| do {$stms:(f [])} while (0); |]
+loop lbs f = foldl' loopstep (f args) (reverse $ zip lbs ndxes)
   where
-    (l0 : ls) = reverse $ zip lbs ndxes
     args = map mkVar ndxes
     mkVar vid = Var vid noLoc
     mkndx n = Id (printf "i__%d" n) noLoc
     ndxes = map mkndx [0 .. length lbs - 1]
 
 
-looptest :: Stm
+looptest :: [Stm]
 looptest = loop [lb 0 10 1, lb 0 20 2, lb 0 30 3] (\[i, j, k] -> [cstms| $i *= 10; $j *= 20; $k *= 30; |])
   where
     lb :: Int -> Int -> Int -> LB
