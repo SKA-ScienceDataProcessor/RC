@@ -19,6 +19,8 @@ import Text.PrettyPrint.Mainland(
   -- , pretty
   )
 
+-- We relax loop dimensions types to be of any of ToExp class
+-- and not only Int's here.
 data LB where
   LB :: (ToExp a, ToExp b, ToExp c) => a -> b -> c -> LB
 
