@@ -2,6 +2,11 @@
       QuasiQuotes
     , PackageImports
     , GADTs
+    -- , DataKinds
+    -- , PolyKinds
+    -- , KindSignatures
+    , TypeOperators
+    , FlexibleInstances
   #-}
 
 module Utils where
@@ -52,3 +57,57 @@ test = ppr looptest
 
 test0 :: Doc
 test0 = ppr $ loop [] (\_ -> [cstms| return; |])
+
+-- To keep using ToExp instead of Int we should use geterogeneous lists.
+
+data LB1 a b c where
+  LB1 :: (ToExp a, ToExp b, ToExp c) => a -> b -> c -> LB1 a b c
+
+infixr 5 :.
+
+data Z = Z
+data a :. b = a :. b
+
+loopstep1 :: [Stm] -> Id -> LB1 a b c -> [Stm]
+loopstep1 code loopndx (LB1 ls lf li) =
+  [cstms| for (int $id:loopndx = $ls; $id:loopndx < $lf; $id:loopndx += $li) {
+            $stms:code
+          }
+        |]
+
+class LoopClass a where
+  mkloop1 :: Int -> a -> [Stm] -> [Stm]
+  iargs1 :: a -> [Exp] -- inverse
+  len1 :: a -> Int
+
+instance LoopClass Z where
+  mkloop1 _ Z sms = sms
+  iargs1 Z = []
+  len1 Z = 0
+
+mkId :: Int -> Id
+mkId n = Id (printf "i__%d" n) noLoc
+
+instance LoopClass zs => LoopClass (LB1 a b c :. zs) where
+  mkloop1 n (x :. xs) sms =
+    let ndx = mkId (n - len1 xs - 1) -- inverse
+    in loopstep1 (mkloop1 n xs sms) ndx x
+  iargs1 (_ :. xs) = Var (mkId $ len1 xs) noLoc : iargs1 xs
+  len1 (_ :. xs) = 1 + len1 xs
+
+loop1 :: LoopClass a => a -> ([Exp] -> [Stm]) -> [Stm]
+loop1 lbs f
+  | len1 lbs == 0 = [cstms| do {$stms:(f [])} while (0); |]
+  | otherwise = mkloop1 (len1 lbs) lbs (f $ reverse $ iargs1 lbs)
+
+looptest1 :: [Stm]
+looptest1 = loop1 (lb 0 10 1 :. lb 0 20 2 :. lb 0 30 3 :. Z) (\[i, j, k] -> [cstms| $i *= 10; $j *= 20; $k *= 30; |])
+  where
+    lb :: Int -> Int -> Int -> LB1 Int Int Int
+    lb s f i = LB1 s f i
+
+test1 :: Doc
+test1 = ppr looptest1
+
+test01 :: Doc
+test01 = ppr $ loop1 Z (\_ -> [cstms| return; |])
