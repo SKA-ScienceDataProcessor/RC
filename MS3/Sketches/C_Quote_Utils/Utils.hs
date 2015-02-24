@@ -24,8 +24,6 @@ import Text.PrettyPrint.Mainland(
 data LB where
   LB :: (ToExp a, ToExp b, ToExp c) => a -> b -> c -> LB
 
-type LoopType = ([Exp] -> [Stm]) -> Stm
-
 loopstep :: [Stm] -> (LB, Id) -> [Stm]
 loopstep code (LB ls lf li, loopndx) =
   [cstms| for (int $id:loopndx = $ls; $id:loopndx < $lf; $id:loopndx += $li) {
