@@ -58,7 +58,7 @@ test = ppr looptest
 test0 :: Doc
 test0 = ppr $ loop [] (\_ -> [cstms| return; |])
 
--- To keep using ToExp instead of Int we should use geterogeneous lists.
+-- To keep using ToExp instead of Int we should use heterogeneous lists.
 
 data LB1 a b c where
   LB1 :: (ToExp a, ToExp b, ToExp c) => a -> b -> c -> LB1 a b c
