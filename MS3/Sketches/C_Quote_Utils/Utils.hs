@@ -104,7 +104,7 @@ looptest1 :: [Stm]
 looptest1 = loop1 (lb 0 10 1 :. lb 0 20 2 :. lb 0 30 3 :. Z) (\[i, j, k] -> [cstms| $i *= 10; $j *= 20; $k *= 30; |])
   where
     lb :: Int -> Int -> Int -> LB1 Int Int Int
-    lb s f i = LB1 s f i
+    lb = LB1
 
 test1 :: Doc
 test1 = ppr looptest1
