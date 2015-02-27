@@ -24,6 +24,25 @@ import Text.PrettyPrint.Mainland(
   -- , pretty
   )
 
+addFields :: Exp -> [Exp] -> Exp
+addFields (CompoundLit t clist loc) inits = CompoundLit t clist' loc
+  where
+    clist' = clist ++ map toDI inits
+    toDI e = (Nothing, ExpInitializer e noLoc)
+addFields _ _ = error "Expression is not a compound literal!"
+
+ex :: ToExp a => a -> Exp
+ex te = toExp te noLoc
+
+data Inc = SI String | CI String
+
+mkInc :: Inc -> String
+mkInc (SI s) = printf "#include <%s>\n" s
+mkInc (CI s) = printf "#include \"%s\"\n" s
+
+mkIncs :: [Inc] -> String
+mkIncs = concatMap mkInc
+
 -- We relax loop dimensions types to be of any of ToExp class
 -- and not only Int's here.
 data LB where
@@ -58,7 +77,7 @@ test = ppr looptest
 test0 :: Doc
 test0 = ppr $ loop [] (\_ -> [cstms| return; |])
 
--- To keep using ToExp instead of Int we should use heterogeneous lists.
+-- To keep using ToExp instead of Int we should use geterogeneous lists.
 
 data LB1 a b c where
   LB1 :: (ToExp a, ToExp b, ToExp c) => a -> b -> c -> LB1 a b c

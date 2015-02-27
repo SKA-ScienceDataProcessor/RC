@@ -5,12 +5,10 @@
 
 module ScatterGridderWDep where
 
-import Text.Printf(printf)
-
-import Data.Loc (noLoc)
 import "language-c-quote" Language.C.Syntax
 import Language.C.Quote.CUDA
-import Text.PrettyPrint.Mainland(
+import Language.C.Smart ()
+import Text.PrettyPrint.Mainland (
     Doc
   , ppr
   , pretty
@@ -18,19 +16,33 @@ import Text.PrettyPrint.Mainland(
 import Development.Shake
 import Development.Shake.FilePath
 
+import Utils
+
 speed_of_light, wstep_correct :: Double
 speed_of_light = 299792458.0
 wstep_correct = 0.00001
 
-pregridded :: [FieldGroup] -> Type
-pregridded gcf_fields = [cty|
+data GCFType =
+    GCFFixed { maxSupp :: Int }
+  | GCFVar { halfSuppStep :: Int }
+
+pregridded :: GCFType -> Type
+pregridded gcftype = [cty|
    struct Pregridded_tag
    {
      short u;
      short v;
-     $sdecls:gcf_fields
+     $sdecls:(gcf_fields gcftype)
    }
   |]
+  where
+    gcf_fields (GCFFixed _) =
+      [ [csdecl| int gcf_layer_offset; |]
+      ]
+    gcf_fields (GCFVar _) =
+      [ [csdecl| short gcf_layer_index; |]
+      , [csdecl| short half_supp_size; |]
+      ]
 
 double4c, double3, task_cfg :: Type
 double4c = [cty|
@@ -67,8 +79,12 @@ task_cfg = [cty|
   }
   |]
 
-mkCfgFixSupport :: Int -> Int -> Int -> Func
-mkCfgFixSupport w_planes max_supp grid_size = [cfun|
+max_supp :: GCFType -> Int -> Int
+max_supp (GCFFixed n) _ = n
+max_supp (GCFVar half_supp_step) w_planes = (w_planes - 1) * half_supp_step * 2
+
+mkCfgSupport :: GCFType -> Int -> Int -> Func
+mkCfgSupport gcftype grid_size w_planes = [cfun|
   typename TaskCfg
    mkCfg (
       double min_u
@@ -80,7 +96,7 @@ mkCfgFixSupport w_planes max_supp grid_size = [cfun|
     , double max_freq
     ) {
     
-    const int uv_shift_in_pixels = ($max_supp + $grid_size) / 2;
+    const int uv_shift_in_pixels = ($(max_supp gcftype w_planes) + $grid_size) / 2;
     
     double
         min_wavelength = $speed_of_light / max_freq
@@ -112,49 +128,10 @@ mkCfgFixSupport w_planes max_supp grid_size = [cfun|
     }
   |]
   
-mkCfgVarSupport :: Int -> Int -> Int -> Func
-mkCfgVarSupport w_planes half_supp_step =
-  mkCfgFixSupport w_planes ((w_planes - 1) * half_supp_step * 2)
-
-mkSuppOff :: Int -> Int -> Exp
-mkSuppOff overu overv = [cexp| (wplane * $overu + fracu) * $overv + fracv |]
-
-mkFixed :: Int -> Exp -> Exp
-mkFixed max_supp e = [cexp| $e * $max_supp |]
-
-mkRet0 :: Exp
-mkRet0 =
-  [cexp| (typename Pregridded) {
-          u + uv_shift_in_pixels
-        , v + uv_shift_in_pixels
-        }
-       |]
-
--- FIXME: move to Utils
-addFieldsToCompoundLiteral :: Exp -> [Exp] -> Exp
-addFieldsToCompoundLiteral (CompoundLit t clist loc) inits = CompoundLit t clist' loc
-  where
-    clist' = clist ++ map toDI inits
-    toDI e = (Nothing, ExpInitializer e noLoc)
-addFieldsToCompoundLiteral _ _ = error "Expression is not a compound literal!"
-
-mkRetFix :: Int -> Int -> Int -> Exp
-mkRetFix overu overv max_supp =
-  addFieldsToCompoundLiteral mkRet0 [mkFixed max_supp $ mkSuppOff overu overv]
-
-mkRetVar :: Int -> Int -> Int -> Exp
-mkRetVar overu overv half_supp_step =
-  addFieldsToCompoundLiteral mkRet0 [
-      mkSuppOff overu overv
-    , [cexp| wplane * $half_supp_step |]
-    ]
-
-mkPregrid :: Int -> Int -> Int -> Exp -> Func
-mkPregrid max_supp grid_size over cle =
-  let
-    overu = over
-    overv = over
-  in [cfun|
+mkPregrid :: GCFType -> Int -> Int -> Int -> Func
+mkPregrid gcftype grid_size w_planes over =
+  [cfun|
+    inline
     typename Pregridded
     pregrid(const typename Double3 * uvw, const typename TaskCfg * cfg) {
       double
@@ -165,68 +142,74 @@ mkPregrid max_supp grid_size over cle =
           u = (int)us
         , v = (int)vs
         , wplane = (int)((uvw->w + cfg->w_shift)/ cfg->w_step)
-        , uv_shift_in_pixels = ($max_supp + $grid_size) / 2
+        , uv_shift_in_pixels = ($(max_supp gcftype w_planes) + $grid_size) / 2
         ;
       short
           fracu = (short)((double)$overu * (us - (double)u))
         , fracv = (short)((double)$overv * (vs - (double)v))
         ;
-     
-      return $cle;
+      return $(ret0 `addFields` extraFields);
     }
   |]
+  where
+    ret0 =
+      [cexp|
+        (typename Pregridded) {
+            u + uv_shift_in_pixels
+          , v + uv_shift_in_pixels
+          }
+      |]
+    suppOff =
+      [cexp| (wplane * $overu + fracu) * $overv + fracv |]
+    extraFields =
+      case gcftype of
+        GCFFixed max_s ->
+            [ suppOff * ex max_s ]
+        GCFVar half_supp_step ->
+            [ suppOff
+            , [cexp| wplane * $half_supp_step |]
+            ]
+    overu = over
+    overv = over
 
-mkPregridFix :: Int -> Int -> Int -> Func
-mkPregridFix max_supp grid_size over =
-  mkPregrid max_supp grid_size over (mkRetFix over over max_supp)
 
-mkPregridFixCode :: Doc
-mkPregridFixCode = ppr (mkPregridFix 128 2048 8)
+mkPregridFixCodeTest :: Doc
+mkPregridFixCodeTest = ppr (mkPregrid (GCFFixed 128) 2048 32 8)
 
-mkPregridVar :: Int -> Int -> Int -> Int -> Func
-mkPregridVar half_supp_step w_planes grid_size over =
-  let max_supp = (w_planes - 1) * half_supp_step * 2
-  in mkPregrid max_supp grid_size over (mkRetVar over over half_supp_step)
+mkPregridVarCodeTest :: Doc
+mkPregridVarCodeTest = ppr (mkPregrid (GCFVar 5) 2048 32 8)
 
-mkPregridVarCode :: Doc
-mkPregridVarCode = ppr (mkPregridVar 5 32 2048 8)
-
-data Inc = SI String | CI String
-
-mkInc :: Inc -> String
-mkInc (SI s) = printf "#include <%s>\n" s
-mkInc (CI s) = printf "#include \"%s\"\n" s
-
-mkIncs :: [Inc] -> String
-mkIncs = concatMap mkInc
-
--- FIXME!
-unit :: Int -> Int -> Int -> [FieldGroup] -> [Definition]
-unit w_planes max_supp grid_size gcf_fields =
+unit :: GCFType -> Int -> Int -> Int -> [Definition]
+unit gcf_type grid_size w_planes over =
   [cunit|
     $esc:(mkIncs [SI "minmax.h", CI "scatter_gridder.h"])
 
     typedef $ty:double4c Double4c;
-    typedef $ty:(pregridded gcf_fields) Pregridded;
+    typedef $ty:(pregridded gcf_type) Pregridded;
     typedef $ty:double3 Double3;
     typedef $ty:task_cfg TaskCfg;
 
-    $func:(mkCfgFixSupport w_planes max_supp grid_size)
+    $func:(mkCfgSupport gcf_type grid_size w_planes)
+    $func:(mkPregrid gcf_type grid_size w_planes over)
   |]
+  where
+    
 
-mkCfgCode :: Doc
-mkCfgCode = ppr (unit 32 128 2048
-  [ [csdecl| short gcf_layer_index; |]
-  , [csdecl| short supp_size; |]
-  ])
+mkCfgCodeFixed, mkCfgCodeVar :: Doc
+mkCfgCodeFixed = ppr (unit (GCFFixed 128) 2048 32 8)
+mkCfgCodeVar = ppr (unit (GCFVar 5) 2048 32 8)
 
 main :: IO ()
 main = shakeArgs shakeOptions $ do
-  want ["scatter_gridder.o"]
-  "scatter_gridder.c" %> \out -> do
-     need ["ScatterGridderWDep.hs"] -- look at myself
-     liftIO $ writeFile out (pretty 80 mkCfgCode)
+  want ["scatter_gridder_fixed.o", "scatter_gridder_var.o"]
+  mkdep "scatter_gridder_fixed.c" mkCfgCodeFixed
+  mkdep "scatter_gridder_var.c" mkCfgCodeVar
   "*.o" %> \out -> do
       let src = out -<.> "c"
       need [src]
       cmd "gcc -std=gnu11 -c -o" [out] src
+  where
+    mkdep outname src =
+      outname %> \out -> do
+         need ["ScatterGridderWDep.hs"] -- look at myself
+         liftIO $ writeFile out (pretty 80 src)
