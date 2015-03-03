@@ -207,7 +207,7 @@ main = shakeArgs shakeOptions $ do
   "*.o" %> \out -> do
       let src = out -<.> "c"
       need [src]
-      cmd "gcc -std=gnu11 -c -o" [out] src
+      cmd "gcc -std=gnu11 -c -Wall -o" [out] src
   where
     mkdep outname src =
       outname %> \out -> do
