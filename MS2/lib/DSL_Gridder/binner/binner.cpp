@@ -155,7 +155,7 @@ int main(int argc, char * argv[]) {
           max_freq = freq_start + freq_inc * double(dims.channels)
         , min_vawelength = SPEED_OF_LIGHT / max_freq
         , maxx_in_vawelengths = maxx / min_vawelength
-        , uvw_scale = double(GRID_D) / (2.0 * maxx + 1.0) // No shift on support/2.
+        , uvw_scale = double(GRID_D) / (2.0 * maxx * max_freq / freq_start + 1.0) // No shift on support/2.
         , uv_shift = double(GRID_D) / 2.0
         , w_shift = -minw * uvw_scale
         // This additional 0.1 introduced to mitigate rounding errors and stay within WPLANES.
