@@ -93,6 +93,7 @@ mkCfgSupport gcftype grid_size w_planes = [cfun|
     , double max_v
     , double min_w
     , double max_w
+    , double min_freq
     , double max_freq
     ) {
     
@@ -103,7 +104,8 @@ mkCfgSupport gcftype grid_size w_planes = [cfun|
       , max_inverse_wave_length = max_freq / $speed_of_light
       , maxx_u = max(max_u, -min_u)
       , maxx_v = max(max_v, -min_v)
-      , maxx = max(maxx_u, maxx_v)
+      , maxx0 = max(maxx_u, maxx_v)
+      , maxx = maxx0 * max_freq / min_freq
       , cellsize = maxx / (double)uv_shift_in_pixels
       , cellsizeWL = cellsize * max_inverse_wave_length
       , scale = (double)uv_shift_in_pixels / maxx

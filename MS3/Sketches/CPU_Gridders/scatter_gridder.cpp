@@ -12,6 +12,7 @@ TaskCfg mkCfg (
   , double max_v
   , double min_w
   , double max_w
+  , double min_freq
   , double max_freq
   ) {
   const int uv_shift_in_pixels = (max_supp + grid_size) / 2;
@@ -20,7 +21,8 @@ TaskCfg mkCfg (
     , max_inverse_wave_length = max_freq / SPEED_OF_LIGHT
     , maxx_u = std::max(max_u, -min_u)
     , maxx_v = std::max(max_v, -min_v)
-    , maxx = std::max(maxx_u, maxx_v)
+    , maxx0 = std::max(maxx_u, maxx_v)
+    , maxx = maxx0 * max_freq / min_freq
     , cellsize = maxx / double (uv_shift_in_pixels)
     , cellsizeWL = cellsize * max_inverse_wave_length
     , scale = double (uv_shift_in_pixels) / maxx
