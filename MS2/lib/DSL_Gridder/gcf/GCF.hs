@@ -12,6 +12,7 @@ module Main where
 
 import Data.List                             as P
 import Prelude                               as P
+import Text.Printf (printf)
 import Data.Array.Accelerate                 as A
 import Data.Array.Accelerate.Data.Complex    as A
 import Data.Array.Accelerate.Math.FFT        as FFT
@@ -92,35 +93,9 @@ wextract arr ia ja over supp = exmid
       in index2 (A.fst i2 * overex + i) (A.snd i2 * overex + j)
     Z :. nr :. nc = unlift (shape arr) :: Z :. Exp Int :. Exp Int
 
-{-
-#define W 3
--- Unlike in Bojan's code we add w-dimension right here.
-
-wkernaf_with :: (Exp CxDouble -> Exp CxDouble) -> Int -> Int -> Int -> Acc (Scalar Double) -> Acc (Scalar Double) -> Acc (Array DIM5 CxDouble)
-wkernaf_with fun n over supp t2a wdiffa =
-  let
-    wf = waf_full n over t2a
-    ws = P.take W $ P.iterate (+ (the wdiffa)) (A.constant 0.0)
-    resshape = Z :. (W :: Int) :. over :. over :. supp :. supp
-    emb = unit . constant
-    nullvec :: Acc (Vector CxDouble)
-    nullvec = use $ fromList (Z :. 0) []
-  in reshape (lift resshape) $
-       foldr (A.++) nullvec [A.map fun $ flatten $ wextract (wf $ unit w) (emb i) (emb j) over supp | w <- ws, i <- [0..over-1], j <- [0..over-1]]
-
-wkernaf, wkernaf_conj :: Int -> Int -> Int -> Acc (Scalar Double) -> Acc (Scalar Double) -> Acc (Array DIM5 CxDouble)
-wkernaf = wkernaf_with id
-wkernaf_conj = wkernaf_with conjugate
- -}
-
-wkernaf0, wkernaf_conj0 :: Int -> Int -> Int -> Acc (Scalar Double) -> Acc (Scalar (Int, Int, Double)) -> Acc (Array DIM2 CxDouble)
-wkernaf0 n supp over t2a arg =
-  let
-    (overx, overy, w) = unlift (the arg)
-    wf = waf_full n over t2a
-  in
-    wextract (wf $ unit w) (unit overx) (unit overy) over supp
-wkernaf_conj0 n supp over t2a arg = A.map conjugate $ wkernaf0 n supp over t2a arg
+wkernaf_conj :: Int -> Int -> Acc (Scalar Int) -> Acc (Scalar Int) -> Array DIM2 CxDouble -> Acc (Array DIM2 CxDouble)
+wkernaf_conj supp over overx overy arr =
+  A.map conjugate $ wextract (use arr) overx overy over supp
 
 -- Quick and dirty storable for Complex
 instance Storable CxDouble where
@@ -141,14 +116,18 @@ toFlatVector a =
   let ((_, res), ims) = toVectors a
   in VS.zipWith (:+) res ims
 
+mkScalar :: Elt e => e -> Scalar e
+mkScalar = fromList Z . (:[])
+
 -- these are calculated for the last config
 main :: IO ()
-main =
-  let
-    res = VS.concat $ P.map toFlatVector $ stream (wkernaf_conj0 256 16 8 (unit 0.024873)) [ fromList Z [(i, j, w)] | w <- P.take 32 (P.iterate (+61.884644) 0.0), i <- [0..7], j <- [0..7] ]
-    (fptr, len) = VS.unsafeToForeignPtr0 res
-  in do
-    withForeignPtr fptr $
-      \p -> do
-              gcfbs <- BS.unsafePackCStringLen (castPtr p, len * sizeOf (undefined :: CxDouble))
-              BS.writeFile "GCF.dat" gcfbs
+main = mapM_ (\(ol, n) -> outputLayer (mk_gcf_layer ol) n) $ P.zip over_layers [0::Int ..]
+  where
+    over = 8
+    over_layers = stream (waf_full 256 over $ unit 0.024873) $ P.map mkScalar $ P.take 32 (P.iterate (+61.884644) 0.0)
+    toa = use . mkScalar
+    mk_gcf_layer w = VS.concat $ P.map (toFlatVector . run) [ wkernaf_conj 16 over (toa i) (toa j) w | i <- [0..7], j <- [0..7] ]
+    cxdsize = sizeOf (undefined :: CxDouble)
+    outputLayer vec n =
+      let (fptr, len) = VS.unsafeToForeignPtr0 vec
+      in withForeignPtr fptr $ \p -> BS.unsafePackCStringLen (castPtr p, len * cxdsize) >>= BS.writeFile (printf "GCF%02d.dat" n)
