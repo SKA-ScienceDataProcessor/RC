@@ -40,7 +40,8 @@ struct wfile {
     curr.items = 0;
   }
 
-  void put_point(const vis_data & p) {
+  template <typename t>
+  void put_point(const t & p) {
     fwrite(&p, 1, sizeof(p), file);
     curr.items++;
   }
@@ -73,7 +74,8 @@ struct filegrid {
       }
   }
 
-  void put_point(int wplane, int baseline, const vis_data & p){
+  template <typename t>
+  void put_point(int wplane, int baseline, const t & p){
     if (files[wplane].file == nullptr) {
       static char name[64];
       sprintf(name, "wplanes/%02u_wplane.dat", wplane);
@@ -94,13 +96,9 @@ private:
   vector<wfile> files;
 };
 
-int main(int argc, char * argv[]) {
-
-  if (argc < 2) {
-    printf("usage: %s <visfile>\n", argv[0]);
-  }
-
-  VisHandle vh = vis_allocate_and_read(argv[1]);
+template <typename t>
+rerrors doit(const char * f) {
+  VisHandle vh = vis_allocate_and_read(f);
 
   if (vh == NULL) {
     return ro_cant_open_vis_file;
@@ -207,22 +205,36 @@ int main(int argc, char * argv[]) {
             vs = cscale * aff(v, uvw_scale, uv_shift);
             ws = cscale * aff(w, uvw_scale, w_shift);
 
-            int u_, v_, wplane_;
+            int wplane_;
+            wplane_ = int(ws / w_step);
+
+            t p;
+#ifdef __NO_PREGRID
+            p = {us, vs, ws, amp};
+#else
+            int u_, v_;
             short fracu_, fracv_;
             u_ = int(us);
             v_ = int(vs);
-            wplane_ = int(ws / w_step);
             fracu_ = short(double(OVER) * (us - double(u_)));
             fracv_ = short(double(OVER) * (vs - double(v_)));
-
-            // Point p;
-            // p = {us, vs, ws, amp};
-            vis_data p;
             p = {u_, v_, wplane_, fracu_, fracv_, amp};
+#endif
             files.put_point(wplane_, bl, p);
+
           }
         }
       }
     }
   }
+  return ro_ok;
+}
+
+int main(int argc, char * argv[]) {
+
+  if (argc < 2) {
+    printf("usage: %s <visfile>\n", argv[0]);
+  }
+
+  return doit<vis>(argv[1]);
 }

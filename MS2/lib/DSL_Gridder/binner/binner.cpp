@@ -15,14 +15,6 @@
 
 using namespace std;
 
-typedef struct Point_tag
-{
-  double u;
-  double v;
-  double w;
-  Double4c vis;
-} Point;
-
 inline double aff(double p, double coeff, double shift){
   return p * coeff + shift;
 }
@@ -40,8 +32,8 @@ struct filegrid {
 
   ~filegrid(){for (FILE * f : files){if (f > nullptr) fclose(f);}}
 
-  // void put_point(uint ch, uint ts, uint x, uint y, const Point & p){
-  void put_point(uint ch, uint ts, uint x, uint y, const vis_data & p){
+  template <typename t>
+  void put_point(uint ch, uint ts, uint x, uint y, const t & p){
     uint off;
     if (ch == last_ch && ts == last_ts)
       off = last_off;
@@ -81,8 +73,8 @@ struct filegrid {
 
   ~filegrid(){for (FILE * f : files){if (f > nullptr) fclose(f);}}
 
-  // void put_point(uint ch, uint x, uint y, const Point & p){
-  void put_point(uint ch, uint x, uint y, const vis_data & p){
+  template <typename t>
+  void put_point(uint ch, uint x, uint y, const t & p){
     uint off = (ch * divs + x) * divs + y ;
     if (files[off] == nullptr) {
       static char name[64];
@@ -106,13 +98,9 @@ const double GRID_STEP = double(GRID_D) / double(DIVIDERS);
 const double HALF_SUPP = double(SUPP_D) / 2.0;
 const double MARGIN = HALF_SUPP / GRID_STEP;
 
-int main(int argc, char * argv[]) {
-
-  if (argc < 2) {
-    printf("usage: %s <visfile>\n", argv[0]);
-  }
-
-  VisHandle vh = vis_allocate_and_read(argv[1]);
+template <typename t>
+rerrors doit(const char * f) {
+  VisHandle vh = vis_allocate_and_read(f);
 
   if (vh == NULL) {
     return ro_cant_open_vis_file;
@@ -224,6 +212,13 @@ int main(int argc, char * argv[]) {
             usf = modf(us/GRID_STEP, &usi);
             vsf = modf(vs/GRID_STEP, &vsi);
 
+            assert(int(usi) >= 0 && int(vsi) >= 0);
+            assert(uint(usi) < DIVIDERS && uint(vsi) < DIVIDERS);
+
+            t p;
+#ifdef __NO_PREGRID
+            p = {us, vs, ws, amp};
+#else
             int u_, v_, wplane_;
             short fracu_, fracv_;
             u_ = int(us);
@@ -231,13 +226,8 @@ int main(int argc, char * argv[]) {
             wplane_ = int(ws / w_step);
             fracu_ = short(double(OVER) * (us - double(u_)));
             fracv_ = short(double(OVER) * (vs - double(v_)));
-
-            // Point p;
-            // p = {us, vs, ws, amp};
-            vis_data p;
             p = {u_, v_, wplane_, fracu_, fracv_, amp};
-            assert(int(usi) >= 0 && int(vsi) >= 0);
-            assert(uint(usi) < DIVIDERS && uint(vsi) < DIVIDERS);
+#endif
             files.put_point(ch, /* ts, */ uint(usi), uint(vsi), p);
 
 #ifndef NO_MARGINS
@@ -278,4 +268,14 @@ int main(int argc, char * argv[]) {
       }
     }
   }
+  return ro_ok;
+}
+
+int main(int argc, char * argv[]) {
+
+  if (argc < 2) {
+    printf("usage: %s <visfile>\n", argv[0]);
+  }
+
+  return doit<vis>(argv[1]);
 }

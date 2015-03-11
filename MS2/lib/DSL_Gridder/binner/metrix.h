@@ -38,3 +38,24 @@ struct vis_data {
   Double4c vis;
 #endif
 };
+
+struct vis_data_raw
+{
+  double u;
+  double v;
+  double w;
+#ifdef __CUDACC__
+  cuDoubleComplex XX;
+  cuDoubleComplex XY;
+  cuDoubleComplex YX;
+  cuDoubleComplex YY;
+#else
+  Double4c vis;
+#endif
+};
+
+#ifdef __NO_PREGRID
+typedef vis_data_raw vis;
+#else
+typedef vis_data vis;
+#endif
