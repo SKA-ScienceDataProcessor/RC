@@ -421,7 +421,7 @@ handleSpawnShell (ReqSpawnShell actor chShell resID) = do
     acpClos <- use stAcpClosure
     me      <- liftP getSelfPid
     (acp,_) <- liftP $ spawnSupervised (nodeID n) acpClos
-    liftP $ send acp $ ParamACP
+    liftP $ send acp ParamACP
         { acpSelf         = acpClos
         , acpActorClosure = actor
         , acpVCAD         = res
