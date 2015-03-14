@@ -220,7 +220,7 @@ static void read_reshuffle_and_write(const VisData & vd)
       );
     __CHECK1(FREQ_REF_INC_HZ + TIME_REF_INC_MJD_UTC)
 
-      /* Get the number of times actually in the block. */
+    /* Get the number of times actually in the block. */
     start_time_idx = dim_start_and_size[0];
     start_channel_idx = dim_start_and_size[1];
     num_times = dim_start_and_size[2];
@@ -247,10 +247,6 @@ static void read_reshuffle_and_write(const VisData & vd)
       );
     __CHECK1(BASELINES)
 
-    /* Check for errors. */
-    if (status) break;
-
-    /* Print contents of the block. */
     for (t = 0; t < num_times; ++t)
     {
       for (c = 0; c < vd.num_channels; ++c)
