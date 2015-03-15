@@ -39,6 +39,23 @@ struct Pregridded
   int gcf_layer_offset;
 };
 
+template <int n> struct w_traits {
+  typedef double3 uvw_type;
+  static const int wplanes = n;
+  static int get_wplane(const uvw_type & coords) {
+    return __double2int_rz(coords.z);
+  }
+};
+
+template <> struct w_traits<1> {
+  typedef double2 uvw_type;
+  static const int wplanes = 1;
+  static int get_wplane(const uvw_type & coords) {
+    return 0;
+  }
+};
+
+
 template <
     int w_planes
   , int over
@@ -48,22 +65,21 @@ template <
   , int channels
   >
 __inline__ __device__ void loadIntoSharedMem (
-    const double3 uvw[baselines][timesteps * channels]
+    const w_traits<w_planes>::uvw_type uvw[baselines][timesteps * channels]
   , const Double4c vis[baselines][timesteps * channels]
   , Pregridded uvo_shared[timesteps * channels]
   , Double4c vis_shared[timesteps * channels]
   ) {
   int bl = blockIdx.x;
   for (int i = threadIdx.x; i < timesteps * channels; i += blockDim.x) {
-    double3 coords = uvw[bl][i];
+    w_traits<w_planes>::uvw_type coords = uvw[bl][i];
     int
         u = __double2int_rz(coords.x)
       , v = __double2int_rz(coords.y)
       , over_u = __double2int_rz(over * (coords.x - u))
       , over_v = __double2int_rz(over * (coords.y - v))
-      , wplane = __double2int_rz(coords.z)
       ;
-    uvo_shared[i] = {short(u), short(v), (wplane * over + over_u) * over + over_v};
+    uvo_shared[i] = {short(u), short(v), (w_traits<w_planes>::get_wplane(coords.z) * over + over_u) * over + over_v};
     vis_shared[i] = vis[bl][i];
   }
 }
@@ -153,7 +169,7 @@ __global__
 void gridKernel_scatter_small(
     const complexd gcf[w_planes][over][over][max_supp][max_supp]
   , Double4c grid[grid_size][grid_size]
-  , const double3 uvw[baselines][timesteps * channels]
+  , const w_traits<w_planes>::uvw_type uvw[baselines][timesteps * channels]
   , const Double4c vis[baselines][timesteps * channels]
   ) {
   __shared__ Pregridded uvo_shared[timesteps * channels];
@@ -184,7 +200,7 @@ void gridKernel_scatter_small(
 template __global__ void gridKernel_scatter_small<32, 64, 2048, 8, 50*99, 20, 1>(
     const complexd gcf[32][8][8][64][64]
   , Double4c grid[2048][2048]
-  , const double3 uvw[(50*90)][20 * 1]
+  , const w_traits<32>::uvw_type uvw[(50*90)][20 * 1]
   , const Double4c vis[(50*90)][20 * 1]
   );
 
@@ -220,7 +236,7 @@ __global__
 void gridKernel_scatter(
     const complexd gcf[w_planes][over][over][max_supp][max_supp]
   , Double4c grid[grid_size][grid_size]
-  , const double3 uvw[baselines][timesteps * channels]
+  , const w_traits<w_planes>::uvw_type uvw[baselines][timesteps * channels]
   , const Double4c vis[baselines][timesteps * channels]
   ) {
   __shared__ Pregridded uvo_shared[timesteps * channels];
@@ -254,9 +270,9 @@ void gridKernel_scatter(
 }
 
 // Test instantiation
-template __global__ void gridKernel_scatter<32, 64, 2048, 8, 50*99, 20, 1>(
-    const complexd gcf[32][8][8][64][64]
+template __global__ void gridKernel_scatter<1, 64, 2048, 8, 50*99, 20, 1>(
+    const complexd gcf[1][8][8][64][64]
   , Double4c grid[2048][2048]
-  , const double3 uvw[(50*90)][20 * 1]
+  , const w_traits<1>::uvw_type uvw[(50*90)][20 * 1]
   , const Double4c vis[(50*90)][20 * 1]
   );
