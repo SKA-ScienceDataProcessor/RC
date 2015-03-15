@@ -39,14 +39,6 @@ struct Pregridded
   int gcf_layer_offset;
 };
 
-/*
-  Suitable only for max_supp <= 32.
-  Must be launched as:
-  ...
-  dim3 blockDim(max_supp, max_supp);
-  gridKernel_scatter_small<<<baselines, blockDim ... >>>
-  ...
- */
 template <
     int w_planes
   , int max_supp
@@ -57,19 +49,17 @@ template <
   , int timesteps
   , int channels
   >
-__global__
+__inline__ __device__
 // grid must be initialized to 0s.
-void gridKernel_scatter_small(
+void gridKernel_scatter_kernel(
     const complexd gcf[w_planes][over][over][max_supp][max_supp]
   , Double4c grid[grid_size][grid_size]
   , const Pregridded uvw[baselines][timesteps * channels]
   , const Double4c vis[baselines][timesteps * channels]
+  , int myU
+  , int myV
   ) {
-  int
-      myU = threadIdx.x
-    , myV = threadIdx.y
-    , bl = blockIdx.x
-    ;
+  int bl = blockIdx.x;
   complexd
       sumXX = {0, 0}
     , sumXY = {0, 0}
@@ -113,13 +103,52 @@ void gridKernel_scatter_small(
   atomicAdd(&grid[grid_point_u][grid_point_v], sumXX, sumXY, sumYX, sumYY);
 }
 
+/*
+  Suitable only for max_supp <= 32.
+  Must be launched as:
+  ...
+  dim3 blockDim(max_supp, max_supp);
+  gridKernel_scatter_small<<<baselines, blockDim ... >>>
+  ...
+ */
+template <
+    int w_planes
+  , int max_supp
+  , int grid_size
+  , int over
+
+  , int baselines
+  , int timesteps
+  , int channels
+  >
+__global__
+// grid must be initialized to 0s.
+void gridKernel_scatter_small(
+    const complexd gcf[w_planes][over][over][max_supp][max_supp]
+  , Double4c grid[grid_size][grid_size]
+  , const Pregridded uvw[baselines][timesteps * channels]
+  , const Double4c vis[baselines][timesteps * channels]
+  ) {
+  gridKernel_scatter_kernel<
+    w_planes
+  , max_supp
+  , grid_size
+  , over
+
+  , baselines
+  , timesteps
+  , channels
+  > (gcf, grid, uvw, vis, threadIdx.x, threadIdx.y);
+}
+
+/*
 // Test instantiation
 template __global__ void gridKernel_scatter_small<32, 64, 2048, 8, 50*99, 20, 1>(
     const complexd gcf[32][8][8][64][64]
   , Double4c grid[2048][2048]
   , const Pregridded uvw[(50*90)][20 * 1]
   , const Double4c vis[(50*90)][20 * 1]
-  );
+  ); */
 
 /*
   Suitable for any max_supp.
@@ -159,48 +188,23 @@ void gridKernel_scatter(
     int
         myU = i % max_supp
       , myV = i / max_supp
-      , bl = blockIdx.x
       ;
-    complexd
-        sumXX = {0, 0}
-      , sumXY = {0, 0}
-      , sumYX = {0, 0}
-      , sumYY = {0, 0}
-      ;
-    int
-        grid_point_u = 0
-      , grid_point_v = 0;
-    
-    for (int i = 0; i < timesteps * channels; i++) {
-      int myConvU, myConvV, myGridU, myGridV, u, v;
-      u = uvw[bl][i].u;
-      v = uvw[bl][i].v;
-      myConvU = myU - u % max_supp;
-      if (myConvU < 0) myConvU += max_supp;
-      myConvV = myV - v % max_supp;
-      if (myConvV < 0) myConvV += max_supp;
-      // Like Romein we leave grid shifted by max_supp/2 because
-      // we need to shift it anyway to 0-center it for FFT.
-      // We will make this in a single take later.
-      myGridU = u + myConvU;
-      myGridV = v + myConvV;
-      complexd supportPixel = (gcf[0][0][0] + uvw[bl][i].gcf_layer_offset)[myConvU][myConvV];
-      if (myGridU != grid_point_u || myGridV != grid_point_v) {
-        atomicAdd(&grid[grid_point_u][grid_point_v], sumXX, sumXY, sumYX, sumYY);
-          sumXX
-        = sumXY
-        = sumYX
-        = sumYY
-        = {0, 0};
-        grid_point_u = myGridU;
-        grid_point_v = myGridV;
-      }
-      #define __ADD_SUPP(pol) sum##pol = cuCfma(supportPixel, vis[bl][i].pol, sum##pol)
-      __ADD_SUPP(XX);
-      __ADD_SUPP(XY);
-      __ADD_SUPP(YX);
-      __ADD_SUPP(YY);
-    }
-    atomicAdd(&grid[grid_point_u][grid_point_v], sumXX, sumXY, sumYX, sumYY);
+    gridKernel_scatter_kernel<
+      w_planes
+    , max_supp
+    , grid_size
+    , over
+
+    , baselines
+    , timesteps
+    , channels
+    > (gcf, grid, uvw, vis, myU, myV);
   }
 }
+
+template __global__ void gridKernel_scatter<32, 64, 2048, 8, 50*99, 20, 1>(
+    const complexd gcf[32][8][8][64][64]
+  , Double4c grid[2048][2048]
+  , const Pregridded uvw[(50*90)][20 * 1]
+  , const Double4c vis[(50*90)][20 * 1]
+  );
