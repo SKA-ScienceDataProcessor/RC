@@ -167,6 +167,8 @@ void gridKernel_scatter_small(
      , channels
      >(uvw, vis, uvo_shared, vis_shared);
 
+  syncthreads();
+
   gridKernel_scatter_kernel<
       w_planes
     , max_supp
@@ -231,6 +233,8 @@ void gridKernel_scatter(
      , timesteps
      , channels
      >(uvw, vis, uvo_shared, vis_shared);
+
+  syncthreads();
 
   for (int i = threadIdx.x; i < max_supp * max_supp; i += blockDim.x) {
     int
