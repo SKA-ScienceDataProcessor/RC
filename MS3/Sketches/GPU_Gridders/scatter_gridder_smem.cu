@@ -42,7 +42,7 @@ struct Pregridded
 template <int n> struct w_traits {
   typedef double3 uvw_type;
   static const int wplanes = n;
-  static int get_wplane(const uvw_type & coords) {
+  static __inline__ __device__ int get_wplane(const uvw_type & coords) {
     return __double2int_rz(coords.z);
   }
 };
@@ -50,7 +50,7 @@ template <int n> struct w_traits {
 template <> struct w_traits<1> {
   typedef double2 uvw_type;
   static const int wplanes = 1;
-  static int get_wplane(const uvw_type & coords) {
+  static __inline__ __device__ int get_wplane(const uvw_type & coords) {
     return 0;
   }
 };
@@ -79,7 +79,7 @@ __inline__ __device__ void loadIntoSharedMem (
       , over_u = __double2int_rz(over * (coords.x - u))
       , over_v = __double2int_rz(over * (coords.y - v))
       ;
-    uvo_shared[i] = {short(u), short(v), (w_traits<w_planes>::get_wplane(coords.z) * over + over_u) * over + over_v};
+    uvo_shared[i] = {short(u), short(v), (w_traits<w_planes>::get_wplane(coords) * over + over_u) * over + over_v};
     vis_shared[i] = vis[bl][i];
   }
 }
