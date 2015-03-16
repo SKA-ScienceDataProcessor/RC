@@ -14,6 +14,8 @@
 
 #include <oskar_binary.h>
 
+#include "OskarBinReader.h"
+
 // We temporarily use private tag enums, compatible
 // with oskar-2.6 revision <= 2383 used for
 // test dataset generation.
@@ -61,8 +63,6 @@ enum OSKAR_VIS_BLOCK_TAGS
   BASELINE_WW = 8
 };
 
-#define DBL_SZ sizeof(double)
-
 template <unsigned char> struct siz;
 template<> struct siz<OSKAR_INT> { static const int val = sizeof(int); };
 template<> struct siz<OSKAR_DOUBLE> { static const int val = sizeof(double); };
@@ -107,69 +107,18 @@ template<unsigned char data_type, typename... Args> int bin_read(
 
 const unsigned char vis_header_group = OSKAR_TAG_GROUP_VIS_HEADER;
 const unsigned char vis_block_group = OSKAR_TAG_GROUP_VIS_BLOCK;
-#define __CHECK  if (status != 0) {h = nullptr; return status;}
 
-struct VisData {
-  int mk_from_file(const char* filename) {
-    int status = 0;
-    h = oskar_binary_create(filename, 'r', &status);
-    __CHECK
+#define __CHECK  if (status != 0) {if (h != nullptr) oskar_binary_free(h); return nullptr;}
 
-    status = bin_read_i(h, vis_header_group, 0
-      , NUM_TAGS_PER_BLOCK, 1, &num_tags_per_block
-      , AMP_TYPE, 1, &amp_type
-      , MAX_TIMES_PER_BLOCK, 1, &max_times_per_block
-      , NUM_TIMES_TOTAL, 1, &num_times_total
-      , NUM_CHANNELS, 1, &num_channels
-      , NUM_STATIONS, 1, &num_stations
-      );
-    __CHECK
-
-    if ((amp_type & 0x0F) != OSKAR_DOUBLE) {
-      printf("Invalid data !\n");
-      h = nullptr;
-      return int(0xdeadbeef);
-    }
-
-    status = bin_read_d(h, vis_header_group, 0
-      , FREQ_START_HZ, 1, &freq_start_inc[0]
-      , FREQ_INC_HZ, 1, &freq_start_inc[1]
-      , CHANNEL_BANDWIDTH_HZ, 1, &channel_bandwidth_hz
-      , TIME_START_MJD_UTC, 1, &time_start_inc[0]
-      , TIME_INC_SEC, 1, &time_start_inc[1]
-      , TIME_AVERAGE_SEC, 1, &time_average_sec
-      , PHASE_CENTRE, 2, phase_centre
-      , TELESCOPE_CENTRE, 3, telescope_centre
-      );
-    __CHECK
-
-    num_blocks = (num_times_total + max_times_per_block - 1) /
-    max_times_per_block;
-    num_baselines = num_stations * (num_stations - 1) / 2;
-    num_times_baselines = max_times_per_block * num_baselines;
-    num_times_baselines_total = num_times_total * num_baselines;
-    num_total = num_times_baselines_total * num_channels;
-
-    /* Print header data. */
-    printf("Max. number of times per block: %d\n", max_times_per_block);
-    printf("Total number of times: %d\n", num_times_total);
-    printf("Number of stations: %d\n", num_stations);
-    return 0;
-  }
-
+VisData * mkFromFile(const char * filename) {
   oskar_Binary* h;
-  int
-      amp_type
-    , max_times_per_block
-    , num_tags_per_block
-    , num_baselines
+  int      
+      num_baselines
     , num_channels
     , num_stations
-    , num_times_total
-    , num_blocks
+    , num_times
     , num_times_baselines
-    , num_times_baselines_total
-    , num_total
+    , num_points
     ;
   double
       phase_centre[2]
@@ -179,42 +128,121 @@ struct VisData {
     , channel_bandwidth_hz
     , time_average_sec
     ;
-};
 
+  int
+      amp_type
+    , status = 0
+    ;
+  h = oskar_binary_create(filename, 'r', &status);
+  __CHECK
 
-#define __CHECK1(s) if (status != 0) {printf("ERROR! at %s: %d\n", #s, status); return;}
+  status = bin_read_i(h, vis_header_group, 0
+    , AMP_TYPE, 1, &amp_type
+    , NUM_TIMES_TOTAL, 1, &num_times
+    , NUM_CHANNELS, 1, &num_channels
+    , NUM_STATIONS, 1, &num_stations
+    );
+  __CHECK
 
-static void read_reshuffle_and_write(const VisData & vd)
+  if ((amp_type & 0x0F) != OSKAR_DOUBLE) {
+    printf("Invalid data !\n");
+    // return int(0xdeadbeef);
+    return nullptr;
+  }
+
+  status = bin_read_d(h, vis_header_group, 0
+    , FREQ_START_HZ, 1, &freq_start_inc[0]
+    , FREQ_INC_HZ, 1, &freq_start_inc[1]
+    , CHANNEL_BANDWIDTH_HZ, 1, &channel_bandwidth_hz
+    , TIME_START_MJD_UTC, 1, &time_start_inc[0]
+    , TIME_INC_SEC, 1, &time_start_inc[1]
+    , TIME_AVERAGE_SEC, 1, &time_average_sec
+    , PHASE_CENTRE, 2, phase_centre
+    , TELESCOPE_CENTRE, 3, telescope_centre
+    );
+  __CHECK
+
+  num_baselines = num_stations * (num_stations - 1) / 2;
+  num_times_baselines = num_times * num_baselines;
+  num_points = num_times_baselines * num_channels;
+
+  return new VisData({
+      h
+    , num_baselines
+    , num_channels
+    , num_stations
+    , num_times
+    , num_times_baselines
+    , num_points
+    , phase_centre[2]
+    , telescope_centre[3]
+    , freq_start_inc[2]
+    , time_start_inc[2]
+    , channel_bandwidth_hz
+    , time_average_sec
+    });
+}
+
+void freeVisData(VisData * vdp){
+  oskar_binary_free(vdp->h);
+}
+
+void deleteVisData(VisData * vdp){
+  delete vdp;
+}
+
+#define __CHECK1(s) if (status != 0) {printf("ERROR! at %s: %d\n", #s, status); goto cleanup;}
+
+int readAndReshuffle(const VisData * vdp, double * amps, double * uvws)
 {
   int status = 0;
+  int
+      max_times_per_block
+    , num_tags_per_block
+    , num_blocks
+    , num_times_baselines_per_block
+    ;
+  double
+      *u_temp = nullptr
+    , *v_temp = nullptr
+    , *w_temp = nullptr
+    , *amp_temp = nullptr
+    ;
+  status = bin_read_i(vdp->h, vis_header_group, 0
+    , NUM_TAGS_PER_BLOCK, 1, &num_tags_per_block
+    , MAX_TIMES_PER_BLOCK, 1, &max_times_per_block
+    );
+  __CHECK1(NUM_TAGS_AND_MAX_TIMES_PER_BLOCK)
+  
+  num_blocks = (vdp->num_times + max_times_per_block - 1) / max_times_per_block;
+  num_times_baselines_per_block = max_times_per_block * vdp->num_baselines;
 
-  double *u_temp, *v_temp, *w_temp, *uvws;
-  double *amp_temp, *amps;
-  double freq_start_inc[2], time_start_inc[2]; // local to block
+  double
+      freq_start_inc[2]
+    , time_start_inc[2]
+    ; // local to block
   int dim_start_and_size[6];
 
-  u_temp = (double *)calloc(vd.num_times_baselines, DBL_SZ);
-  v_temp = (double *)calloc(vd.num_times_baselines, DBL_SZ);
-  w_temp = (double *)calloc(vd.num_times_baselines, DBL_SZ);
-  uvws = (double *)calloc(vd.num_times_baselines_total, 3 * DBL_SZ);
-  amp_temp = (double *)calloc(vd.num_times_baselines * vd.num_channels, 8 * DBL_SZ);
-  amps = (double *)calloc(vd.num_total, 8 * DBL_SZ);
+  u_temp = (double *)calloc(num_times_baselines_per_block, DBL_SZ);
+  v_temp = (double *)calloc(num_times_baselines_per_block, DBL_SZ);
+  w_temp = (double *)calloc(num_times_baselines_per_block, DBL_SZ);
+  amp_temp = (double *)calloc(num_times_baselines_per_block * vdp->num_channels, 8 * DBL_SZ);
 
   /* Loop over blocks and read each one. */
-  for (int block = 0; block < vd.num_blocks; ++block)
+  for (int block = 0; block < num_blocks; ++block)
   {
-    int b, c, t, num_times, start_time_idx, start_channel_idx;
+    int b, c, t, num_times_in_block, start_time_idx, start_channel_idx;
 
     /* Set search start index. */
-    oskar_binary_set_query_search_start(vd.h, block * vd.num_tags_per_block, &status);
+    oskar_binary_set_query_search_start(vdp->h, block * num_tags_per_block, &status);
 
     /* Read block metadata. */
-    status = bin_read_i(vd.h, vis_block_group, block
+    status = bin_read_i(vdp->h, vis_block_group, block
       , DIM_START_AND_SIZE, 6, dim_start_and_size
       );
     __CHECK1(DIM_START_AND_SIZE)
 
-    status = bin_read_d(vd.h, vis_block_group, block
+    status = bin_read_d(vdp->h, vis_block_group, block
       , FREQ_REF_INC_HZ, 2, freq_start_inc
       , TIME_REF_INC_MJD_UTC, 2, time_start_inc
       );
@@ -223,97 +251,72 @@ static void read_reshuffle_and_write(const VisData & vd)
     /* Get the number of times actually in the block. */
     start_time_idx = dim_start_and_size[0];
     start_channel_idx = dim_start_and_size[1];
-    num_times = dim_start_and_size[2];
+    num_times_in_block = dim_start_and_size[2];
 
     /* Read the visibility data. */
-    status = bin_read<OSKAR_DOUBLE_COMPLEX_MATRIX>(vd.h, vis_block_group, block
-      , CROSS_CORRELATIONS, 4 * vd.num_times_baselines * vd.num_channels, amp_temp
+    status = bin_read<OSKAR_DOUBLE_COMPLEX_MATRIX>(vdp->h, vis_block_group, block
+      , CROSS_CORRELATIONS, 4 * num_times_baselines_per_block * vdp->num_channels, amp_temp
       );
     __CHECK1(CROSS_CORRELATIONS)
 
     /* Read the baseline data. */
-    status = bin_read_d(vd.h, vis_block_group, block
-      , BASELINE_UU, vd.num_times_baselines, u_temp
+    status = bin_read_d(vdp->h, vis_block_group, block
+      , BASELINE_UU, num_times_baselines_per_block, u_temp
       );
     __CHECK1(BASELINES)
 
-    status = bin_read_d(vd.h, vis_block_group, block
-      , BASELINE_VV, vd.num_times_baselines, v_temp
+    status = bin_read_d(vdp->h, vis_block_group, block
+      , BASELINE_VV, num_times_baselines_per_block, v_temp
       );
     __CHECK1(BASELINES)
 
-    status = bin_read_d(vd.h, vis_block_group, block
-      , BASELINE_WW, vd.num_times_baselines, w_temp
+    status = bin_read_d(vdp->h, vis_block_group, block
+      , BASELINE_WW, num_times_baselines_per_block, w_temp
       );
     __CHECK1(BASELINES)
 
-    for (t = 0; t < num_times; ++t)
+    for (t = 0; t < num_times_in_block; ++t)
     {
-      for (c = 0; c < vd.num_channels; ++c)
+      for (c = 0; c < vdp->num_channels; ++c)
       {
-        for (b = 0; b < vd.num_baselines; ++b)
+        for (b = 0; b < vdp->num_baselines; ++b)
         {
           int i, j;
           int tt, ct, it, jt, tmp;
           // Amplitudes are in row-major
           //  [timesteps][channels][baselines][polarizations] array
           // U, V and W are in row-major
-          //  [timesteps][baselines] array
+          //  [timesteps][baselines][uvw] array
           // And we want to convert them to
           //  [baselines][timesteps][channels][polarizations]
           // and
-          //  [baselines][timesteps]
+          //  [baselines][timesteps][uvw]
           // correspondingly
-          i = 8 * (b + vd.num_baselines * (c + vd.num_channels * t));
-          j = b + vd.num_baselines * t;
+          i = 8 * (b + vdp->num_baselines * (c + vdp->num_channels * t));
+          j = b + vdp->num_baselines * t;
 
           tt = start_time_idx + t;
           ct = start_channel_idx + c;
-          tmp = vd.num_times_total * b + tt;
+          tmp = vdp->num_times * b + tt;
 
           jt = 3 * tmp;
           uvws[jt] = u_temp[j];
           uvws[jt + 1] = v_temp[j];
           uvws[jt + 2] = w_temp[j];
 
-          it = (tmp * vd.num_channels + ct) * 8;
+          it = (tmp * vdp->num_channels + ct) * 8;
           for (int cc = 0; cc < 8; cc++) amps[it + cc] = amp_temp[i + cc];
         }
       }
     }
   }
 
-  /* Close the file. */
-  oskar_binary_free(vd.h);
-
-  /* Print status message. */
-  if (status != 0)
-    printf("Failure reading test file.\n");
-  else
-    printf("Test file read successfully.\n");
-
+  cleanup:
   /* Free local arrays. */
-  free(amp_temp);
-  free(u_temp);
-  free(v_temp);
-  free(w_temp);
+  if (amp_temp) free(amp_temp);
+  if (u_temp) free(u_temp);
+  if (v_temp) free(v_temp);
+  if (w_temp) free(w_temp);
 
-  FILE *ampf = fopen("amp.dat", "wb");
-  fwrite(amps, 8 * sizeof(double), vd.num_total, ampf);
-  fclose(ampf);
-  free(amps);
-
-  FILE *uvwf = fopen("uvw.dat", "wb");
-  fwrite(uvws, 3 * sizeof(double), vd.num_times_baselines_total, uvwf);
-  fclose(uvwf);
-  free(uvws);
-}
-
-int main(int argc, const char * argv[])
-{
-  VisData vd;
-  if (argc < 2) return -1;
-  vd.mk_from_file(argv[1]);
-  read_reshuffle_and_write(vd);
-  return 0;
+  return status;
 }
