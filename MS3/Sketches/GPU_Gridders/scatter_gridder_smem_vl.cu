@@ -34,9 +34,12 @@ __inline__ __device__ void loadIntoSharedMem (
   , const Double4c * visp
   , Pregridded * uvo_sharedp
   , Double4c * vis_sharedp
-  , int n
+  , int2 * locp
   ) {
-  for (int i = threadIdx.x; i < n; i += blockDim.x) {
+  int bl = blockIdx.x;
+  uvwp += locp[bl].x;
+  visp += locp[bl].x;
+  for (int i = threadIdx.x; i < locp[bl].y; i += blockDim.x) {
     w_traits<w_planes>::uvw_type coords = uvwp[i];
     int
         u = __double2int_rz(coords.x)
@@ -62,10 +65,14 @@ void gridKernel_scatter_kernel(
   , Double4c grid[grid_size][grid_size]
   , const Pregridded * uvwp
   , const Double4c * visp
-  , int n
+  , int2 * locp
   , int myU
   , int myV
   ) {
+  int bl = blockIdx.x;
+  uvwp += locp[bl].x;
+  visp += locp[bl].x;
+
   complexd
       sumXX = {0, 0}
     , sumXY = {0, 0}
@@ -76,7 +83,7 @@ void gridKernel_scatter_kernel(
       grid_point_u = 0
     , grid_point_v = 0;
 
-  for (int i = 0; i < n; i++) {
+  for (int i = 0; i < locp[bl].y; i++) {
     int myConvU, myConvV, myGridU, myGridV, u, v;
     u = uvwp[i].u;
     v = uvwp[i].v;
@@ -131,7 +138,7 @@ void gridKernel_scatter_small(
   , Double4c grid[grid_size][grid_size]
   , const w_traits<w_planes>::uvw_type * uvwp
   , const Double4c * visp
-  , int n // Should be <= max_samples_n! It is enforced by the caller.
+  , int2 * locp
   ) {
   __shared__ Pregridded uvo_shared[max_samples_n];
   __shared__ Double4c vis_shared[max_samples_n];
@@ -139,7 +146,7 @@ void gridKernel_scatter_small(
   loadIntoSharedMem<
        w_planes
      , over
-     >(uvwp, visp, uvo_shared, vis_shared, n);
+     >(uvwp, visp, uvo_shared, vis_shared, locp);
 
   syncthreads();
 
@@ -148,7 +155,7 @@ void gridKernel_scatter_small(
     , max_supp
     , grid_size
     , over
-    > (gcf, grid, uvo_shared, vis_shared, n, threadIdx.x, threadIdx.y);
+    > (gcf, grid, uvo_shared, vis_shared, locp, threadIdx.x, threadIdx.y);
 }
 
 // Test instantiation
@@ -157,7 +164,7 @@ template __global__ void gridKernel_scatter_small<32, 64, 2048, 8, 200>(
   , Double4c grid[2048][2048]
   , const w_traits<32>::uvw_type *uvwp
   , const Double4c * visp
-  , int n
+  , int2 * locp
   );
 
 /*
@@ -190,7 +197,7 @@ void gridKernel_scatter(
   , Double4c grid[grid_size][grid_size]
   , const w_traits<w_planes>::uvw_type * uvwp
   , const Double4c * visp
-  , int n // Should be <= max_samples_n! It is enforced by the caller.
+  , int2 * locp
   ) {
   __shared__ Pregridded uvo_shared[max_samples_n];
   __shared__ Double4c vis_shared[max_samples_n];
@@ -198,7 +205,7 @@ void gridKernel_scatter(
   loadIntoSharedMem<
        w_planes
      , over
-     >(uvwp, visp, uvo_shared, vis_shared, n);
+     >(uvwp, visp, uvo_shared, vis_shared, locp);
 
   syncthreads();
 
@@ -212,7 +219,7 @@ void gridKernel_scatter(
       , max_supp
       , grid_size
       , over
-      > (gcf, grid, uvo_shared, vis_shared, n, myU, myV);
+      > (gcf, grid, uvo_shared, vis_shared, locp, myU, myV);
   }
 }
 
@@ -222,5 +229,5 @@ template __global__ void gridKernel_scatter<32, 64, 2048, 8, 200>(
   , Double4c grid[2048][2048]
   , const w_traits<32>::uvw_type *uvwp
   , const Double4c * visp
-  , int n
+  , int2 * locp
   );
