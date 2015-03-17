@@ -75,6 +75,7 @@ runDnaMonad (Rank rnk) (GroupSize grp) interp nodes =
            , _stUsedResources = Map.empty
            , _stChildren      = Map.empty
            , _stGroups        = Map.empty
+           , _stCountRank     = Map.empty
            }
 
 -- Generate unique ID
@@ -130,6 +131,8 @@ data StateDNA = StateDNA
       -- ^ State of monitored processes
     , _stGroups   :: !(Map GroupID GroupState)
       -- ^ State of groups of processes
+    , _stCountRank :: !(Map GroupID (Int,Int))
+      -- ^ Unused ranks 
     }
 
 -- | State of child process.
@@ -191,6 +194,9 @@ stNodePool = lens _stNodePool (\a x -> x { _stNodePool = a})
 stUsedResources :: Lens' StateDNA (Map ProcessId VirtualCAD)
 stUsedResources = lens _stUsedResources (\a x -> x { _stUsedResources = a})
 
+stCountRank :: Lens' StateDNA (Map GroupID (Int,Int))
+stCountRank = lens _stCountRank (\a x -> x { _stCountRank = a})
+
 -- Process event where we dispatch on PID of process
 handlePidEvent
     :: ProcessId
@@ -248,3 +254,5 @@ terminateGroup :: GroupID -> Controller ()
 terminateGroup gid = do
     pids <- getGroupPids gid
     liftP $ forM_ pids $ \p -> send p Terminate
+
+--  LocalWords:  stCountRank

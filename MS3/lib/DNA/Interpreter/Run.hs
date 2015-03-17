@@ -15,6 +15,9 @@ module DNA.Interpreter.Run (
     , runCollectActor
     , runCollectActorMR
     , runMapperActor
+    , runDnaParam 
+      -- * Helpres
+    , doGatherM
       -- * CH
     , runActor__static
     , runActorManyRanks__static
@@ -94,7 +97,7 @@ runActorManyRanks (Actor action) = do
 runCollectActor :: CollectActor a b -> Process ()
 runCollectActor (CollectActor step start fini) = do
     -- Obtain parameters
-    p           <- expect
+    p <- expect
     -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
@@ -178,7 +181,8 @@ runMapperActor (Mapper start step shuffle) = do
     loop s0
     forM_ dst $ \ch -> sendChan ch Nothing
 
-
+-- Run DNA monad using ActorParam as source of input parameters and
+-- interpreter
 runDnaParam :: ActorParam -> DNA a -> Process a
 runDnaParam p action = do
   interpreter <- unClosure $ actorInterpreter p
@@ -208,8 +212,7 @@ sendToDest dst a = case dst of
 doGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> Process b
 doGatherM (Group chA chN) f x0 = do
     let loop n tot !b
-            | n >= tot && tot >= 0= do
-                  return b
+            | n >= tot && tot >= 0 = return b
         loop n tot !b = do
             r <- receiveWait [ matchChan chA (return . Right)
                              , matchChan chN (return . Left)

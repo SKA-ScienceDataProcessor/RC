@@ -10,6 +10,10 @@
 -- | Module for interpreting
 module DNA.Interpreter (
       interpretDNA
+    , theInterpreter  
+      -- * CH
+    , __remoteTable
+    , theInterpreter__static
     ) where
 
 import Control.Applicative
@@ -38,7 +42,7 @@ import DNA.Lens
 import DNA.DSL
 import DNA.Logging
 import DNA.Interpreter.Message
-import DNA.Interpreter.Run
+import DNA.Interpreter.Run     hiding (__remoteTable)
 import DNA.Interpreter.Spawn
 import DNA.Interpreter.Types
 
@@ -74,10 +78,13 @@ interpretDNA (DNA m) =
       -- Data flow building
       Connect    a b  -> execConnect a b
       SendParam  a sh -> execSendParam a sh
-      Delay sh  -> execDelay sh
-      Await p   -> execAwait p
-      DelayGroup sh -> undefined
-      GatherM p f b0 -> undefined
+      Delay sh        -> execDelay sh
+      Await p         -> execAwait p
+      DelayGroup sh   -> execDelayGroup sh
+      GatherM p f b0  -> execGatherM p f b0
+
+theInterpreter :: DnaInterpreter
+theInterpreter = DnaInterpreter interpretDNA
 
 
 ----------------------------------------------------------------
@@ -109,6 +116,24 @@ execDelay (Shell aid _ src) = do
         param (SendVal ch) p = sendChan ch $ destFromLoc Local p
     lift $ param src chSend
     return $ Promise chRecv
+
+
+execDelayGroup :: Serializable b => Shell a (Grp b) -> DnaMonad (Group b)
+execDelayGroup (Shell child _ src) = do
+    me            <- liftP getSelfPid
+    (sendB,recvB) <- liftP newChan
+    (sendN,recvN) <- liftP newChan
+    let param :: Serializable b => SendEnd (Grp b) -> SendPort b -> Process ()
+        param (SendGrp chans) chB = forM_ chans $ \ch -> sendChan ch (SendRemote [chB])
+    liftP $ param src sendB
+    recordConnection child (SingleActor me) [sendN]
+    return $ Group recvB recvN
+
+execGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> DnaMonad b
+execGatherM grp step b0 = do
+    -- FIXME: concurrency
+    liftP $ doGatherM grp step b0
+
 
 
 -- Wait until message from channel arrives
@@ -213,3 +238,6 @@ recordConnection (ActorGroup gid) dest port = runController $
 destFromLoc :: Location -> SendPort a -> Dest a
 destFromLoc Local  = SendLocally
 destFromLoc Remote = SendRemote . (:[])
+
+
+remotable [ 'theInterpreter ]
