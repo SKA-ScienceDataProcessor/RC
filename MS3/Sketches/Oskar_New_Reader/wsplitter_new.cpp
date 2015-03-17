@@ -32,7 +32,7 @@ typedef struct Double4c_tag {
   Double2 d;
 } Double4c;
 
-// #include "metrix.h"
+#include "metrix.h"
 #include "OskarBinReader.h"
 
 #include <list>
