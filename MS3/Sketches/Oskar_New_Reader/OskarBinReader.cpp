@@ -174,10 +174,19 @@ VisData * mkFromFile(const char * filename) {
     , num_times
     , num_times_baselines
     , num_points
-    , phase_centre[2]
-    , telescope_centre[3]
-    , freq_start_inc[2]
-    , time_start_inc[2]
+    , { phase_centre[0]
+      , phase_centre[1]
+      }
+    , { telescope_centre[0]
+      , telescope_centre[1]
+      , telescope_centre[2]
+      }
+    , { freq_start_inc[0]
+      , freq_start_inc[1]
+      }
+    , { time_start_inc[0]
+      , time_start_inc[1]
+      }
     , channel_bandwidth_hz
     , time_average_sec
     });
