@@ -78,7 +78,7 @@ interpretDNA (DNA m) =
       -- Data flow building
       Connect    a b  -> execConnect a b
       SendParam  a sh -> execSendParam a sh
-      Delay sh        -> execDelay sh
+      Delay    loc sh -> execDelay loc sh
       Await p         -> execAwait p
       DelayGroup sh   -> execDelayGroup sh
       GatherM p f b0  -> execGatherM p f b0
@@ -103,17 +103,17 @@ execKernel io = do
 
 
 -- Obtain promise from shell
-execDelay :: Serializable b => Shell a (Val b) -> DnaMonad (Promise b)
+execDelay :: Serializable b
+          => Location -> Shell a (Val b) -> DnaMonad (Promise b)
 -- IMMEDIATE
-execDelay (Shell aid _ src) = do
+execDelay loc (Shell aid _ src) = do
     -- Notify shell's monitor about process
     me <- lift getSelfPid
     recordConnection aid (SingleActor me) []
     -- Send destination to the shell process!
     (chSend,chRecv) <- lift newChan
     let param :: Serializable b => SendEnd (Val b) -> SendPort b -> Process ()
-        -- FIXME: local!
-        param (SendVal ch) p = sendChan ch $ destFromLoc Local p
+        param (SendVal ch) p = sendChan ch $ destFromLoc loc p
     lift $ param src chSend
     return $ Promise chRecv
 

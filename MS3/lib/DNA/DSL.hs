@@ -144,7 +144,8 @@ data DnaF a where
     -- | Delay actor returning single value
     Delay 
       :: Serializable b
-      => Shell a (Val b)
+      => Location
+      -> Shell a (Val b)
       -> DnaF (Promise b)
     DelayGroup
       :: Serializable b
@@ -251,7 +252,7 @@ kernel :: IO a -> DNA a
 kernel = DNA . singleton . Kernel
 
 delay :: Serializable b => Location -> Shell a (Val b) -> DNA (Promise b)
-delay _ = DNA . singleton . Delay
+delay loc sh = DNA $ singleton $ Delay loc sh
 
 await :: Serializable a => Promise a -> DNA a
 await = DNA . singleton . Await
