@@ -35,6 +35,9 @@ typedef struct Double4c_tag {
 #include "metrix.h"
 #include "OskarBinReader.h"
 
+#ifdef _MSC_VER
+#include <vector>
+#endif
 #include <list>
 #include <algorithm>
 #include <cstdio>
@@ -158,11 +161,11 @@ int doit(const char * f) {
         const Double3 * last_uvw = uvws + vdp->num_times_baselines;
         for(Double3 * uvwp = uvws; uvwp < last_uvw; uvwp++) {
            maxu = max(maxu, uvwp->x);
-           maxv = max(maxu, uvwp->y);
-           maxw = max(maxu, uvwp->z);
+           maxv = max(maxv, uvwp->y);
+           maxw = max(maxw, uvwp->z);
            minu = min(minu, uvwp->x);
-           minv = min(minu, uvwp->y);
-           minw = min(minu, uvwp->z);
+           minv = min(minv, uvwp->y);
+           minw = min(minw, uvwp->z);
         }
 
         double
@@ -246,6 +249,8 @@ int doit(const char * f) {
           }
         }
       }
+    freeVisData(vdp);
+    deleteVisData(vdp);
   }
   return 0;
 }
