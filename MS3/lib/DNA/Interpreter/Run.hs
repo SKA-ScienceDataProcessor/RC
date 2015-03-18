@@ -16,7 +16,7 @@ module DNA.Interpreter.Run (
     , runCollectActorMR
     , runMapperActor
     , runDnaParam 
-      -- * Helpres
+      -- * Helpers
     , doGatherM
       -- * CH
     , runActor__static

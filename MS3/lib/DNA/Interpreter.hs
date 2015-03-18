@@ -201,7 +201,6 @@ recordConnection (SingleActor pid) dest _ = runController $
         Just st <- use $ stChildren . at pid
         case st of
           Right _          -> fatal "Impossible: group instead of process"
-          Left ShellProc{} -> fatal "Impossible: shell could not be connected"
           Left Unconnected -> stChildren . at pid .= Just (Left (Connected [dst]))
           Left _           -> fatal "Double connect"
     ActorGroup gid -> do
@@ -209,7 +208,6 @@ recordConnection (SingleActor pid) dest _ = runController $
         pids    <- getGroupPids gid
         case st of
           Right _          -> fatal "Impossible: group instead of process"
-          Left ShellProc{} -> fatal "Impossible: shell could not be connected"
           Left Unconnected -> stChildren . at pid .= Just (Left (Connected pids))
           Left _           -> fatal "Double connect"
 recordConnection (ActorGroup gid) dest port = runController $

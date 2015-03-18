@@ -27,7 +27,7 @@ import DNA.Interpreter.Types
 messageHandlers :: [MatchS]
 messageHandlers =
     [ MatchS handleProcessTermination
-    , MatchS handleTerminate  
+    , MatchS handleTerminate
     ]
 
 -- Handle termination command
@@ -53,7 +53,6 @@ handleProcessDone pid = do
         -- that one could terminate normally before receiving message
         (return ())
         (\p -> case p of
-           ShellProc _ -> fatal "Impossible: shell process terminated normally"
            Unconnected -> fatal "Impossible: Unconnected process terminated normally"
            Connected _ -> return Nothing
            Failed      -> fatal "Impossible: Normal termination after crash"
@@ -76,7 +75,6 @@ handleProcessCrash pid = do
         (\p -> case p of
            -- When process from which we didn't receive channels
            -- crashes we have no other recourse but to terminate.
-           ShellProc _  -> fatal "Shell crashed. No other thing to do"
            Unconnected  -> return $ Just Failed
            Connected acps -> do
                liftP $ forM_ acps $ \pp -> send pp Terminate
@@ -105,7 +103,7 @@ handleProcessCrash pid = do
     dropPID pid
 
 
--- Handle message when process is ready and expect next rank 
+-- Handle message when process is ready and expect next rank
 handleReady :: (ProcessId,SendPort (Maybe Rank)) -> Controller ()
 handleReady (pid,chRnk) = do
     -- FIXME: do better than pattern match failure

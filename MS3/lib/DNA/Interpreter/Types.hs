@@ -15,9 +15,6 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.State.Strict
 import Control.Monad.Except
-import Control.Monad.Operational
-import Control.Concurrent.Async
-import Control.Concurrent.STM (STM)
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Data.Monoid
@@ -137,9 +134,7 @@ data StateDNA = StateDNA
 
 -- | State of child process.
 data ProcState
-    = ShellProc (SendPort Message)
-      -- | We started process but didn't receive status update from it
-    | Unconnected
+    = Unconnected
       -- | Process is running but we don't know its sink yet
     | Connected [ProcessId]
       -- | Process is running and we know its sink[s]
@@ -151,16 +146,18 @@ data ProcState
 -- | State of group of processes
 data GroupState
     =  GrUnconnected GroupType (Int,Int)
-      -- Group which is not connected yet
-      --  + Type of group
-      --  + (N running processes, N completed[hack])
+      -- | Group which is not connected yet
+      -- 
+      --    * Type of group
+      --    * (N running processes, N completed[hack])
     | GrConnected GroupType (Int,Int) [SendPort Int] [ProcessId]
-      -- Connected group
-      --  + Type of group
-      --  + (N running, N completed)
-      --  + Destinations
+      -- | Connected group
+      --
+      --    * Type of group
+      --    * (N running, N completed)
+      --    * Destinations
     | GrFailed
-      -- Group which crashed
+      -- | Group which crashed
     deriving (Show)
 
 
@@ -168,7 +165,6 @@ data GroupState
 ----------------------------------------------------------------
 -- Lens and combinators
 ----------------------------------------------------------------
-
 
 stCounter :: Lens' StateDNA Int
 stCounter = lens _stCounter (\a x -> x { _stCounter = a})
@@ -255,4 +251,3 @@ terminateGroup gid = do
     pids <- getGroupPids gid
     liftP $ forM_ pids $ \p -> send p Terminate
 
---  LocalWords:  stCountRank
