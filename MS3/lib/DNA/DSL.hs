@@ -21,6 +21,11 @@ module DNA.DSL (
     , Mapper(..)
     , mapper
       -- * Smart constructors
+      -- ** Logging
+    , logMessage
+    , duration
+      -- ** Other
+    , Rank
     , rank
     , groupSize
     , kernel
@@ -78,6 +83,9 @@ data DnaF a where
     DnaGroupSize :: DnaF Int
 
     AvailNodes :: DnaF Int
+
+    LogMessage :: String -> DnaF ()
+    Duration   :: String -> DNA a -> DnaF a
 
     -- | Evaluate actor's closure
     EvalClosure
@@ -250,6 +258,12 @@ groupSize = DNA $ singleton DnaGroupSize
 
 kernel :: IO a -> DNA a
 kernel = DNA . singleton . Kernel
+
+logMessage :: String -> DNA ()
+logMessage = DNA . singleton . LogMessage
+
+duration :: String -> DNA a -> DNA a
+duration msg dna = DNA $ singleton $ Duration msg dna
 
 delay :: Serializable b => Location -> Shell a (Val b) -> DNA (Promise b)
 delay loc sh = DNA $ singleton $ Delay loc sh

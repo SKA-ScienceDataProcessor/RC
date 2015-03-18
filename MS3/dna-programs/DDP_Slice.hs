@@ -15,14 +15,14 @@ import DDP
 --  * Input:  slice of vectors which we want to use
 --  * Output: dot product of slice 
 ddpProductSlice :: Actor Slice Double
-ddpProductSlice = actor $ \(fullSlice) -> {-duration "vector slice" $ -} do
+ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
     -- Calculate offsets
     nProc <- groupSize
     rnk   <- rank
     -- FIXME: Bad!
     let slice@(Slice _ n) = scatterSlice (fromIntegral nProc) fullSlice !! rnk
     -- First we need to generate files on tmpfs
-    fname <- {- duration "generate" $ -} eval ddpGenerateVector n
+    fname <- duration "generate" $ eval ddpGenerateVector n
     -- Start local processes
     shellVA <- startActor (N 0) $ do
         useLocal
@@ -37,8 +37,8 @@ ddpProductSlice = actor $ \(fullSlice) -> {-duration "vector slice" $ -} do
     futVA <- delay Local shellVA
     futVB <- delay Local shellVB
     --
-    va <- {- duration "receive compute" $ -} await futVA
-    vb <- {- duration "receive read"    $ -} await futVB
+    va <- duration "receive compute" $ await futVA
+    vb <- duration "receive read"    $ await futVB
     -- Clean up
     liftIO $ removeFile fname
     -- duration "compute sum" $
@@ -59,7 +59,7 @@ ddpProductSliceFailure = actor $ \(fullSlice) -> -- duration "vector slice" $ do
     -- FIXME: Bad!
     let slice@(Slice _ n) = scatterSlice (fromIntegral nProc) fullSlice !! rnk
     -- First we need to generate files on tmpfs
-    fname <- {- duration "generate" $ -} eval ddpGenerateVector n
+    fname <- duration "generate" $ eval ddpGenerateVector n
     -- Start local processes
     shellVA <- startActor (N 0) $ do
         useLocal
@@ -76,12 +76,11 @@ ddpProductSliceFailure = actor $ \(fullSlice) -> -- duration "vector slice" $ do
     --
     when (rnk == 1) $
         error "Process killed"
-    va <- {- duration "receive compute" $ -} await futVA
-    vb <- {- duration "receive read"    $ -} await futVB
+    va <- duration "receive compute" $ await futVA
+    vb <- duration "receive read"    $ await futVB
     -- Clean up
     liftIO $ removeFile fname
-    -- duration "compute sum" $
-    id $
+    duration "compute sum" $
       return $ (S.sum $ S.zipWith (*) va vb :: Double)
 
 remotable [ 'ddpProductSlice

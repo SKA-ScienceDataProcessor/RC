@@ -39,7 +39,7 @@ import Text.Printf
 
 import DNA.Types
 import DNA.Lens
-import DNA.DSL
+import DNA.DSL                 hiding (logMessage,duration)
 import DNA.Logging
 import DNA.Interpreter.Message
 import DNA.Interpreter.Run     hiding (__remoteTable)
@@ -65,6 +65,9 @@ interpretDNA (DNA m) =
       DnaRank         -> use stRank
       DnaGroupSize    -> use stGroupSize
       AvailNodes      -> Set.size <$> use stNodePool
+      -- Logging
+      LogMessage msg   -> taggedMessage "MSG" msg
+      Duration msg dna -> duration msg $ interpretDNA dna
       -- Spawning of actors
       EvalClosure     a c -> do Actor f <- lift $ unClosure c
                                 interpretDNA $ f a

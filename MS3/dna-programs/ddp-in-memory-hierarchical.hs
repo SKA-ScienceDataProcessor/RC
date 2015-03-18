@@ -32,7 +32,7 @@ ddpDotProduct = actor $ \size -> do
         return $(mkStaticClosure 'ddpProductSlice)
     sendParam slice $ broadcast shell
     partials <- delayGroup shell
-    x <- {- duration "collecting vectors" $ -} gather partials (+) 0
+    x <- duration "collecting vectors" $ gather partials (+) 0
     return x
 
 remotable [ 'ddpDotProduct
@@ -45,7 +45,7 @@ ddpDotProductMaster = actor $ \size -> do
         return $(mkStaticClosure 'ddpDotProduct)
     sendParam size $ broadcast shell
     partials <- delayGroup shell
-    x <- {- duration "collection partials" $ -} gather partials (+) 0
+    x <- duration "collection partials" $ gather partials (+) 0
     return x
 
 

@@ -48,7 +48,7 @@ scatterSlice n (Slice off0 size)
 --   > Input:  part of vector to generate
 --   > Output: data
 ddpComputeVector :: Actor Slice (S.Vector Double)
-ddpComputeVector = actor $ \(Slice off n) -> -- duration "compute vector" $
+ddpComputeVector = actor $ \(Slice off n) -> duration "compute vector" $
   do
     return $ S.generate (fromIntegral n)
                (\i -> fromIntegral (fromIntegral i + off))
@@ -58,7 +58,7 @@ ddpComputeVector = actor $ \(Slice off n) -> -- duration "compute vector" $
 --    * Input:  (file name and slice to read from vector)
 --    * Output: data
 ddpReadVector :: Actor (String, Slice) (S.Vector Double)
-ddpReadVector = actor $ \(fname, Slice off n) -> -- duration "read vector" $ do
+ddpReadVector = actor $ \(fname, Slice off n) -> duration "read vector" $ do
     -- FIXME: mmaping of vector is not implemented
     liftIO $ readData n off fname
     -- liftIO $ readDataMMap n off fname "FIXME"
@@ -68,7 +68,7 @@ ddpReadVector = actor $ \(fname, Slice off n) -> -- duration "read vector" $ do
 --    * Input:  size of vector to generate
 --    * Output: name of generated file
 ddpGenerateVector :: Actor Int64 String
-ddpGenerateVector = actor $ \(n) -> -- duration "generate vector" $ do
+ddpGenerateVector = actor $ \(n) -> duration "generate vector" $ do
   do  
     liftIO $ do
       -- On Cambridge cluster we we write to the /ramdisk directory
