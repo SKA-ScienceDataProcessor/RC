@@ -41,6 +41,7 @@ messageHandlers =
     , MatchS handleTerminate
     , MatchS handleReady
     , MatchS handleDone
+    , MatchS handleTimeout
     ]
 
 
@@ -146,11 +147,24 @@ handleDone (pid,_) =
         (fatal "Shell: unknown process")
         (\_ -> fatal "Shell: must be group")
         (\g _ -> case g of
-           GrConnected ty (nR,nD) ch acps -> do
+           GrConnected ty (nR,nD) ch acps ->
                return $ Just $ GrConnected ty (nR,nD+1) ch acps
            _ -> fatal "Invalid shell for group is received"
         )
 
+-- Some process timed out
+handleTimeout :: TimeOut -> Controller ()
+handleTimeout (TimeOut aid) = case aid of
+    SingleActor pid -> do
+        m <- use $ stChildren . at pid
+        case m of
+          Just (Left  _) -> do liftP $ send pid Terminate
+                               dropPID pid
+          Just (Right _) -> fatal "Group ID encountered"
+          Nothing        -> return ()
+    ActorGroup gid -> do
+        terminateGroup gid
+        dropGroup gid
 
 
 ----------------------------------------------------------------

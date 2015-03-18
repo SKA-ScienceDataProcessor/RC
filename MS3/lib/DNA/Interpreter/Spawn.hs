@@ -19,6 +19,7 @@ module DNA.Interpreter.Spawn (
     ) where
 
 import Control.Applicative
+import Control.Concurrent  (threadDelay)
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict
@@ -34,7 +35,9 @@ import Control.Distributed.Process.Closure
 -- import Data.Typeable (Typeable)
 -- import qualified Data.Map as Map
 -- import           Data.Map   (Map)
+import Data.Monoid
 import Data.List
+import qualified Data.Foldable as T
 import qualified Data.Set as Set
 -- import           Data.Set   (Set)
 import Text.Printf
@@ -190,6 +193,8 @@ spawnSingleActor res spwn = do
        =<< requestResources res
     -- Start actor
     (pid,_) <- liftP $ spawnSupervised (vcadNode cad) act
+    -- Add timeout for actor
+    liftP $ setTimeout flags (SingleActor pid)
     -- Record data about actor
     stUsedResources . at pid .= Just cad
     stChildren      . at pid .= Just (Left Unconnected)
@@ -222,8 +227,24 @@ spawnActorGroup res resG spwn = do
                  $ spawnSupervised (vcadNode cad) act
         sendActorParam pid (Rank rnk) (GroupSize k) cad
         stChildren . at pid .= Just (Right gid)
+    -- Add timeout for actor
+    liftP $ setTimeout flags (ActorGroup gid)
+    --
     return (k,gid)
 
+
+-- Create process for forcing timeout when process
+setTimeout :: [SpawnFlag] -> ActorID -> Process ()
+setTimeout flags aid = do
+    me <- getSelfPid
+    T.forM_ (getTimeout flags) $ \t -> spawnLocal $ do
+        liftIO $ threadDelay $ round $ t * 1e6
+        send me aid
+
+getTimeout :: [SpawnFlag] -> Maybe Double
+getTimeout = getLast . T.foldMap (Last . go)
+  where go (UseTimeout t) = Just t
+        go _              = Nothing
 
 -- Send auxiliary parameters to an actor
 sendActorParam
