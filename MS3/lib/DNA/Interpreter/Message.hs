@@ -109,9 +109,15 @@ handleReady (pid,chRnk) = do
     -- FIXME: do better than pattern match failure
     Just (Right gid) <- use $ stChildren  . at pid
     Just (n,nMax)    <- use $ stCountRank . at gid
-    -- FIXME: We need to port implementation of multiple ranks
-    --       processes
-    return ()
+    -- 
+    case () of
+      _| n >= nMax -> do
+          Just chans <- use $ stPooledProcs . at gid
+          liftP $ forM_ chans $ \c -> sendChan c Nothing
+       | otherwise -> do
+          liftP $ sendChan chRnk (Just $ Rank n)
+          stCountRank . at gid .= Just (n+1,nMax)
+
 
 
 ----------------------------------------------------------------

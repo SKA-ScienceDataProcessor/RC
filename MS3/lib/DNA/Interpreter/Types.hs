@@ -73,6 +73,7 @@ runDnaMonad (Rank rnk) (GroupSize grp) interp nodes =
            , _stChildren      = Map.empty
            , _stGroups        = Map.empty
            , _stCountRank     = Map.empty
+           , _stPooledProcs   = Map.empty
            }
 
 -- Generate unique ID
@@ -128,8 +129,12 @@ data StateDNA = StateDNA
       -- ^ State of monitored processes
     , _stGroups   :: !(Map GroupID GroupState)
       -- ^ State of groups of processes
+
+      -- Many rank actors
     , _stCountRank :: !(Map GroupID (Int,Int))
       -- ^ Unused ranks 
+    , _stPooledProcs   :: !(Map GroupID [SendPort (Maybe Rank)])
+      -- ^ Groups for which we can send enough of ranks message
     }
 
 -- | State of child process.
@@ -192,6 +197,9 @@ stUsedResources = lens _stUsedResources (\a x -> x { _stUsedResources = a})
 
 stCountRank :: Lens' StateDNA (Map GroupID (Int,Int))
 stCountRank = lens _stCountRank (\a x -> x { _stCountRank = a})
+
+stPooledProcs :: Lens' StateDNA (Map GroupID [SendPort (Maybe Rank)])
+stPooledProcs = lens _stPooledProcs (\a x -> x { _stPooledProcs = a})
 
 -- Process event where we dispatch on PID of process
 handlePidEvent

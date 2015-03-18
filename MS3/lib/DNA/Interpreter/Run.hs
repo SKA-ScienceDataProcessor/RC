@@ -77,7 +77,7 @@ runActorManyRanks (Actor action) = do
     let shell = Shell (SingleActor me)
                       (RecvVal chSendParam)
                       (SendVal chSendDst  )
-    send (actorParent p) shell
+    send (actorParent p) (chSendRnk,shell)
     -- Start actor execution
     a   <- receiveChan chRecvParam
     dst <- receiveChan chRecvDst
@@ -88,7 +88,7 @@ runActorManyRanks (Actor action) = do
                 Nothing  -> return ()
                 Just rnk -> do !b  <- runDnaParam p (action a)
                                sendToDest dst b
-                               send (actorParent p{actorRank = rnk}) (me,DoneTask)
+                               send (actorParent p{actorRank = rnk}) (me,chSendRnk)
                                loop
     loop
 

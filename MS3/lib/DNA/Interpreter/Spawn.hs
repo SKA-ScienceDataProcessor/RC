@@ -119,8 +119,10 @@ execSpawnGroupN res resG n act = do
              $ closureApply $(mkStaticClosure 'runActorManyRanks) <$> act
     -- Assemble group
     -- FIXME: Fault tolerance
-    sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
-    return $ broadcast $ assembleShellGroup gid sh
+    msgs <- replicateM k $ handleRecieve messageHandlers matchMsg'
+    let (chN,shells) = unzip msgs
+    stPooledProcs . at gid .= Just chN
+    return $ broadcast $ assembleShellGroup gid shells
 
 -- | 
 execSpawnCollectorGroup
