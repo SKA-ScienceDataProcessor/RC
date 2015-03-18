@@ -3,7 +3,18 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE RankNTypes                 #-}
 -- | Handling of message for CH interpreter
-module DNA.Interpreter.Message where
+module DNA.Interpreter.Message (
+      -- * Message handlers
+      messageHandlers
+      -- * Helpers
+    , MatchS(..)
+    , toMatch
+    , Match'(..)
+    , matchSTM'
+    , matchMsg'
+    , matchChan'
+    , handleRecieve
+    ) where
 
 import Control.Applicative
 import Control.Monad
@@ -28,14 +39,17 @@ messageHandlers :: [MatchS]
 messageHandlers =
     [ MatchS handleProcessTermination
     , MatchS handleTerminate
+    , MatchS handleReady
+    , MatchS handleDone
     ]
 
--- Handle termination command
+
+-- Process need to terminate immediately
 handleTerminate :: Terminate -> Controller ()
 handleTerminate _ = fatal "Terminate arrived"
 
 
--- Handle termination of monitored process
+-- Monitored process terminated normally or abnormally
 handleProcessTermination
     :: ProcessMonitorNotification
     -> Controller ()
@@ -44,6 +58,8 @@ handleProcessTermination (ProcessMonitorNotification _ pid reason) =
       DiedNormal -> handleProcessDone  pid
       _          -> handleProcessCrash pid
 
+-- Monitored process terminated normally. We need to update registry
+-- and maybe notify other processes.
 handleProcessDone :: ProcessId -> Controller ()
 handleProcessDone pid = do
     handlePidEvent pid
@@ -68,6 +84,7 @@ handleProcessDone pid = do
         )
     dropPID pid
 
+-- Monitored process crashed or was disconnected
 handleProcessCrash :: ProcessId -> Controller ()
 handleProcessCrash pid = do
     handlePidEvent pid
@@ -103,13 +120,13 @@ handleProcessCrash pid = do
     dropPID pid
 
 
--- Handle message when process is ready and expect next rank
+-- Many-rank actor is ready to process next message.
 handleReady :: (ProcessId,SendPort (Maybe Rank)) -> Controller ()
 handleReady (pid,chRnk) = do
     -- FIXME: do better than pattern match failure
     Just (Right gid) <- use $ stChildren  . at pid
     Just (n,nMax)    <- use $ stCountRank . at gid
-    -- 
+    -- Send new rank to actor
     case () of
       _| n >= nMax -> do
           Just chans <- use $ stPooledProcs . at gid
@@ -117,6 +134,22 @@ handleReady (pid,chRnk) = do
        | otherwise -> do
           liftP $ sendChan chRnk (Just $ Rank n)
           stCountRank . at gid .= Just (n+1,nMax)
+
+-- Increment number of completed tasks for group of many-rank
+-- processes.
+--
+-- FIXME: we will increase number of completed tasks when process exit
+--        normally so we will have too many completed tasks
+handleDone :: (ProcessId,DoneTask) -> Controller ()
+handleDone (pid,_) =
+    handlePidEvent pid
+        (fatal "Shell: unknown process")
+        (\_ -> fatal "Shell: must be group")
+        (\g _ -> case g of
+           GrConnected ty (nR,nD) ch acps -> do
+               return $ Just $ GrConnected ty (nR,nD+1) ch acps
+           _ -> fatal "Invalid shell for group is received"
+        )
 
 
 

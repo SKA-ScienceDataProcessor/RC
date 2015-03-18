@@ -86,10 +86,11 @@ runActorManyRanks (Actor action) = do
             mrnk <- receiveChan chRecvRnk
             case mrnk of
                 Nothing  -> return ()
-                Just rnk -> do !b  <- runDnaParam p (action a)
-                               sendToDest dst b
-                               send (actorParent p{actorRank = rnk}) (me,chSendRnk)
-                               loop
+                Just rnk -> do
+                    !b  <- runDnaParam p{actorRank = rnk} (action a)
+                    sendToDest dst b
+                    send (actorParent p) (me,DoneTask)
+                    loop
     loop
 
 
