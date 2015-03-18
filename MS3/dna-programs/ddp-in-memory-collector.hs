@@ -1,11 +1,7 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE BangPatterns #-}
 module Main(main) where
 
-import Data.Int
-import qualified Data.Vector.Storable as S
-
+import DNA.Channel.File (readDataMMap)
 import DNA
 
 import DDP
@@ -14,48 +10,38 @@ import DDP_Slice
 
 ----------------------------------------------------------------
 -- Distributed dot product
---
--- Note that actors which do not spawn actors on other nodes do not
--- receive CAD.
 ----------------------------------------------------------------
+
+ddpCollector :: CollectActor Double Double
+ddpCollector = collectActor
+    (\s a -> return $! s + a)
+    (return 0)
+     return
+
+remotable [ 'ddpCollector
+          ]
 
 -- | Actor for calculating dot product
 ddpDotProduct :: Actor Slice Double
 ddpDotProduct = actor $ \size -> do
-    -- Chunk local product
-    rnk   <- rank
-    gSize <- groupSize
-    let slice = scatterSlice gSize size !! rnk
-    -- Chunk & send out
     shell <- startGroup (Frac 1) (NNodes 1) $ do
         useLocal
         return $(mkStaticClosure 'ddpProductSlice)
-    sendParam slice $ broadcast shell
-    partials <- delayGroup shell
-    x <- duration "collecting vectors" $ gather partials (+) 0
-    return x
-
-remotable [ 'ddpDotProduct
-          ]
-
-ddpDotProductMaster :: Actor Slice Double
-ddpDotProductMaster = actor $ \size -> do
-    shell <- startGroup (Frac 1) (NWorkers 3) $ do
+    shCol <- startCollector (N 0) $ do
         useLocal
-        return $(mkStaticClosure 'ddpDotProduct)
+        return $(mkStaticClosure 'ddpCollector)
     sendParam size $ broadcast shell
-    partials <- delayGroup shell
-    x <- duration "collection partials" $ gather partials (+) 0
-    return x
-
+    connect shell shCol
+    res <- delay Remote shCol
+    await res
 
 main :: IO ()
 main = dnaRun rtable $ do
     -- Vector size:
     --
     -- > 100e4 doubles per node = 800 MB per node
-    -- > 20 nodes
-    let n        = 2000*1000*1000
+    -- > 4 nodes
+    let n        = 400*1000*100
         expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
     -- Run it
     b <- eval ddpDotProduct (Slice 0 n)
@@ -66,5 +52,5 @@ main = dnaRun rtable $ do
       ]
   where
     rtable = DDP.__remoteTable
-           . DDP_Slice.__remoteTable  
+           . DDP_Slice.__remoteTable
            . Main.__remoteTable

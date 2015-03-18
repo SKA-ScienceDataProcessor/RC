@@ -13,8 +13,11 @@ import Control.Concurrent.STM (STM)
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 
+import DNA.Lens
 import DNA.Types
 import DNA.Interpreter.Types
+
+
 
 ----------------------------------------------------------------
 -- Handlers for incoming messages
@@ -27,9 +30,10 @@ messageHandlers =
     , MatchS handleTerminate  
     ]
 
-
+-- Handle termination command
 handleTerminate :: Terminate -> Controller ()
 handleTerminate _ = fatal "Terminate arrived"
+
 
 -- Handle termination of monitored process
 handleProcessTermination
@@ -100,6 +104,16 @@ handleProcessCrash pid = do
         )
     dropPID pid
 
+
+-- Handle message when process is ready and expect next rank 
+handleReady :: (ProcessId,SendPort (Maybe Rank)) -> Controller ()
+handleReady (pid,chRnk) = do
+    -- FIXME: do better than pattern match failure
+    Just (Right gid) <- use $ stChildren  . at pid
+    Just (n,nMax)    <- use $ stCountRank . at gid
+    -- FIXME: We need to port implementation of multiple ranks
+    --       processes
+    return ()
 
 
 ----------------------------------------------------------------

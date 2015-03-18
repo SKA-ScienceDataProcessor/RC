@@ -94,22 +94,10 @@ execSpawnGroup
     -> DnaMonad (Shell (Scatter a) (Grp b))
 -- BLOCKING
 execSpawnGroup res resG spwn = do
-    let (act,flags) = runSpawn spwn
-    -- Acquire resources
-    rs <- runController
-         $ splitResources resG
-       =<< addLocal flags
-       =<< requestResources res
     -- Spawn actors
-    let k = length rs
-    gid <- GroupID <$> uniqID
-    stGroups . at gid .= Just (GrUnconnected Normal (k,0))
-    forM_ ([0..] `zip` rs) $ \(rnk,cad) -> do
-        (pid,_) <- liftP
-                 $ spawnSupervised (vcadNode cad)
-                 $ $(mkStaticClosure 'runActor) `closureApply` act
-        sendActorParam pid (Rank rnk) (GroupSize k) cad
-        stChildren . at pid .= Just (Right gid)
+    let (act,flags) = runSpawn spwn
+    (k,gid) <- spawnActorGroup res resG flags
+             $ $(mkStaticClosure 'runActor) `closureApply` act
     -- Assemble group
     -- FIXME: Fault tolerance
     sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
@@ -123,29 +111,16 @@ execSpawnGroupN
     -> Spawn (Closure (Actor a b))
     -> DnaMonad (Shell (Val a) (Grp b))
 execSpawnGroupN res resG n spwn = do
-    let (act,flags) = runSpawn spwn
-    -- Acquire resources
-    rs <- runController
-         $ splitResources resG
-       =<< addLocal flags
-       =<< requestResources res
     -- Spawn actors
-    let k = length rs
-    gid <- GroupID <$> uniqID
-    stGroups . at gid .= Just (GrUnconnected Normal (k,0))
-    forM_ ([0..] `zip` rs) $ \(rnk,cad) -> do
-        (pid,_) <- liftP
-                 $ spawnSupervised (vcadNode cad)
-                 $ $(mkStaticClosure 'runActorManyRanks) `closureApply` act
-        sendActorParam pid (Rank rnk) (GroupSize k) cad
-        stChildren . at pid .= Just (Right gid)
+    let (act,flags) = runSpawn spwn
+    (k,gid) <- spawnActorGroup res resG flags
+             $ $(mkStaticClosure 'runActorManyRanks) `closureApply` act
     -- Assemble group
     -- FIXME: Fault tolerance
     sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
-    case assembleShellGroup gid sh of
-      Shell g inp out -> return $ Shell g (RecvBroadcast inp) out
+    return $ broadcast $ assembleShellGroup gid sh
 
-
+-- | 
 execSpawnCollectorGroup
     :: (Serializable a, Serializable b)
     => Res
@@ -153,22 +128,10 @@ execSpawnCollectorGroup
     -> Spawn (Closure (CollectActor a b))
     -> DnaMonad (Shell (Grp a) (Grp b))
 execSpawnCollectorGroup res resG spwn = do
-    let (act,flags) = runSpawn spwn
-    -- Acquire resources
-    rs <- runController
-         $ splitResources resG
-       =<< addLocal flags
-       =<< requestResources res
     -- Spawn actors
-    let k = length rs
-    gid <- GroupID <$> uniqID
-    stGroups . at gid .= Just (GrUnconnected Normal (k,0))
-    forM_ ([0..] `zip` rs) $ \(rnk,cad) -> do
-        (pid,_) <- liftP
-                 $ spawnSupervised (vcadNode cad)
-                 $ $(mkStaticClosure 'runCollectActor) `closureApply` act
-        sendActorParam pid (Rank rnk) (GroupSize k) cad
-        stChildren . at pid .= Just (Right gid)
+    let (act,flags) = runSpawn spwn
+    (k,gid) <- spawnActorGroup res resG flags
+             $ $(mkStaticClosure 'runCollectActor) `closureApply` act
     -- Assemble group
     -- FIXME: Fault tolerance
     sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
@@ -182,23 +145,10 @@ execSpawnCollectorGroupMR
     -> Spawn (Closure (CollectActor a b))
     -> DnaMonad (Shell (MR a) (Grp b))
 execSpawnCollectorGroupMR res resG spwn = do
-    let (act,flags) = runSpawn spwn
-    -- Acquire resources
-    rs <- runController
-         $ splitResources resG
-       =<< addLocal flags
-       =<< requestResources res
     -- Spawn actors
-    let k = length rs
-    gid <- GroupID <$> uniqID
-    stGroups . at gid .= Just (GrUnconnected Normal (k,0))
-    let clos = $(mkStaticClosure 'runCollectActorMR) `closureApply` act
-    forM_ ([0..] `zip` rs) $ \(rnk,cad) -> do
-        (pid,_) <- liftP
-                 $ spawnSupervised (vcadNode cad)
-                 $ $(mkStaticClosure 'runCollectActorMR) `closureApply` act
-        sendActorParam pid (Rank rnk) (GroupSize k) cad
-        stChildren . at pid .= Just (Right gid)
+    let (act,flags) = runSpawn spwn
+    (k,gid) <- spawnActorGroup res resG flags
+             $ $(mkStaticClosure 'runCollectActorMR) `closureApply` act
     -- Assemble group
     -- FIXME: Fault tolerance
     sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
@@ -211,28 +161,19 @@ execSpawnMappers
     -> Spawn (Closure (Mapper a b))
     -> DnaMonad (Shell (Scatter a) (MR b))
 execSpawnMappers res resG spwn = do
-    let (act,flags) = runSpawn spwn
-    -- Acquire resources
-    rs <- runController
-         $ splitResources resG
-       =<< addLocal flags
-       =<< requestResources res
     -- Spawn actors
-    let k = length rs
-    gid <- GroupID <$> uniqID
-    stGroups . at gid .= Just (GrUnconnected Normal (k,0))
-    forM_ ([0..] `zip` rs) $ \(rnk,cad) -> do
-        (pid,_) <- liftP
-                 $ spawnSupervised (vcadNode cad)
-                 $ $(mkStaticClosure 'runMapperActor) `closureApply` act
-        sendActorParam pid (Rank rnk) (GroupSize k) cad
-        stChildren . at pid .= Just (Right gid)
+    let (act,flags) = runSpawn spwn
+    (k,gid) <- spawnActorGroup res resG flags
+             $ $(mkStaticClosure 'runMapperActor) `closureApply` act
     -- Assemble group
     -- FIXME: Fault tolerance
     sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
     return $ assembleShellMapper gid sh
-    
 
+
+----------------------------------------------------------------
+-- Spawn helpers
+----------------------------------------------------------------
 
 assembleShellGroup :: GroupID -> [Shell (Val a) (Val b)] -> Shell (Scatter a) (Grp b)
 assembleShellGroup gid shells =
@@ -282,9 +223,6 @@ assembleShellMapper gid shells =
 
 
 
-----------------------------------------------------------------
--- Spawn helpers
-----------------------------------------------------------------
 
 -- Spawn actor which only uses single CH process.
 spawnSingleActor
@@ -297,7 +235,9 @@ spawnSingleActor res flags actorC = do
     let loc = if   UseLocal `elem` flags
               then Local
               else Remote
-    cad <- runController $ makeResource loc =<< requestResources res
+    cad <- runController $ makeResource loc
+                       =<< addLocal flags
+                       =<< requestResources res
     -- Start actor
     (pid,_) <- liftP $ spawnSupervised (vcadNode cad) actorC
     -- Record data about actor
@@ -305,6 +245,31 @@ spawnSingleActor res flags actorC = do
     stChildren      . at pid .= Just (Left Unconnected)
     -- Send auxiliary parameter
     sendActorParam pid (Rank 0) (GroupSize 1) cad
+
+-- Spawn group of actors
+spawnActorGroup
+    :: Res                      -- Resourses allocated to group
+    -> ResGroup                 -- How to split resources between actors
+    -> [SpawnFlag]              -- Flags
+    -> Closure (Process ())     -- Closure to process'
+    -> DnaMonad (Int,GroupID)   -- Returns size of group and group ID
+spawnActorGroup res resG flags actorC = do
+    -- Acquire resources
+    rs <- runController
+         $ splitResources resG
+       =<< addLocal flags
+       =<< requestResources res
+    let k = length rs
+    -- Record group existence
+    gid <- GroupID <$> uniqID
+    stGroups . at gid .= Just (GrUnconnected Normal (k,0))
+    -- Spawn actors
+    forM_ ([0..] `zip` rs) $ \(rnk,cad) -> do
+        (pid,_) <- liftP
+                 $ spawnSupervised (vcadNode cad) actorC
+        sendActorParam pid (Rank rnk) (GroupSize k) cad
+        stChildren . at pid .= Just (Right gid)
+    return (k,gid)
 
 
 -- Send auxiliary parameters to an actor
@@ -328,20 +293,22 @@ sendActorParam pid rnk g cad = do
 
 -- Allocate list of resources for actor/actors
 requestResources :: Res -> Controller [NodeId]
-requestResources (N n) = do
+requestResources r = do
     free <- Set.toList <$> use stNodePool
-    when (length free < n) $
-        fatal $ printf "Cannot allocate %i nodes" n
-    let (used,rest) = splitAt n free
-    stNodePool .= Set.fromList rest
-    return used
-requestResources (Frac frac) = do
-    free <- Set.toList <$> use stNodePool
-    let n = length free
-        k = round $ fromIntegral n * frac
-    let (used,rest) = splitAt k free
-    stNodePool .= Set.fromList rest
-    return used
+    taggedMessage "DNA" $ "Req: " ++ show r ++ " pool: " ++ show free
+    case r of
+     N n -> do  
+        when (length free < n) $
+            fatal $ printf "Cannot allocate %i nodes" n
+        let (used,rest) = splitAt n free
+        stNodePool .= Set.fromList rest
+        return used
+     Frac frac -> do
+        let n = length free
+            k = round $ fromIntegral n * frac
+        let (used,rest) = splitAt k free
+        stNodePool .= Set.fromList rest
+        return used
 
 -- Create virtual CAD for single actor
 makeResource :: Location -> [NodeId] -> Controller VirtualCAD
@@ -358,7 +325,7 @@ addLocal flags nodes
         n <- liftP getSelfNode
         return $ n:nodes
   | otherwise             = return nodes
-                                                   
+
 -- Split resources for multiple actors
 splitResources :: ResGroup -> [NodeId] -> Controller [VirtualCAD]
 splitResources resG nodes = case resG of

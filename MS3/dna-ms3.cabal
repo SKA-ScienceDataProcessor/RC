@@ -73,6 +73,8 @@ library
   c-sources:
     cbits/channel-file.c
 
+----------------------------------------------------------------
+-- Programs
 executable ddp-in-memory-hierachical
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -eventlog
@@ -89,3 +91,21 @@ executable ddp-in-memory-hierachical
   other-modules:
     DDP
     DDP_Slice
+
+executable ddp-in-memory-collector
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             ddp-in-memory-collector.hs
+  build-depends:
+    base >=4.6,
+    dna-ms3,
+    binary,
+    bytestring,
+    data-binary-ieee754,
+    vector >= 0.10,
+    directory
+  other-modules:
+    DDP
+    DDP_Slice
+

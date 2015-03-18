@@ -5,7 +5,7 @@ module DNA (
       DNA
     , rank
     , groupSize
-    -- , logMessage
+    , logMessage
     , duration
        -- * Actors
     , Actor
@@ -34,9 +34,7 @@ module DNA (
     , Res(..)
     , ResGroup(..)
     , useLocal
-    -- , GrpFlag(..)
-    -- , GroupType(..)
-    -- , availableNodes
+    , availableNodes
       -- * Connecting actors
     , sendParam
     -- , broadcastParamSlice
@@ -53,7 +51,6 @@ module DNA (
     , dnaRun
       -- * Reexports
     , MonadIO(..)
-    -- , MonadProcess(..)
     , remotable
     , mkStaticClosure
     ) where
@@ -62,7 +59,6 @@ import Control.Monad.IO.Class
 import Control.Distributed.Process.Closure (mkStaticClosure,remotable)
 
 import DNA.DSL
-import DNA.Logging
 import DNA.Types
 import DNA.Run
 

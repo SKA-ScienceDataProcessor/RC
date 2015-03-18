@@ -1,4 +1,3 @@
-{-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE TemplateHaskell #-}
 -- | Run.hs
 --
@@ -26,13 +25,13 @@ import Text.Printf
 import DNA.SlurmBackend (initializeBackend,startMaster,startSlave,terminateAllSlaves)
 import qualified DNA.SlurmBackend as CH
 import DNA.CmdOpts
--- import DNA.DNA        hiding (__remoteTable,rank)
--- import DNA.Controller hiding (__remoteTable)
 import DNA.Logging
 import DNA.Types
--- import qualified DNA.DNA
--- import qualified DNA.Controller
 import DNA.DSL
+import DNA.Interpreter
+import DNA.Interpreter.Run
+import DNA.Interpreter.Types
+
 
 
 -- | Parse command line option and start program
@@ -46,8 +45,8 @@ dnaRun remoteTable dna = do
       SlurmWorker d -> runSlurmWorker rtable d common dna
   where
     rtable = ( remoteTable
-             -- . DNA.DNA.__remoteTable
-             -- . DNA.Controller.__remoteTable
+             . DNA.Interpreter.__remoteTable
+             . DNA.Interpreter.Run.__remoteTable
              ) initRemoteTable
 
 
@@ -288,30 +287,19 @@ runUnixWorker rtable opts common dna = do
       _ -> startSlave backend
 
 
-
 executeDNA :: DNA () -> [NodeId] -> Process (Maybe SomeException)
 executeDNA dna nodes = do
     me  <- getSelfPid
-    nid <- getSelfNode
-    -- Create CAD out of list of nodes
-    -- let initialCAD = makeCAD (nid : nodes)
-    -- FIXME: very-very-very bad
-    -- CAD n rest <- spawnHierachically initialCAD
-    -- let param = ParamACP
-    --         { acpSelf  = acpClos
-    --         , acpActorClosure = ()
-    --         , acpVCAD = VirtualCAD Local n (T.toList =<< rest)
-    --         , acpActor = ParamActor
-    --             { actorParentACP = me
-    --             , actorRank      = Rank 0
-    --             , actorGroupSize = GroupSize 1
-    --             }
-    --         }
-    --     acpClos = $(mkStaticClosure 'runACP)
-    -- Start master ACP
-    -- r <- try $ runMasterACP param dna :: Process (Either SomeException ())
-    -- return $ either Just (const Nothing) r
-    undefined
+    let param = ActorParam
+              { actorParent      = me -- FIXME???
+              , actorInterpreter = $(mkStaticClosure 'theInterpreter)
+              , actorRank        = Rank 0
+              , actorGroupSize   = GroupSize 1
+              , actorNodes       = nodes
+              }
+    r <- try $ runDnaParam param dna
+    return $ either Just (const Nothing) r
+
 
 safeRead :: Read a => String -> Maybe a
 safeRead s = do

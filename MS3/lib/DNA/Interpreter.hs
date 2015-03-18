@@ -10,6 +10,10 @@
 -- | Module for interpreting
 module DNA.Interpreter (
       interpretDNA
+    , theInterpreter  
+      -- * CH
+    , __remoteTable
+    , theInterpreter__static
     ) where
 
 import Control.Applicative
@@ -35,10 +39,10 @@ import Text.Printf
 
 import DNA.Types
 import DNA.Lens
-import DNA.DSL
+import DNA.DSL                 hiding (logMessage,duration)
 import DNA.Logging
 import DNA.Interpreter.Message
-import DNA.Interpreter.Run
+import DNA.Interpreter.Run     hiding (__remoteTable)
 import DNA.Interpreter.Spawn
 import DNA.Interpreter.Types
 
@@ -61,6 +65,9 @@ interpretDNA (DNA m) =
       DnaRank         -> use stRank
       DnaGroupSize    -> use stGroupSize
       AvailNodes      -> Set.size <$> use stNodePool
+      -- Logging
+      LogMessage msg   -> taggedMessage "MSG" msg
+      Duration msg dna -> duration msg $ interpretDNA dna
       -- Spawning of actors
       EvalClosure     a c -> do Actor f <- lift $ unClosure c
                                 interpretDNA $ f a
@@ -74,10 +81,13 @@ interpretDNA (DNA m) =
       -- Data flow building
       Connect    a b  -> execConnect a b
       SendParam  a sh -> execSendParam a sh
-      Delay sh  -> execDelay sh
-      Await p   -> execAwait p
-      DelayGroup sh -> undefined
-      GatherM p f b0 -> undefined
+      Delay    loc sh -> execDelay loc sh
+      Await p         -> execAwait p
+      DelayGroup sh   -> execDelayGroup sh
+      GatherM p f b0  -> execGatherM p f b0
+
+theInterpreter :: DnaInterpreter
+theInterpreter = DnaInterpreter interpretDNA
 
 
 ----------------------------------------------------------------
@@ -96,19 +106,37 @@ execKernel io = do
 
 
 -- Obtain promise from shell
-execDelay :: Serializable b => Shell a (Val b) -> DnaMonad (Promise b)
+execDelay :: Serializable b
+          => Location -> Shell a (Val b) -> DnaMonad (Promise b)
 -- IMMEDIATE
-execDelay (Shell aid _ src) = do
+execDelay loc (Shell aid _ src) = do
     -- Notify shell's monitor about process
     me <- lift getSelfPid
     recordConnection aid (SingleActor me) []
     -- Send destination to the shell process!
     (chSend,chRecv) <- lift newChan
     let param :: Serializable b => SendEnd (Val b) -> SendPort b -> Process ()
-        -- FIXME: local!
-        param (SendVal ch) p = sendChan ch $ destFromLoc Local p
+        param (SendVal ch) p = sendChan ch $ destFromLoc loc p
     lift $ param src chSend
     return $ Promise chRecv
+
+
+execDelayGroup :: Serializable b => Shell a (Grp b) -> DnaMonad (Group b)
+execDelayGroup (Shell child _ src) = do
+    me            <- liftP getSelfPid
+    (sendB,recvB) <- liftP newChan
+    (sendN,recvN) <- liftP newChan
+    let param :: Serializable b => SendEnd (Grp b) -> SendPort b -> Process ()
+        param (SendGrp chans) chB = forM_ chans $ \ch -> sendChan ch (SendRemote [chB])
+    liftP $ param src sendB
+    recordConnection child (SingleActor me) [sendN]
+    return $ Group recvB recvN
+
+execGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> DnaMonad b
+execGatherM grp step b0 = do
+    -- FIXME: concurrency
+    liftP $ doGatherM grp step b0
+
 
 
 -- Wait until message from channel arrives
@@ -213,3 +241,6 @@ recordConnection (ActorGroup gid) dest port = runController $
 destFromLoc :: Location -> SendPort a -> Dest a
 destFromLoc Local  = SendLocally
 destFromLoc Remote = SendRemote . (:[])
+
+
+remotable [ 'theInterpreter ]
