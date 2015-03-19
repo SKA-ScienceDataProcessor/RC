@@ -1,20 +1,17 @@
+
 name:                linux-perf-stat
 version:             0.1.0.0
--- synopsis:
--- description:
 license:             Apache-2.0
 license-file:        LICENSE
 author:              Peter Wortmann
 maintainer:          Peter.Wortmann@braamresearch.com
--- copyright:
 category:            Development
 build-type:          Simple
--- extra-source-files:
 cabal-version:       >=1.10
 
 Flag pfm
      Description:    Enable support for libpfm (allows access to more counters)
-     Default:        False
+     Default:        True
 
 library
   exposed-modules:   Profiling.Linux.Perf.Stat
@@ -35,6 +32,8 @@ executable test
   ghc-options:       -Wall
   build-depends:     base >=4.7 && <4.8,
                      linux-perf-stat,
-                     time >=1.4 && <1.5
+                     time, vector
+  c-sources:         src/test.c
+  cc-options:        -mavx -Wall
   if flag(pfm)
     cpp-options:     -DUSE_LIBPFM
