@@ -3,7 +3,18 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE RankNTypes                 #-}
 -- | Handling of message for CH interpreter
-module DNA.Interpreter.Message where
+module DNA.Interpreter.Message (
+      -- * Message handlers
+      messageHandlers
+      -- * Helpers
+    , MatchS(..)
+    , toMatch
+    , Match'(..)
+    , matchSTM'
+    , matchMsg'
+    , matchChan'
+    , handleRecieve
+    ) where
 
 import Control.Applicative
 import Control.Monad
@@ -27,15 +38,19 @@ import DNA.Interpreter.Types
 messageHandlers :: [MatchS]
 messageHandlers =
     [ MatchS handleProcessTermination
-    , MatchS handleTerminate  
+    , MatchS handleTerminate
+    , MatchS handleReady
+    , MatchS handleDone
+    , MatchS handleTimeout
     ]
 
--- Handle termination command
+
+-- Process need to terminate immediately
 handleTerminate :: Terminate -> Controller ()
 handleTerminate _ = fatal "Terminate arrived"
 
 
--- Handle termination of monitored process
+-- Monitored process terminated normally or abnormally
 handleProcessTermination
     :: ProcessMonitorNotification
     -> Controller ()
@@ -44,6 +59,8 @@ handleProcessTermination (ProcessMonitorNotification _ pid reason) =
       DiedNormal -> handleProcessDone  pid
       _          -> handleProcessCrash pid
 
+-- Monitored process terminated normally. We need to update registry
+-- and maybe notify other processes.
 handleProcessDone :: ProcessId -> Controller ()
 handleProcessDone pid = do
     handlePidEvent pid
@@ -53,7 +70,6 @@ handleProcessDone pid = do
         -- that one could terminate normally before receiving message
         (return ())
         (\p -> case p of
-           ShellProc _ -> fatal "Impossible: shell process terminated normally"
            Unconnected -> fatal "Impossible: Unconnected process terminated normally"
            Connected _ -> return Nothing
            Failed      -> fatal "Impossible: Normal termination after crash"
@@ -69,6 +85,7 @@ handleProcessDone pid = do
         )
     dropPID pid
 
+-- Monitored process crashed or was disconnected
 handleProcessCrash :: ProcessId -> Controller ()
 handleProcessCrash pid = do
     handlePidEvent pid
@@ -76,7 +93,6 @@ handleProcessCrash pid = do
         (\p -> case p of
            -- When process from which we didn't receive channels
            -- crashes we have no other recourse but to terminate.
-           ShellProc _  -> fatal "Shell crashed. No other thing to do"
            Unconnected  -> return $ Just Failed
            Connected acps -> do
                liftP $ forM_ acps $ \pp -> send pp Terminate
@@ -105,15 +121,50 @@ handleProcessCrash pid = do
     dropPID pid
 
 
--- Handle message when process is ready and expect next rank 
+-- Many-rank actor is ready to process next message.
 handleReady :: (ProcessId,SendPort (Maybe Rank)) -> Controller ()
 handleReady (pid,chRnk) = do
     -- FIXME: do better than pattern match failure
     Just (Right gid) <- use $ stChildren  . at pid
     Just (n,nMax)    <- use $ stCountRank . at gid
-    -- FIXME: We need to port implementation of multiple ranks
-    --       processes
-    return ()
+    -- Send new rank to actor
+    case () of
+      _| n >= nMax -> do
+          Just chans <- use $ stPooledProcs . at gid
+          liftP $ forM_ chans $ \c -> sendChan c Nothing
+       | otherwise -> do
+          liftP $ sendChan chRnk (Just $ Rank n)
+          stCountRank . at gid .= Just (n+1,nMax)
+
+-- Increment number of completed tasks for group of many-rank
+-- processes.
+--
+-- FIXME: we will increase number of completed tasks when process exit
+--        normally so we will have too many completed tasks
+handleDone :: (ProcessId,DoneTask) -> Controller ()
+handleDone (pid,_) =
+    handlePidEvent pid
+        (fatal "Shell: unknown process")
+        (\_ -> fatal "Shell: must be group")
+        (\g _ -> case g of
+           GrConnected ty (nR,nD) ch acps ->
+               return $ Just $ GrConnected ty (nR,nD+1) ch acps
+           _ -> fatal "Invalid shell for group is received"
+        )
+
+-- Some process timed out
+handleTimeout :: TimeOut -> Controller ()
+handleTimeout (TimeOut aid) = case aid of
+    SingleActor pid -> do
+        m <- use $ stChildren . at pid
+        case m of
+          Just (Left  _) -> do liftP $ send pid Terminate
+                               dropPID pid
+          Just (Right _) -> fatal "Group ID encountered"
+          Nothing        -> return ()
+    ActorGroup gid -> do
+        terminateGroup gid
+        dropGroup gid
 
 
 ----------------------------------------------------------------

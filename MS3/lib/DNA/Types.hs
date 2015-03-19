@@ -55,6 +55,11 @@ data Terminate = Terminate
                  deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary Terminate
 
+-- | Actor execution time exceeded quota
+data TimeOut = TimeOut ActorID
+                 deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary TimeOut
+
 -- | Resources allocated to single process. It always have access to
 --   node it owns and possibly list of other nodes.
 data VirtualCAD = VirtualCAD
@@ -91,7 +96,7 @@ newtype GroupID = GroupID Int
 -- | Way to encode
 data ActorID = SingleActor ProcessId
              | ActorGroup  GroupID
-             deriving (Show,Typeable,Generic)
+             deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary ActorID
 
 -- | What part of process pool is to use

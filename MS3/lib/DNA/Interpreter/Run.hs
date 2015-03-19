@@ -16,7 +16,7 @@ module DNA.Interpreter.Run (
     , runCollectActorMR
     , runMapperActor
     , runDnaParam 
-      -- * Helpres
+      -- * Helpers
     , doGatherM
       -- * CH
     , runActor__static
@@ -77,7 +77,7 @@ runActorManyRanks (Actor action) = do
     let shell = Shell (SingleActor me)
                       (RecvVal chSendParam)
                       (SendVal chSendDst  )
-    send (actorParent p) shell
+    send (actorParent p) (chSendRnk,shell)
     -- Start actor execution
     a   <- receiveChan chRecvParam
     dst <- receiveChan chRecvDst
@@ -86,10 +86,11 @@ runActorManyRanks (Actor action) = do
             mrnk <- receiveChan chRecvRnk
             case mrnk of
                 Nothing  -> return ()
-                Just rnk -> do !b  <- runDnaParam p (action a)
-                               sendToDest dst b
-                               send (actorParent p{actorRank = rnk}) (me,DoneTask)
-                               loop
+                Just rnk -> do
+                    !b  <- runDnaParam p{actorRank = rnk} (action a)
+                    sendToDest dst b
+                    send (actorParent p) (me,DoneTask)
+                    loop
     loop
 
 

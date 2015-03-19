@@ -15,9 +15,6 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.State.Strict
 import Control.Monad.Except
-import Control.Monad.Operational
-import Control.Concurrent.Async
-import Control.Concurrent.STM (STM)
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Data.Monoid
@@ -76,6 +73,7 @@ runDnaMonad (Rank rnk) (GroupSize grp) interp nodes =
            , _stChildren      = Map.empty
            , _stGroups        = Map.empty
            , _stCountRank     = Map.empty
+           , _stPooledProcs   = Map.empty
            }
 
 -- Generate unique ID
@@ -131,15 +129,17 @@ data StateDNA = StateDNA
       -- ^ State of monitored processes
     , _stGroups   :: !(Map GroupID GroupState)
       -- ^ State of groups of processes
+
+      -- Many rank actors
     , _stCountRank :: !(Map GroupID (Int,Int))
       -- ^ Unused ranks 
+    , _stPooledProcs   :: !(Map GroupID [SendPort (Maybe Rank)])
+      -- ^ Groups for which we can send enough of ranks message
     }
 
 -- | State of child process.
 data ProcState
-    = ShellProc (SendPort Message)
-      -- | We started process but didn't receive status update from it
-    | Unconnected
+    = Unconnected
       -- | Process is running but we don't know its sink yet
     | Connected [ProcessId]
       -- | Process is running and we know its sink[s]
@@ -151,16 +151,18 @@ data ProcState
 -- | State of group of processes
 data GroupState
     =  GrUnconnected GroupType (Int,Int)
-      -- Group which is not connected yet
-      --  + Type of group
-      --  + (N running processes, N completed[hack])
+      -- | Group which is not connected yet
+      -- 
+      --    * Type of group
+      --    * (N running processes, N completed[hack])
     | GrConnected GroupType (Int,Int) [SendPort Int] [ProcessId]
-      -- Connected group
-      --  + Type of group
-      --  + (N running, N completed)
-      --  + Destinations
+      -- | Connected group
+      --
+      --    * Type of group
+      --    * (N running, N completed)
+      --    * Destinations
     | GrFailed
-      -- Group which crashed
+      -- | Group which crashed
     deriving (Show)
 
 
@@ -168,7 +170,6 @@ data GroupState
 ----------------------------------------------------------------
 -- Lens and combinators
 ----------------------------------------------------------------
-
 
 stCounter :: Lens' StateDNA Int
 stCounter = lens _stCounter (\a x -> x { _stCounter = a})
@@ -196,6 +197,9 @@ stUsedResources = lens _stUsedResources (\a x -> x { _stUsedResources = a})
 
 stCountRank :: Lens' StateDNA (Map GroupID (Int,Int))
 stCountRank = lens _stCountRank (\a x -> x { _stCountRank = a})
+
+stPooledProcs :: Lens' StateDNA (Map GroupID [SendPort (Maybe Rank)])
+stPooledProcs = lens _stPooledProcs (\a x -> x { _stPooledProcs = a})
 
 -- Process event where we dispatch on PID of process
 handlePidEvent
@@ -255,4 +259,3 @@ terminateGroup gid = do
     pids <- getGroupPids gid
     liftP $ forM_ pids $ \p -> send p Terminate
 
---  LocalWords:  stCountRank

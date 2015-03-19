@@ -13,6 +13,8 @@ module DNA.DSL (
     , SpawnFlag(..)
     , runSpawn
     , useLocal
+    , failout
+    , timeout
       -- * Actors
     , Actor(..)
     , actor
@@ -178,6 +180,8 @@ newtype Spawn a = Spawn (Writer [SpawnFlag] a)
 -- | Flags for spawn
 data SpawnFlag
     = UseLocal
+    | UseFailout
+    | UseTimeout Double
     deriving (Show,Eq,Typeable)
 
 runSpawn :: Spawn a -> (a,[SpawnFlag])
@@ -185,6 +189,12 @@ runSpawn (Spawn m) = runWriter m
 
 useLocal :: Spawn ()
 useLocal = Spawn $ tell [UseLocal]
+
+failout :: Spawn ()
+failout = Spawn $ tell [UseFailout]
+
+timeout :: Double -> Spawn ()
+timeout t = Spawn $ tell [UseTimeout t]
 
 newtype Promise a = Promise (ReceivePort a)
 

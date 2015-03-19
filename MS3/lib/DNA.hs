@@ -61,14 +61,3 @@ import Control.Distributed.Process.Closure (mkStaticClosure,remotable)
 import DNA.DSL
 import DNA.Types
 import DNA.Run
-
-
--- -- | Put message into log file
--- logMessage :: String -> DNA ()
--- logMessage = taggedMessage "MSG"
-
-
-
--- import DNA.Run
--- import DNA.DNA
--- import DNA.Controller
