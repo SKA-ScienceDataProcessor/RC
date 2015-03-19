@@ -39,7 +39,7 @@ mgrid lo hi n =
   in P.take half (P.iterate (+ diff) lo) P.++ mid P.++ P.reverse (P.take half (P.iterate (\v -> v - diff) hi))
 
 waf_full :: Int -> Int -> Acc (Scalar Double) -> Acc (Scalar Double) -> Acc (Array DIM2 CxDouble)
-waf_full n over t2a wa = centre2D $ fft2D' Inverse no no (centre2D cpp0)
+waf_full n over t2a wa = shift2D $ fft2D' Inverse no no (centre2D cpp0)
   where
     no = n * over
     cpp0 = permute (+) def mapndx cp
