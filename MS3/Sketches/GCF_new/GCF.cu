@@ -22,10 +22,10 @@ void ucs_common(
   mesh[x][y].x = 0.0;
 }
 
-
 // test instantiation
 template __device__
 void ucs_common<256>(cuDoubleComplex mesh[513][513], double t2);
+
 
 template <int max_half_support>
 __device__
@@ -50,6 +50,7 @@ void calc_inplace<256>(
     cuDoubleComplex mesh[513][513]
   , double w
   );
+
 
 template <int max_half_support>
 __device__
@@ -76,6 +77,7 @@ void calc<256>(
   , const cuDoubleComplex src[513][513]
   , double w
   );
+
 
 template <
     int max_half_support
