@@ -55,7 +55,7 @@ template <int max_half_support>
 __device__
 void calc(
     cuDoubleComplex dst[max_half_support * 2 + 1][max_half_support * 2 + 1]
-  , cuDoubleComplex src[max_half_support * 2 + 1][max_half_support * 2 + 1]
+  , const cuDoubleComplex src[max_half_support * 2 + 1][max_half_support * 2 + 1]
   , double w
   ){
   const int
@@ -73,7 +73,7 @@ void calc(
 template __device__
 void calc<256>(
     cuDoubleComplex dst[513][513]
-  , cuDoubleComplex src[513][513]
+  , const cuDoubleComplex src[513][513]
   , double w
   );
 
@@ -84,7 +84,7 @@ template <
 __device__
 void copy_ucs_2_over(
     cuDoubleComplex dst[max_half_support * oversample * 2 + 1][max_half_support * oversample * 2 + 1]
-  , cuDoubleComplex src[max_half_support * 2 + 1][max_half_support * 2 + 1]
+  , const cuDoubleComplex src[max_half_support * 2 + 1][max_half_support * 2 + 1]
   ) {
   const int
       dst_center = max_half_support * oversample
@@ -109,5 +109,5 @@ void copy_ucs_2_over(
 template __device__
 void copy_ucs_2_over<256,8>(
     cuDoubleComplex dst[4097][4097]
-  , cuDoubleComplex src[513][513]
+  , const cuDoubleComplex src[513][513]
   );
