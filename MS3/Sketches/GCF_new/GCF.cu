@@ -91,12 +91,15 @@ void copy_ucs_2_over(
   const int
       dst_center = max_half_support * oversample
     , pad = dst_center - max_half_support
+#ifndef __SET_NULL_PADDING
     , cut = dst_center + max_half_support
+#endif
     ;
   const int
       x = blockIdx.x * blockDim.x + threadIdx.x
     , y = blockIdx.y * blockDim.y + threadIdx.y
     ;
+#ifndef __SET_NULL_PADDING
   if (
        x < pad
     || x > cut
@@ -104,6 +107,7 @@ void copy_ucs_2_over(
     || y > cut
     ) dst[x][y] = {0.0, 0.0};
   else
+#endif
       dst[x][y] = src[x - pad][y - pad];
   }
 
