@@ -113,3 +113,31 @@ void copy_ucs_2_over<256,8>(
     cuDoubleComplex dst[4097][4097]
   , const cuDoubleComplex src[513][513]
   );
+
+
+template <
+    int max_half_support
+  , int oversample
+  >
+__device__
+void cut_out(
+    int supp
+  , cuDoubleComplex * dst
+  , const cuDoubleComplex src[max_half_support * oversample * 2 + 1][max_half_support * oversample * 2 + 1]
+  ) {
+  const int
+      x = blockIdx.x * blockDim.x + threadIdx.x
+    , y = blockIdx.y * blockDim.y + threadIdx.y
+    ;
+  const int off = (max_half_support - supp) * oversample;
+
+  dst[x * supp + y] = src[off+x][off+y];
+  }
+
+// test instantiation
+template __device__
+void cut_out<256,8>(
+    int supp
+  , cuDoubleComplex * dst
+  , const cuDoubleComplex src[4097][4097]
+  );
