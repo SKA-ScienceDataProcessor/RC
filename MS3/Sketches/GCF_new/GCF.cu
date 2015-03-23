@@ -4,15 +4,18 @@
 
 template <int max_half_support>
 __device__
-void ucs_common(cuDoubleComplex mesh[max_half_support * 2 + 1][max_half_support * 2 + 1]){
+void ucs_common(
+    cuDoubleComplex mesh[max_half_support * 2 + 1][max_half_support * 2 + 1]
+  , double t2
+  ){
   const int
       x = blockIdx.x * blockDim.x + threadIdx.x
     , y = blockIdx.y * blockDim.y + threadIdx.y
     ;
   double
       sc = double(max_half_support)
-    , xs = double(x - max_half_support) / sc
-    , ys = double(y - max_half_support) / sc
+    , xs = double(x - max_half_support) / sc * t2
+    , ys = double(y - max_half_support) / sc * t2
     ;
 
   mesh[x][y].x = xs * xs + ys * ys;
@@ -22,23 +25,19 @@ void ucs_common(cuDoubleComplex mesh[max_half_support * 2 + 1][max_half_support 
 
 // test instantiation
 template __device__
-void ucs_common<256>(cuDoubleComplex mesh[513][513]);
+void ucs_common<256>(cuDoubleComplex mesh[513][513], double t2);
 
 template <int max_half_support>
 __device__
 void calc_inplace(
     cuDoubleComplex mesh[max_half_support * 2 + 1][max_half_support * 2 + 1]
-  , double t2
   , double w
   ){
   const int
       x = blockIdx.x * blockDim.x + threadIdx.x
     , y = blockIdx.y * blockDim.y + threadIdx.y
     ;
-  double
-      r2 = mesh[x][y].x * t2 * t2
-    , ph = w * (1.0 - sqrt(1.0 - r2))
-    ;
+  double ph = w * (1.0 - sqrt(1.0 - mesh[x][y].x));
   double s, c;
   sincos(2.0 * CUDART_PI * ph, &s, &c);
   mesh[x][y].x = s;
@@ -49,7 +48,6 @@ void calc_inplace(
 template __device__
 void calc_inplace<256>(
     cuDoubleComplex mesh[513][513]
-  , double t2
   , double w
   );
 
@@ -58,17 +56,13 @@ __device__
 void calc(
     cuDoubleComplex dst[max_half_support * 2 + 1][max_half_support * 2 + 1]
   , cuDoubleComplex src[max_half_support * 2 + 1][max_half_support * 2 + 1]
-  , double t2
   , double w
   ){
   const int
       x = blockIdx.x * blockDim.x + threadIdx.x
     , y = blockIdx.y * blockDim.y + threadIdx.y
     ;
-  double
-      r2 = src[x][y].x * t2 * t2
-    , ph = w * (1.0 - sqrt(1.0 - r2))
-    ;
+  double ph = w * (1.0 - sqrt(1.0 - src[x][y].x));
   double s, c;
   sincos(2.0 * CUDART_PI * ph, &s, &c);
   dst[x][y].x = s;
@@ -80,7 +74,6 @@ template __device__
 void calc<256>(
     cuDoubleComplex dst[513][513]
   , cuDoubleComplex src[513][513]
-  , double t2
   , double w
   );
 
