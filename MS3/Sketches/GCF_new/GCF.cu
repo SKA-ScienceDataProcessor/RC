@@ -185,3 +185,33 @@ void extract_over<256,8>(
   , cuDoubleComplex dst[513][513]
   , const cuDoubleComplex src[4104][4104]
   );
+
+//
+__device__ static __inline__ cuDoubleComplex cuMulComplexByDouble(cuDoubleComplex v,
+                                                             double y)
+{
+  return make_cuDoubleComplex ( v.x * y
+                              , v.y * y
+                              );
+}
+
+
+// The work-distribution scheme here is very different from those above.
+template <
+    int max_half_support
+  >
+__device__
+void normalize(
+    double norm
+  , cuDoubleComplex v[(max_half_support * 2 + 1) * (max_half_support * 2 + 1)]
+  ) {
+  const int x = blockIdx.x * blockDim.x + threadIdx.x;
+  if (x < (max_half_support * 2 + 1) * (max_half_support * 2 + 1)) v[x] = cuMulComplexByDouble(v[x], norm);
+}
+
+// test instantiation
+template __device__
+void normalize<256>(
+    double norm
+  , cuDoubleComplex v[513*513]
+  );
