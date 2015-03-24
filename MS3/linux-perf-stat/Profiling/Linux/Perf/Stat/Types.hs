@@ -21,7 +21,7 @@ data PerfTypeId
     | PERF_TYPE_HW_CACHE   PerfHwCacheId PerfHwCacheOpId PerfHwCacheOpResultId
     -- | This indicates a "raw" implementation-specific event in the
     -- config field.
-    | PERF_TYPE_RAW        !Word64
+    | PERF_TYPE_RAW        !Word64 !Word64 !Word64
     | PERF_TYPE_BREAKPOINT !Word64
     deriving (Eq, Show)
 
@@ -117,13 +117,15 @@ data PerfSwIds
     deriving (Eq, Enum, Show)
 
 -- | Get perf_event event type code
-perfTypeCode :: PerfTypeId -> (Word32, Word64)
-perfTypeCode (PERF_TYPE_HARDWARE   hwId) = (0, fromIntegral $ fromEnum hwId)
-perfTypeCode (PERF_TYPE_SOFTWARE   swId) = (1, fromIntegral $ fromEnum swId)
-perfTypeCode (PERF_TYPE_TRACEPOINT swId) = (2, fromIntegral $ fromEnum swId)
+perfTypeCode :: PerfTypeId -> (Word32, Word64, Word64, Word64)
+perfTypeCode (PERF_TYPE_HARDWARE   hwId) = (0, fromIntegral $ fromEnum hwId,0,0)
+perfTypeCode (PERF_TYPE_SOFTWARE   swId) = (1, fromIntegral $ fromEnum swId,0,0)
+perfTypeCode (PERF_TYPE_TRACEPOINT swId) = (2, fromIntegral $ fromEnum swId,0,0)
 perfTypeCode (PERF_TYPE_HW_CACHE hwCacheId hwCacheOpId hwCacheOpResultId)
     = (3, (fromIntegral (fromEnum hwCacheId))
             .|. (fromIntegral (fromEnum hwCacheOpId) `shiftL` 8)
-            .|. (fromIntegral (fromEnum hwCacheOpResultId) `shiftL` 16))
-perfTypeCode (PERF_TYPE_RAW        rwId) = (4, rwId)
-perfTypeCode (PERF_TYPE_BREAKPOINT rwId) = (5, rwId)
+            .|. (fromIntegral (fromEnum hwCacheOpResultId) `shiftL` 16),0,0)
+perfTypeCode (PERF_TYPE_RAW        rwId rwId1 rwId2)
+   = (4, rwId,rwId1,rwId2)
+perfTypeCode (PERF_TYPE_BREAKPOINT rwId)
+   = (5, rwId,0,0)

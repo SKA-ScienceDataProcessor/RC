@@ -62,8 +62,8 @@ main :: IO ()
 main = do
 
   group <- perfEventOpen
-           [ PerfDesc $ PERF_TYPE_HARDWARE PERF_COUNT_HW_CPU_CYCLES
-           , PerfDesc $ PERF_TYPE_HARDWARE PERF_COUNT_HW_INSTRUCTIONS
+           [ PMUDesc "cpu" "cpu-cycles"
+           , PMUDesc "cpu" "instructions"
 #ifdef USE_LIBPFM
            , PfmDesc "FP_COMP_OPS_EXE:X87"
            , PfmDesc "FP_COMP_OPS_EXE:SSE_FP_SCALAR_SINGLE"
@@ -101,6 +101,7 @@ main = do
   -- Warm up, and prevent full laziness
   replicateM_ 2 $ sequence tests
 
+  perfEventEnable group
   forM_ tests $ \test -> do
 
     -- Run loop
@@ -113,13 +114,17 @@ main = do
     let expectedOps = size * 2 * repeats
 
     -- Show stats
-    let (cycles:instrs:x87:
+    let (cycles:instrs:
+#ifdef USE_LIBPFM
+         x87:
          scalarSingle:scalarDouble:
          packedSingle:packedDouble:
-         avx256Single:avx256Double:_)
+         avx256Single:avx256Double:
+#endif
+         _)
              = zipWith perfEventDiff end begin
         time = toRational $ endTime `diffUTCTime` beginTime
-        perTime :: PerfStat -> Double
+        perTime :: PerfStatCount -> Double
         perTime ps = 1000 * fromIntegral (psValue ps) / fromIntegral (psTimeRunning ps)
     putStrLn $ unlines $ map concat
       [ [ printf "Time:          %10d ms" (floor (time * 1000000) :: Int) ]
@@ -127,6 +132,7 @@ main = do
       , [ printf "Time Enabled:  %10d ms" (psTimeEnabled cycles `div` 1000) ]
       , [ printf "Cycles:        %10d     - %8.2f MHz"   (psValue cycles) (perTime cycles) ]
       , [ printf "Instructions:  %10d     - %8.2f MHz"   (psValue instrs) (perTime instrs) ]
+#ifdef USE_LIBPFM
       , [ printf "x87:           %10d OPs - %8.2f MOP/s" (psValue x87)    (perTime x87)    ]
       , [ printf "Scalar Single: %10d OPs - %8.2f MOP/s" (psValue scalarSingle) (perTime scalarSingle) ]
       , [ printf "Scalar Double: %10d OPs - %8.2f MOP/s" (psValue scalarDouble) (perTime scalarDouble) ]
@@ -134,6 +140,7 @@ main = do
       , [ printf "SSE Double:    %10d OPs - %8.2f MOP/s" (2*psValue packedDouble) (2*perTime packedDouble) ]
       , [ printf "AVX Single:    %10d OPs - %8.2f MOP/s" (8*psValue avx256Single) (8*perTime avx256Single) ]
       , [ printf "AVX Double:    %10d OPs - %8.2f MOP/s" (4*psValue avx256Double) (4*perTime avx256Double) ]
+#endif
       , [ printf "Reference:     %10d OPs - %8.2f MOP/s" (expectedOps) (fromRational (fromIntegral expectedOps / time / 1000000) :: Float) ]
       ]
 
