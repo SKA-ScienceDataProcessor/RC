@@ -127,7 +127,7 @@ void copy_ucs_2_over(
     ) dst[x][y] = {0.0, 0.0};
   else
 #endif
-      dst[x][y] = src[x - pad][y - pad];
+      dst[x + pad][y + pad] = src[x][y];
   }
 
 // test instantiation
