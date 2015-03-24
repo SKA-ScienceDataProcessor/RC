@@ -19,7 +19,7 @@ void ucs_common(
     ;
 
   mesh[x][y].x = xs * xs + ys * ys;
-  mesh[x][y].x = 0.0;
+  mesh[x][y].y = 0.0;
 }
 
 // test instantiation
