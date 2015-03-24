@@ -40,8 +40,8 @@ void calc_inplace(
   double ph = w * (1.0 - sqrt(1.0 - mesh[x][y].x));
   double s, c;
   sincos(2.0 * CUDART_PI * ph, &s, &c);
-  mesh[x][y].x = s;
-  mesh[x][y].y = c;
+  dst[x][y].x = c;
+  dst[x][y].y = -s; // to get rid of conj later
 }
 
 // test instantiation
