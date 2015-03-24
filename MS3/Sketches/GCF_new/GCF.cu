@@ -2,6 +2,11 @@
 #include <cuComplex.h>
 #include <math_constants.h>
 
+// Use symmetry
+// Use max_half_support threads only
+// Perhaps it's not very cache friendly, but it is
+// very simple to perform work-distribution for this variant
+
 template <int max_half_support>
 __device__
 void ucs_common(
@@ -14,12 +19,15 @@ void ucs_common(
     ;
   double
       sc = double(max_half_support)
-    , xs = double(x - max_half_support) / sc * t2
-    , ys = double(y - max_half_support) / sc * t2
+    , xs = double(x) / sc * t2
+    , ys = double(y) / sc * t2
     ;
+  cuDoubleComplex r2 = make_cuDoubleComplex(xs * xs + ys * ys, 0.0);
 
-  mesh[x][y].x = xs * xs + ys * ys;
-  mesh[x][y].y = 0.0;
+  mesh[max_half_support - x][max_half_support - y] = r2;
+  mesh[max_half_support - x][max_half_support + y] = r2;
+  mesh[max_half_support + x][max_half_support - y] = r2;
+  mesh[max_half_support + x][max_half_support + y] = r2;
 }
 
 // test instantiation
@@ -37,11 +45,17 @@ void calc_inplace(
       x = blockIdx.x * blockDim.x + threadIdx.x
     , y = blockIdx.y * blockDim.y + threadIdx.y
     ;
-  double ph = w * (1.0 - sqrt(1.0 - mesh[x][y].x));
+  // mesh is symmetric, thus we need no recalc ph
+  double ph = w * (1.0 - sqrt(1.0 - mesh[max_half_support - x][max_half_support - y].x));
   double s, c;
   sincos(2.0 * CUDART_PI * ph, &s, &c);
-  mesh[x][y].x = c;
-  mesh[x][y].y = -s; // to get rid of conj later
+
+  cuDoubleComplex res = make_cuDoubleComplex(c, -s); // to get rid of conj later
+
+  mesh[max_half_support - x][max_half_support - y] = res;
+  mesh[max_half_support - x][max_half_support + y] = res;
+  mesh[max_half_support + x][max_half_support - y] = res;
+  mesh[max_half_support + x][max_half_support + y] = res;
 }
 
 // test instantiation
@@ -63,11 +77,16 @@ void calc(
       x = blockIdx.x * blockDim.x + threadIdx.x
     , y = blockIdx.y * blockDim.y + threadIdx.y
     ;
-  double ph = w * (1.0 - sqrt(1.0 - src[x][y].x));
+  double ph = w * (1.0 - sqrt(1.0 - src[max_half_support - x][max_half_support - y].x));
   double s, c;
   sincos(2.0 * CUDART_PI * ph, &s, &c);
-  dst[x][y].x = c;
-  dst[x][y].y = -s; // to get rid of conj later
+
+  cuDoubleComplex res = make_cuDoubleComplex(c, -s); // to get rid of conj later
+
+  dst[max_half_support - x][max_half_support - y] = res;
+  dst[max_half_support - x][max_half_support + y] = res;
+  dst[max_half_support + x][max_half_support - y] = res;
+  dst[max_half_support + x][max_half_support + y] = res;
 }
 
 // test instantiation
