@@ -11,7 +11,7 @@ cabal-version:       >=1.10
 
 Flag pfm
      Description:    Enable support for libpfm (allows access to more counters)
-     Default:        True
+     Default:        False
 
 library
   exposed-modules:   Profiling.Linux.Perf.Stat

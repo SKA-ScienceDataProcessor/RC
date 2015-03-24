@@ -56,9 +56,10 @@ data PerfStatDesc
     | PMUDesc String String -- ^ Read @/sys/bus/event_source@. First
                             -- parameter is the device, second the
                             -- counter.
-#ifdef USE_LIBPFM
-    | PfmDesc String        -- ^ Use @libpfm@ event description
-#endif
+    | PfmDesc String        -- ^ Use @libpfm@ event description. If
+                            -- @linux-perf-stat@ was compiled without
+                            -- @libpfm@ support, some hard-coded counters
+                            -- might still work.
     deriving (Eq, Show)
 
 -- | Open a single performance counter. This is purely internal, as
@@ -82,6 +83,19 @@ perfEventOpenSingle (PfmDesc pfmDesc) groupId =
       errStr <- peekCString =<< c_pfm_strerror (fromIntegral ret)
       ioError $ perfEventError $ "libpfm: " ++ errStr
     return ret
+#else
+perfEventOpenSingle (PfmDesc pfmDesc) groupId = do
+  config <- case pfmDesc of
+    "FP_COMP_OPS_EXE:X87"                  -> return 0x530110
+    "FP_COMP_OPS_EXE:SSE_FP_SCALAR_SINGLE" -> return 0x532010
+    "FP_COMP_OPS_EXE:SSE_SCALAR_DOUBLE"    -> return 0x538010
+    "FP_COMP_OPS_EXE:SSE_PACKED_SINGLE"    -> return 0x534010
+    "FP_COMP_OPS_EXE:SSE_FP_PACKED_DOUBLE" -> return 0x531010
+    "SIMD_FP_256:PACKED_SINGLE"            -> return 0x530111
+    "SIMD_FP_256:PACKED_DOUBLE"            -> return 0x530211
+    _other -> ioError $ perfEventError "Need libpfm support to look up perf_event counter!"
+  let desc = PerfDesc $ PERF_TYPE_RAW config 0 0
+  perfEventOpenSingle desc groupId
 #endif
 
 -- | Constructor for our errors - let's just use @IOException@ for the
@@ -175,8 +189,12 @@ perfEventRead group = do
 -- | Enable performance counters
 perfEventEnable :: PerfStatGroup -> IO ()
 perfEventEnable group =
-    void $ throwErrnoIfMinus1 "perfEventEnable" $
-        c_perf_event_enable $ snd $ head $ psCounters group
+  -- FIXME: The documentation assures us that enabling the group
+  -- leader is enough to catch all sub-counters. Unfortunately, this
+  -- seems to be quite unreliable. So for now, we just enable them all
+  -- "manually".
+  forM_ (psCounters group) $
+    throwErrnoIfMinus1 "perfEventEnable" . c_perf_event_enable . snd
 
 -- | Disable performance counters
 perfEventDisable :: PerfStatGroup -> IO ()
