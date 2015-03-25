@@ -47,11 +47,31 @@ typedef struct VisData_tag {
     ;
 } VisData;
 
+
+typedef struct Metrix_tag {
+  double
+      maxu
+    , maxv
+    , maxw
+    , minu
+    , minv
+    , minw
+    ;
+} Metrix;
+
+// Calculate for each baseline
+typedef struct WMaxMin_tag {
+  double
+      maxw
+    , minw
+    ;
+} WMaxMin;
+
 VisData * mkFromFile(const char * filename);
 void freeVisData(VisData * vdp);
 void deleteVisData(VisData * vdp);
 
-int readAndReshuffle(const VisData * vdp, double * amps, double * uvws);
+int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix * mp, WMaxMin * bl_ws);
 
 
 #ifdef __cplusplus

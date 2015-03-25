@@ -8,6 +8,7 @@
   Copyright (C) 2015 Braam Research, LLC.
  */
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -15,6 +16,8 @@
 #include <oskar_binary.h>
 
 #include "OskarBinReader.h"
+
+using namespace std;
 
 // We temporarily use private tag enums, compatible
 // with oskar-2.6 revision <= 2383 used for
@@ -202,7 +205,7 @@ void deleteVisData(VisData * vdp){
 
 #define __CHECK1(s) if (status != 0) {printf("ERROR! at %s: %d\n", #s, status); goto cleanup;}
 
-int readAndReshuffle(const VisData * vdp, double * amps, double * uvws)
+int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix * mp, WMaxMin * bl_ws)
 {
   int status = 0;
   int
@@ -217,6 +220,21 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws)
     , *w_temp = nullptr
     , *amp_temp = nullptr
     ;
+
+    mp->maxu
+  = mp->maxv
+  = mp->maxw
+  = -1e8;
+    mp->minu
+  = mp->minv
+  = mp->minw
+  =  1e8;
+  
+  for(int i = 0; i < vdp->num_baselines; i++) {
+    bl_ws[i].maxw = -1e8;
+    bl_ws[i].minw =  1e8;
+  }
+
   status = bin_read_i(vdp->h, vis_header_group, 0
     , NUM_TAGS_PER_BLOCK, 1, &num_tags_per_block
     , MAX_TIMES_PER_BLOCK, 1, &max_times_per_block
@@ -286,12 +304,16 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws)
 
     for (t = 0; t < num_times_in_block; ++t)
     {
+      int tt;
+      tt = start_time_idx + t;
       for (c = 0; c < vdp->num_channels; ++c)
       {
+        int ct;
+        ct = start_channel_idx + c;
         for (b = 0; b < vdp->num_baselines; ++b)
         {
           int i, j;
-          int tt, ct, it, jt, tmp;
+          int it, jt, tmp;
           // Amplitudes are in row-major
           //  [timesteps][channels][baselines][polarizations] array
           // U, V and W are in row-major
@@ -304,14 +326,21 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws)
           i = 8 * (b + vdp->num_baselines * (c + vdp->num_channels * t));
           j = b + vdp->num_baselines * t;
 
-          tt = start_time_idx + t;
-          ct = start_channel_idx + c;
           tmp = vdp->num_times * b + tt;
 
           jt = 3 * tmp;
           uvws[jt] = u_temp[j];
           uvws[jt + 1] = v_temp[j];
           uvws[jt + 2] = w_temp[j];
+
+          mp->maxu = max(mp->maxu, u_temp[j]);
+          mp->maxv = max(mp->maxv, v_temp[j]);
+          mp->maxw = max(mp->maxw, w_temp[j]);
+          mp->minu = min(mp->minu, u_temp[j]);
+          mp->minv = min(mp->minv, v_temp[j]);
+          mp->minw = min(mp->minw, w_temp[j]);
+          bl_ws[b].maxw = max(bl_ws[b].maxw, w_temp[j]);
+          bl_ws[b].minw = min(bl_ws[b].minw, w_temp[j]);
 
           it = (tmp * vdp->num_channels + ct) * 8;
           for (int cc = 0; cc < 8; cc++) amps[it + cc] = amp_temp[i + cc];
