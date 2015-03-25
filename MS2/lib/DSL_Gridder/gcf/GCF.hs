@@ -38,27 +38,28 @@ mgrid lo hi n =
     mid = if r > 0 then [(hi + lo) / 2.0] else []
   in P.take half (P.iterate (+ diff) lo) P.++ mid P.++ P.reverse (P.take half (P.iterate (\v -> v - diff) hi))
 
-waf_full :: Int -> Int -> Acc (Scalar Double) -> Acc (Scalar Double) -> Acc (Array DIM2 CxDouble)
+waf_full :: Int -> Int -> Exp Double -> Exp Double -> Acc (Array DIM2 CxDouble)
 waf_full n over t2a wa = shift2D $ fft2D' Inverse no no (centre2D cpp0)
   where
     no = n * over
-    cpp0 = permute (+) def mapndx cp
+    Z :. nr :. nc = unlift (shape cp)
+    cpp0 = A.generate (index2 (nr + padw + padw) (nc + padw + padw)) (pad cp)
     cp = A.map (\y -> exp $ A.constant ((0:+2) * (pi:+0) :: CxDouble) * (lift $ y :+ 0)) ph
-    --
+    -- padding
+    pad arr ix = cond (x <* 0 ||* x >=* w ||* y <* 0 ||* y >=* h)
+                      (A.constant $ 0 :+ 0)
+                      (arr ! index2 x y)
+      where Z :. x0 :. y0 = unlift ix
+            Z :. w :. h = unlift (shape arr)
+            x = x0 - padw; y = y0 - padw
     padw = A.constant (n * (over - 1) `div` 2)
-    -- Z :. nr :. nc = unlift (shape cp) :: Z :. Exp Int :. Exp Int
-    -- def = A.generate (index2 (nr + padw + padw) (nc + padw + padw)) (\_ -> A.constant $ 0.0 :+ 0.0)
-    ne = A.constant n
-    def = A.generate (index2 (ne + padw + padw) (ne + padw + padw)) (\_ -> A.constant $ 0.0 :+ 0.0)
-    mapndx ndx = let i2 = unindex2 ndx
-                 in index2 (A.fst i2 + padw) (A.snd i2 + padw)
     --
-    ph = A.map (\y -> the wa * (1-sqrt(1-y))) r2
+    ph = A.map (\y -> wa * (1-sqrt(1-y))) r2
     --
     r2 = let
         (a, t) = ucsN
         l f x y = (f x, f y)
-        (av, tv) = l (A.map (* the t2a)) (use a) (use t)
+        (av, tv) = l (A.map (* t2a)) (use a) (use t)
         (av2, tv2) = l (A.map (^(2::Int))) av tv
       in A.zipWith (+) av2 tv2
     --
@@ -69,33 +70,32 @@ waf_full n over t2a wa = shift2D $ fft2D' Inverse no no (centre2D cpp0)
         cvt arr = fromList (Z :. n :. n) (concat arr)
       in (cvt t, cvt a)
 
-wextract :: Acc (Array DIM2 CxDouble) -> Acc (Scalar Int) -> Acc (Scalar Int) -> Int -> Int -> Acc (Array DIM2 CxDouble)
-wextract arr ia ja over supp = exmid
+
+
+wextract :: Acc (Array DIM2 CxDouble) -> Exp Int -> Exp Int -> Exp Int -> Exp Int -> Acc (Array DIM2 CxDouble)
+wextract arr i j over supp = exmid
   where
     exmid = backpermute (lift $ Z :. diam :. diam) mapex xnorm
     diam = 2 * supp + 1
     mapex ndx =
       let i2 = unindex2 ndx
-      in index2 (A.fst i2 + outnr `div` 2 - suppex) (A.snd i2 + outnc `div` 2 - suppex)
+      in index2 (A.fst i2 + outnr `div` 2 - supp) (A.snd i2 + outnc `div` 2 - supp)
     xnorm = A.map (* invsx) x
     invsx = lift (1.0 / sx :+ 0.0)
-    sx = the (A.sum $ A.map real x)
-    suppex = A.constant supp
+    sx = the (A.sum $ A.map real x')
     x = backpermute outshape mapndx arr
+    x' = backpermute outshape mapndx arr -- duplicated to prevent sharing
     outshape = lift $ Z :. outnr :. outnc
-    i = the ia
-    j = the ja
-    outnr = (nr - i) `div` overex
-    outnc = (nc - j) `div` overex
-    overex = A.constant over
+    outnr = (nr - i) `div` over
+    outnc = (nc - j) `div` over
     mapndx ndx =
       let i2 = unindex2 ndx
-      in index2 (A.fst i2 * overex + i) (A.snd i2 * overex + j)
+      in index2 (A.fst i2 * over + i) (A.snd i2 * over + j)
     Z :. nr :. nc = unlift (shape arr) :: Z :. Exp Int :. Exp Int
 
-wkernaf_conj :: Int -> Int -> Acc (Scalar Int) -> Acc (Scalar Int) -> Array DIM2 CxDouble -> Acc (Array DIM2 CxDouble)
+wkernaf_conj :: Exp Int -> Exp Int -> Exp Int -> Exp Int -> Acc (Array DIM2 CxDouble) -> Acc (Array DIM2 CxDouble)
 wkernaf_conj supp over overx overy arr =
-  A.map conjugate $ wextract (use arr) overx overy over supp
+  A.map conjugate $ wextract arr overx overy over supp
 
 -- Quick and dirty storable for Complex
 instance Storable CxDouble where
@@ -117,17 +117,29 @@ toFlatVector a =
   in VS.zipWith (:+) res ims
 
 mkScalar :: Elt e => e -> Scalar e
-mkScalar = fromList Z . (:[])
+mkScalar = fromFunction Z . const
 
 -- these are calculated for the last config
 main :: IO ()
-main = mapM_ (\(ol, n) -> outputLayer (mk_gcf_layer ol) n) $ P.zip over_layers [0::Int ..]
-  where
-    over = 8
-    over_layers = stream (waf_full 256 over $ unit 0.024873) $ P.map mkScalar $ P.take 32 (P.iterate (+61.884644) 0.0)
-    toa = use . mkScalar
-    mk_gcf_layer w = VS.concat $ P.map (toFlatVector . run) [ wkernaf_conj 16 over (toa i) (toa j) w | i <- [0..7], j <- [0..7] ]
-    cxdsize = sizeOf (undefined :: CxDouble)
-    outputLayer vec n =
-      let (fptr, len) = VS.unsafeToForeignPtr0 vec
-      in withForeignPtr fptr $ \p -> BS.unsafePackCStringLen (castPtr p, len * cxdsize) >>= BS.writeFile (printf "GCF%02d.dat" n)
+main = do
+
+    let over = 8
+        waf_full' w = waf_full 256 over 0.024873 (the w)
+        over_layers = P.map (run1 waf_full' . mkScalar) $
+                      P.take 32 $ P.iterate (+61.884644) 0.0
+    --print waf_full'
+
+    let wkernaf_conj' pars = wkernaf_conj (A.constant 16) (A.constant over) (the ia) (the ja) wa
+            where (ia, ja, wa) = unlift pars
+    --print wkernaf_conj'
+
+    flip mapM_ (P.zip over_layers [0::Int ..]) $ \(ol, n) -> do
+         let gcf_layer = VS.concat $ P.map toFlatVector
+                         [ run1 wkernaf_conj' (mkScalar i, mkScalar j, ol)
+                           | i <- [0..7], j <- [0..7] ]
+
+         let cxdsize = sizeOf (undefined :: CxDouble)
+             (fptr, len) = VS.unsafeToForeignPtr0 gcf_layer
+             file = printf "GCF%02d.dat" n
+         withForeignPtr fptr $ \p ->
+             BS.unsafePackCStringLen (castPtr p, len * cxdsize) >>= BS.writeFile file
