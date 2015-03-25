@@ -22,12 +22,6 @@
 #define __MKDNAME sprintf(fname, "%s%s", __PREFIX, argv[1]);
 #define __MKF(n) sprintf(fname, "%s%s/%s", __PREFIX, argv[1], n); f = fopen(fname, "wb");
 
-/*
-double round_out(double v){
-  if (v < 0.0) return -round(-v);
-  else return v;
-} */
-
 int main(int argc, const char * argv[])
 {
   VisData * vdp;
@@ -126,13 +120,11 @@ int main(int argc, const char * argv[])
 
 #endif
     }
-    // We interpret WPLANES a bit differently here as being 65/2.
-    // We center wplanes at 0.
-    
 
     free(amps);
     free(uvws);
     free(bl_ws);
+    free(bl_wis);
 
     freeVisData(vdp);
     deleteVisData(vdp);
