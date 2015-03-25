@@ -41,8 +41,8 @@ ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
     vb <- duration "receive read"    $ await futVB
     -- Clean up
     liftIO $ removeFile fname
-    -- duration "compute sum" $
-    return $ (S.sum $ S.zipWith (*) va vb :: Double)
+    profile "compute sum" [FloatHint 0 (2 * fromIntegral n)] $
+      return $ (S.sum $ S.zipWith (*) va vb :: Double)
 
 -- | Calculate dot product of slice of vector.
 --
@@ -80,7 +80,7 @@ ddpProductSliceFailure = actor $ \(fullSlice) -> -- duration "vector slice" $ do
     vb <- duration "receive read"    $ await futVB
     -- Clean up
     liftIO $ removeFile fname
-    duration "compute sum" $
+    profile "compute sum" [FloatHint 0 (2 * fromIntegral n)] $
       return $ (S.sum $ S.zipWith (*) va vb :: Double)
 
 remotable [ 'ddpProductSlice

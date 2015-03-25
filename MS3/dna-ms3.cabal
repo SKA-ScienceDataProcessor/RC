@@ -46,7 +46,8 @@ library
     data-accessor         >= 0.2.2,
     operational,
     stm,
-    async
+    async,
+    linux-perf-stat
 
   -- Deal with Network.URI appearing in different versions of network
   -- and network-uri, as suggested by "network" package

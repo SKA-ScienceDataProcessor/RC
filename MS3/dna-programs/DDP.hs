@@ -17,7 +17,7 @@ import GHC.Generics  (Generic)
 import System.IO        ( openBinaryTempFile, hClose )
 import System.Directory ( doesDirectoryExist)
 
-import DNA.Channel.File (readData,readDataMMap)
+import DNA.Channel.File (readData {-,readDataMMap-})
 import DNA
 
 ----------------------------------------------------------------
@@ -48,8 +48,8 @@ scatterSlice n (Slice off0 size)
 --   > Input:  part of vector to generate
 --   > Output: data
 ddpComputeVector :: Actor Slice (S.Vector Double)
-ddpComputeVector = actor $ \(Slice off n) -> duration "compute vector" $
-  do
+ddpComputeVector = actor $ \(Slice off n) ->
+  profile "compute vector" [HaskellHint (fromIntegral $ n * 8)] $ do
     return $ S.generate (fromIntegral n)
                (\i -> fromIntegral (fromIntegral i + off))
 
@@ -58,7 +58,8 @@ ddpComputeVector = actor $ \(Slice off n) -> duration "compute vector" $
 --    * Input:  (file name and slice to read from vector)
 --    * Output: data
 ddpReadVector :: Actor (String, Slice) (S.Vector Double)
-ddpReadVector = actor $ \(fname, Slice off n) -> duration "read vector" $ do
+ddpReadVector = actor $ \(fname, Slice off n) ->
+  profile "read vector" [IOHint (fromIntegral $ n * 8) 0] $ do
     -- FIXME: mmaping of vector is not implemented
     liftIO $ readData n off fname
     -- liftIO $ readDataMMap n off fname "FIXME"
@@ -68,8 +69,9 @@ ddpReadVector = actor $ \(fname, Slice off n) -> duration "read vector" $ do
 --    * Input:  size of vector to generate
 --    * Output: name of generated file
 ddpGenerateVector :: Actor Int64 String
-ddpGenerateVector = actor $ \(n) -> duration "generate vector" $ do
-  do  
+ddpGenerateVector = actor $ \n ->
+  profile "generate vector" [IOHint 0 (fromIntegral $ n * 8),
+                             HaskellHint (fromIntegral $ n * 8)] $
     liftIO $ do
       -- On Cambridge cluster we we write to the /ramdisk directory
       -- Otherwise we write to local directory

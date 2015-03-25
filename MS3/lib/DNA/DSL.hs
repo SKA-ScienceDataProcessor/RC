@@ -25,7 +25,9 @@ module DNA.DSL (
       -- * Smart constructors
       -- ** Logging
     , logMessage
+    , profile
     , duration
+    , ProfileHint(..)
       -- ** Other
     , Rank
     , rank
@@ -63,7 +65,7 @@ import Control.Distributed.Process.Serializable
 import Data.Typeable (Typeable)
 
 import DNA.Types
-
+import DNA.Logging (ProfileHint(..))
 
 ----------------------------------------------------------------
 -- Operations data type for DNA
@@ -87,7 +89,7 @@ data DnaF a where
     AvailNodes :: DnaF Int
 
     LogMessage :: String -> DnaF ()
-    Duration   :: String -> DNA a -> DnaF a
+    Profile    :: String -> [ProfileHint] -> DNA a -> DnaF a
 
     -- | Evaluate actor's closure
     EvalClosure
@@ -200,7 +202,6 @@ newtype Promise a = Promise (ReceivePort a)
 
 data Group a = Group (ReceivePort a) (ReceivePort Int)
 
-
 ----------------------------------------------------------------
 -- Data types for actors
 ----------------------------------------------------------------
@@ -273,7 +274,10 @@ logMessage :: String -> DNA ()
 logMessage = DNA . singleton . LogMessage
 
 duration :: String -> DNA a -> DNA a
-duration msg dna = DNA $ singleton $ Duration msg dna
+duration msg = profile msg []
+
+profile :: String -> [ProfileHint] -> DNA a -> DNA a
+profile msg hints dna = DNA $ singleton $ Profile msg hints dna
 
 delay :: Serializable b => Location -> Shell a (Val b) -> DNA (Promise b)
 delay loc sh = DNA $ singleton $ Delay loc sh

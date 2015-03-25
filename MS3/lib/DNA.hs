@@ -6,7 +6,9 @@ module DNA (
     , rank
     , groupSize
     , logMessage
+    , profile
     , duration
+    , ProfileHint(..)
        -- * Actors
     , Actor
     , actor

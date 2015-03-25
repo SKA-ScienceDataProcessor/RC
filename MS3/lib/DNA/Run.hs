@@ -69,7 +69,7 @@ runSlurm common = do
     setCurrentDirectory logDir
     program <- getExecutablePath
     executeFile program True
-        [ "+RTS", "-l-au", "-RTS"
+        [ "+RTS", "-l-au", "-T", "-RTS"
         , "--base-port", show (dnaBasePort common)
         , "--workdir", dir
         ] Nothing
@@ -226,7 +226,7 @@ runUnix n common = do
     -- Reexec program with enabled eventlog
     setCurrentDirectory (logDir </> "0")
     executeFile program True
-        [ "+RTS", "-l-au", "-RTS"
+        [ "+RTS", "-l-au", "-T", "-RTS"
         , "--nprocs",        show n
         , "--internal-rank", "0"
         , "--internal-pid",  dnaPID
@@ -252,7 +252,7 @@ runUnixWorker rtable opts common dna = do
                     createDirectoryIfMissing True dir
                     setCurrentDirectory dir
                     spawnProcess program
-                        [ "+RTS", "-l-au", "-RTS"
+                        [ "+RTS", "-l-au", "-T", "-RTS"
                         , "--base-port",     show basePort
                         , "--nprocs",        show nProc
                         , "--internal-rank", show rnk

@@ -19,12 +19,12 @@ module DNA.Interpreter (
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.State.Strict
+-- import Control.Monad.Trans.State.Strict
 import Control.Monad.Except
 import Control.Monad.Operational
 import Control.Concurrent.Async
-import Control.Concurrent.STM (STM)
-import Control.Distributed.Static  (closureApply)
+-- import Control.Concurrent.STM (STM)
+-- import Control.Distributed.Static  (closureApply)
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
@@ -34,7 +34,7 @@ import Control.Distributed.Process.Closure
 -- import           Data.Map   (Map)
 import qualified Data.Set as Set
 -- import           Data.Set   (Set)
-import Text.Printf
+-- import Text.Printf
 -- import GHC.Generics  (Generic)
 
 import DNA.Types
@@ -67,7 +67,7 @@ interpretDNA (DNA m) =
       AvailNodes      -> Set.size <$> use stNodePool
       -- Logging
       LogMessage msg   -> taggedMessage "MSG" msg
-      Duration msg dna -> duration msg $ interpretDNA dna
+      Profile msg hints dna -> logProfile msg hints $ interpretDNA dna
       -- Spawning of actors
       EvalClosure     a c -> do Actor f <- lift $ unClosure c
                                 interpretDNA $ f a
