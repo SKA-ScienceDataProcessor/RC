@@ -124,34 +124,6 @@ void copy_ucs_2_over<256,8>(
   , const cuDoubleComplex src[513][513]
   );
 
-#if 0
-template <
-    int max_half_support
-  , int oversample
-  >
-__device__
-void cut_out(
-    int supp
-  , cuDoubleComplex * dst
-  , const cuDoubleComplex src[(max_half_support * 2 + 1) * oversample][(max_half_support * 2 + 1) * oversample]
-  ) {
-  const int
-      x = blockIdx.x * blockDim.x + threadIdx.x
-    , y = blockIdx.y * blockDim.y + threadIdx.y
-    ;
-  const int off = (max_half_support - supp) * oversample;
-
-  dst[x * supp + y] = src[off+x][off+y];
-  }
-
-// test instantiation
-template __device__
-void cut_out<256,8>(
-    int supp
-  , cuDoubleComplex * dst
-  , const cuDoubleComplex src[4104][4104]
-  );
-#endif
 
 template <
     int max_half_support
@@ -196,7 +168,7 @@ __device__ static __inline__ cuDoubleComplex cuMulComplexByDouble(cuDoubleComple
 }
 
 
-// The work-distribution scheme here is very different from those above.
+// The work-distribution scheme here is very different from those above (and below).
 template <
     int max_half_support
   >
@@ -214,4 +186,41 @@ template __device__
 void normalize<256>(
     double norm
   , cuDoubleComplex v[513*513]
+  );
+
+
+template <
+    int max_half_support
+  , int oversample
+  >
+__device__
+void cut_out(
+    int half_supp
+  , cuDoubleComplex * dst
+  , const cuDoubleComplex src[max_half_support * 2 + 1][max_half_support * 2 + 1]
+  ) {
+  __SET_MAP
+  const int supp = half_supp * 2 + 1;
+
+  if (x > half_supp || y > half_supp) return;
+
+  const int
+      dxl = (half_supp - x) * supp
+    , dxr = (half_supp + x) * supp
+    , dyl = half_supp - y
+    , dyr = half_supp + y
+    ;
+
+  dst[dxl + dyl] = src[xl][yl];
+  dst[dxl + dyr] = src[xl][yr];
+  dst[dxr + dyl] = src[xr][yl];
+  dst[dxr + dyr] = src[xr][yr];
+}
+
+// test instantiation
+template __device__
+void cut_out<256,8>(
+    int supp
+  , cuDoubleComplex * dst
+  , const cuDoubleComplex src[513][513]
   );
