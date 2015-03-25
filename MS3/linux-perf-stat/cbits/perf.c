@@ -1,6 +1,7 @@
 
 #include <unistd.h>
 #include <asm/unistd.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
 #include <linux/perf_event.h>
@@ -35,16 +36,17 @@ static int perf_event_open_gen(struct perf_event_attr *attr,
                           | PERF_FORMAT_GROUP;
     }
 
-    // Exclude kernel and hypervisor
+    // Exclude kernel and hypervisor, start disabled
     attr->exclude_kernel = 1;
     attr->exclude_hv = 1;
+    attr->disabled = 1;
 
     // Create the performance counter
     return sys_perf_event_open(attr, 0, -1, group_fd, 0);
 }
 
 int perf_event_open(uint32_t type,
-                    uint64_t config,
+                    uint64_t config, uint64_t config1, uint64_t config2,
                     int group_fd)
 {
     struct perf_event_attr attr;
@@ -54,8 +56,20 @@ int perf_event_open(uint32_t type,
     attr.size = sizeof(attr);
     attr.type = type;
     attr.config = config;
+    attr.config1 = config1;
+    attr.config2 = config2;
 
     return perf_event_open_gen(&attr, group_fd);
+}
+
+int perf_event_enable(int group_fd)
+{
+    return ioctl(group_fd, PERF_EVENT_IOC_ENABLE);
+}
+
+int perf_event_disable(int group_fd)
+{
+    return ioctl(group_fd, PERF_EVENT_IOC_DISABLE);
 }
 
 #ifdef USE_LIBPFM

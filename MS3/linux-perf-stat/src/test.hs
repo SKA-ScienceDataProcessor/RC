@@ -62,9 +62,8 @@ main :: IO ()
 main = do
 
   group <- perfEventOpen
-           [ PerfDesc $ PERF_TYPE_HARDWARE PERF_COUNT_HW_CPU_CYCLES
-           , PerfDesc $ PERF_TYPE_HARDWARE PERF_COUNT_HW_INSTRUCTIONS
-#ifdef USE_LIBPFM
+           [ PerfDesc (PERF_TYPE_HARDWARE PERF_COUNT_HW_CPU_CYCLES)
+           , PerfDesc (PERF_TYPE_HARDWARE PERF_COUNT_HW_INSTRUCTIONS)
            , PfmDesc "FP_COMP_OPS_EXE:X87"
            , PfmDesc "FP_COMP_OPS_EXE:SSE_FP_SCALAR_SINGLE"
            , PfmDesc "FP_COMP_OPS_EXE:SSE_SCALAR_DOUBLE"
@@ -72,7 +71,6 @@ main = do
            , PfmDesc "FP_COMP_OPS_EXE:SSE_FP_PACKED_DOUBLE"
            , PfmDesc "SIMD_FP_256:PACKED_SINGLE"
            , PfmDesc "SIMD_FP_256:PACKED_DOUBLE"
-#endif
            ]
 
   let size = 1000 * 1000 * 10
@@ -101,25 +99,30 @@ main = do
   -- Warm up, and prevent full laziness
   replicateM_ 2 $ sequence tests
 
+  perfEventEnable group
   forM_ tests $ \test -> do
 
     -- Run loop
     let repeats = 10
     beginTime <- getCurrentTime
+    perfEventEnable group
     begin <- perfEventRead group
     replicateM_ repeats $ test
     end <- perfEventRead group
+    perfEventDisable group
     endTime <- getCurrentTime
     let expectedOps = size * 2 * repeats
 
     -- Show stats
-    let (cycles:instrs:x87:
+    let (cycles:instrs:
+         x87:
          scalarSingle:scalarDouble:
          packedSingle:packedDouble:
-         avx256Single:avx256Double:_)
+         avx256Single:avx256Double:
+         _)
              = zipWith perfEventDiff end begin
         time = toRational $ endTime `diffUTCTime` beginTime
-        perTime :: PerfStat -> Double
+        perTime :: PerfStatCount -> Double
         perTime ps = 1000 * fromIntegral (psValue ps) / fromIntegral (psTimeRunning ps)
     putStrLn $ unlines $ map concat
       [ [ printf "Time:          %10d ms" (floor (time * 1000000) :: Int) ]

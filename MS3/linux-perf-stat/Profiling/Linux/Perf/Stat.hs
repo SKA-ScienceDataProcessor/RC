@@ -6,16 +6,19 @@ module Profiling.Linux.Perf.Stat
 
   , perfEventOpen
   , perfEventRead
+  , perfEventEnable
+  , perfEventDisable
   , perfEventClose
   , perfEventDiff
   , PerfStatDesc(..)
   , PerfStatGroup
-  , PerfStat(..)
+  , PerfStatCount(..)
   ) where
 
 import Profiling.Linux.Perf.Stat.Types
+import Profiling.Linux.Perf.Stat.PMU
 
-import Control.Monad          ( forM_, zipWithM, when )
+import Control.Monad          ( forM_, zipWithM, when, void )
 
 import Data.Word
 import Data.Maybe             ( fromMaybe )
@@ -33,30 +36,43 @@ import System.Posix.Internals ( c_close, c_read )
 
 import GHC.IO.Exception       ( IOException(..), IOErrorType(..) )
 
-foreign import ccall unsafe "perf.h perf_event_open"
-   c_perf_event_open :: Word32 -> Word64 -> CInt -> IO CInt
+foreign import ccall unsafe "perf_event_open"
+   c_perf_event_open :: Word32 -> Word64 -> Word64 -> Word64 -> CInt -> IO CInt
+foreign import ccall unsafe "perf_event_enable"
+   c_perf_event_enable :: CInt -> IO CInt
+foreign import ccall unsafe "perf_event_disable"
+   c_perf_event_disable :: CInt -> IO CInt
 
 #ifdef USE_LIBPFM
-foreign import ccall unsafe "perf.h perf_event_open_pfm"
+foreign import ccall unsafe "perf_event_open_pfm"
    c_perf_event_open_pfm :: CString -> CInt -> IO CInt
-foreign import ccall unsafe "perfmon/err.h pfm_strerror"
+foreign import ccall unsafe "pfm_strerror"
    c_pfm_strerror :: CInt -> IO CString
 #endif
 
 -- | Performance counter selector
-data PerfStatDesc = PerfDesc PerfTypeId -- ^ Standard @perf_event@ event types
-#ifdef USE_LIBPFM
-                  | PfmDesc String      -- ^ Use @libpfm@ event description
-#endif
-                  deriving (Eq, Show)
+data PerfStatDesc
+    = PerfDesc PerfTypeId   -- ^ Standard @perf_event@ event types
+    | PMUDesc String String -- ^ Read @/sys/bus/event_source@. First
+                            -- parameter is the device, second the
+                            -- counter.
+    | PfmDesc String        -- ^ Use @libpfm@ event description. If
+                            -- @linux-perf-stat@ was compiled without
+                            -- @libpfm@ support, some hard-coded counters
+                            -- might still work.
+    deriving (Eq, Show)
 
 -- | Open a single performance counter. This is purely internal, as
 -- counters should be opened together in groups.
 perfEventOpenSingle :: PerfStatDesc -> Maybe CInt -> IO CInt
 perfEventOpenSingle (PerfDesc perfTypeId) groupId = do
-  let (perfType, perfConfig) = perfTypeCode perfTypeId
+  let (perfType, config, config1, config2) = perfTypeCode perfTypeId
   throwErrnoIfMinus1 "perfEventOpen" $
-    c_perf_event_open perfType perfConfig (fromMaybe (-1) groupId)
+    c_perf_event_open perfType config config1 config2 (fromMaybe (-1) groupId)
+perfEventOpenSingle (PMUDesc deviceName counterName) groupId = do
+  (perfType, config, config1, config2) <- pmuTypeCode deviceName counterName
+  throwErrnoIfMinus1 "perfEventOpen" $
+    c_perf_event_open perfType config config1 config2 (fromMaybe (-1) groupId)
 #ifdef USE_LIBPFM
 perfEventOpenSingle (PfmDesc pfmDesc) groupId =
   withCString pfmDesc $ \pfmDescC -> do
@@ -67,6 +83,19 @@ perfEventOpenSingle (PfmDesc pfmDesc) groupId =
       errStr <- peekCString =<< c_pfm_strerror (fromIntegral ret)
       ioError $ perfEventError $ "libpfm: " ++ errStr
     return ret
+#else
+perfEventOpenSingle (PfmDesc pfmDesc) groupId = do
+  config <- case pfmDesc of
+    "FP_COMP_OPS_EXE:X87"                  -> return 0x530110
+    "FP_COMP_OPS_EXE:SSE_FP_SCALAR_SINGLE" -> return 0x532010
+    "FP_COMP_OPS_EXE:SSE_SCALAR_DOUBLE"    -> return 0x538010
+    "FP_COMP_OPS_EXE:SSE_PACKED_SINGLE"    -> return 0x534010
+    "FP_COMP_OPS_EXE:SSE_FP_PACKED_DOUBLE" -> return 0x531010
+    "SIMD_FP_256:PACKED_SINGLE"            -> return 0x530111
+    "SIMD_FP_256:PACKED_DOUBLE"            -> return 0x530211
+    _other -> ioError $ perfEventError "Need libpfm support to look up perf_event counter!"
+  let desc = PerfDesc $ PERF_TYPE_RAW config 0 0
+  perfEventOpenSingle desc groupId
 #endif
 
 -- | Constructor for our errors - let's just use @IOException@ for the
@@ -80,9 +109,14 @@ perfEventError cause = IOError { ioe_handle = Nothing
                                , ioe_filename = Nothing
                                }
 
+-- | A group of performance counters
 newtype PerfStatGroup
     = PerfStatGroup { psCounters :: [(PerfStatDesc, CInt)] }
 
+-- | Open a group of performance counters. @perf_event@ guarantees
+-- that the given counters will all be active at the same time on the
+-- same CPU, so they can be meaningfully compared. Note that counters
+-- start off disabled, use @perfEventEnable@ to start counting.
 perfEventOpen :: [PerfStatDesc] -> IO PerfStatGroup
 perfEventOpen []      = return $ PerfStatGroup []
 perfEventOpen typeIds = do
@@ -94,14 +128,24 @@ perfEventOpen typeIds = do
   fds <- mapM (flip perfEventOpenSingle (Just groupFd)) (tail typeIds)
   return $ PerfStatGroup $ zip typeIds (groupFd:fds)
 
-data PerfStat
-    = PerfStat { psDesc        :: PerfStatDesc
-               , psValue       :: !Word64
-               , psTimeEnabled :: !Word64
-               , psTimeRunning :: !Word64
-               }
+-- | Performance counter snapshot
+data PerfStatCount = PerfStatCount
+    { psDesc        :: PerfStatDesc -- ^ Event description
+    , psValue       :: !Word64 -- ^ Counter value
+    , psTimeEnabled :: !Word64 -- ^ Time this timer has been
+                               -- enabled. Will be the same on all
+                               -- counters of a group.
+    , psTimeRunning :: !Word64 -- ^ Time this timer has been
+                               -- running. Can be substantially less
+                               -- than @psTimeEnabled@ if the OS ran
+                               -- out of counter resources and had to
+                               -- multiplex. However, this is still
+                               -- guaranteed to be the same on all
+                               -- counters of a group.
+    }
 
-perfEventRead :: PerfStatGroup -> IO [PerfStat]
+-- | Read the current performance counter values
+perfEventRead :: PerfStatGroup -> IO [PerfStatCount]
 perfEventRead (PerfStatGroup []) = return []
 perfEventRead group = do
 
@@ -136,19 +180,37 @@ perfEventRead group = do
     -- before all others.
     (\f -> zipWithM f [3..] (psCounters group)) $ \i (desc, _) -> do
       val <- peekElemOff vals i
-      return $ PerfStat { psDesc = desc
-                        , psValue = val
-                        , psTimeEnabled = timeEnabled
-                        , psTimeRunning = timeRunning
-                        }
+      return $ PerfStatCount { psDesc = desc
+                             , psValue = val
+                             , psTimeEnabled = timeEnabled
+                             , psTimeRunning = timeRunning
+                             }
 
+-- | Enable performance counters
+perfEventEnable :: PerfStatGroup -> IO ()
+perfEventEnable group =
+  -- FIXME: The documentation assures us that enabling the group
+  -- leader is enough to catch all sub-counters. Unfortunately, this
+  -- seems to be quite unreliable. So for now, we just enable them all
+  -- "manually".
+  forM_ (psCounters group) $
+    throwErrnoIfMinus1 "perfEventEnable" . c_perf_event_enable . snd
+
+-- | Disable performance counters
+perfEventDisable :: PerfStatGroup -> IO ()
+perfEventDisable group =
+    void $ throwErrnoIfMinus1 "perfEventDisable" $
+        c_perf_event_disable $ snd $ head $ psCounters group
+
+-- | Close a group of performance counters
 perfEventClose :: PerfStatGroup -> IO ()
 perfEventClose group =
   forM_ (reverse $ psCounters group) $ \(_, fd) ->
     throwErrnoIfMinus1 "perfEventClose" $
       c_close fd
 
-perfEventDiff :: PerfStat -> PerfStat -> PerfStat
+-- | Utility function to find difference of counter values
+perfEventDiff :: PerfStatCount -> PerfStatCount -> PerfStatCount
 perfEventDiff ps1 ps2
   = ps1 { psValue       = psValue ps1 - psValue ps2
         , psTimeEnabled = psTimeEnabled ps1 - psTimeEnabled ps2

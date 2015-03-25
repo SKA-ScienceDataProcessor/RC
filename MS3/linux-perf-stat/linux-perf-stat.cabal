@@ -2,7 +2,7 @@
 name:                linux-perf-stat
 version:             0.1.0.0
 license:             Apache-2.0
-license-file:        LICENSE
+license-file:        ../LICENSE
 author:              Peter Wortmann
 maintainer:          Peter.Wortmann@braamresearch.com
 category:            Development
@@ -11,12 +11,14 @@ cabal-version:       >=1.10
 
 Flag pfm
      Description:    Enable support for libpfm (allows access to more counters)
-     Default:        True
+     Default:        False
 
 library
   exposed-modules:   Profiling.Linux.Perf.Stat
                      Profiling.Linux.Perf.Stat.Types
-  build-depends:     base >=4.7 && <4.8
+  other-modules:     Profiling.Linux.Perf.Stat.PMU
+  build-depends:     base >=4.7 && <4.8,
+                     filepath >= 1.3 && <1.4
   default-language:  Haskell2010
   ghc-options:       -Wall
   c-sources:         cbits/perf.c
