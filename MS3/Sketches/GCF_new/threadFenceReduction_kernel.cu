@@ -22,6 +22,11 @@ bool isPow2(unsigned int x)
     return ((x&(x-1))==0);
 }
 
+template <unsigned int blockSize, bool nIsPow2>
+__global__
+void reduceSinglePass(const cuDoubleComplex *g_idata, double *g_odata, unsigned int n){
+  reduceSinglePass_dev<blockSize, nIsPow2>(g_idata, g_odata, n);
+}
 
 // blocksize is >= 64 always
 extern "C"

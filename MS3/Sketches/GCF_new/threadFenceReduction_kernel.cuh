@@ -185,10 +185,4 @@ void reduceSinglePass_dev(const cuDoubleComplex *g_idata, double *g_odata, unsig
     }
 }
 
-template <unsigned int blockSize, bool nIsPow2>
-__global__
-void reduceSinglePass(const cuDoubleComplex *g_idata, double *g_odata, unsigned int n){
-  reduceSinglePass_dev<blockSize, nIsPow2>(g_idata, g_odata, n);
-}
-
 #endif // #ifndef _REDUCE_KERNEL_H_
