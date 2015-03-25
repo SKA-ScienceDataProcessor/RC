@@ -19,16 +19,16 @@
 
 
 template <int max_half_support>
-__device__
+__device__ __inline__
 void ucs_common(
     cuDoubleComplex mesh[max_half_support * 2 + 1][max_half_support * 2 + 1]
   , double t2
   ){
   __SET_MAP
   double
-      sc = double(max_half_support)
-    , xs = double(x) / sc * t2
-    , ys = double(y) / sc * t2
+      t2_div_sc = t2 / double(max_half_support)
+    , xs = double(x) * t2_div_sc
+    , ys = double(y) * t2_div_sc
     ;
   cuDoubleComplex r2 = make_cuDoubleComplex(xs * xs + ys * ys, 0.0);
 
@@ -38,11 +38,12 @@ void ucs_common(
   mesh[xr][yr] = r2;
 }
 
-// test instantiation
-template __device__
-void ucs_common<256>(cuDoubleComplex mesh[513][513], double t2);
+extern "C" __global__ void r2(cuDoubleComplex mesh[513][513], double t2) {
+  ucs_common<256>(mesh, t2);
+}
 
 
+#if 0
 template <int max_half_support>
 __device__
 void calc_inplace(
@@ -69,10 +70,11 @@ void calc_inplace<256>(
     cuDoubleComplex mesh[513][513]
   , double w
   );
+#endif
 
 
 template <int max_half_support>
-__device__
+__device__ __inline__
 void calc(
     cuDoubleComplex dst[max_half_support * 2 + 1][max_half_support * 2 + 1]
   , const cuDoubleComplex src[max_half_support * 2 + 1][max_half_support * 2 + 1]
@@ -91,24 +93,24 @@ void calc(
   dst[xr][yr] = res;
 }
 
-// test instantiation
-template __device__
-void calc<256>(
+extern "C" __global__ void wkernff(
     cuDoubleComplex dst[513][513]
   , const cuDoubleComplex src[513][513]
   , double w
-  );
+  ){
+  calc<256>(dst, src, w);
+}
 
 
 template <
     int max_half_support
   , int oversample
   >
-__device__
+__device__ __inline__
 void copy_ucs_2_over(
     cuDoubleComplex dst[(max_half_support * 2 + 1) * oversample][(max_half_support * 2 + 1) * oversample]
   , const cuDoubleComplex src[max_half_support * 2 + 1][max_half_support * 2 + 1]
-  ) {
+  ){
   const int dst_center = (max_half_support * 2 + 1) * oversample / 2;
   __SET_MAP
   dst[dst_center - x][dst_center - y] = src[xl][yl];
@@ -117,19 +119,19 @@ void copy_ucs_2_over(
   dst[dst_center + x][dst_center + y] = src[xr][yr];
 }
 
-// test instantiation
-template __device__
-void copy_ucs_2_over<256,8>(
+extern "C" __global__  void copy_2_over(
     cuDoubleComplex dst[4104][4104]
   , const cuDoubleComplex src[513][513]
-  );
+  ){
+  copy_ucs_2_over<256,8>(dst, src);
+}
 
 
 template <
     int max_half_support
   , int oversample
   >
-__device__
+__device__ __inline__
 void extract_over(
     int overx
   , int overy
@@ -149,31 +151,31 @@ void extract_over(
   dst[xr][yr] = src[sxr][syr];
   }
 
-// test instantiation
-template __device__
-void extract_over<256,8>(
+
+extern "C" __global__ void wextract0(
     int overx
   , int overy
   , cuDoubleComplex dst[513][513]
   , const cuDoubleComplex src[4104][4104]
-  );
+  ){
+  extract_over<256,8>(overx, overy, dst, src);
+}
+
 
 //
 __device__ static __inline__ cuDoubleComplex cuMulComplexByDouble(cuDoubleComplex v,
-                                                             double y)
-{
+                                                             double y){
   return make_cuDoubleComplex ( v.x * y
                               , v.y * y
                               );
 }
 
-
 // The work-distribution scheme here is very different from those above (and below).
 template <
     int max_half_support
   >
-__device__
-void normalize(
+__device__ __inline__
+void normalize_kernel(
     double norm
   , cuDoubleComplex v[(max_half_support * 2 + 1) * (max_half_support * 2 + 1)]
   ) {
@@ -181,19 +183,19 @@ void normalize(
   if (x < (max_half_support * 2 + 1) * (max_half_support * 2 + 1)) v[x] = cuMulComplexByDouble(v[x], norm);
 }
 
-// test instantiation
-template __device__
-void normalize<256>(
+extern "C" __global__ void normalize(
     double norm
   , cuDoubleComplex v[513*513]
-  );
+  ){
+  normalize_kernel<256>(norm, v);
+}
 
 
 template <
     int max_half_support
   , int oversample
   >
-__device__
+__device__ __inline__
 void cut_out(
     int half_supp
   , cuDoubleComplex * dst
@@ -217,10 +219,10 @@ void cut_out(
   dst[dxr + dyr] = src[xr][yr];
 }
 
-// test instantiation
-template __device__
-void cut_out<256,8>(
+extern "C" __global__ void wextract1(
     int supp
   , cuDoubleComplex * dst
   , const cuDoubleComplex src[513][513]
-  );
+  ){
+  cut_out<256,8>(supp, dst, src);
+}
