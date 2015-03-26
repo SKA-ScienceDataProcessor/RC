@@ -1,12 +1,13 @@
 module FFT where
 
+import Data.Complex
 import Foreign.CUDA.Driver (
     Fun
   , launchKernel
   , FunParam(..)
   )
 import Foreign.CUDA.Types (Stream)
-import Foreign.CUDA.Ptr (DevicePtr)
+import Foreign.CUDA.Ptr (DevicePtr, castDevPtr)
 import Foreign.CUDA.FFT
 
 data Mode =
@@ -14,13 +15,16 @@ data Mode =
   | Reverse
   | Inverse
 
-fft2dComplexDSqInplace :: Maybe Stream -> Mode -> Int -> DevicePtr Double -> IO ()
+type CxDouble = Complex Double
+type CxDoubleDevPtr = DevicePtr CxDouble
+
+fft2dComplexDSqInplace :: Maybe Stream -> Mode -> Int -> CxDoubleDevPtr -> IO ()
 fft2dComplexDSqInplace mbstream mode size inoutp = do
     handle <- plan2D size size Z2Z
     case mbstream of
       Just str -> setStream handle str
       _ -> return ()
-    execZ2Z handle inoutp inoutp (signOfMode mode)
+    execZ2Z handle (castDevPtr inoutp) (castDevPtr inoutp) (signOfMode mode)
     destroy handle
   where
     signOfMode Forward = -1
@@ -28,7 +32,7 @@ fft2dComplexDSqInplace mbstream mode size inoutp = do
     signOfMode Inverse =  1
 
 
-fft2dComplexDSqInplaceCentered :: Maybe Stream -> Mode -> Int -> DevicePtr Double -> Fun -> Fun -> IO ()
+fft2dComplexDSqInplaceCentered :: Maybe Stream -> Mode -> Int -> CxDoubleDevPtr -> Fun -> Fun -> IO ()
 fft2dComplexDSqInplaceCentered mbstream mode size inoutp ifftshift fftshift = do
     mkshift ifftshift
     fft2dComplexDSqInplace mbstream mode size inoutp
