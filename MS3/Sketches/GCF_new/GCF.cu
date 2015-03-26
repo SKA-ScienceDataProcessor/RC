@@ -38,8 +38,8 @@ void ucs_common(
   mesh[xr][yr] = r2;
 }
 
-extern "C" __global__ void r2(cuDoubleComplex mesh[513][513], double t2) {
-  ucs_common<256>(mesh, t2);
+extern "C" __global__ void r2(cuDoubleComplex mesh[257][257], double t2) {
+  ucs_common<128>(mesh, t2);
 }
 
 
@@ -66,8 +66,8 @@ void calc_inplace(
 
 // test instantiation
 template __device__
-void calc_inplace<256>(
-    cuDoubleComplex mesh[513][513]
+void calc_inplace<128>(
+    cuDoubleComplex mesh[257][257]
   , double w
   );
 #endif
@@ -94,11 +94,11 @@ void calc(
 }
 
 extern "C" __global__ void wkernff(
-    cuDoubleComplex dst[513][513]
-  , const cuDoubleComplex src[513][513]
+    cuDoubleComplex dst[257][257]
+  , const cuDoubleComplex src[257][257]
   , double w
   ){
-  calc<256>(dst, src, w);
+  calc<128>(dst, src, w);
 }
 
 
@@ -120,10 +120,10 @@ void copy_ucs_2_over(
 }
 
 extern "C" __global__  void copy_2_over(
-    cuDoubleComplex dst[4104][4104]
-  , const cuDoubleComplex src[513][513]
+    cuDoubleComplex dst[2056][2056]
+  , const cuDoubleComplex src[257][257]
   ){
-  copy_ucs_2_over<256,8>(dst, src);
+  copy_ucs_2_over<128,8>(dst, src);
 }
 
 
@@ -155,10 +155,10 @@ void extract_over(
 extern "C" __global__ void wextract0(
     int overx
   , int overy
-  , cuDoubleComplex dst[513][513]
-  , const cuDoubleComplex src[4104][4104]
+  , cuDoubleComplex dst[257][257]
+  , const cuDoubleComplex src[2056][2056]
   ){
-  extract_over<256,8>(overx, overy, dst, src);
+  extract_over<128,8>(overx, overy, dst, src);
 }
 #else
 // We use 3rd grid dimension to cover oversample range
@@ -187,10 +187,10 @@ void transpose_over(
 }
 
 extern "C" __global__ void transpose_over0(
-    cuDoubleComplex dst[8][8][513][513]
-  , const cuDoubleComplex src[4104][4104]
+    cuDoubleComplex dst[8][8][257][257]
+  , const cuDoubleComplex src[2056][2056]
   ){
-  transpose_over<256,8>(dst, src);
+  transpose_over<128,8>(dst, src);
 }
 #endif
 
@@ -218,9 +218,9 @@ void normalize_kernel(
 
 extern "C" __global__ void normalize(
     double norm
-  , cuDoubleComplex v[513*513]
+  , cuDoubleComplex v[257*257]
   ){
-  normalize_kernel<256>(norm, v);
+  normalize_kernel<128>(norm, v);
 }
 
 
@@ -255,7 +255,7 @@ void cut_out(
 extern "C" __global__ void wextract1(
     int supp
   , cuDoubleComplex * dst
-  , const cuDoubleComplex src[513][513]
+  , const cuDoubleComplex src[257][257]
   ){
-  cut_out<256,8>(supp, dst, src);
+  cut_out<128,8>(supp, dst, src);
 }
