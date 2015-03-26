@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns, CPP #-}
 -- | Logging.hs
 --
 -- Logging and profiling facilities. Log messages are written to GHC's
@@ -52,6 +52,9 @@ import GHC.Stats
 
 import Debug.Trace        (traceEventIO)
 
+#ifdef USE_CUDA
+import Profiling.CUDA.Activity
+#endif
 import Profiling.Linux.Perf.Stat
 
 import System.IO.Unsafe   (unsafePerformIO)
@@ -179,12 +182,12 @@ data ProfileHint
     | HaskellHint { hintAllocation :: Int
                   }
       -- ^ Rough estimate for how much Haskell work we are doing.
-    | CUDAHint { cudaReadBytes :: Int
-               , cudaWriteBytes :: Int
-               , cudaOps :: Int
+    | CUDAHint { hintCopyBytesHost :: Int
+               , hintCopyBytesDevice :: Int
                }
-      -- ^ Just a stub for now, need to figure out how to make
-      -- measurements happen for this.
+      -- ^ CUDA statistics. The values are hints about how much data
+      -- transfers we expect to be targetting the device and the host
+      -- respectively.
 
 -- | Main profiling function. The concrete information output to the
 -- event log depends on the hints about the code's actions.
@@ -216,8 +219,10 @@ hintToSample ioh@IOHint{}
 hintToSample hh@HaskellHint{}
     = consAttrNZ "hint:haskell-alloc" (hintAllocation hh)
     <$> haskellAttrs
-hintToSample CUDAHint{}
-    = return []
+hintToSample ch@CUDAHint{}
+    = consAttrNZ "hint:memcpy-bytes-host" (hintCopyBytesHost ch)
+    . consAttrNZ "hint:memcpy-bytes-device" (hintCopyBytesDevice ch)
+    <$> cudaAttrs
 
 -- | Prepend an attribute if it is non-zero
 consAttrNZ :: (Eq a, Num a, Show a)
@@ -299,3 +304,37 @@ haskellAttrs = do
                , ("rts:heap-size",       show $ currentBytesUsed stats)
                ]
 
+----------------------------------------------------------------
+-- CUDA statistics sampling
+----------------------------------------------------------------
+
+cudaAttrs :: IO [Attr]
+cudaAttrs = do
+#ifndef USE_CUDA
+    return []
+#else
+    -- Flush, so statistics are current
+    cuptiFlush
+
+    -- Then read stats
+    memsetTime <- cuptiGetMemsetTime
+    kernelTime <- cuptiGetKernelTime
+    overheadTime <- cuptiGetOverheadTime
+    memsetBytes <- cuptiGetMemsetBytes
+    memcpyTimeH <- cuptiGetMemcpyTimeTo CUptiHost
+    memcpyTimeD <- (+) <$> cuptiGetMemcpyTimeTo CUptiDevice
+                       <*> cuptiGetMemcpyTimeTo CUptiArray
+    memcpyBytesH <- cuptiGetMemcpyBytesTo CUptiHost
+    memcpyBytesD <- (+) <$> cuptiGetMemcpyBytesTo CUptiDevice
+                        <*> cuptiGetMemcpyBytesTo CUptiArray
+
+    -- Generate attributes
+    return $ consAttrNZ "cuda:memset-time" memsetTime
+           $ consAttrNZ "cuda:kernel-time" kernelTime
+           $ consAttrNZ "cuda:overhead-time" overheadTime
+           $ consAttrNZ "cuda:memset-bytes" memsetBytes
+           $ consAttrNZ "cuda:memcpy-time-host" memcpyTimeH
+           $ consAttrNZ "cuda:memcpy-bytes-host" memcpyBytesH
+           $ consAttrNZ "cuda:memcpy-time-device" memcpyTimeD
+           $ consAttrNZ "cuda:memcpy-bytes-device" memcpyBytesD []
+#endif
