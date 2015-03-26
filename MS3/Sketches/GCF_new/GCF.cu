@@ -216,13 +216,6 @@ void normalize_kernel(
   if (x < (max_half_support * 2 + 1) * (max_half_support * 2 + 1)) v[x] = cuMulComplexByDouble(v[x], norm);
 }
 
-extern "C" __global__ void normalize(
-    double norm
-  , cuDoubleComplex v[257*257]
-  ){
-  normalize_kernel<128>(norm, v);
-}
-
 
 template <
     int max_half_support
