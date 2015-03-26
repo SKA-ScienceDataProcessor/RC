@@ -127,6 +127,7 @@ extern "C" __global__  void copy_2_over(
 }
 
 
+#ifdef __SMALL_EXTRACT
 template <
     int max_half_support
   , int oversample
@@ -151,7 +152,6 @@ void extract_over(
   dst[xr][yr] = src[sxr][syr];
   }
 
-
 extern "C" __global__ void wextract0(
     int overx
   , int overy
@@ -160,6 +160,39 @@ extern "C" __global__ void wextract0(
   ){
   extract_over<256,8>(overx, overy, dst, src);
 }
+#else
+// We use 3rd grid dimension to cover oversample range
+template <
+    int max_half_support
+  , int oversample
+  >
+__device__ __inline__
+void transpose_over(
+    cuDoubleComplex dst[oversample][oversample][max_half_support * 2 + 1][max_half_support * 2 + 1]
+  , const cuDoubleComplex src[(max_half_support * 2 + 1) * oversample][(max_half_support * 2 + 1) * oversample]
+  ) {
+  __SET_MAP
+  const int
+      overx = blockIdx.z / oversample
+    , overy = blockIdx.z % oversample
+    , sxl = xl * oversample + overx
+    , sxr = xr * oversample + overx
+    , syl = yl * oversample + overy
+    , syr = yr * oversample + overy
+    ;
+  dst[overx][overy][xl][yl] = src[sxl][syl];
+  dst[overx][overy][xl][yr] = src[sxl][syr];
+  dst[overx][overy][xr][yl] = src[sxr][syl];
+  dst[overx][overy][xr][yr] = src[sxr][syr];
+}
+
+extern "C" __global__ void transpose_over0(
+    cuDoubleComplex dst[8][8][513][513]
+  , const cuDoubleComplex src[4104][4104]
+  ){
+  transpose_over<256,8>(dst, src);
+}
+#endif
 
 
 //
