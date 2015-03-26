@@ -246,9 +246,9 @@ void cut_out(
 }
 
 extern "C" __global__ void wextract1(
-    int supp
+    int half_supp
   , cuDoubleComplex * dst
   , const cuDoubleComplex src[257][257]
   ){
-  cut_out<128,8>(supp, dst, src);
+  cut_out<128,8>(half_supp, dst, src);
 }
