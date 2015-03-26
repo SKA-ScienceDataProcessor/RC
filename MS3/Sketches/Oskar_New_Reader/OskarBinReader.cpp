@@ -205,7 +205,7 @@ void deleteVisData(VisData * vdp){
 
 #define __CHECK1(s) if (status != 0) {printf("ERROR! at %s: %d\n", #s, status); goto cleanup;}
 
-int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix * mp, WMaxMin * bl_ws)
+int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix * mp, WMaxMin * bl_ws, BlWMap * bl_wis)
 {
   int status = 0;
   int
@@ -347,6 +347,26 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
         }
       }
     }
+
+    double
+        maxxw = max(mp->maxw, -mp->minw)
+      , wstep = maxxw/32 // 65 planes total
+      , cmax, cmin
+      ;
+    mp->wstep = wstep;
+
+    for (int i = 0; i < vdp->num_baselines; i++) {
+      cmax = bl_ws[i].maxw/wstep;
+      cmin = bl_ws[i].minw/wstep;
+      bl_wis[i].bl = i;
+      if (cmax > 0.0)
+        bl_wis[i].wp = round(cmax);
+      else if (cmin < 0.0)
+        bl_wis[i].wp = -round(-cmin);
+      else
+        bl_wis[i].wp = 0;
+    }
+
   }
 
   cleanup:

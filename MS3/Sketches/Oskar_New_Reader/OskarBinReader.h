@@ -56,6 +56,7 @@ typedef struct Metrix_tag {
     , minu
     , minv
     , minw
+    , wstep
     ;
 } Metrix;
 
@@ -67,11 +68,19 @@ typedef struct WMaxMin_tag {
     ;
 } WMaxMin;
 
+
+typedef struct BlWMap_tag {
+  int
+      bl
+    , wp
+    ;
+} BlWMap;
+
 VisData * mkFromFile(const char * filename);
 void freeVisData(VisData * vdp);
 void deleteVisData(VisData * vdp);
 
-int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix * mp, WMaxMin * bl_ws);
+int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix * mp, WMaxMin * bl_ws, BlWMap * bl_wis);
 
 
 #ifdef __cplusplus

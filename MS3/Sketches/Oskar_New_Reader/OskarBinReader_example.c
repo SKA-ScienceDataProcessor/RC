@@ -40,11 +40,11 @@ int main(int argc, const char * argv[])
 
     double * uvws = (double*)calloc(vdp->num_times_baselines, 3 * DBL_SZ);
     double * amps = (double*)calloc(vdp->num_points, 8 * DBL_SZ);
-    WMaxMin * bl_ws = (WMaxMin*)calloc(vdp->num_times_baselines, sizeof(WMaxMin));
-    int * bl_wis = (int*)calloc(vdp->num_times_baselines, sizeof(int));
+    WMaxMin * bl_ws = (WMaxMin*)calloc(vdp->num_baselines, sizeof(WMaxMin));
+    BlWMap * bl_wis = (BlWMap *)calloc(vdp->num_baselines, sizeof(BlWMap));
 
     printf("Started to read and reshuffle ...\n");
-    if (readAndReshuffle(vdp, amps, uvws, &m, bl_ws) == 0) {
+    if (readAndReshuffle(vdp, amps, uvws, &m, bl_ws, bl_wis) == 0) {
       printf("Done. writing amps ...\n");
       __MKF("amp.dat")
       fwrite(amps, 8 * sizeof(double), vdp->num_points, f);
@@ -60,23 +60,6 @@ int main(int argc, const char * argv[])
       fwrite(bl_ws, sizeof(WMaxMin), vdp->num_baselines, f);
       fclose(f);
 
-      printf("Done. computing baseline map ...\n");
-      double
-          maxxw = max(m.maxw, -m.minw)
-        , wstep = maxxw/32 // 65 planes total
-        , cmax, cmin
-        ;
-
-      for (int i = 0; i < vdp->num_baselines; i++) {
-        cmax = bl_ws[i].maxw/wstep;
-        cmin = bl_ws[i].minw/wstep;
-        if (cmax > 0.0)
-          bl_wis[i] = round(cmax);
-        else if (cmin < 0.0)
-          bl_wis[i] = -round(-cmin);
-        else
-          bl_wis[i] = 0;
-      }
       printf("Done. writing baseline map ...\n");
       __MKF("bl_wis.dat")
       fwrite(bl_wis, sizeof(int), vdp->num_baselines, f);
@@ -115,7 +98,7 @@ int main(int argc, const char * argv[])
       printf("Done. printing baselines map ...\n");
       __MKF("bl_wis.txt")
       for (int i = 0; i < vdp->num_baselines; i++)
-        fprintf(f, "%8d: %d\n", i, bl_wis[i]);
+        fprintf(f, "%8d: %d\n", bl_wis[i].bl, bl_wis[i].wp);
       fclose(f);
 
 #endif
