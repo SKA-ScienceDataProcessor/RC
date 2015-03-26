@@ -29,6 +29,7 @@ void fftshift_kernel_common(cuDoubleComplex* data, int shift, int N){
   data[i1] = tmp;
 }
 
+extern "C" {
 __global__
 void fftshift_kernel(cuDoubleComplex* data, int N) {
   fftshift_kernel_common(data, N/2, N);
@@ -37,4 +38,5 @@ void fftshift_kernel(cuDoubleComplex* data, int N) {
 __global__
 void ifftshift_kernel(cuDoubleComplex* data, int N) {
   fftshift_kernel_common(data, N/2 + N%2, N);
+}
 }
