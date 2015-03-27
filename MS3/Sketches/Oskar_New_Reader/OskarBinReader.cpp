@@ -17,6 +17,8 @@
 
 #include "OskarBinReader.h"
 
+#define SPEED_OF_LIGHT 299792458.0
+
 using namespace std;
 
 // We temporarily use private tag enums, compatible
@@ -219,20 +221,21 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
     , *v_temp = nullptr
     , *w_temp = nullptr
     , *amp_temp = nullptr
+    , *inv_lambdas = nullptr
     ;
 
     mp->maxu
   = mp->maxv
   = mp->maxw
-  = -1e8;
+  = -1e12;
     mp->minu
   = mp->minv
   = mp->minw
-  =  1e8;
+  =  1e12;
   
   for(int i = 0; i < vdp->num_baselines; i++) {
-    bl_ws[i].maxw = -1e8;
-    bl_ws[i].minw =  1e8;
+    bl_ws[i].maxw = -1e12;
+    bl_ws[i].minw =  1e12;
   }
 
   status = bin_read_i(vdp->h, vis_header_group, 0
@@ -254,6 +257,7 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
   v_temp = (double *)calloc(num_times_baselines_per_block, DBL_SZ);
   w_temp = (double *)calloc(num_times_baselines_per_block, DBL_SZ);
   amp_temp = (double *)calloc(num_times_baselines_per_block * vdp->num_channels, 8 * DBL_SZ);
+  inv_lambdas = (double *)calloc(vdp->num_channels, DBL_SZ);
 
   /* Loop over blocks and read each one. */
   for (int block = 0; block < num_blocks; ++block)
@@ -274,6 +278,11 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
       , TIME_REF_INC_MJD_UTC, 2, time_start_inc
       );
     __CHECK1(FREQ_REF_INC_HZ + TIME_REF_INC_MJD_UTC)
+
+    double cfreq;
+    for (int c = 0, cfreq = freq_start_inc[0]; c < vdp->num_channels; c++, cfreq +=freq_start_inc[0]) {
+      inv_lambdas[c] = cfreq / SPEED_OF_LIGHT;
+    }
 
     /* Get the number of times actually in the block. */
     start_time_idx = dim_start_and_size[0];
@@ -326,23 +335,28 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
           i = 8 * (b + vdp->num_baselines * (c + vdp->num_channels * t));
           j = b + vdp->num_baselines * t;
 
-          tmp = vdp->num_times * b + tt;
+          double u0, v0, w0;
+            u0 = u_temp[j] * inv_lambdas[c];
+            v0 = v_temp[j] * inv_lambdas[c];
+            w0 = w_temp[j] * inv_lambdas[c];
 
+          tmp = (vdp->num_times * b + tt) * vdp->num_channels + ct;
           jt = 3 * tmp;
-          uvws[jt] = u_temp[j];
-          uvws[jt + 1] = v_temp[j];
-          uvws[jt + 2] = w_temp[j];
 
-          mp->maxu = max(mp->maxu, u_temp[j]);
-          mp->maxv = max(mp->maxv, v_temp[j]);
-          mp->maxw = max(mp->maxw, w_temp[j]);
-          mp->minu = min(mp->minu, u_temp[j]);
-          mp->minv = min(mp->minv, v_temp[j]);
-          mp->minw = min(mp->minw, w_temp[j]);
-          bl_ws[b].maxw = max(bl_ws[b].maxw, w_temp[j]);
-          bl_ws[b].minw = min(bl_ws[b].minw, w_temp[j]);
+          uvws[jt    ] = u0;
+          uvws[jt + 1] = v0;
+          uvws[jt + 2] = w0;
 
-          it = (tmp * vdp->num_channels + ct) * 8;
+          mp->maxu = max(mp->maxu, u0);
+          mp->maxv = max(mp->maxv, v0);
+          mp->maxw = max(mp->maxw, w0);
+          mp->minu = min(mp->minu, u0);
+          mp->minv = min(mp->minv, v0);
+          mp->minw = min(mp->minw, w0);
+          bl_ws[b].maxw = max(bl_ws[b].maxw, w0);
+          bl_ws[b].minw = min(bl_ws[b].minw, w0);
+
+          it = 8 * tmp;
           for (int cc = 0; cc < 8; cc++) amps[it + cc] = amp_temp[i + cc];
         }
       }
@@ -375,6 +389,7 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
   if (u_temp) free(u_temp);
   if (v_temp) free(v_temp);
   if (w_temp) free(w_temp);
+  if (inv_lambdas) free(inv_lambdas);
 
   return status;
 }
