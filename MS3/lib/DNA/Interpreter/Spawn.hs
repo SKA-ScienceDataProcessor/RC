@@ -24,7 +24,6 @@ import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Except
-import Control.Monad.Operational
 import Control.Concurrent.Async
 import Control.Concurrent.STM (STM)
 import Control.Distributed.Static  (closureApply)
@@ -65,12 +64,13 @@ execSpawnActor
 -- BLOCKING
 execSpawnActor res act = do
     -- Spawn actor
-    spawnSingleActor res $ closureApply $(mkStaticClosure 'runActor) <$> act
+    pid <- spawnSingleActor res $ closureApply $(mkStaticClosure 'runActor) <$> act
     -- Get back shell for the actor
     --
     -- FIXME: We need to abort if process which should send us shell
     --        dies.
-    handleRecieve messageHandlers matchMsg'
+    (r,s) <- handleRecieve messageHandlers matchMsg'
+    return $ Shell (SingleActor pid) r s
 
 
 -- | Spawn collector actor on remote node
@@ -82,12 +82,12 @@ execSpawnCollector
 -- BLOCKING
 execSpawnCollector res act = do
     -- Spawn actor
-    spawnSingleActor res $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
+    pid <- spawnSingleActor res $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
     -- Get back shell for the actor
     --
     -- FIXME: See above
-    handleRecieve messageHandlers matchMsg'
-
+    (r,s) <- handleRecieve messageHandlers matchMsg'
+    return $ Shell (SingleActor pid) r s
 
 -- | Spawn group of normal processes
 execSpawnGroup
@@ -183,7 +183,7 @@ execSpawnMappers res resG act = do
 spawnSingleActor
     :: Res
     -> Spawn (Closure (Process ()))
-    -> DnaMonad ()
+    -> DnaMonad ProcessId
 spawnSingleActor res spwn = do
     let (act,flags) = runSpawn spwn
     -- Acquire resources
@@ -200,6 +200,7 @@ spawnSingleActor res spwn = do
     stChildren      . at pid .= Just (Left Unconnected)
     -- Send auxiliary parameter
     sendActorParam pid (Rank 0) (GroupSize 1) cad
+    return pid
 
 -- Spawn group of actors
 spawnActorGroup
@@ -261,51 +262,51 @@ sendActorParam pid rnk g cad = do
                       }
 
 
-assembleShellGroup :: GroupID -> [Shell (Val a) (Val b)] -> Shell (Scatter a) (Grp b)
+assembleShellGroup :: GroupID -> [(RecvEnd (Val a), SendEnd (Val b))] -> Shell (Scatter a) (Grp b)
 assembleShellGroup gid shells =
     Shell (ActorGroup gid)
           (RecvGrp $ map getRecv shells)
           (SendGrp $ map getSend shells)
   where
-    getRecv :: Shell (Val a) b -> SendPort a
-    getRecv (Shell _ (RecvVal ch) _) = ch
+    getRecv :: (RecvEnd (Val a), b) -> SendPort a
+    getRecv (RecvVal ch, _) = ch
     getRecv _ = error "assembleShellGroup: unexpected type of shell process"
-    getSend :: Shell a (Val b) -> SendPort (Dest b)
-    getSend (Shell _ _ (SendVal ch)) = ch
+    getSend :: (a, SendEnd (Val b)) -> SendPort (Dest b)
+    getSend (_, SendVal ch) = ch
 
-assembleShellGroupCollect :: GroupID -> [Shell (Grp a) (Val b)] -> Shell (Grp a) (Grp b)
+assembleShellGroupCollect :: GroupID -> [(RecvEnd (Grp a), SendEnd (Val b))] -> Shell (Grp a) (Grp b)
 assembleShellGroupCollect gid shells =
     Shell (ActorGroup gid)
           (RecvReduce $ getRecv =<< shells)
           (SendGrp    $ map getSend shells)
   where
-    getRecv :: Shell (Grp a) b -> [(SendPort Int, SendPort a)]
-    getRecv (Shell _ (RecvReduce ch) _) = ch
-    getSend :: Shell a (Val b) -> SendPort (Dest b)
-    getSend (Shell _ _ (SendVal ch)) = ch
+    getRecv :: (RecvEnd (Grp a), b) -> [(SendPort Int, SendPort a)]
+    getRecv (RecvReduce ch, _) = ch
+    getSend :: (a, SendEnd (Val b)) -> SendPort (Dest b)
+    getSend (_, SendVal ch) = ch
 
-assembleShellGroupCollectMR :: GroupID -> [Shell (MR a) (Val b)] -> Shell (MR a) (Grp b)
+assembleShellGroupCollectMR :: GroupID -> [(RecvEnd (MR a), SendEnd (Val b))] -> Shell (MR a) (Grp b)
 assembleShellGroupCollectMR gid shells =
     Shell (ActorGroup gid)
           (RecvMR  $ getRecv =<< shells)
           (SendGrp $ map getSend shells)
   where
-    getRecv :: Shell (MR a) b -> [(SendPort Int, SendPort (Maybe a))]
-    getRecv (Shell _ (RecvMR ch) _) = ch
-    getSend :: Shell a (Val b) -> SendPort (Dest b)
-    getSend (Shell _ _ (SendVal ch)) = ch
+    getRecv :: (RecvEnd (MR a), b) -> [(SendPort Int, SendPort (Maybe a))]
+    getRecv (RecvMR ch, _) = ch
+    getSend :: (a, SendEnd (Val b)) -> SendPort (Dest b)
+    getSend (_, SendVal ch) = ch
 
-assembleShellMapper :: GroupID -> [Shell (Val a) (MR b)] -> Shell (Scatter a) (MR b)
+assembleShellMapper :: GroupID -> [(RecvEnd (Val a), SendEnd (MR b))] -> Shell (Scatter a) (MR b)
 assembleShellMapper gid shells =
     Shell (ActorGroup gid)
           (RecvGrp $ map getRecv shells)
           (SendMR  $ getSend =<< shells)
   where
-    getRecv :: Shell (Val a) b -> SendPort a
-    getRecv (Shell _ (RecvVal ch) _) = ch
+    getRecv :: (RecvEnd (Val a), b) -> SendPort a
+    getRecv (RecvVal ch, _) = ch
     getRecv _ = error "assembleShellGroup: unexpected type of shell process"
-    getSend :: Shell a (MR b) -> [SendPort [SendPort (Maybe b)]]
-    getSend (Shell _ _ (SendMR ch)) = ch
+    getSend :: (a, SendEnd (MR b)) -> [SendPort [SendPort (Maybe b)]]
+    getSend (_, SendMR ch) = ch
 
 
 

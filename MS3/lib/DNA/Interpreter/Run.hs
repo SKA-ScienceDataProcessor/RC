@@ -51,11 +51,9 @@ runActor (Actor action) = do
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
     -- Send shell process back
-    me <- getSelfPid
-    send (actorParent p) $ Shell
-        (SingleActor me)
-        (RecvVal chSendParam)
-        (SendVal chSendDst  )
+    send (actorParent p)
+        ( (RecvVal chSendParam)
+        , (SendVal chSendDst  ))
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
     !b  <- runDnaParam p (action a)
@@ -74,9 +72,8 @@ runActorManyRanks (Actor action) = do
     (chSendRnk,  chRecvRnk  ) <- newChan
     -- Send shell process back
     me <- getSelfPid
-    let shell = Shell (SingleActor me)
-                      (RecvVal chSendParam)
-                      (SendVal chSendDst  )
+    let shell = ( (RecvVal chSendParam)
+                , (SendVal chSendDst  ))
     send (actorParent p) (chSendRnk,shell)
     -- Start actor execution
     a   <- receiveChan chRecvParam
@@ -104,11 +101,9 @@ runCollectActor (CollectActor step start fini) = do
     (chSendDst,  chRecvDst  ) <- newChan
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
-    me <- getSelfPid
-    send (actorParent p) $ Shell
-        (SingleActor me)
-        (RecvReduce [(chSendN,chSendParam)])
-        (SendVal    chSendDst)
+    send (actorParent p)
+        ( (RecvReduce [(chSendN,chSendParam)])
+        , (SendVal    chSendDst))
     -- Start execution of an actor
     --
     -- FIXME: I constrained CollectActor to IO only (no DNA) which
@@ -132,11 +127,9 @@ runCollectActorMR (CollectActor step start fini) = do
     (chSendDst,  chRecvDst  ) <- newChan
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
-    me <- getSelfPid
-    send (actorParent p) $ Shell
-      (SingleActor me)
-      (RecvMR    [(chSendN,chSendParam)])
-      (SendVal    chSendDst)
+    send (actorParent p)
+      ( (RecvMR    [(chSendN,chSendParam)])
+      , (SendVal    chSendDst))
     let loop n tot !b
           | n >= tot && tot >= 0 = return b
           | otherwise = do
@@ -160,11 +153,9 @@ runMapperActor (Mapper start step shuffle) = do
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
     -- Send shell process description back
-    me <- getSelfPid
-    send (actorParent p) $ Shell
-        (SingleActor me)
-        (RecvVal chSendParam)
-        (SendMR [chSendDst])
+    send (actorParent p)
+        ( (RecvVal chSendParam)
+        , (SendMR [chSendDst]))
     -- Get initial parameters for unfolding
     a   <- receiveChan chRecvParam
     s0  <- liftIO $ start a
