@@ -109,15 +109,11 @@ execKernel io = do
 execDelay :: Serializable b
           => Location -> Shell a (Val b) -> DnaMonad (Promise b)
 -- IMMEDIATE
-execDelay loc (Shell aid _ src) = do
-    -- Notify shell's monitor about process
-    me <- lift getSelfPid
+execDelay _loc (Shell aid _ src) = do
+    me              <- liftP getSelfPid
+    (chSend,chRecv) <- liftP newChan
+    liftP $ doConnectActors src (RecvVal chSend)
     recordConnection aid (SingleActor me) []
-    -- Send destination to the shell process!
-    (chSend,chRecv) <- lift newChan
-    let param :: Serializable b => SendEnd (Val b) -> SendPort b -> Process ()
-        param (SendVal ch) p = sendChan ch $ destFromLoc loc p
-    lift $ param src chSend
     return $ Promise chRecv
 
 
@@ -126,9 +122,7 @@ execDelayGroup (Shell child _ src) = do
     me            <- liftP getSelfPid
     (sendB,recvB) <- liftP newChan
     (sendN,recvN) <- liftP newChan
-    let param :: Serializable b => SendEnd (Grp b) -> SendPort b -> Process ()
-        param (SendGrp chans) chB = forM_ chans $ \ch -> sendChan ch (SendRemote [chB])
-    liftP $ param src sendB
+    liftP $ doConnectActors src (RecvReduce [(sendN,sendB)])
     recordConnection child (SingleActor me) [sendN]
     return $ Group recvB recvN
 
@@ -156,31 +150,51 @@ execSendParam a (Shell _ recv _) = case recv of
 -- Connect two shells to each other
 execConnect :: Serializable b => Shell a (tag b) -> Shell (tag b) c -> DnaMonad  ()
 -- IMMEDIATE
-execConnect (Shell childA _ sendEnd) (Shell childB recvEnd _) =
+execConnect (Shell childA _ sendEnd) (Shell childB recvEnd _) = do
+  liftP $ doConnectActors sendEnd recvEnd
   case (sendEnd,recvEnd) of
     -- Val
     (SendVal chDst, RecvVal chB) -> do
-        -- FIXME: Do we want to allow unsafe send here?
-        lift $ sendChan chDst $ SendRemote [chB]
         recordConnection childA childB []
     (SendVal chDst, RecvBroadcast (RecvGrp chans)) -> do
-        lift $ sendChan chDst $ SendRemote chans
         recordConnection childA childB []
     -- Grp
     (SendGrp chDst, RecvReduce chReduce) -> do
-        let chB = map snd chReduce
-        lift $ forM_ chDst $ \ch -> sendChan ch $ SendRemote chB
         recordConnection childA childB [chN | (chN,_) <- chReduce ]
     -- MR
     (SendMR chDst, RecvMR chans) -> do
-        let chB = map snd chans
-        lift $ forM_ chDst $ \ch -> sendChan ch chB
         recordConnection childA childB [chN | (chN,_) <- chans]
     -- IMPOSSIBLE
     --
     -- GHC cannot understand that pattern match is exhaustive
     _ -> error "Impossible: pattern match is not exhaustive"
 
+
+-- Send channels to actor so they know where data should be sent
+doConnectActors
+    :: (Serializable a)
+    => SendEnd (tag a) -> RecvEnd (tag a) -> Process ()
+doConnectActors sendEnd recvEnd =
+  case (sendEnd,recvEnd) of
+    -- Val
+    (SendVal chDst, RecvVal chB) -> do
+        -- FIXME: Do we want to allow unsafe send here?
+        --        Maybe we should just use unsafe send and call it a day?
+        sendChan chDst $ SendRemote [chB]
+    (SendVal chDst, RecvBroadcast (RecvGrp chans)) -> do
+        sendChan chDst $ SendRemote chans
+    -- Grp
+    (SendGrp chDst, RecvReduce chReduce) -> do
+        let chB = map snd chReduce
+        forM_ chDst $ \ch -> sendChan ch $ SendRemote chB
+    -- MR
+    (SendMR chDst, RecvMR chans) -> do
+        let chB = map snd chans
+        forM_ chDst $ \ch -> sendChan ch chB
+    -- IMPOSSIBLE
+    --
+    -- GHC cannot understand that pattern match is exhaustive
+    _ -> error "Impossible: pattern match is not exhaustive"
 
 
 ----------------------------------------------------------------
@@ -235,10 +249,5 @@ recordConnection (ActorGroup gid) dest port = runController $
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
-
-destFromLoc :: Location -> SendPort a -> Dest a
-destFromLoc Local  = SendLocally
-destFromLoc Remote = SendRemote . (:[])
-
 
 remotable [ 'theInterpreter ]
