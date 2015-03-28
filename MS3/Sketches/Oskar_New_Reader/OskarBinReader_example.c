@@ -74,12 +74,18 @@ int main(int argc, const char * argv[])
       printf("Done. printing metrix report ...\n");
       __MKF("metrix.txt")
       fprintf(f,
+        "channels: %u\n"
+        "timesteps: %u\n"
+        "baselines: %u\n"
         "maxu = %f\n"
         "maxv = %f\n"
         "maxw = %f\n"
         "minu = %f\n"
         "minv = %f\n"
         "minw = %f\n"
+       , vdp->num_channels
+       , vdp->num_times
+       , vdp->num_baselines
        , m.maxu
        , m.maxv
        , m.maxw

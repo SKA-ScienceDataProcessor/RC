@@ -373,10 +373,24 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
       cmax = bl_ws[i].maxw/wstep;
       cmin = bl_ws[i].minw/wstep;
       bl_wis[i].bl = i;
+      /*
       if (cmax > 0.0)
         bl_wis[i].wp = round(cmax);
       else if (cmin < 0.0)
-        bl_wis[i].wp = -round(-cmin);
+        bl_wis[i].wp = round(cmin);
+      else
+        bl_wis[i].wp = 0;
+       */
+      // Use minimum instead of maximum
+      // to make things easier at the moment,
+      // because this determines max support handled by
+      // threadblock in Romein-like algorithm and if it
+      // is greater than that determined by current data point
+      // we point to nonsensical GCF data.
+      if (cmax < 0.0)
+        bl_wis[i].wp = round(cmax);
+      else if (cmin > 0.0)
+        bl_wis[i].wp = round(cmin);
       else
         bl_wis[i].wp = 0;
     }
