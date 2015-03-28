@@ -1,3 +1,6 @@
+#ifndef __SCATTER_GRIDDER_H
+#define __SCATTER_GRIDDER_H
+
 #if defined __AVX__
 #include <immintrin.h>
 #endif
@@ -53,3 +56,15 @@ struct TaskCfg {
     , w_shiftWL
     ;
 };
+
+#ifdef __CUDACC__
+__device__ __inline__ static 
+#else
+__inline static
+#endif
+  int get_supp(int w) {
+    if (w < 0) w = -w;
+    return w * 8 + 1;
+  }
+
+#endif
