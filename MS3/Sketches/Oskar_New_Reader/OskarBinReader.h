@@ -16,6 +16,15 @@
 #ifndef __OSKAR_BIN_READER_H
 #define __OSKAR_BIN_READER_H
 
+typedef struct BlWMap_tag {
+  int
+      bl
+    , wp
+    ;
+} BlWMap;
+
+#ifndef __CUDACC__
+
 #define DBL_SZ sizeof(double)
 
 #ifndef OSKAR_BINARY_H_
@@ -69,13 +78,6 @@ typedef struct WMaxMin_tag {
 } WMaxMin;
 
 
-typedef struct BlWMap_tag {
-  int
-      bl
-    , wp
-    ;
-} BlWMap;
-
 VisData * mkFromFile(const char * filename);
 void freeVisData(VisData * vdp);
 void deleteVisData(VisData * vdp);
@@ -85,6 +87,8 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
 
 #ifdef __cplusplus
 }
+#endif
+
 #endif
 
 #endif
