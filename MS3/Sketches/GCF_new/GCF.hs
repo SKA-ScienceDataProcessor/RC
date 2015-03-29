@@ -44,10 +44,10 @@ launchReduce f idata odata n =
   CUDA.launchKernel f (n `div` 1024,1,1) (512,1,1) (512 * sizeOf (undefined :: Double)) Nothing
     [CUDA.VArg idata, CUDA.VArg odata, CUDA.IArg $ fromIntegral n]
 
-launchNormalize :: CUDA.Fun -> DoubleDevPtr Double -> CxDoubleDevPtr -> IO ()
-launchNormalize f normp ptr =
+launchNormalize :: CUDA.Fun -> DoubleDevPtr Double -> CxDoubleDevPtr -> Int32 -> IO ()
+launchNormalize f normp ptr len =
   CUDA.launchKernel f (259,1,1) (256,1,1) 0 Nothing
-    [CUDA.VArg normp, CUDA.VArg ptr]
+    [CUDA.VArg normp, CUDA.VArg ptr, CUDA.IArg len]
 
 kernelNames :: [String]
 kernelNames =
@@ -107,7 +107,7 @@ doCuda ws_hsupps = do
                      | n > 0 = do
                                  launchReduce reduce_512_odd layerp normp (257*257)
                                  CUDA.sync
-                                 launchNormalize normalize normp layerp
+                                 launchNormalize normalize normp layerp (257*257)
                                  CUDA.sync
                                  launchOnFF wextract1 1 [CUDA.IArg hsupp, CUDA.VArg outp, CUDA.VArg layerp]
                                  CUDA.sync

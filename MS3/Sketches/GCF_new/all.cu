@@ -1,3 +1,4 @@
+#include "scale_complex_by_dbl.cuh"
 #include "GCF.cu"
 #include "../FFT/cufftshift.cu"
 
@@ -9,7 +10,8 @@ extern "C" __global__ void reduce_512_odd(const cuDoubleComplex *g_idata, double
 
 extern "C" __global__ void normalize(
     double * normp
-  , cuDoubleComplex v[257*257]
+  , cuDoubleComplex * v
+  , int len
   ){
-  normalize_kernel<128>(1.0 / (*normp), v);
+  scale_complex_by_dbl(1.0 / (*normp), v, len);
 }

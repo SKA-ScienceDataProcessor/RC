@@ -195,28 +195,6 @@ extern "C" __global__ void transpose_over0(
 #endif
 
 
-//
-__device__ static __inline__ cuDoubleComplex cuMulComplexByDouble(cuDoubleComplex v,
-                                                             double y){
-  return make_cuDoubleComplex ( v.x * y
-                              , v.y * y
-                              );
-}
-
-// The work-distribution scheme here is very different from those above (and below).
-template <
-    int max_half_support
-  >
-__device__ __inline__
-void normalize_kernel(
-    double norm
-  , cuDoubleComplex v[(max_half_support * 2 + 1) * (max_half_support * 2 + 1)]
-  ) {
-  const int x = blockIdx.x * blockDim.x + threadIdx.x;
-  if (x < (max_half_support * 2 + 1) * (max_half_support * 2 + 1)) v[x] = cuMulComplexByDouble(v[x], norm);
-}
-
-
 template <
     int max_half_support
   , int oversample
