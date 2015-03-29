@@ -62,8 +62,8 @@ kernelNames =
   , "wextract1"
   ]
 
-doCuda :: [(Double, Int32)] -> IO ()
-doCuda ws_hsupps = do
+doCuda :: Double -> [(Double, Int32)] -> IO ()
+doCuda t2 ws_hsupps = do
   CUDA.initialise []
   dev0 <- CUDA.device 0
   ctx <- CUDA.create dev0 [CUDA.SchedAuto]
@@ -79,7 +79,6 @@ doCuda ws_hsupps = do
    , wextract1 ] <- mapM (CUDA.getFun m) kernelNames
 
   CUDA.allocaArray (257*257) $ \(ffp0 :: CxDoubleDevPtr) -> do
-    let t2 = 0.25 :: Double
     print "Preparing r2 ..."
     launchOnFF r2 1 [CUDA.VArg ffp0, CUDA.VArg t2]
     CUDA.allocaArray (257*257) $ \(ffpc :: CxDoubleDevPtr) ->
@@ -126,4 +125,4 @@ doCuda ws_hsupps = do
   CUDA.destroy ctx
 
 main :: IO ()
-main = doCuda [(-100.0, 8), (0.0, 1), (100.0, 8)]
+main = doCuda 0.25 [(-100.0, 8), (0.0, 1), (100.0, 8)]
