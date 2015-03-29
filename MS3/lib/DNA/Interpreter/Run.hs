@@ -33,6 +33,7 @@ import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
 import Data.Typeable (Typeable)
+import System.Random
 
 import DNA.CH
 import DNA.Types
@@ -74,8 +75,8 @@ runActorManyRanks (Actor action) = do
     (chSendRnk,  chRecvRnk  ) <- newChan
     -- Send shell process back
     me <- getSelfPid
-    let shell = ( (RecvVal chSendParam)
-                , (SendVal chSendDst  ))
+    let shell = ( RecvVal chSendParam
+                , SendVal chSendDst  )
     send (actorParent p) (chSendRnk,shell)
     -- Start actor execution
     a   <- receiveChan chRecvParam
@@ -104,8 +105,18 @@ runCollectActor (CollectActor step start fini) = do
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
     send (actorParent p)
-        ( (RecvReduce [(chSendN,chSendParam)])
-        , (SendVal    chSendDst))
+        ( RecvReduce [(chSendN,chSendParam)]
+        , SendVal    chSendDst)
+    -- Now we want to check if process was requested to crash
+    case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
+      pCrash : _ -> do
+          roll <- liftIO randomIO
+          when (roll < pCrash) $ do
+              me <- getSelfPid
+              liftIO $ print $ "CRASH! " ++ show me
+              error "Ooops crashed"
+      _ -> return ()
+    liftIO $ print ("N port",chSendN)
     -- Start execution of an actor
     --
     -- FIXME: I constrained CollectActor to IO only (no DNA) which
@@ -183,6 +194,7 @@ runDnaParam p action = do
               (actorGroupSize p)
               (actorInterpreter p)
               (actorNodes       p)
+              (actorDebugFlags  p)
     $ dnaInterpreter interpreter action
 
 ----------------------------------------------------------------
@@ -211,8 +223,11 @@ doGatherM (Group chA chN) f x0 = do
                              , matchChan chN (return . Left)
                              ]
             case r of
-              Right a -> loop (n + 1) tot =<< liftIO (f b a)
-              Left  k -> loop n k b
+              Right a -> do
+                  loop (n + 1) tot =<< liftIO (f b a)
+              Left  k -> do
+                  liftIO $ print ("LEFT",k,n,tot)
+                  loop n k b
     loop 0 (-1) x0
 
 

@@ -85,7 +85,15 @@ ddpGenerateVector = actor $ \n ->
       hClose h
       return fname
 
+ddpCollector :: CollectActor Double Double
+ddpCollector = collectActor
+    (\s a -> return $! s + a)
+    (return 0)
+     return
+
+
 remotable [ 'ddpComputeVector
           , 'ddpReadVector
           , 'ddpGenerateVector
+          , 'ddpCollector
           ]

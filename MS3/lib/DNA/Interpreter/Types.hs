@@ -56,9 +56,10 @@ runDnaMonad
     -> GroupSize
     -> Closure DnaInterpreter
     -> [NodeId]
+    -> [DebugFlag]
     -> DnaMonad a
     -> Process a
-runDnaMonad (Rank rnk) (GroupSize grp) interp nodes =
+runDnaMonad (Rank rnk) (GroupSize grp) interp nodes flags =
     flip evalStateT s0
   where
     s0 = StateDNA
@@ -66,6 +67,7 @@ runDnaMonad (Rank rnk) (GroupSize grp) interp nodes =
            , _stRank      = rnk
            , _stGroupSize = grp
            , _stInterpreter = interp
+           , _stDebugFlags  = flags
            , _stNodePool      = Set.fromList nodes
            , _stUsedResources = Map.empty
            , _stChildren      = Map.empty
@@ -107,6 +109,9 @@ data ActorParam = ActorParam
     , actorGroupSize   :: GroupSize
       -- ^ Size of group of actors
     , actorNodes       :: [NodeId]
+      -- ^ Nodes allocated to an actor
+    , actorDebugFlags  :: [DebugFlag]
+      -- ^ Extra flags for debugging
     }
     deriving (Typeable,Generic)
 instance Binary ActorParam
@@ -119,6 +124,7 @@ data StateDNA = StateDNA
     , _stRank        :: !Int
     , _stGroupSize   :: !Int
     , _stInterpreter :: !(Closure DnaInterpreter)
+    , _stDebugFlags  :: [DebugFlag]
 
       -- Resource
     , _stNodePool      :: !(Set NodeId)
@@ -135,7 +141,7 @@ data StateDNA = StateDNA
       -- ^ Upstream connection of an actor.
     , _stConnDownstream :: !(Map ActorID (Either (ActorID,SomeRecvEnd) SomeRecvEnd))
       -- ^ Downstream connection of an actor. Could be parent act
-    , _stRestartable    :: !(Map ProcessId (Match' (SomeRecvEnd,SomeSendEnd), Closure (Process ()), Message))
+    , _stRestartable    :: !(Map ProcessId (Match' (SomeRecvEnd,SomeSendEnd,[SendPort Int]), Closure (Process ()), Message))
       -- ^ Set of processes which could be restarted
       
       -- Many rank actors
@@ -191,6 +197,9 @@ stGroupSize = lens _stGroupSize (\a x -> x { _stCounter = a})
 stInterpreter :: Lens' StateDNA (Closure DnaInterpreter)
 stInterpreter = lens _stInterpreter (\a x -> x { _stInterpreter = a})
 
+stDebugFlag :: Lens' StateDNA [DebugFlag]
+stDebugFlag = lens _stDebugFlags (\a x -> x { _stDebugFlags = a})
+
 stChildren :: Lens' StateDNA (Map ProcessId (Either ProcState GroupID))
 stChildren = lens _stChildren (\a x -> x { _stChildren = a})
 
@@ -209,7 +218,7 @@ stConnUpstream = lens _stConnUpstream (\a x -> x { _stConnUpstream = a})
 stConnDownstream :: Lens' StateDNA (Map ActorID (Either (ActorID,SomeRecvEnd) SomeRecvEnd))
 stConnDownstream = lens _stConnDownstream (\a x -> x { _stConnDownstream = a})
 
-stRestartable :: Lens' StateDNA (Map ProcessId (Match' (SomeRecvEnd,SomeSendEnd), Closure (Process ()), Message))
+stRestartable :: Lens' StateDNA (Map ProcessId (Match' (SomeRecvEnd,SomeSendEnd,[SendPort Int]), Closure (Process ()), Message))
 stRestartable = lens _stRestartable (\a x -> x { _stRestartable = a})
 
 stCountRank :: Lens' StateDNA (Map GroupID (Int,Int))

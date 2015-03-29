@@ -20,30 +20,19 @@ module DNA.Interpreter.Spawn (
     , execSpawnMappers
     ) where
 
-import Control.Arrow (Arrow(..))
 import Control.Applicative
 import Control.Concurrent  (threadDelay)
 import Control.Monad
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.State.Strict
 import Control.Monad.Except
-import Control.Concurrent.Async
-import Control.Concurrent.STM (STM)
 import Control.Distributed.Static  (closureApply)
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
--- import Data.Binary   (Binary)
-import Data.Typeable (cast)
--- import qualified Data.Map as Map
--- import           Data.Map   (Map)
 import Data.Monoid
-import Data.List
 import qualified Data.Foldable as T
 import qualified Data.Set as Set
--- import           Data.Set   (Set)
 import Text.Printf
--- import GHC.Generics  (Generic)
 
 import DNA.Types
 import DNA.Lens
@@ -87,7 +76,11 @@ execSpawnCollector
 execSpawnCollector res act = do
     -- Spawn actor
     let m = matchMsg' :: Match' (RecvEnd (Grp a), SendEnd (Val a))
-    pid <- spawnSingleActor res (Just ((SomeRecvEnd *** SomeSendEnd) <$> m))
+        wrap (r,s) = (SomeRecvEnd r, SomeSendEnd s, chNs)
+          where
+            chNs = case r :: RecvEnd (Grp a) of
+                     RecvReduce ns -> map fst ns
+    pid <- spawnSingleActor res (Just (wrap <$> m))
          $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
     -- Get back shell for the actor
     --
@@ -188,7 +181,7 @@ execSpawnMappers res resG act = do
 -- Spawn actor which only uses single CH process.
 spawnSingleActor
     :: Res
-    -> Maybe (Match' (SomeRecvEnd,SomeSendEnd))
+    -> Maybe (Match' (SomeRecvEnd,SomeSendEnd,[SendPort Int]))
     -> Spawn (Closure (Process ()))
     -> DnaMonad ProcessId
 spawnSingleActor res mmatch spwn = do
@@ -207,6 +200,7 @@ spawnSingleActor res mmatch spwn = do
     stChildren      . at pid .= Just (Left Unconnected)
     -- Send auxiliary parameter
     p <- sendActorParam pid (Rank 0) (GroupSize 1) cad
+           (concat [fs | UseDebug fs <- flags])
     -- Record restart if needed
     T.forM_ mmatch $ \m ->
         when (UseRespawn `elem` flags) $
@@ -238,6 +232,7 @@ spawnActorGroup res resG spwn = do
         (pid,_) <- liftP
                  $ spawnSupervised (vcadNode cad) act
         sendActorParam pid (Rank rnk) (GroupSize k) cad
+            (concat [fs | UseDebug fs <- flags])
         stChildren . at pid .= Just (Right gid)
     -- Add timeout for actor
     liftP $ setTimeout flags (ActorGroup gid)
@@ -260,8 +255,8 @@ getTimeout = getLast . T.foldMap (Last . go)
 
 -- Send auxiliary parameters to an actor
 sendActorParam
-    :: ProcessId -> Rank -> GroupSize -> VirtualCAD -> DnaMonad ActorParam
-sendActorParam pid rnk g cad = do
+    :: ProcessId -> Rank -> GroupSize -> VirtualCAD -> [DebugFlag] -> DnaMonad ActorParam
+sendActorParam pid rnk g cad flags = do
     me     <- liftP getSelfPid
     interp <- use stInterpreter
     let p = ActorParam
@@ -270,6 +265,7 @@ sendActorParam pid rnk g cad = do
             , actorRank        = rnk
             , actorGroupSize   = g
             , actorNodes       = vcadNodePool cad
+            , actorDebugFlags  = flags
             }
     liftP $ send pid p
     return p

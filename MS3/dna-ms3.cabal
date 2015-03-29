@@ -31,6 +31,7 @@ library
     unix,
     time,
     old-locale,
+    random,
     bytestring   >= 0.10, 
     binary,
     process      >= 1.2,
@@ -71,6 +72,7 @@ library
     DNA.CmdOpts
     DNA.DSL
     DNA.Interpreter
+    DNA.Interpreter.Connect
     DNA.Interpreter.Message
     DNA.Interpreter.Run
     DNA.Interpreter.Spawn

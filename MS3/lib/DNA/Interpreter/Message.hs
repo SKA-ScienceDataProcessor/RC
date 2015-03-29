@@ -24,12 +24,14 @@ import Control.Concurrent.STM (STM)
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import qualified Data.Map as Map
+import Text.Printf
 
 import DNA.CH
 import DNA.Lens
 import DNA.Types
 import DNA.Interpreter.Types
 import DNA.Interpreter.Connect
+import DNA.Logging
 
 
 ----------------------------------------------------------------
@@ -68,7 +70,7 @@ handleProcessTermination (ProcessMonitorNotification _ pid reason) =
 -- Handle restart of a process
 handleProcessRestart
     :: ProcessId                -- Old PID
-    -> Match' (SomeRecvEnd,SomeSendEnd)
+    -> Match' (SomeRecvEnd,SomeSendEnd,[SendPort Int])
     -> Closure (Process ())     -- Closure to restart
     -> Message                  -- Initial parameters
     -> Controller ()
@@ -87,26 +89,46 @@ handleProcessRestart oldPID mtch clos p0 = do
     -- Restart process
     (pid,_) <- liftP $ spawnSupervised (vcadNode cad) clos
     liftP $ forward p0 pid
+    taggedMessage "INFO" $ printf "%s died, respawned as %s" (show oldPID) (show pid)
     -- Record updated information about actor
     stUsedResources . at oldPID .= Nothing
     stUsedResources . at pid    .= Just cad
+    -- Children state
+    x <- use $ stChildren . at oldPID
+    stChildren . at pid .= x
+    -- Connection state
     Just src <- use $ stConnUpstream   . at (SingleActor oldPID)
     Just dst <- use $ stConnDownstream . at (SingleActor oldPID)
     stConnUpstream   . at (SingleActor oldPID) .= Nothing
     stConnDownstream . at (SingleActor oldPID) .= Nothing
     stConnUpstream   . at (SingleActor pid)    .= Just src
     stConnDownstream . at (SingleActor pid)    .= Just dst
+    -- Update restart state
+    stRestartable . at oldPID .= Nothing
+    stRestartable . at pid    .= Just (mtch,clos,p0)
     -- Obtain communication ends
     --
     -- FIXME: Here we can run into situation when we need to respawn
     --        another process while we're waiting for shells so we can
     --        potentially confuse shells
-    (r,s) <- lift $ handleRecieve messageHandlers [mtch]
+    (r,s,chN) <- lift $ handleRecieve messageHandlers [mtch]
+    liftIO $ print $ "Restarting " ++ show oldPID ++ " --> " ++ show pid ++ " | " ++ show chN
     -- Record and connect everything
     case src of
       (aid,ss) -> do
           stConnDownstream . at aid .= Just (Left (SingleActor pid, r))
           liftP $ doConnectActorsExistentially ss r
+          -- We also need to update info about channel to send
+          case aid of
+            ActorGroup gid -> do
+                Just g <- use $ stGroups . at gid
+                g' <- case g of
+                  GrUnconnected{} -> fatal "It should be connected"
+                  GrConnected ty ns _ pids -> return $
+                      GrConnected ty ns chN pids
+                  GrFailed -> fatal "We should react to failure by now"
+                stGroups . at gid .= Just g'
+            SingleActor _   -> return ()
     case dst of
       Left (aid,rr) -> do
           stConnUpstream . at aid .= Just (SingleActor pid, s)
@@ -133,6 +155,7 @@ handleProcessDone pid = do
         (\g _ -> case g of
            GrUnconnected{} -> fatal "Impossible: Unconnected process in group terminated normally"
            GrConnected _ (1, nD) ch _ -> do
+               liftIO $ print $ "sending to " ++ show ch
                liftP $ forM_ ch $ \c -> sendChan c (nD + 1)
                return Nothing
            GrConnected ty (nR, nD) ch acps -> do
@@ -144,13 +167,15 @@ handleProcessDone pid = do
 -- Monitored process crashed or was disconnected
 handleProcessCrash :: ProcessId -> Controller ()
 handleProcessCrash pid = do
+    liftIO $ print ("Child CRASH",pid)
     handlePidEvent pid
-        (return ())
+        (liftIO $ print "UNHANDLED")
         (\p -> case p of
            -- When process from which we didn't receive channels
            -- crashes we have no other recourse but to terminate.
            Unconnected  -> return $ Just Failed
            Connected acps -> do
+               liftIO $ print acps
                liftP $ forM_ acps $ \pp -> send pp Terminate
                return Nothing
            Failed       -> fatal "Impossible: Process crashed twice"

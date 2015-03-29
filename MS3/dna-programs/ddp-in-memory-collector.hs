@@ -12,15 +12,6 @@ import DDP_Slice
 -- Distributed dot product
 ----------------------------------------------------------------
 
-ddpCollector :: CollectActor Double Double
-ddpCollector = collectActor
-    (\s a -> return $! s + a)
-    (return 0)
-     return
-
-remotable [ 'ddpCollector
-          ]
-
 -- | Actor for calculating dot product
 ddpDotProduct :: Actor Slice Double
 ddpDotProduct = actor $ \size -> do
@@ -53,4 +44,3 @@ main = dnaRun rtable $ do
   where
     rtable = DDP.__remoteTable
            . DDP_Slice.__remoteTable
-           . Main.__remoteTable

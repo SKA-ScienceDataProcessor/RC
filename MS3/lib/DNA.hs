@@ -37,6 +37,9 @@ module DNA (
     , ResGroup(..)
     , useLocal
     , availableNodes
+    , respawnOnFail
+    , debugFlags
+    , DebugFlag(..)
       -- * Connecting actors
     , sendParam
     -- , broadcastParamSlice
