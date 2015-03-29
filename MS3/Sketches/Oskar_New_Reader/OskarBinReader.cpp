@@ -253,11 +253,11 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
     ; // local to block
   int dim_start_and_size[6];
 
-  u_temp = (double *)calloc(num_times_baselines_per_block, DBL_SZ);
-  v_temp = (double *)calloc(num_times_baselines_per_block, DBL_SZ);
-  w_temp = (double *)calloc(num_times_baselines_per_block, DBL_SZ);
-  amp_temp = (double *)calloc(num_times_baselines_per_block * vdp->num_channels, 8 * DBL_SZ);
-  inv_lambdas = (double *)calloc(vdp->num_channels, DBL_SZ);
+  u_temp = (double *)malloc(num_times_baselines_per_block * DBL_SZ);
+  v_temp = (double *)malloc(num_times_baselines_per_block * DBL_SZ);
+  w_temp = (double *)malloc(num_times_baselines_per_block * DBL_SZ);
+  amp_temp = (double *)malloc(num_times_baselines_per_block * vdp->num_channels * 8 * DBL_SZ);
+  inv_lambdas = (double *)malloc(vdp->num_channels * DBL_SZ);
 
   /* Loop over blocks and read each one. */
   for (int block = 0; block < num_blocks; ++block)
