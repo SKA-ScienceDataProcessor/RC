@@ -5,6 +5,7 @@
 #include "threadFenceReduction_kernel.cuh"
 
 extern "C" __global__ void reduce_512_odd(const cuDoubleComplex *g_idata, double *g_odata, unsigned int n) {
+  retirementCount = 0;
   reduceSinglePass_dev<512, false>(g_idata, g_odata, n);
 }
 
