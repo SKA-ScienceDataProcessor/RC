@@ -38,10 +38,10 @@ int main(int argc, const char * argv[])
     __MKDNAME
     my_mk_dir(fname, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
-    double * uvws = (double*)calloc(vdp->num_points, 3 * DBL_SZ);
-    double * amps = (double*)calloc(vdp->num_points, 8 * DBL_SZ);
-    WMaxMin * bl_ws = (WMaxMin*)calloc(vdp->num_baselines, sizeof(WMaxMin));
-    BlWMap * bl_wis = (BlWMap *)calloc(vdp->num_baselines, sizeof(BlWMap));
+    double * uvws = (double*)malloc(vdp->num_points * 3 * DBL_SZ);
+    double * amps = (double*)malloc(vdp->num_points * 8 * DBL_SZ);
+    WMaxMin * bl_ws = (WMaxMin*)malloc(vdp->num_baselines * sizeof(WMaxMin));
+    BlWMap * bl_wis = (BlWMap *)malloc(vdp->num_baselines * sizeof(BlWMap));
 
     printf("Started to read and reshuffle ...\n");
     if (readAndReshuffle(vdp, amps, uvws, &m, bl_ws, bl_wis) == 0) {
