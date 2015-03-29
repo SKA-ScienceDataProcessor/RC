@@ -34,6 +34,7 @@ import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
 import Data.Typeable (Typeable)
 
+import DNA.CH
 import DNA.Types
 import DNA.DSL
 import DNA.Interpreter.Types
@@ -78,18 +79,18 @@ runActorManyRanks (Actor action) = do
     send (actorParent p) (chSendRnk,shell)
     -- Start actor execution
     a   <- receiveChan chRecvParam
-    dst <- receiveChan chRecvDst
-    let loop = do
+    let loop dst = do
             send (actorParent p) (me,chSendRnk)
             mrnk <- receiveChan chRecvRnk
             case mrnk of
                 Nothing  -> return ()
                 Just rnk -> do
                     !b  <- runDnaParam p{actorRank = rnk} (action a)
-                    sendToDest dst b
+                    dst' <- drainChannel0 chRecvDst dst
+                    sendToDest dst' b
                     send (actorParent p) (me,DoneTask)
-                    loop
-    loop
+                    loop dst'
+    loop =<< drainChannel chRecvDst
 
 
 -- | Start execution of collector actor
@@ -155,23 +156,22 @@ runMapperActor (Mapper start step shuffle) = do
     (chSendDst,  chRecvDst  ) <- newChan
     -- Send shell process description back
     send (actorParent p)
-        ( (RecvVal chSendParam)
-        , (SendMR [chSendDst]))
+        ( RecvVal chSendParam
+        , SendMR [chSendDst])
     -- Get initial parameters for unfolding
     a   <- receiveChan chRecvParam
     s0  <- liftIO $ start a
-    -- Get destination
-    dst <- receiveChan chRecvDst
-    -- Unfoldr loop
-    let n = length dst
-    let loop s = do
+    -- Unfold loop
+    let loop s dst = do
+            dst' <- drainChannel0 chRecvDst dst
+            let n = length dst'
             ms <- liftIO $ step s
             case ms of
-              Nothing     -> return ()
+              Nothing     -> return dst'
               Just (s',b) -> do let i = shuffle n b
-                                sendChan (dst !! i) (Just b)
-                                loop s'
-    loop s0
+                                sendChan (dst' !! i) (Just b)
+                                loop s' dst'
+    dst <- loop s0 =<< drainChannel chRecvDst
     forM_ dst $ \ch -> sendChan ch Nothing
 
 -- Run DNA monad using ActorParam as source of input parameters and
@@ -192,7 +192,7 @@ runDnaParam p action = do
 -- Send value to the destination
 sendToDestChan :: (Serializable a) => ReceivePort (Dest a) -> a -> Process ()
 sendToDestChan chDst a = do
-    dst <- receiveChan chDst
+    dst <- drainChannel chDst
     sendToDest dst a
 
 -- Send value to the destination
