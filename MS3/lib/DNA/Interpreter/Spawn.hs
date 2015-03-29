@@ -6,6 +6,7 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
 -- | Code for starting remote actors
 module DNA.Interpreter.Spawn (
@@ -19,6 +20,7 @@ module DNA.Interpreter.Spawn (
     , execSpawnMappers
     ) where
 
+import Control.Arrow (Arrow(..))
 import Control.Applicative
 import Control.Concurrent  (threadDelay)
 import Control.Monad
@@ -65,7 +67,8 @@ execSpawnActor
 -- BLOCKING
 execSpawnActor res act = do
     -- Spawn actor
-    pid <- spawnSingleActor res $ closureApply $(mkStaticClosure 'runActor) <$> act
+    pid <- spawnSingleActor res Nothing
+         $ closureApply $(mkStaticClosure 'runActor) <$> act
     -- Get back shell for the actor
     --
     -- FIXME: We need to abort if process which should send us shell
@@ -76,14 +79,16 @@ execSpawnActor res act = do
 
 -- | Spawn collector actor on remote node
 execSpawnCollector
-    :: (Serializable a, Serializable b)
+    :: forall a b. (Serializable a, Serializable b)
     => Res
     -> Spawn (Closure (CollectActor a b))
     -> DnaMonad (Shell (Grp a) (Val b))
 -- BLOCKING
 execSpawnCollector res act = do
     -- Spawn actor
-    pid <- spawnSingleActor res $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
+    let m = matchMsg' :: Match' (RecvEnd (Grp a), SendEnd (Val a))
+    pid <- spawnSingleActor res (Just ((SomeRecvEnd *** SomeSendEnd) <$> m))
+         $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
     -- Get back shell for the actor
     --
     -- FIXME: See above
@@ -119,7 +124,7 @@ execSpawnGroupN
     -> DnaMonad (Shell (Val a) (Grp b))
 execSpawnGroupN res resG n act = do
     -- Spawn actors
-    (k,gid) <- spawnActorGroup res resG 
+    (k,gid) <- spawnActorGroup res resG
              $ closureApply $(mkStaticClosure 'runActorManyRanks) <$> act
     -- Assemble group
     -- FIXME: Fault tolerance
@@ -128,7 +133,7 @@ execSpawnGroupN res resG n act = do
     stPooledProcs . at gid .= Just chN
     return $ broadcast $ assembleShellGroup gid shells
 
--- | 
+-- |
 execSpawnCollectorGroup
     :: (Serializable a, Serializable b)
     => Res
@@ -183,9 +188,10 @@ execSpawnMappers res resG act = do
 -- Spawn actor which only uses single CH process.
 spawnSingleActor
     :: Res
+    -> Maybe (Match' (SomeRecvEnd,SomeSendEnd))
     -> Spawn (Closure (Process ()))
     -> DnaMonad ProcessId
-spawnSingleActor res spwn = do
+spawnSingleActor res mmatch spwn = do
     let (act,flags) = runSpawn spwn
     -- Acquire resources
     cad <- runController
@@ -200,7 +206,11 @@ spawnSingleActor res spwn = do
     stUsedResources . at pid .= Just cad
     stChildren      . at pid .= Just (Left Unconnected)
     -- Send auxiliary parameter
-    sendActorParam pid (Rank 0) (GroupSize 1) cad
+    p <- sendActorParam pid (Rank 0) (GroupSize 1) cad
+    -- Record restart if needed
+    T.forM_ mmatch $ \m ->
+        when (UseRespawn `elem` flags) $
+            stRestartable . at pid .= Just (m,act,wrapMessage p)
     return pid
 
 -- Spawn group of actors
@@ -250,18 +260,19 @@ getTimeout = getLast . T.foldMap (Last . go)
 
 -- Send auxiliary parameters to an actor
 sendActorParam
-    :: ProcessId -> Rank -> GroupSize -> VirtualCAD -> DnaMonad ()
+    :: ProcessId -> Rank -> GroupSize -> VirtualCAD -> DnaMonad ActorParam
 sendActorParam pid rnk g cad = do
     me     <- liftP getSelfPid
     interp <- use stInterpreter
-    lift $ send pid ActorParam
-                      { actorParent      = me
-                      , actorInterpreter = interp
-                      , actorRank        = rnk
-                      , actorGroupSize   = g
-                      , actorNodes       = vcadNodePool cad
-                      }
-
+    let p = ActorParam
+            { actorParent      = me
+            , actorInterpreter = interp
+            , actorRank        = rnk
+            , actorGroupSize   = g
+            , actorNodes       = vcadNodePool cad
+            }
+    liftP $ send pid p
+    return p
 
 assembleShellGroup :: GroupID -> [(RecvEnd (Val a), SendEnd (Val b))] -> Shell (Scatter a) (Grp b)
 assembleShellGroup gid shells =
@@ -321,7 +332,7 @@ requestResources r = do
     free <- Set.toList <$> use stNodePool
     taggedMessage "DNA" $ "Req: " ++ show r ++ " pool: " ++ show free
     case r of
-     N n -> do  
+     N n -> do
         when (length free < n) $
             fatal $ printf "Cannot allocate %i nodes" n
         let (used,rest) = splitAt n free
