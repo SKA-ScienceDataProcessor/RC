@@ -125,4 +125,7 @@ doCuda t2 ws_hsupps = do
   CUDA.destroy ctx
 
 main :: IO ()
-main = doCuda 0.25 [(-100.0, 8), (0.0, 1), (100.0, 8)]
+main = doCuda 0.25 $ wsn ++ wsp
+  where
+    wsp = take 33 $ iterate (\(w, hs) -> (w + 50.0, hs+4)) (0.0, 0)
+    wsn = reverse $ map (\(w, hs) -> (-w, hs)) $ tail wsp
