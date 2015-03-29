@@ -29,7 +29,7 @@ import DNA.CH
 import DNA.Lens
 import DNA.Types
 import DNA.Interpreter.Types
-
+import DNA.Interpreter.Connect
 
 
 ----------------------------------------------------------------
@@ -102,12 +102,17 @@ handleProcessRestart oldPID mtch clos p0 = do
     --        another process while we're waiting for shells so we can
     --        potentially confuse shells
     (r,s) <- lift $ handleRecieve messageHandlers [mtch]
-    -- Record everything
+    -- Record and connect everything
     case src of
-      (aid,_) -> stConnDownstream . at aid .= Just (Left (SingleActor pid, r))
+      (aid,ss) -> do
+          stConnDownstream . at aid .= Just (Left (SingleActor pid, r))
+          liftP $ doConnectActorsExistentially ss r
     case dst of
-      Left (aid,_) -> stConnUpstream . at aid .= Just (SingleActor pid, s)
-      Right _      -> return ()
+      Left (aid,rr) -> do
+          stConnUpstream . at aid .= Just (SingleActor pid, s)
+          liftP $ doConnectActorsExistentially s rr
+      Right rr ->
+          liftP $ doConnectActorsExistentially s rr
     
 
 -- Monitored process terminated normally. We need to update registry

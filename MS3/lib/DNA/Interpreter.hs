@@ -45,6 +45,7 @@ import DNA.Interpreter.Message
 import DNA.Interpreter.Run     hiding (__remoteTable)
 import DNA.Interpreter.Spawn
 import DNA.Interpreter.Types
+import DNA.Interpreter.Connect
 
 
 ----------------------------------------------------------------
