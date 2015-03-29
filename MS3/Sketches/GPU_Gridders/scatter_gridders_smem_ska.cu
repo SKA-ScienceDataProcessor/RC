@@ -281,3 +281,16 @@ __global__ void addBaselinesToGridSkaMidWithUsingPermutations(
     , vis
     );
 }
+
+__global__ void  extractPolarization(
+    int pol
+  , complexd dst_grid[4096][4096]
+  , const complexd src_grid[4096][4096][4]
+  )
+{
+  const int
+      x = blockIdx.x * blockDim.x + threadIdx.x
+    , y = blockIdx.y * blockDim.y + threadIdx.y;
+
+  dst_grid[x][y] = src_grid[x][y][pol];
+}
