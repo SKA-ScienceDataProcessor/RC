@@ -18,7 +18,6 @@ import System.Directory
 import System.Process
 import System.FilePath    ((</>))
 import System.Posix.Process (getProcessID,executeFile)
-import qualified Data.Foldable as T
 import Text.ParserCombinators.ReadP hiding (many)
 import Text.Printf
 
@@ -296,6 +295,7 @@ executeDNA dna nodes = do
               , actorRank        = Rank 0
               , actorGroupSize   = GroupSize 1
               , actorNodes       = nodes
+              , actorDebugFlags  = []
               }
     r <- try $ runDnaParam param dna
     return $ either Just (const Nothing) r

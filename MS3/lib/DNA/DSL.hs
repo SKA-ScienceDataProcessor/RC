@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -- | Description of DNA DSL as operational monad
@@ -11,10 +12,13 @@ module DNA.DSL (
       -- ** Spawn monad
     , Spawn(..)
     , SpawnFlag(..)
+    , DebugFlag(..)
     , runSpawn
     , useLocal
     , failout
     , timeout
+    , respawnOnFail
+    , debugFlags
       -- * Actors
     , Actor(..)
     , actor
@@ -62,7 +66,9 @@ import Control.Monad.IO.Class
 import Control.Monad.Writer.Strict
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
+import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
+import GHC.Generics  (Generic)
 
 import DNA.Types
 import DNA.Logging (ProfileHint(..))
@@ -142,7 +148,7 @@ data DnaF a where
 
     -- | Connect running actors
     Connect
-      :: Serializable b
+      :: (Serializable b, Typeable tag)
       => Shell a (tag b)
       -> Shell (tag b) c
       -> DnaF ()
@@ -174,6 +180,7 @@ data DnaF a where
       -> b
       -> DnaF b
 
+
 -- | Spawn monad. It's used to carry all additional parameters for
 --   process spawning
 newtype Spawn a = Spawn (Writer [SpawnFlag] a)
@@ -184,7 +191,17 @@ data SpawnFlag
     = UseLocal
     | UseFailout
     | UseTimeout Double
+    | UseRespawn
+    | UseDebug [DebugFlag]
     deriving (Show,Eq,Typeable)
+
+-- | Flags which could be passed to actors for debugging purposes
+data DebugFlag
+    = CrashProbably Double
+      -- ^ Crash with given probability. Not all actors will honor
+      --   that request
+    deriving (Show,Eq,Typeable,Generic)
+instance Binary DebugFlag
 
 runSpawn :: Spawn a -> (a,[SpawnFlag])
 runSpawn (Spawn m) = runWriter m
@@ -197,6 +214,12 @@ failout = Spawn $ tell [UseFailout]
 
 timeout :: Double -> Spawn ()
 timeout t = Spawn $ tell [UseTimeout t]
+
+respawnOnFail :: Spawn ()
+respawnOnFail = Spawn $ tell [UseRespawn]
+
+debugFlags :: [DebugFlag] -> Spawn ()
+debugFlags fs = Spawn $ tell [UseDebug fs]
 
 newtype Promise a = Promise (ReceivePort a)
 
@@ -307,7 +330,7 @@ gather g f = gatherM g (\b a -> return $ f b a)
 sendParam :: Serializable a => a -> Shell (Val a) b -> DNA ()
 sendParam a sh = DNA $ singleton $ SendParam a sh
 
-connect :: (Serializable b)
+connect :: (Serializable b, Typeable tag)
         => Shell a (tag b) -> Shell (tag b) c -> DNA ()
 connect a b = DNA $ singleton $ Connect a b
 

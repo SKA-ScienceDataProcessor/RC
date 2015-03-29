@@ -18,6 +18,7 @@ module DNA.Interpreter.Run (
     , runDnaParam 
       -- * Helpers
     , doGatherM
+    , doGatherDna
       -- * CH
     , runActor__static
     , runActorManyRanks__static
@@ -32,10 +33,13 @@ import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
 import Data.Typeable (Typeable)
+import System.Random
 
+import DNA.CH
 import DNA.Types
 import DNA.DSL
 import DNA.Interpreter.Types
+import DNA.Interpreter.Message
 
 
 ----------------------------------------------------------------
@@ -51,16 +55,13 @@ runActor (Actor action) = do
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
     -- Send shell process back
-    me <- getSelfPid
-    send (actorParent p) $ Shell
-        (SingleActor me)
-        (RecvVal chSendParam)
-        (SendVal chSendDst  )
+    send (actorParent p)
+        ( (RecvVal chSendParam)
+        , (SendVal chSendDst  ))
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
     !b  <- runDnaParam p (action a)
     sendToDestChan chRecvDst b
-
 
 -- | Run actor for group of processes which allow more than 1 task per
 --   actor.
@@ -74,24 +75,23 @@ runActorManyRanks (Actor action) = do
     (chSendRnk,  chRecvRnk  ) <- newChan
     -- Send shell process back
     me <- getSelfPid
-    let shell = Shell (SingleActor me)
-                      (RecvVal chSendParam)
-                      (SendVal chSendDst  )
+    let shell = ( RecvVal chSendParam
+                , SendVal chSendDst  )
     send (actorParent p) (chSendRnk,shell)
     -- Start actor execution
     a   <- receiveChan chRecvParam
-    dst <- receiveChan chRecvDst
-    let loop = do
+    let loop dst = do
             send (actorParent p) (me,chSendRnk)
             mrnk <- receiveChan chRecvRnk
             case mrnk of
                 Nothing  -> return ()
                 Just rnk -> do
                     !b  <- runDnaParam p{actorRank = rnk} (action a)
-                    sendToDest dst b
+                    dst' <- drainChannel0 chRecvDst dst
+                    sendToDest dst' b
                     send (actorParent p) (me,DoneTask)
-                    loop
-    loop
+                    loop dst'
+    loop =<< drainChannel chRecvDst
 
 
 -- | Start execution of collector actor
@@ -104,11 +104,19 @@ runCollectActor (CollectActor step start fini) = do
     (chSendDst,  chRecvDst  ) <- newChan
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
-    me <- getSelfPid
-    send (actorParent p) $ Shell
-        (SingleActor me)
-        (RecvReduce [(chSendN,chSendParam)])
-        (SendVal    chSendDst)
+    send (actorParent p)
+        ( RecvReduce [(chSendN,chSendParam)]
+        , SendVal    chSendDst)
+    -- Now we want to check if process was requested to crash
+    case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
+      pCrash : _ -> do
+          roll <- liftIO randomIO
+          when (roll < pCrash) $ do
+              me <- getSelfPid
+              liftIO $ print $ "CRASH! " ++ show me
+              error "Ooops crashed"
+      _ -> return ()
+    liftIO $ print ("N port",chSendN)
     -- Start execution of an actor
     --
     -- FIXME: I constrained CollectActor to IO only (no DNA) which
@@ -132,11 +140,9 @@ runCollectActorMR (CollectActor step start fini) = do
     (chSendDst,  chRecvDst  ) <- newChan
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
-    me <- getSelfPid
-    send (actorParent p) $ Shell
-      (SingleActor me)
-      (RecvMR    [(chSendN,chSendParam)])
-      (SendVal    chSendDst)
+    send (actorParent p)
+      ( (RecvMR    [(chSendN,chSendParam)])
+      , (SendVal    chSendDst))
     let loop n tot !b
           | n >= tot && tot >= 0 = return b
           | otherwise = do
@@ -160,26 +166,23 @@ runMapperActor (Mapper start step shuffle) = do
     (chSendParam,chRecvParam) <- newChan
     (chSendDst,  chRecvDst  ) <- newChan
     -- Send shell process description back
-    me <- getSelfPid
-    send (actorParent p) $ Shell
-        (SingleActor me)
-        (RecvVal chSendParam)
-        (SendMR [chSendDst])
+    send (actorParent p)
+        ( RecvVal chSendParam
+        , SendMR [chSendDst])
     -- Get initial parameters for unfolding
     a   <- receiveChan chRecvParam
     s0  <- liftIO $ start a
-    -- Get destination
-    dst <- receiveChan chRecvDst
-    -- Unfoldr loop
-    let n = length dst
-    let loop s = do
+    -- Unfold loop
+    let loop s dst = do
+            dst' <- drainChannel0 chRecvDst dst
+            let n = length dst'
             ms <- liftIO $ step s
             case ms of
-              Nothing     -> return ()
+              Nothing     -> return dst'
               Just (s',b) -> do let i = shuffle n b
-                                sendChan (dst !! i) (Just b)
-                                loop s'
-    loop s0
+                                sendChan (dst' !! i) (Just b)
+                                loop s' dst'
+    dst <- loop s0 =<< drainChannel chRecvDst
     forM_ dst $ \ch -> sendChan ch Nothing
 
 -- Run DNA monad using ActorParam as source of input parameters and
@@ -191,6 +194,7 @@ runDnaParam p action = do
               (actorGroupSize p)
               (actorInterpreter p)
               (actorNodes       p)
+              (actorDebugFlags  p)
     $ dnaInterpreter interpreter action
 
 ----------------------------------------------------------------
@@ -200,7 +204,7 @@ runDnaParam p action = do
 -- Send value to the destination
 sendToDestChan :: (Serializable a) => ReceivePort (Dest a) -> a -> Process ()
 sendToDestChan chDst a = do
-    dst <- receiveChan chDst
+    dst <- drainChannel chDst
     sendToDest dst a
 
 -- Send value to the destination
@@ -218,6 +222,30 @@ doGatherM (Group chA chN) f x0 = do
             r <- receiveWait [ matchChan chA (return . Right)
                              , matchChan chN (return . Left)
                              ]
+            case r of
+              Right a -> do
+                  loop (n + 1) tot =<< liftIO (f b a)
+              Left  k -> do
+                  liftIO $ print ("LEFT",k,n,tot)
+                  loop n k b
+    loop 0 (-1) x0
+
+
+doGatherDna
+    :: Serializable a
+    => [MatchS]
+    -> Group a
+    -> (b -> a -> IO b)
+    -> b
+    -> DnaMonad b
+doGatherDna ms (Group chA chN) f x0 = do
+    let loop n tot !b
+            | n >= tot && tot >= 0 = return b
+        loop n tot !b = do
+            r <- handleRecieve ms
+                     [ Right `fmap` matchChan' chA
+                     , Left  `fmap` matchChan' chN
+                     ]
             case r of
               Right a -> loop (n + 1) tot =<< liftIO (f b a)
               Left  k -> loop n k b

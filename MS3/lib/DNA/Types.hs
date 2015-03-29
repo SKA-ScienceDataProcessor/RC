@@ -206,6 +206,12 @@ data SendEnd a where
             -> SendEnd (MR a)
     deriving (Typeable)
 
+data SomeRecvEnd where
+  SomeRecvEnd :: (Binary a, Typeable a, Typeable t) => RecvEnd (t a) -> SomeRecvEnd
+
+data SomeSendEnd where
+  SomeSendEnd :: (Binary a, Typeable a, Typeable t) => SendEnd (t a) -> SomeSendEnd
+
 instance (Typeable a, Binary a) => Binary (RecvEnd (Val a)) where
     put (RecvVal       p) = putWord8 1 >> put p
     put (RecvBroadcast p) = putWord8 3 >> put p

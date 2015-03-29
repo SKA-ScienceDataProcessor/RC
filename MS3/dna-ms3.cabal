@@ -31,6 +31,7 @@ library
     unix,
     time,
     old-locale,
+    random,
     bytestring   >= 0.10, 
     binary,
     process      >= 1.2,
@@ -67,9 +68,11 @@ library
   Exposed-modules:
     DNA
     DNA.Channel.File
+    DNA.CH
     DNA.CmdOpts
     DNA.DSL
     DNA.Interpreter
+    DNA.Interpreter.Connect
     DNA.Interpreter.Message
     DNA.Interpreter.Run
     DNA.Interpreter.Spawn
@@ -118,3 +121,19 @@ executable ddp-in-memory-collector
     DDP
     DDP_Slice
 
+executable ddp-in-memory
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             ddp-in-memory-collector.hs
+  build-depends:
+    base >=4.6,
+    dna-ms3,
+    binary,
+    bytestring,
+    data-binary-ieee754,
+    vector >= 0.10,
+    directory
+  other-modules:
+    DDP
+    DDP_Slice

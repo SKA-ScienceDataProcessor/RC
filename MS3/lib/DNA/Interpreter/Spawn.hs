@@ -6,9 +6,11 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
 -- | Code for starting remote actors
 module DNA.Interpreter.Spawn (
+      -- * Spawning actors
       execSpawnActor
     , execSpawnCollector
     , execSpawnGroup
@@ -22,26 +24,15 @@ import Control.Applicative
 import Control.Concurrent  (threadDelay)
 import Control.Monad
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.State.Strict
 import Control.Monad.Except
-import Control.Monad.Operational
-import Control.Concurrent.Async
-import Control.Concurrent.STM (STM)
 import Control.Distributed.Static  (closureApply)
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
--- import Data.Binary   (Binary)
--- import Data.Typeable (Typeable)
--- import qualified Data.Map as Map
--- import           Data.Map   (Map)
 import Data.Monoid
-import Data.List
 import qualified Data.Foldable as T
 import qualified Data.Set as Set
--- import           Data.Set   (Set)
 import Text.Printf
--- import GHC.Generics  (Generic)
 
 import DNA.Types
 import DNA.Lens
@@ -65,29 +56,37 @@ execSpawnActor
 -- BLOCKING
 execSpawnActor res act = do
     -- Spawn actor
-    spawnSingleActor res $ closureApply $(mkStaticClosure 'runActor) <$> act
+    pid <- spawnSingleActor res Nothing
+         $ closureApply $(mkStaticClosure 'runActor) <$> act
     -- Get back shell for the actor
     --
     -- FIXME: We need to abort if process which should send us shell
     --        dies.
-    handleRecieve messageHandlers matchMsg'
+    (r,s) <- handleRecieve messageHandlers [matchMsg']
+    return $ Shell (SingleActor pid) r s
 
 
 -- | Spawn collector actor on remote node
 execSpawnCollector
-    :: (Serializable a, Serializable b)
+    :: forall a b. (Serializable a, Serializable b)
     => Res
     -> Spawn (Closure (CollectActor a b))
     -> DnaMonad (Shell (Grp a) (Val b))
 -- BLOCKING
 execSpawnCollector res act = do
     -- Spawn actor
-    spawnSingleActor res $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
+    let m = matchMsg' :: Match' (RecvEnd (Grp a), SendEnd (Val a))
+        wrap (r,s) = (SomeRecvEnd r, SomeSendEnd s, chNs)
+          where
+            chNs = case r :: RecvEnd (Grp a) of
+                     RecvReduce ns -> map fst ns
+    pid <- spawnSingleActor res (Just (wrap <$> m))
+         $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
     -- Get back shell for the actor
     --
     -- FIXME: See above
-    handleRecieve messageHandlers matchMsg'
-
+    (r,s) <- handleRecieve messageHandlers [matchMsg']
+    return $ Shell (SingleActor pid) r s
 
 -- | Spawn group of normal processes
 execSpawnGroup
@@ -106,7 +105,7 @@ execSpawnGroup res resG act = do
     -- FIXME: Fault tolerance. We need to account for the fact some
     --        processes can crash before we have chance to get shell
     --        from them
-    sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
+    sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     return $ assembleShellGroup gid sh
 
 execSpawnGroupN
@@ -118,16 +117,16 @@ execSpawnGroupN
     -> DnaMonad (Shell (Val a) (Grp b))
 execSpawnGroupN res resG n act = do
     -- Spawn actors
-    (k,gid) <- spawnActorGroup res resG 
+    (k,gid) <- spawnActorGroup res resG
              $ closureApply $(mkStaticClosure 'runActorManyRanks) <$> act
     -- Assemble group
     -- FIXME: Fault tolerance
-    msgs <- replicateM k $ handleRecieve messageHandlers matchMsg'
+    msgs <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     let (chN,shells) = unzip msgs
     stPooledProcs . at gid .= Just chN
     return $ broadcast $ assembleShellGroup gid shells
 
--- | 
+-- |
 execSpawnCollectorGroup
     :: (Serializable a, Serializable b)
     => Res
@@ -140,7 +139,7 @@ execSpawnCollectorGroup res resG act = do
              $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
     -- Assemble group
     -- FIXME: Fault tolerance
-    sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
+    sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     return $ assembleShellGroupCollect gid sh
 
 -- | Start group of collector processes
@@ -156,7 +155,7 @@ execSpawnCollectorGroupMR res resG act = do
              $ closureApply $(mkStaticClosure 'runCollectActorMR) <$> act
     -- Assemble group
     -- FIXME: Fault tolerance
-    sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
+    sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     return $ assembleShellGroupCollectMR gid sh
 
 execSpawnMappers
@@ -171,7 +170,7 @@ execSpawnMappers res resG act = do
              $ closureApply $(mkStaticClosure 'runMapperActor) <$> act
     -- Assemble group
     -- FIXME: Fault tolerance
-    sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
+    sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     return $ assembleShellMapper gid sh
 
 
@@ -182,9 +181,10 @@ execSpawnMappers res resG act = do
 -- Spawn actor which only uses single CH process.
 spawnSingleActor
     :: Res
+    -> Maybe (Match' (SomeRecvEnd,SomeSendEnd,[SendPort Int]))
     -> Spawn (Closure (Process ()))
-    -> DnaMonad ()
-spawnSingleActor res spwn = do
+    -> DnaMonad ProcessId
+spawnSingleActor res mmatch spwn = do
     let (act,flags) = runSpawn spwn
     -- Acquire resources
     cad <- runController
@@ -199,7 +199,13 @@ spawnSingleActor res spwn = do
     stUsedResources . at pid .= Just cad
     stChildren      . at pid .= Just (Left Unconnected)
     -- Send auxiliary parameter
-    sendActorParam pid (Rank 0) (GroupSize 1) cad
+    p <- sendActorParam pid (Rank 0) (GroupSize 1) cad
+           (concat [fs | UseDebug fs <- flags])
+    -- Record restart if needed
+    T.forM_ mmatch $ \m ->
+        when (UseRespawn `elem` flags) $
+            stRestartable . at pid .= Just (m,act,wrapMessage p)
+    return pid
 
 -- Spawn group of actors
 spawnActorGroup
@@ -226,6 +232,7 @@ spawnActorGroup res resG spwn = do
         (pid,_) <- liftP
                  $ spawnSupervised (vcadNode cad) act
         sendActorParam pid (Rank rnk) (GroupSize k) cad
+            (concat [fs | UseDebug fs <- flags])
         stChildren . at pid .= Just (Right gid)
     -- Add timeout for actor
     liftP $ setTimeout flags (ActorGroup gid)
@@ -248,64 +255,66 @@ getTimeout = getLast . T.foldMap (Last . go)
 
 -- Send auxiliary parameters to an actor
 sendActorParam
-    :: ProcessId -> Rank -> GroupSize -> VirtualCAD -> DnaMonad ()
-sendActorParam pid rnk g cad = do
+    :: ProcessId -> Rank -> GroupSize -> VirtualCAD -> [DebugFlag] -> DnaMonad ActorParam
+sendActorParam pid rnk g cad flags = do
     me     <- liftP getSelfPid
     interp <- use stInterpreter
-    lift $ send pid ActorParam
-                      { actorParent      = me
-                      , actorInterpreter = interp
-                      , actorRank        = rnk
-                      , actorGroupSize   = g
-                      , actorNodes       = vcadNodePool cad
-                      }
+    let p = ActorParam
+            { actorParent      = me
+            , actorInterpreter = interp
+            , actorRank        = rnk
+            , actorGroupSize   = g
+            , actorNodes       = vcadNodePool cad
+            , actorDebugFlags  = flags
+            }
+    liftP $ send pid p
+    return p
 
-
-assembleShellGroup :: GroupID -> [Shell (Val a) (Val b)] -> Shell (Scatter a) (Grp b)
+assembleShellGroup :: GroupID -> [(RecvEnd (Val a), SendEnd (Val b))] -> Shell (Scatter a) (Grp b)
 assembleShellGroup gid shells =
     Shell (ActorGroup gid)
           (RecvGrp $ map getRecv shells)
           (SendGrp $ map getSend shells)
   where
-    getRecv :: Shell (Val a) b -> SendPort a
-    getRecv (Shell _ (RecvVal ch) _) = ch
+    getRecv :: (RecvEnd (Val a), b) -> SendPort a
+    getRecv (RecvVal ch, _) = ch
     getRecv _ = error "assembleShellGroup: unexpected type of shell process"
-    getSend :: Shell a (Val b) -> SendPort (Dest b)
-    getSend (Shell _ _ (SendVal ch)) = ch
+    getSend :: (a, SendEnd (Val b)) -> SendPort (Dest b)
+    getSend (_, SendVal ch) = ch
 
-assembleShellGroupCollect :: GroupID -> [Shell (Grp a) (Val b)] -> Shell (Grp a) (Grp b)
+assembleShellGroupCollect :: GroupID -> [(RecvEnd (Grp a), SendEnd (Val b))] -> Shell (Grp a) (Grp b)
 assembleShellGroupCollect gid shells =
     Shell (ActorGroup gid)
           (RecvReduce $ getRecv =<< shells)
           (SendGrp    $ map getSend shells)
   where
-    getRecv :: Shell (Grp a) b -> [(SendPort Int, SendPort a)]
-    getRecv (Shell _ (RecvReduce ch) _) = ch
-    getSend :: Shell a (Val b) -> SendPort (Dest b)
-    getSend (Shell _ _ (SendVal ch)) = ch
+    getRecv :: (RecvEnd (Grp a), b) -> [(SendPort Int, SendPort a)]
+    getRecv (RecvReduce ch, _) = ch
+    getSend :: (a, SendEnd (Val b)) -> SendPort (Dest b)
+    getSend (_, SendVal ch) = ch
 
-assembleShellGroupCollectMR :: GroupID -> [Shell (MR a) (Val b)] -> Shell (MR a) (Grp b)
+assembleShellGroupCollectMR :: GroupID -> [(RecvEnd (MR a), SendEnd (Val b))] -> Shell (MR a) (Grp b)
 assembleShellGroupCollectMR gid shells =
     Shell (ActorGroup gid)
           (RecvMR  $ getRecv =<< shells)
           (SendGrp $ map getSend shells)
   where
-    getRecv :: Shell (MR a) b -> [(SendPort Int, SendPort (Maybe a))]
-    getRecv (Shell _ (RecvMR ch) _) = ch
-    getSend :: Shell a (Val b) -> SendPort (Dest b)
-    getSend (Shell _ _ (SendVal ch)) = ch
+    getRecv :: (RecvEnd (MR a), b) -> [(SendPort Int, SendPort (Maybe a))]
+    getRecv (RecvMR ch, _) = ch
+    getSend :: (a, SendEnd (Val b)) -> SendPort (Dest b)
+    getSend (_, SendVal ch) = ch
 
-assembleShellMapper :: GroupID -> [Shell (Val a) (MR b)] -> Shell (Scatter a) (MR b)
+assembleShellMapper :: GroupID -> [(RecvEnd (Val a), SendEnd (MR b))] -> Shell (Scatter a) (MR b)
 assembleShellMapper gid shells =
     Shell (ActorGroup gid)
           (RecvGrp $ map getRecv shells)
           (SendMR  $ getSend =<< shells)
   where
-    getRecv :: Shell (Val a) b -> SendPort a
-    getRecv (Shell _ (RecvVal ch) _) = ch
+    getRecv :: (RecvEnd (Val a), b) -> SendPort a
+    getRecv (RecvVal ch, _) = ch
     getRecv _ = error "assembleShellGroup: unexpected type of shell process"
-    getSend :: Shell a (MR b) -> [SendPort [SendPort (Maybe b)]]
-    getSend (Shell _ _ (SendMR ch)) = ch
+    getSend :: (a, SendEnd (MR b)) -> [SendPort [SendPort (Maybe b)]]
+    getSend (_, SendMR ch) = ch
 
 
 
@@ -319,7 +328,7 @@ requestResources r = do
     free <- Set.toList <$> use stNodePool
     taggedMessage "DNA" $ "Req: " ++ show r ++ " pool: " ++ show free
     case r of
-     N n -> do  
+     N n -> do
         when (length free < n) $
             fatal $ printf "Cannot allocate %i nodes" n
         let (used,rest) = splitAt n free

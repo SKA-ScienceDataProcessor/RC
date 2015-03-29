@@ -23,11 +23,15 @@ import Control.Monad.Trans.State.Strict
 import Control.Concurrent.STM (STM)
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
+import qualified Data.Map as Map
+import Text.Printf
 
+import DNA.CH
 import DNA.Lens
 import DNA.Types
 import DNA.Interpreter.Types
-
+import DNA.Interpreter.Connect
+import DNA.Logging
 
 
 ----------------------------------------------------------------
@@ -57,7 +61,81 @@ handleProcessTermination
 handleProcessTermination (ProcessMonitorNotification _ pid reason) =
     case reason of
       DiedNormal -> handleProcessDone  pid
-      _          -> handleProcessCrash pid
+      _          -> do
+          m <- use $ stRestartable . at pid
+          case m of
+            Just (mtch,clos,msg) -> handleProcessRestart pid mtch clos msg
+            Nothing              -> handleProcessCrash pid
+
+-- Handle restart of a process
+handleProcessRestart
+    :: ProcessId                -- Old PID
+    -> Match' (SomeRecvEnd,SomeSendEnd,[SendPort Int])
+    -> Closure (Process ())     -- Closure to restart
+    -> Message                  -- Initial parameters
+    -> Controller ()
+handleProcessRestart oldPID mtch clos p0 = do
+    -- Get older resources
+    Just cad <- use $ stUsedResources . at oldPID
+    -- Get connections for the processes
+    --
+    -- FIXME: Here we (wrongly!) assume that connections are already
+    --        established. Doing thing right way would be too
+    --        difficult at the moment
+    --
+    -- FIXME: Also we don't take into account actors which receive
+    --        data from parent process
+    --
+    -- Restart process
+    (pid,_) <- liftP $ spawnSupervised (vcadNode cad) clos
+    liftP $ forward p0 pid
+    taggedMessage "INFO" $ printf "%s died, respawned as %s" (show oldPID) (show pid)
+    -- Record updated information about actor
+    stUsedResources . at oldPID .= Nothing
+    stUsedResources . at pid    .= Just cad
+    -- Children state
+    x <- use $ stChildren . at oldPID
+    stChildren . at pid .= x
+    -- Connection state
+    Just src <- use $ stConnUpstream   . at (SingleActor oldPID)
+    Just dst <- use $ stConnDownstream . at (SingleActor oldPID)
+    stConnUpstream   . at (SingleActor oldPID) .= Nothing
+    stConnDownstream . at (SingleActor oldPID) .= Nothing
+    stConnUpstream   . at (SingleActor pid)    .= Just src
+    stConnDownstream . at (SingleActor pid)    .= Just dst
+    -- Update restart state
+    stRestartable . at oldPID .= Nothing
+    stRestartable . at pid    .= Just (mtch,clos,p0)
+    -- Obtain communication ends
+    --
+    -- FIXME: Here we can run into situation when we need to respawn
+    --        another process while we're waiting for shells so we can
+    --        potentially confuse shells
+    (r,s,chN) <- lift $ handleRecieve messageHandlers [mtch]
+    liftIO $ print $ "Restarting " ++ show oldPID ++ " --> " ++ show pid ++ " | " ++ show chN
+    -- Record and connect everything
+    case src of
+      (aid,ss) -> do
+          stConnDownstream . at aid .= Just (Left (SingleActor pid, r))
+          liftP $ doConnectActorsExistentially ss r
+          -- We also need to update info about channel to send
+          case aid of
+            ActorGroup gid -> do
+                Just g <- use $ stGroups . at gid
+                g' <- case g of
+                  GrUnconnected{} -> fatal "It should be connected"
+                  GrConnected ty ns _ pids -> return $
+                      GrConnected ty ns chN pids
+                  GrFailed -> fatal "We should react to failure by now"
+                stGroups . at gid .= Just g'
+            SingleActor _   -> return ()
+    case dst of
+      Left (aid,rr) -> do
+          stConnUpstream . at aid .= Just (SingleActor pid, s)
+          liftP $ doConnectActorsExistentially s rr
+      Right rr ->
+          liftP $ doConnectActorsExistentially s rr
+    
 
 -- Monitored process terminated normally. We need to update registry
 -- and maybe notify other processes.
@@ -77,9 +155,10 @@ handleProcessDone pid = do
         (\g _ -> case g of
            GrUnconnected{} -> fatal "Impossible: Unconnected process in group terminated normally"
            GrConnected _ (1, nD) ch _ -> do
+               liftIO $ print $ "sending to " ++ show ch
                liftP $ forM_ ch $ \c -> sendChan c (nD + 1)
                return Nothing
-           GrConnected ty (nR, nD) ch acps ->
+           GrConnected ty (nR, nD) ch acps -> do
                return $ Just $ GrConnected ty (nR-1, nD+1) ch acps
            GrFailed -> fatal "Impossible: Process terminated in complete group"
         )
@@ -88,13 +167,15 @@ handleProcessDone pid = do
 -- Monitored process crashed or was disconnected
 handleProcessCrash :: ProcessId -> Controller ()
 handleProcessCrash pid = do
+    liftIO $ print ("Child CRASH",pid)
     handlePidEvent pid
-        (return ())
+        (liftIO $ print "UNHANDLED")
         (\p -> case p of
            -- When process from which we didn't receive channels
            -- crashes we have no other recourse but to terminate.
            Unconnected  -> return $ Just Failed
            Connected acps -> do
+               liftIO $ print acps
                liftP $ forM_ acps $ \pp -> send pp Terminate
                return Nothing
            Failed       -> fatal "Impossible: Process crashed twice"
@@ -174,39 +255,16 @@ handleTimeout (TimeOut aid) = case aid of
 -- | Handlers for events which could be used with State monad with state s
 data MatchS = forall a. Serializable a => MatchS (a -> Controller ())
 
--- | Wrapper for Match which allow to write Functor instance. For some
---   unfathomable reason Match doesn't have one!
-data Match' a = forall x. Match'
-                (x -> Process a)
-                (forall b. (x -> Process b) -> Match b)
-
-matchSTM' :: STM a -> Match' a
-matchSTM' stm = Match' return (matchSTM stm)
-
-matchChan' :: Serializable a => ReceivePort a -> Match' a
-matchChan' ch = Match' return (matchChan ch)
-
-matchMsg' :: Serializable a => Match' a
-matchMsg' = Match' return match
-
-instance Functor Match' where
-    fmap f (Match' g mk) = Match' ((fmap . fmap) f g) mk
-
--- | Convert to normal match
-toMatch :: Match' a -> Match a
-toMatch (Match' a f) = f a
-
-
 -- | Wait for message from Match' and handle auxiliary messages
 handleRecieve
     :: [MatchS]
-    -> Match' a
+    -> [Match' a]
     -> DnaMonad a
 handleRecieve auxMs mA
     = loop
   where
-    matches s = toMatch (Right <$> mA)
-              : [ match $ \a -> Left <$> runStateT (runController (f a)) s
+    matches s = map toMatch ((fmap . fmap) Right mA)
+             ++ [ match $ \a -> Left <$> runStateT (runController (f a)) s
                 | MatchS f <- auxMs]
     loop = do
         s <- get

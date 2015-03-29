@@ -29,7 +29,7 @@ import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
 -- import Data.Binary   (Binary)
--- import Data.Typeable (Typeable)
+import Data.Typeable (Typeable)
 -- import qualified Data.Map as Map
 -- import           Data.Map   (Map)
 import qualified Data.Set as Set
@@ -45,6 +45,7 @@ import DNA.Interpreter.Message
 import DNA.Interpreter.Run     hiding (__remoteTable)
 import DNA.Interpreter.Spawn
 import DNA.Interpreter.Types
+import DNA.Interpreter.Connect
 
 
 ----------------------------------------------------------------
@@ -101,7 +102,7 @@ execKernel :: () => IO a -> DnaMonad a
 execKernel io = do
     -- FIXME: we can leave thread running! Clean up properly!
     a <- liftIO $ async io
-    handleRecieve messageHandlers $ matchSTM' (waitSTM a)
+    handleRecieve messageHandlers [matchSTM' (waitSTM a)]
 
 
 
@@ -109,15 +110,13 @@ execKernel io = do
 execDelay :: Serializable b
           => Location -> Shell a (Val b) -> DnaMonad (Promise b)
 -- IMMEDIATE
-execDelay loc (Shell aid _ src) = do
-    -- Notify shell's monitor about process
-    me <- lift getSelfPid
+execDelay _loc (Shell aid _ src) = do
+    me              <- liftP getSelfPid
+    (chSend,chRecv) <- liftP newChan
+    let recvEnd = RecvVal chSend
+    liftP $ doConnectActors src recvEnd
+    stConnDownstream . at aid .= Just (Right (SomeRecvEnd recvEnd))
     recordConnection aid (SingleActor me) []
-    -- Send destination to the shell process!
-    (chSend,chRecv) <- lift newChan
-    let param :: Serializable b => SendEnd (Val b) -> SendPort b -> Process ()
-        param (SendVal ch) p = sendChan ch $ destFromLoc loc p
-    lift $ param src chSend
     return $ Promise chRecv
 
 
@@ -126,24 +125,21 @@ execDelayGroup (Shell child _ src) = do
     me            <- liftP getSelfPid
     (sendB,recvB) <- liftP newChan
     (sendN,recvN) <- liftP newChan
-    let param :: Serializable b => SendEnd (Grp b) -> SendPort b -> Process ()
-        param (SendGrp chans) chB = forM_ chans $ \ch -> sendChan ch (SendRemote [chB])
-    liftP $ param src sendB
+    let recvEnd = RecvReduce [(sendN,sendB)]
+    liftP $ doConnectActors src recvEnd
+    stConnDownstream . at child .= Just (Right (SomeRecvEnd recvEnd))
     recordConnection child (SingleActor me) [sendN]
     return $ Group recvB recvN
 
 execGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> DnaMonad b
-execGatherM grp step b0 = do
-    -- FIXME: concurrency
-    liftP $ doGatherM grp step b0
-
+execGatherM = doGatherDna messageHandlers
 
 
 -- Wait until message from channel arrives
 execAwait :: Serializable a => Promise a -> DnaMonad a
 -- BLOCKING
 execAwait (Promise ch) =
-    handleRecieve messageHandlers $ matchChan' ch
+    handleRecieve messageHandlers [matchChan' ch]
 
 -- Send parameter
 execSendParam :: Serializable a => a -> Shell (Val a) b -> DnaMonad ()
@@ -154,27 +150,23 @@ execSendParam a (Shell _ recv _) = case recv of
         RecvGrp p -> lift $ forM_ p $ \ch -> sendChan ch a
 
 -- Connect two shells to each other
-execConnect :: Serializable b => Shell a (tag b) -> Shell (tag b) c -> DnaMonad  ()
+execConnect :: (Typeable tag, Serializable b) => Shell a (tag b) -> Shell (tag b) c -> DnaMonad  ()
 -- IMMEDIATE
-execConnect (Shell childA _ sendEnd) (Shell childB recvEnd _) =
+execConnect (Shell childA _ sendEnd) (Shell childB recvEnd _) = do
+  liftP $ doConnectActors sendEnd recvEnd
+  stConnDownstream . at childA .= Just (Left (childB, SomeRecvEnd recvEnd))
+  stConnUpstream   . at childB .= Just (childA, SomeSendEnd sendEnd)
   case (sendEnd,recvEnd) of
     -- Val
     (SendVal chDst, RecvVal chB) -> do
-        -- FIXME: Do we want to allow unsafe send here?
-        lift $ sendChan chDst $ SendRemote [chB]
         recordConnection childA childB []
     (SendVal chDst, RecvBroadcast (RecvGrp chans)) -> do
-        lift $ sendChan chDst $ SendRemote chans
         recordConnection childA childB []
     -- Grp
     (SendGrp chDst, RecvReduce chReduce) -> do
-        let chB = map snd chReduce
-        lift $ forM_ chDst $ \ch -> sendChan ch $ SendRemote chB
         recordConnection childA childB [chN | (chN,_) <- chReduce ]
     -- MR
     (SendMR chDst, RecvMR chans) -> do
-        let chB = map snd chans
-        lift $ forM_ chDst $ \ch -> sendChan ch chB
         recordConnection childA childB [chN | (chN,_) <- chans]
     -- IMPOSSIBLE
     --
@@ -186,8 +178,6 @@ execConnect (Shell childA _ sendEnd) (Shell childB recvEnd _) =
 ----------------------------------------------------------------
 -- Resource and connection management
 ----------------------------------------------------------------
-
-
 
 -- Connect actor to another actor
 recordConnection
@@ -235,10 +225,5 @@ recordConnection (ActorGroup gid) dest port = runController $
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
-
-destFromLoc :: Location -> SendPort a -> Dest a
-destFromLoc Local  = SendLocally
-destFromLoc Remote = SendRemote . (:[])
-
 
 remotable [ 'theInterpreter ]
