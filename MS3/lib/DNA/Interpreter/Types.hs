@@ -1,12 +1,9 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE BangPatterns               #-}
-{-# LANGUAGE DeriveDataTypeable         #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE ExistentialQuantification  #-}
+{-# LANGUAGE DeriveDataTypeable        #-}
+{-# LANGUAGE DeriveGeneric             #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE RankNTypes                #-}
 -- | Data types for interpretation of DNA DSL using cloud haskell
 module DNA.Interpreter.Types where
 
@@ -26,6 +23,7 @@ import qualified Data.Set as Set
 import           Data.Set   (Set)
 import GHC.Generics  (Generic)
 
+import DNA.CH
 import DNA.Types
 import DNA.Lens
 import DNA.DSL
@@ -72,6 +70,9 @@ runDnaMonad (Rank rnk) (GroupSize grp) interp nodes =
            , _stUsedResources = Map.empty
            , _stChildren      = Map.empty
            , _stGroups        = Map.empty
+           , _stConnUpstream  = Map.empty
+           , _stConnDownstream= Map.empty
+           , _stRestartable   = Map.empty
            , _stCountRank     = Map.empty
            , _stPooledProcs   = Map.empty
            }
@@ -118,18 +119,25 @@ data StateDNA = StateDNA
     , _stRank        :: !Int
     , _stGroupSize   :: !Int
     , _stInterpreter :: !(Closure DnaInterpreter)
-      
+
+      -- Resource
     , _stNodePool      :: !(Set NodeId)
       -- ^ Unused nodes which could be reused
     , _stUsedResources :: !(Map ProcessId VirtualCAD)
       -- ^ Resources used by some process
-
-      -- ^ All available nodes and their status
+      
+      -- Monitor resources
     , _stChildren :: !(Map ProcessId (Either ProcState GroupID))
       -- ^ State of monitored processes
     , _stGroups   :: !(Map GroupID GroupState)
       -- ^ State of groups of processes
-
+    , _stConnUpstream   :: !(Map ActorID (ActorID,SomeSendEnd))
+      -- ^ Upstream connection of an actor.
+    , _stConnDownstream :: !(Map ActorID (Either (ActorID,SomeRecvEnd) SomeRecvEnd))
+      -- ^ Downstream connection of an actor. Could be parent act
+    , _stRestartable    :: !(Map ProcessId (Match' (SomeRecvEnd,SomeSendEnd), Closure (Process ()), Message))
+      -- ^ Set of processes which could be restarted
+      
       -- Many rank actors
     , _stCountRank :: !(Map GroupID (Int,Int))
       -- ^ Unused ranks 
@@ -195,6 +203,15 @@ stNodePool = lens _stNodePool (\a x -> x { _stNodePool = a})
 stUsedResources :: Lens' StateDNA (Map ProcessId VirtualCAD)
 stUsedResources = lens _stUsedResources (\a x -> x { _stUsedResources = a})
 
+stConnUpstream :: Lens' StateDNA (Map ActorID (ActorID,SomeSendEnd))
+stConnUpstream = lens _stConnUpstream (\a x -> x { _stConnUpstream = a})
+
+stConnDownstream :: Lens' StateDNA (Map ActorID (Either (ActorID,SomeRecvEnd) SomeRecvEnd))
+stConnDownstream = lens _stConnDownstream (\a x -> x { _stConnDownstream = a})
+
+stRestartable :: Lens' StateDNA (Map ProcessId (Match' (SomeRecvEnd,SomeSendEnd), Closure (Process ()), Message))
+stRestartable = lens _stRestartable (\a x -> x { _stRestartable = a})
+
 stCountRank :: Lens' StateDNA (Map GroupID (Int,Int))
 stCountRank = lens _stCountRank (\a x -> x { _stCountRank = a})
 
@@ -204,7 +221,7 @@ stPooledProcs = lens _stPooledProcs (\a x -> x { _stPooledProcs = a})
 -- Process event where we dispatch on PID of process
 handlePidEvent
     :: ProcessId
-    -> (Controller ())
+    -> Controller ()
     -- What to do when PID not found
     -> (ProcState  -> Controller (Maybe ProcState))
     -- What to do with single process
@@ -229,6 +246,9 @@ handlePidEvent pid none onProc onGrp = do
 dropPID :: ProcessId -> Controller ()
 dropPID pid = do
     stChildren . at pid .= Nothing
+    stConnUpstream   . at (SingleActor pid) .= Nothing
+    stConnDownstream . at (SingleActor pid) .= Nothing
+    stRestartable    . at pid .= Nothing
     mr <- use $ stUsedResources . at pid
     case mr of
       Nothing -> return ()
@@ -239,8 +259,10 @@ dropPID pid = do
 dropGroup :: GroupID -> Controller ()
 dropGroup gid = do
     stGroups      . at gid .= Nothing
-    -- stPooledProcs . at gid .= Nothing
-    -- stCountRank   . at gid .= Nothing
+    stPooledProcs . at gid .= Nothing
+    stCountRank   . at gid .= Nothing
+    stConnUpstream   . at (ActorGroup gid) .= Nothing
+    stConnDownstream . at (ActorGroup gid) .= Nothing
     children <- use stChildren
     let pids = [p | (p,Right gid') <- Map.toList children
                   , gid' == gid

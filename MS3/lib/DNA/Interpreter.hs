@@ -29,7 +29,7 @@ import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
 -- import Data.Binary   (Binary)
--- import Data.Typeable (Typeable)
+import Data.Typeable (Typeable)
 -- import qualified Data.Map as Map
 -- import           Data.Map   (Map)
 import qualified Data.Set as Set
@@ -101,7 +101,7 @@ execKernel :: () => IO a -> DnaMonad a
 execKernel io = do
     -- FIXME: we can leave thread running! Clean up properly!
     a <- liftIO $ async io
-    handleRecieve messageHandlers $ matchSTM' (waitSTM a)
+    handleRecieve messageHandlers [matchSTM' (waitSTM a)]
 
 
 
@@ -112,7 +112,9 @@ execDelay :: Serializable b
 execDelay _loc (Shell aid _ src) = do
     me              <- liftP getSelfPid
     (chSend,chRecv) <- liftP newChan
-    liftP $ doConnectActors src (RecvVal chSend)
+    let recvEnd = RecvVal chSend
+    liftP $ doConnectActors src recvEnd
+    stConnDownstream . at aid .= Just (Right (SomeRecvEnd recvEnd))
     recordConnection aid (SingleActor me) []
     return $ Promise chRecv
 
@@ -122,22 +124,21 @@ execDelayGroup (Shell child _ src) = do
     me            <- liftP getSelfPid
     (sendB,recvB) <- liftP newChan
     (sendN,recvN) <- liftP newChan
-    liftP $ doConnectActors src (RecvReduce [(sendN,sendB)])
+    let recvEnd = RecvReduce [(sendN,sendB)]
+    liftP $ doConnectActors src recvEnd
+    stConnDownstream . at child .= Just (Right (SomeRecvEnd recvEnd))
     recordConnection child (SingleActor me) [sendN]
     return $ Group recvB recvN
 
 execGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> DnaMonad b
-execGatherM grp step b0 = do
-    -- FIXME: concurrency
-    liftP $ doGatherM grp step b0
-
+execGatherM = doGatherDna messageHandlers
 
 
 -- Wait until message from channel arrives
 execAwait :: Serializable a => Promise a -> DnaMonad a
 -- BLOCKING
 execAwait (Promise ch) =
-    handleRecieve messageHandlers $ matchChan' ch
+    handleRecieve messageHandlers [matchChan' ch]
 
 -- Send parameter
 execSendParam :: Serializable a => a -> Shell (Val a) b -> DnaMonad ()
@@ -148,10 +149,12 @@ execSendParam a (Shell _ recv _) = case recv of
         RecvGrp p -> lift $ forM_ p $ \ch -> sendChan ch a
 
 -- Connect two shells to each other
-execConnect :: Serializable b => Shell a (tag b) -> Shell (tag b) c -> DnaMonad  ()
+execConnect :: (Typeable tag, Serializable b) => Shell a (tag b) -> Shell (tag b) c -> DnaMonad  ()
 -- IMMEDIATE
 execConnect (Shell childA _ sendEnd) (Shell childB recvEnd _) = do
   liftP $ doConnectActors sendEnd recvEnd
+  stConnDownstream . at childA .= Just (Left (childB, SomeRecvEnd recvEnd))
+  stConnUpstream   . at childB .= Just (childA, SomeSendEnd sendEnd)
   case (sendEnd,recvEnd) of
     -- Val
     (SendVal chDst, RecvVal chB) -> do
@@ -170,38 +173,10 @@ execConnect (Shell childA _ sendEnd) (Shell childB recvEnd _) = do
     _ -> error "Impossible: pattern match is not exhaustive"
 
 
--- Send channels to actor so they know where data should be sent
-doConnectActors
-    :: (Serializable a)
-    => SendEnd (tag a) -> RecvEnd (tag a) -> Process ()
-doConnectActors sendEnd recvEnd =
-  case (sendEnd,recvEnd) of
-    -- Val
-    (SendVal chDst, RecvVal chB) -> do
-        -- FIXME: Do we want to allow unsafe send here?
-        --        Maybe we should just use unsafe send and call it a day?
-        sendChan chDst $ SendRemote [chB]
-    (SendVal chDst, RecvBroadcast (RecvGrp chans)) -> do
-        sendChan chDst $ SendRemote chans
-    -- Grp
-    (SendGrp chDst, RecvReduce chReduce) -> do
-        let chB = map snd chReduce
-        forM_ chDst $ \ch -> sendChan ch $ SendRemote chB
-    -- MR
-    (SendMR chDst, RecvMR chans) -> do
-        let chB = map snd chans
-        forM_ chDst $ \ch -> sendChan ch chB
-    -- IMPOSSIBLE
-    --
-    -- GHC cannot understand that pattern match is exhaustive
-    _ -> error "Impossible: pattern match is not exhaustive"
-
 
 ----------------------------------------------------------------
 -- Resource and connection management
 ----------------------------------------------------------------
-
-
 
 -- Connect actor to another actor
 recordConnection

@@ -42,7 +42,7 @@ ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
     -- Clean up
     liftIO $ removeFile fname
     profile "compute sum" [FloatHint 0 (2 * fromIntegral n)] $
-      return $ (S.sum $ S.zipWith (*) va vb :: Double)
+      return (S.sum $ S.zipWith (*) va vb :: Double)
 
 -- | Calculate dot product of slice of vector.
 --
@@ -51,7 +51,7 @@ ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
 --  * Input:  slice of vectors which we want to use
 --  * Output: dot product of slice 
 ddpProductSliceFailure :: Actor Slice Double
-ddpProductSliceFailure = actor $ \(fullSlice) -> -- duration "vector slice" $ do
+ddpProductSliceFailure = actor $ \(fullSlice) -> duration "vector slice" $ do
   do  
     -- Calculate offsets
     nProc <- groupSize
@@ -81,7 +81,8 @@ ddpProductSliceFailure = actor $ \(fullSlice) -> -- duration "vector slice" $ do
     -- Clean up
     liftIO $ removeFile fname
     profile "compute sum" [FloatHint 0 (2 * fromIntegral n)] $
-      return $ (S.sum $ S.zipWith (*) va vb :: Double)
+      return (S.sum $ S.zipWith (*) va vb :: Double)
+
 
 remotable [ 'ddpProductSlice
           , 'ddpProductSliceFailure

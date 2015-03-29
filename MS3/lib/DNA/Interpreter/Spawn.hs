@@ -9,6 +9,7 @@
 {-# LANGUAGE TemplateHaskell            #-}
 -- | Code for starting remote actors
 module DNA.Interpreter.Spawn (
+      -- * Spawning actors
       execSpawnActor
     , execSpawnCollector
     , execSpawnGroup
@@ -16,6 +17,8 @@ module DNA.Interpreter.Spawn (
     , execSpawnCollectorGroup
     , execSpawnCollectorGroupMR
     , execSpawnMappers
+      -- * Connecting actors
+    , doConnectActors  
     ) where
 
 import Control.Applicative
@@ -31,7 +34,7 @@ import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
 -- import Data.Binary   (Binary)
--- import Data.Typeable (Typeable)
+import Data.Typeable (cast)
 -- import qualified Data.Map as Map
 -- import           Data.Map   (Map)
 import Data.Monoid
@@ -69,7 +72,7 @@ execSpawnActor res act = do
     --
     -- FIXME: We need to abort if process which should send us shell
     --        dies.
-    (r,s) <- handleRecieve messageHandlers matchMsg'
+    (r,s) <- handleRecieve messageHandlers [matchMsg']
     return $ Shell (SingleActor pid) r s
 
 
@@ -86,7 +89,7 @@ execSpawnCollector res act = do
     -- Get back shell for the actor
     --
     -- FIXME: See above
-    (r,s) <- handleRecieve messageHandlers matchMsg'
+    (r,s) <- handleRecieve messageHandlers [matchMsg']
     return $ Shell (SingleActor pid) r s
 
 -- | Spawn group of normal processes
@@ -106,7 +109,7 @@ execSpawnGroup res resG act = do
     -- FIXME: Fault tolerance. We need to account for the fact some
     --        processes can crash before we have chance to get shell
     --        from them
-    sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
+    sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     return $ assembleShellGroup gid sh
 
 execSpawnGroupN
@@ -122,7 +125,7 @@ execSpawnGroupN res resG n act = do
              $ closureApply $(mkStaticClosure 'runActorManyRanks) <$> act
     -- Assemble group
     -- FIXME: Fault tolerance
-    msgs <- replicateM k $ handleRecieve messageHandlers matchMsg'
+    msgs <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     let (chN,shells) = unzip msgs
     stPooledProcs . at gid .= Just chN
     return $ broadcast $ assembleShellGroup gid shells
@@ -140,7 +143,7 @@ execSpawnCollectorGroup res resG act = do
              $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
     -- Assemble group
     -- FIXME: Fault tolerance
-    sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
+    sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     return $ assembleShellGroupCollect gid sh
 
 -- | Start group of collector processes
@@ -156,7 +159,7 @@ execSpawnCollectorGroupMR res resG act = do
              $ closureApply $(mkStaticClosure 'runCollectActorMR) <$> act
     -- Assemble group
     -- FIXME: Fault tolerance
-    sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
+    sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     return $ assembleShellGroupCollectMR gid sh
 
 execSpawnMappers
@@ -171,7 +174,7 @@ execSpawnMappers res resG act = do
              $ closureApply $(mkStaticClosure 'runMapperActor) <$> act
     -- Assemble group
     -- FIXME: Fault tolerance
-    sh <- replicateM k $ handleRecieve messageHandlers matchMsg'
+    sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     return $ assembleShellMapper gid sh
 
 
@@ -308,6 +311,43 @@ assembleShellMapper gid shells =
     getSend :: (a, SendEnd (MR b)) -> [SendPort [SendPort (Maybe b)]]
     getSend (_, SendMR ch) = ch
 
+
+
+----------------------------------------------------------------
+-- Connecting actors
+----------------------------------------------------------------
+
+-- Send channels to actor so they know where data should be sent
+doConnectActors
+    :: (Serializable a)
+    => SendEnd (tag a) -> RecvEnd (tag a) -> Process ()
+doConnectActors sendEnd recvEnd =
+  case (sendEnd,recvEnd) of
+    -- Val
+    (SendVal chDst, RecvVal chB) ->
+        -- FIXME: Do we want to allow unsafe send here?
+        --        Maybe we should just use unsafe send and call it a day?
+        sendChan chDst $ SendLocally chB
+    (SendVal chDst, RecvBroadcast (RecvGrp chans)) ->
+        sendChan chDst $ SendRemote chans
+    -- Grp
+    (SendGrp chDst, RecvReduce chReduce) -> do
+        let chB = map snd chReduce
+        forM_ chDst $ \ch -> sendChan ch $ SendRemote chB
+    -- MR
+    (SendMR chDst, RecvMR chans) -> do
+        let chB = map snd chans
+        forM_ chDst $ \ch -> sendChan ch chB
+    -- IMPOSSIBLE
+    --
+    -- GHC cannot understand that pattern match is exhaustive
+    _ -> error "Impossible: pattern match is not exhaustive"
+
+doConnectActorsExistentially :: SomeSendEnd -> SomeRecvEnd -> Process ()
+doConnectActorsExistentially (SomeSendEnd s) (SomeRecvEnd rcv) =
+  case cast rcv of
+    Nothing -> error "Ooops! Types do not match"
+    Just r  -> doConnectActors s r
 
 
 ----------------------------------------------------------------

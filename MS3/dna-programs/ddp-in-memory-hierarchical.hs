@@ -53,12 +53,12 @@ main :: IO ()
 main = dnaRun rtable $ do
     -- Vector size:
     --
-    -- > 100e4 doubles per node = 800 MB per node
+    -- > 100e3 doubles per node = 800 MB per node
     -- > 20 nodes
-    let n        = 2000*1000*1000
+    let n        = 2*1000*1000
         expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
     -- Run it
-    b <- eval ddpDotProduct (Slice 0 n)
+    b <- eval ddpDotProductMaster (Slice 0 n)
     liftIO $ putStrLn $ concat
       [ "RESULT: ", show b
       , " EXPECTED: ", show expected

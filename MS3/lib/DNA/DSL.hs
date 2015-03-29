@@ -15,6 +15,7 @@ module DNA.DSL (
     , useLocal
     , failout
     , timeout
+    , respawnOnFail
       -- * Actors
     , Actor(..)
     , actor
@@ -142,7 +143,7 @@ data DnaF a where
 
     -- | Connect running actors
     Connect
-      :: Serializable b
+      :: (Serializable b, Typeable tag)
       => Shell a (tag b)
       -> Shell (tag b) c
       -> DnaF ()
@@ -184,6 +185,7 @@ data SpawnFlag
     = UseLocal
     | UseFailout
     | UseTimeout Double
+    | UseRespawn
     deriving (Show,Eq,Typeable)
 
 runSpawn :: Spawn a -> (a,[SpawnFlag])
@@ -197,6 +199,9 @@ failout = Spawn $ tell [UseFailout]
 
 timeout :: Double -> Spawn ()
 timeout t = Spawn $ tell [UseTimeout t]
+
+respawnOnFail :: Spawn ()
+respawnOnFail = Spawn $ tell [UseRespawn]
 
 newtype Promise a = Promise (ReceivePort a)
 
@@ -307,7 +312,7 @@ gather g f = gatherM g (\b a -> return $ f b a)
 sendParam :: Serializable a => a -> Shell (Val a) b -> DNA ()
 sendParam a sh = DNA $ singleton $ SendParam a sh
 
-connect :: (Serializable b)
+connect :: (Serializable b, Typeable tag)
         => Shell a (tag b) -> Shell (tag b) c -> DNA ()
 connect a b = DNA $ singleton $ Connect a b
 

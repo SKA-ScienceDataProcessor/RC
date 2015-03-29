@@ -18,6 +18,7 @@ module DNA.Interpreter.Run (
     , runDnaParam 
       -- * Helpers
     , doGatherM
+    , doGatherDna
       -- * CH
     , runActor__static
     , runActorManyRanks__static
@@ -36,6 +37,7 @@ import Data.Typeable (Typeable)
 import DNA.Types
 import DNA.DSL
 import DNA.Interpreter.Types
+import DNA.Interpreter.Message
 
 
 ----------------------------------------------------------------
@@ -58,7 +60,6 @@ runActor (Actor action) = do
     a   <- receiveChan chRecvParam
     !b  <- runDnaParam p (action a)
     sendToDestChan chRecvDst b
-
 
 -- | Run actor for group of processes which allow more than 1 task per
 --   actor.
@@ -209,6 +210,27 @@ doGatherM (Group chA chN) f x0 = do
             r <- receiveWait [ matchChan chA (return . Right)
                              , matchChan chN (return . Left)
                              ]
+            case r of
+              Right a -> loop (n + 1) tot =<< liftIO (f b a)
+              Left  k -> loop n k b
+    loop 0 (-1) x0
+
+
+doGatherDna
+    :: Serializable a
+    => [MatchS]
+    -> Group a
+    -> (b -> a -> IO b)
+    -> b
+    -> DnaMonad b
+doGatherDna ms (Group chA chN) f x0 = do
+    let loop n tot !b
+            | n >= tot && tot >= 0 = return b
+        loop n tot !b = do
+            r <- handleRecieve ms
+                     [ Right `fmap` matchChan' chA
+                     , Left  `fmap` matchChan' chN
+                     ]
             case r of
               Right a -> loop (n + 1) tot =<< liftIO (f b a)
               Left  k -> loop n k b
