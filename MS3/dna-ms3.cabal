@@ -137,3 +137,16 @@ executable ddp-in-memory
   other-modules:
     DDP
     DDP_Slice
+
+executable GCF
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      Sketches/GCF_new Sketches/FFT
+  main-is:             GCF.hs
+  build-depends:
+    base >=4.6,
+    mmap,
+    cuda,
+    cufft
+  other-modules:
+    FFT
