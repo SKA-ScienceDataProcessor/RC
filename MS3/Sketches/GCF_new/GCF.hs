@@ -13,13 +13,18 @@ import Foreign.Storable
 import Foreign.Ptr
 -- import Foreign.Marshal.Alloc -- for DEBUG only!
 import Data.Time.Clock
+{-
 import System.IO.MMap (
     mmapFilePtr
   , munmapFilePtr
   , Mode(..)
   )
+ -}
+import qualified Data.ByteString.Unsafe      as BS
+import qualified Data.ByteString             as BS
 -- import Text.Printf(printf)
 import qualified Foreign.CUDA.Driver as CUDA
+import qualified Foreign.CUDA.Driver.Stream as CUDAS
 
 import FFT
 
@@ -86,6 +91,7 @@ doCuda t2 ws_hsupps gcfSize = do
     CUDA.allocaArray (256*256) $ \(ffpc :: CxDoubleDevPtr) ->
       CUDA.allocaArray (256*256*8*8) $ \(overo :: CxDoubleDevPtr) ->
         CUDA.allocaArray (256*256*8*8) $ \(overt :: CxDoubleDevPtr) ->
+          -- FIXME: Factor CUDA initialization and host ptr creation out
           CUDA.allocaArray gcfSize $ \(out :: CxDoubleDevPtr) ->
             CUDA.allocaArray 1 $ \(normp :: DoubleDevPtr Double) -> do
               st <- getCurrentTime
@@ -119,9 +125,24 @@ doCuda t2 ws_hsupps gcfSize = do
                 go [] _ = do
                             ft <- getCurrentTime
                             print (diffUTCTime ft st)
+                            {-
                             (ptr_host, rawsize, offset, _size) <- mmapFilePtr "GCF.dat" ReadWriteEx $ Just (0, gcfSize * 16)
                             CUDA.peekArray gcfSize out (plusPtr ptr_host offset)
                             munmapFilePtr ptr_host rawsize
+                            -}
+                            ptr_host <- CUDA.mallocHostArray [CUDA.DeviceMapped, CUDA.WriteCombined] gcfSize
+                            writeStreams <- sequence $ replicate 16 (CUDAS.create [])
+                            let chunkSize = gcfSize `div` 16
+                            mapM_ (\(i, str) -> 
+                                      let off = chunkSize * i
+                                      in CUDA.peekArrayAsync chunkSize (CUDA.advanceDevPtr out off) (CUDA.advanceHostPtr ptr_host off) (Just str)
+                              ) $ zip [0..15] writeStreams
+                            CUDA.sync
+                            mapM_ (CUDAS.destroy) writeStreams
+                            BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr ptr_host), gcfSize * sizeOf (undefined :: CxDouble)) >>= BS.writeFile "GCF.dat"
+                            CUDA.freeHost ptr_host
+                            ft1 <- getCurrentTime
+                            print (diffUTCTime ft1 ft)
               go ws_hsupps out
   CUDA.destroy ctx
 
