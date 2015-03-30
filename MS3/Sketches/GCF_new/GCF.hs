@@ -12,13 +12,13 @@ import Data.Int
 import Foreign.Storable
 import Foreign.Ptr
 -- import Foreign.Marshal.Alloc -- for DEBUG only!
--- import Data.Time.Clock
+import Data.Time.Clock
 import System.IO.MMap (
     mmapFilePtr
   , munmapFilePtr
   , Mode(..)
   )
-import Text.Printf(printf)
+-- import Text.Printf(printf)
 import qualified Foreign.CUDA.Driver as CUDA
 
 import FFT
@@ -63,8 +63,8 @@ kernelNames =
   , "wextract1"
   ]
 
-doCuda :: Double -> [(Double, Int32)] -> IO ()
-doCuda t2 ws_hsupps = do
+doCuda :: Double -> [(Double, Int)] -> Int -> IO ()
+doCuda t2 ws_hsupps gcfSize = do
   -- hnormp <- malloc  -- for DEBUG only!
   CUDA.initialise []
   dev0 <- CUDA.device 0
@@ -86,50 +86,50 @@ doCuda t2 ws_hsupps = do
     CUDA.allocaArray (256*256) $ \(ffpc :: CxDoubleDevPtr) ->
       CUDA.allocaArray (256*256*8*8) $ \(overo :: CxDoubleDevPtr) ->
         CUDA.allocaArray (256*256*8*8) $ \(overt :: CxDoubleDevPtr) ->
-          CUDA.allocaArray 1 $ \(normp :: DoubleDevPtr Double) ->
-            let
-              go (w, hsupp) = do
-                 let
-                   supp2 = let supp = 1 + 2 * fromIntegral hsupp in supp * supp
-                   suff = if w < 0.0 then "n" else "p"
-                   fname = printf "GCF%s%02d.dat" suff hsupp
-                 CUDA.sync
-                 print fname
-                 -- st <- getCurrentTime
-                 launchOnFF wkernff 1 [CUDA.VArg ffpc, CUDA.VArg ffp0, CUDA.VArg w]
-                 CUDA.memset (CUDA.castDevPtr overo) (256*256*8*8 * 4) (0 :: Int32)
-                 CUDA.sync
-                 launchOnFF copy_2_over 1 [CUDA.VArg overo, CUDA.VArg ffpc]
-                 fft2dComplexDSqInplaceCentered Nothing Inverse (256*8) overo ifftshift_kernel fftshift_kernel
-                 launchOnFF transpose_over0 64 [CUDA.VArg overt, CUDA.VArg overo]
-                 CUDA.sync
-                 let
-                   normAndExtractLayers outp layerp n
-                     | n > 0 = do
-                                 launchReduce reduce_512_odd layerp normp (256*256)
-                                 CUDA.sync
-                                 -- CUDA.peekArray 1 normp hnormp -- DEBUG
-                                 -- peek hnormp >>= print
-                                 launchNormalize normalize normp layerp (256*256)
-                                 CUDA.sync
-                                 launchOnFF wextract1 1 [CUDA.IArg hsupp, CUDA.VArg outp, CUDA.VArg layerp]
-                                 CUDA.sync
-                                 normAndExtractLayers (CUDA.advanceDevPtr outp supp2) (CUDA.advanceDevPtr layerp $ 256*256) (n-1)
-                     | otherwise = return ()
-                 -- We reuse overo array here because we need no it's data anymore
-                 --   and next iteration it is zeroed anyway.
-                 normAndExtractLayers overo overt (8*8 :: Int)
-                 -- ft <- getCurrentTime
-                 -- Output the layer
-                 (ptr_host, rawsize, offset, _size) <- mmapFilePtr fname ReadWriteEx $ Just (0, supp2 * 16 * 8 * 8)
-                 CUDA.peekArray (supp2 * 8 * 8) overo (plusPtr ptr_host offset)
-                 munmapFilePtr ptr_host rawsize
-                 -- print (diffUTCTime ft st)
-            in mapM_ go ws_hsupps
+          CUDA.allocaArray gcfSize $ \(out :: CxDoubleDevPtr) ->
+            CUDA.allocaArray 1 $ \(normp :: DoubleDevPtr Double) -> do
+              st <- getCurrentTime
+              let
+                go ((w, hsupp):rest) outp0 = do
+                   let
+                     supp2 = let supp = 1 + 2 * fromIntegral hsupp in supp * supp
+                   CUDA.sync
+                   launchOnFF wkernff 1 [CUDA.VArg ffpc, CUDA.VArg ffp0, CUDA.VArg w]
+                   CUDA.memset (CUDA.castDevPtr overo) (256*256*8*8 * 4) (0 :: Int32)
+                   CUDA.sync
+                   launchOnFF copy_2_over 1 [CUDA.VArg overo, CUDA.VArg ffpc]
+                   fft2dComplexDSqInplaceCentered Nothing Inverse (256*8) overo ifftshift_kernel fftshift_kernel
+                   launchOnFF transpose_over0 64 [CUDA.VArg overt, CUDA.VArg overo]
+                   CUDA.sync
+                   let
+                     normAndExtractLayers outp layerp n
+                       | n > 0 = do
+                                   launchReduce reduce_512_odd layerp normp (256*256)
+                                   CUDA.sync
+                                   -- CUDA.peekArray 1 normp hnormp -- DEBUG
+                                   -- peek hnormp >>= print
+                                   launchNormalize normalize normp layerp (256*256)
+                                   CUDA.sync
+                                   launchOnFF wextract1 1 [CUDA.IArg (fromIntegral hsupp), CUDA.VArg outp, CUDA.VArg layerp]
+                                   CUDA.sync
+                                   normAndExtractLayers (CUDA.advanceDevPtr outp supp2) (CUDA.advanceDevPtr layerp $ 256*256) (n-1)
+                       | otherwise = return ()
+                   normAndExtractLayers outp0 overt (8*8 :: Int)
+                   go rest (CUDA.advanceDevPtr outp0 $ supp2 * 8 * 8)
+                go [] _ = do
+                            ft <- getCurrentTime
+                            print (diffUTCTime ft st)
+                            (ptr_host, rawsize, offset, _size) <- mmapFilePtr "GCF.dat" ReadWriteEx $ Just (0, gcfSize * 16)
+                            CUDA.peekArray gcfSize out (plusPtr ptr_host offset)
+                            munmapFilePtr ptr_host rawsize
+              go ws_hsupps out
   CUDA.destroy ctx
 
-main :: IO ()
-main = doCuda 0.25 $ wsn ++ wsp
+doit :: Int -> Double -> Int -> Double -> IO ()
+doit n t2 hsupp_step wstep = doCuda t2 wsp sizeOfGCFInComplexD
   where
-    wsp = take 33 $ iterate (\(w, hs) -> (w + 50.0, hs+4)) (0.0, 0)
-    wsn = reverse $ map (\(w, hs) -> (-w, hs)) $ tail wsp
+    wsp = take n $ iterate (\(w, hs) -> (w + wstep, hs + hsupp_step)) (0.0, 0)
+    sizeOfGCFInComplexD = sum $ map (\(_, hsupp) -> let supp = 2 * hsupp + 1 in supp * supp * 8 * 8) wsp
+
+main :: IO ()
+main = doit 32 0.25 4 50.0
