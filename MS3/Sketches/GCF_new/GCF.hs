@@ -24,7 +24,7 @@ import qualified Data.ByteString.Unsafe      as BS
 import qualified Data.ByteString             as BS
 -- import Text.Printf(printf)
 import qualified Foreign.CUDA.Driver as CUDA
-import qualified Foreign.CUDA.Driver.Stream as CUDAS
+-- import qualified Foreign.CUDA.Driver.Stream as CUDAS
 
 import FFT
 
@@ -131,6 +131,7 @@ doCuda t2 ws_hsupps gcfSize = do
                             munmapFilePtr ptr_host rawsize
                             -}
                             ptr_host <- CUDA.mallocHostArray [CUDA.DeviceMapped, CUDA.WriteCombined] gcfSize
+                            {-
                             writeStreams <- sequence $ replicate 16 (CUDAS.create [])
                             let chunkSize = gcfSize `div` 16
                             mapM_ (\(i, str) -> 
@@ -139,6 +140,9 @@ doCuda t2 ws_hsupps gcfSize = do
                               ) $ zip [0..15] writeStreams
                             CUDA.sync
                             mapM_ (CUDAS.destroy) writeStreams
+                             -}
+                            CUDA.peekArrayAsync gcfSize out ptr_host Nothing
+                            CUDA.sync
                             BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr ptr_host), gcfSize * sizeOf (undefined :: CxDouble)) >>= BS.writeFile "GCF.dat"
                             CUDA.freeHost ptr_host
                             ft1 <- getCurrentTime
