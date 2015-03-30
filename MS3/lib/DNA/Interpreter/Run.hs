@@ -223,11 +223,8 @@ doGatherM (Group chA chN) f x0 = do
                              , matchChan chN (return . Left)
                              ]
             case r of
-              Right a -> do
-                  loop (n + 1) tot =<< liftIO (f b a)
-              Left  k -> do
-                  liftIO $ print ("LEFT",k,n,tot)
-                  loop n k b
+              Right a -> loop (n + 1) tot =<< liftIO (f b a)
+              Left  k -> loop n k b
     loop 0 (-1) x0
 
 

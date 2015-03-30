@@ -124,8 +124,8 @@ handleProcessRestart oldPID mtch clos p0 = do
                 Just g <- use $ stGroups . at gid
                 g' <- case g of
                   GrUnconnected{} -> fatal "It should be connected"
-                  GrConnected ty ns _ pids -> return $
-                      GrConnected ty ns chN pids
+                  GrConnected ty (nR,_) _ pids -> return $
+                      GrConnected ty (nR,0) chN pids
                   GrFailed -> fatal "We should react to failure by now"
                 stGroups . at gid .= Just g'
             SingleActor _   -> return ()
