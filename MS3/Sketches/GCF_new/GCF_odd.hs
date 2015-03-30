@@ -22,6 +22,8 @@ import qualified Foreign.CUDA.Driver as CUDA
 
 import FFT
 
+import Paths_dna_ms3_sketches ( getDataFileName )
+
 -- Quick and dirty storable for Complex
 instance Storable CxDouble where
   sizeOf _ = 16
@@ -67,7 +69,7 @@ doCuda t2 ws_hsupps = do
   CUDA.initialise []
   dev0 <- CUDA.device 0
   ctx <- CUDA.create dev0 [CUDA.SchedAuto]
-  m <- CUDA.loadFile "all.cubin"
+  m <- CUDA.loadFile =<< getDataFileName "all.cubin"
   [  fftshift_kernel
    , ifftshift_kernel
    , reduce_512_odd

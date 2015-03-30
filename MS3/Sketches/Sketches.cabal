@@ -1,0 +1,29 @@
+
+name:                dna-ms3-sketches
+version:             0.1.0.0
+license:             Apache-2.0
+license-file:        ../LICENSE
+category:            Development
+build-type:          Custom
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      FFT
+  exposed-modules:     FFT
+  default-language:    Haskell2010
+  ghc-options:         -Wall
+  build-depends:       base >=4.7 && <4.8,
+                       cuda >=0.6.6,
+                       cufft
+
+executable GCF_new
+  hs-source-dirs:      GCF_new
+  main-is:             GCF_odd.hs
+  default-language:    Haskell2010
+  ghc-options:         -Wall
+  build-depends:       base >=4.7 && <4.8,
+                       dna-ms3-sketches,
+                       cuda,
+                       mmap
+  x-cuda-sources:      GCF_new/all.cu
+  x-cuda-options:      -gencode arch=compute_30,code=sm_30
