@@ -41,7 +41,6 @@ ddpDotProduct = actor $ \size -> do
     connect shell collector
     res <- delay Local collector
     x   <- duration "collecting vectors" $ await res
-    liftIO $ print "COOLL"
     return x
 
 remotable [ 'ddpDotProduct
@@ -64,7 +63,7 @@ main = dnaRun rtable $ do
     --
     -- > 100e3 doubles per node = 800 MB per node
     -- > 20 nodes
-    let n        = 20*1000*1000
+    let n        = 2*1000*1000
         expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
     -- Run it
     b <- eval ddpDotProductMaster (Slice 0 n)

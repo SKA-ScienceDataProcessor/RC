@@ -158,15 +158,15 @@ execConnect (Shell childA _ sendEnd) (Shell childB recvEnd _) = do
   stConnUpstream   . at childB .= Just (childA, SomeSendEnd sendEnd)
   case (sendEnd,recvEnd) of
     -- Val
-    (SendVal chDst, RecvVal chB) -> do
+    (SendVal _chDst, RecvVal _chB) ->
         recordConnection childA childB []
-    (SendVal chDst, RecvBroadcast (RecvGrp chans)) -> do
+    (SendVal _chDst, RecvBroadcast (RecvGrp _chans)) ->
         recordConnection childA childB []
     -- Grp
-    (SendGrp chDst, RecvReduce chReduce) -> do
+    (SendGrp _chDst, RecvReduce chReduce) ->
         recordConnection childA childB [chN | (chN,_) <- chReduce ]
     -- MR
-    (SendMR chDst, RecvMR chans) -> do
+    (SendMR _chDst, RecvMR chans) ->
         recordConnection childA childB [chN | (chN,_) <- chans]
     -- IMPOSSIBLE
     --

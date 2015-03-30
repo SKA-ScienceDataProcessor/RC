@@ -41,7 +41,6 @@ ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
     vb <- duration "receive read"    $ await futVB
     -- Clean up
     liftIO $ removeFile fname
-    liftIO $ print "FINIF"
     profile "compute sum" [FloatHint 0 (2 * fromIntegral n)] $
       return (S.sum $ S.zipWith (*) va vb :: Double)
 

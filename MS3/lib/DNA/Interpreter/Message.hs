@@ -20,10 +20,9 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict
-import Control.Concurrent.STM (STM)
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
-import qualified Data.Map as Map
+-- import qualified Data.Map as Map
 import Text.Printf
 
 import DNA.CH
@@ -124,8 +123,8 @@ handleProcessRestart oldPID mtch clos p0 = do
                 Just g <- use $ stGroups . at gid
                 g' <- case g of
                   GrUnconnected{} -> fatal "It should be connected"
-                  GrConnected ty ns _ pids -> return $
-                      GrConnected ty ns chN pids
+                  GrConnected ty (nR,_) _ pids -> return $
+                      GrConnected ty (nR,0) chN pids
                   GrFailed -> fatal "We should react to failure by now"
                 stGroups . at gid .= Just g'
             SingleActor _   -> return ()
@@ -158,7 +157,7 @@ handleProcessDone pid = do
                liftIO $ print $ "sending to " ++ show ch
                liftP $ forM_ ch $ \c -> sendChan c (nD + 1)
                return Nothing
-           GrConnected ty (nR, nD) ch acps -> do
+           GrConnected ty (nR, nD) ch acps ->
                return $ Just $ GrConnected ty (nR-1, nD+1) ch acps
            GrFailed -> fatal "Impossible: Process terminated in complete group"
         )
@@ -169,7 +168,7 @@ handleProcessCrash :: ProcessId -> Controller ()
 handleProcessCrash pid = do
     liftIO $ print ("Child CRASH",pid)
     handlePidEvent pid
-        (liftIO $ print "UNHANDLED")
+        (return ())
         (\p -> case p of
            -- When process from which we didn't receive channels
            -- crashes we have no other recourse but to terminate.
