@@ -11,7 +11,6 @@ import Data.Complex
 import Data.Int
 import Foreign.Storable
 import Foreign.Ptr
--- import Foreign.Marshal.Alloc -- for DEBUG only!
 -- import Data.Time.Clock
 import System.IO.MMap (
     mmapFilePtr
@@ -36,7 +35,7 @@ instance Storable CxDouble where
     pokeByteOff p 8 im
 
 launchOnFF :: CUDA.Fun -> Int -> [CUDA.FunParam] -> IO ()
-launchOnFF k xdim  = CUDA.launchKernel k (8,8,xdim) (32,32,1) 0 Nothing
+launchOnFF k xdim  = CUDA.launchKernel k (8,8,xdim) (16,16,1) 0 Nothing
 
 type DoubleDevPtr = CUDA.DevicePtr
 
@@ -47,7 +46,7 @@ launchReduce f idata odata n =
 
 launchNormalize :: CUDA.Fun -> DoubleDevPtr Double -> CxDoubleDevPtr -> Int32 -> IO ()
 launchNormalize f normp ptr len =
-  CUDA.launchKernel f (128,1,1) (512,1,1) 0 Nothing
+  CUDA.launchKernel f (259,1,1) (256,1,1) 0 Nothing
     [CUDA.VArg normp, CUDA.VArg ptr, CUDA.IArg len]
 
 kernelNames :: [String]
@@ -65,7 +64,6 @@ kernelNames =
 
 doCuda :: Double -> [(Double, Int32)] -> IO ()
 doCuda t2 ws_hsupps = do
-  -- hnormp <- malloc  -- for DEBUG only!
   CUDA.initialise []
   dev0 <- CUDA.device 0
   ctx <- CUDA.create dev0 [CUDA.SchedAuto]
@@ -80,12 +78,12 @@ doCuda t2 ws_hsupps = do
    , normalize
    , wextract1 ] <- mapM (CUDA.getFun m) kernelNames
 
-  CUDA.allocaArray (256*256) $ \(ffp0 :: CxDoubleDevPtr) -> do
+  CUDA.allocaArray (257*257) $ \(ffp0 :: CxDoubleDevPtr) -> do
     print "Preparing r2 ..."
     launchOnFF r2 1 [CUDA.VArg ffp0, CUDA.VArg t2]
-    CUDA.allocaArray (256*256) $ \(ffpc :: CxDoubleDevPtr) ->
-      CUDA.allocaArray (256*256*8*8) $ \(overo :: CxDoubleDevPtr) ->
-        CUDA.allocaArray (256*256*8*8) $ \(overt :: CxDoubleDevPtr) ->
+    CUDA.allocaArray (257*257) $ \(ffpc :: CxDoubleDevPtr) ->
+      CUDA.allocaArray (257*257*8*8) $ \(overo :: CxDoubleDevPtr) ->
+        CUDA.allocaArray (257*257*8*8) $ \(overt :: CxDoubleDevPtr) ->
           CUDA.allocaArray 1 $ \(normp :: DoubleDevPtr Double) ->
             let
               go (w, hsupp) = do
@@ -97,24 +95,22 @@ doCuda t2 ws_hsupps = do
                  print fname
                  -- st <- getCurrentTime
                  launchOnFF wkernff 1 [CUDA.VArg ffpc, CUDA.VArg ffp0, CUDA.VArg w]
-                 CUDA.memset (CUDA.castDevPtr overo) (256*256*8*8 * 4) (0 :: Int32)
+                 CUDA.memset (CUDA.castDevPtr overo) (257*257*8*8 * 4) (0 :: Int32)
                  CUDA.sync
                  launchOnFF copy_2_over 1 [CUDA.VArg overo, CUDA.VArg ffpc]
-                 fft2dComplexDSqInplaceCentered Nothing Inverse (256*8) overo ifftshift_kernel fftshift_kernel
+                 fft2dComplexDSqInplaceCentered Nothing Inverse (257*8) overo ifftshift_kernel fftshift_kernel
                  launchOnFF transpose_over0 64 [CUDA.VArg overt, CUDA.VArg overo]
                  CUDA.sync
                  let
                    normAndExtractLayers outp layerp n
                      | n > 0 = do
-                                 launchReduce reduce_512_odd layerp normp (256*256)
+                                 launchReduce reduce_512_odd layerp normp (257*257)
                                  CUDA.sync
-                                 -- CUDA.peekArray 1 normp hnormp -- DEBUG
-                                 -- peek hnormp >>= print
-                                 launchNormalize normalize normp layerp (256*256)
+                                 launchNormalize normalize normp layerp (257*257)
                                  CUDA.sync
                                  launchOnFF wextract1 1 [CUDA.IArg hsupp, CUDA.VArg outp, CUDA.VArg layerp]
                                  CUDA.sync
-                                 normAndExtractLayers (CUDA.advanceDevPtr outp supp2) (CUDA.advanceDevPtr layerp $ 256*256) (n-1)
+                                 normAndExtractLayers (CUDA.advanceDevPtr outp supp2) (CUDA.advanceDevPtr layerp $ 257*257) (n-1)
                      | otherwise = return ()
                  -- We reuse overo array here because we need no it's data anymore
                  --   and next iteration it is zeroed anyway.
