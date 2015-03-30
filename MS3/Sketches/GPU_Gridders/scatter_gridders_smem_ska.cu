@@ -45,7 +45,12 @@ __inline__ __device__ void loadIntoSharedMem (
       ;
     // Mirror if necessary for using in GCF
     if (w_plane < 0) w_plane = - w_plane;
-    uvo_shared[i] = {short(u), short(v), (char)w_plane, (char)(over_u * over + over_v), (short)get_supp(w_plane)};
+    // uvo_shared[i] = {short(u), short(v), (char)w_plane, (char)(over_u * over + over_v), (short)get_supp(w_plane)};
+    uvo_shared[i].u = short(u);
+    uvo_shared[i].v = short(v);
+    uvo_shared[i].gcf_layer_w_plane = (char)w_plane;
+    uvo_shared[i].gcf_layer_over = (char)(over_u * over + over_v);
+    uvo_shared[i].gcf_layer_supp = (short)get_supp(w_plane);
     vis_shared[i] = vis[i];
   }
 }
