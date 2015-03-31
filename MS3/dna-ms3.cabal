@@ -142,7 +142,7 @@ executable GCF
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -eventlog
   Hs-source-dirs:      Sketches/GCF_new Sketches/FFT
-  main-is:             GCF.hs
+  main-is:             GCFtest.hs
   build-depends:
     base >=4.6,
     mmap,
