@@ -24,45 +24,45 @@
 
 int main(int argc, const char * argv[])
 {
-  VisData * vdp;
+  VisData vd;
   FILE *f;
   char fname[1024];
 
   if (argc < 2) return -1;
   
   sprintf(fname, "%s.vis", argv[1]);
-  vdp = mkFromFile(fname);
+  int status = mkFromFile(&vd, fname);
 
-  if(vdp) {
+  if(status == 0) {
     Metrix m;
     __MKDNAME
     my_mk_dir(fname, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
-    double * uvws = (double*)malloc(vdp->num_points * 3 * DBL_SZ);
-    double * amps = (double*)malloc(vdp->num_points * 8 * DBL_SZ);
-    WMaxMin * bl_ws = (WMaxMin*)malloc(vdp->num_baselines * sizeof(WMaxMin));
-    BlWMap * bl_wis = (BlWMap *)malloc(vdp->num_baselines * sizeof(BlWMap));
+    double * uvws = (double*)malloc(vd.num_points * 3 * DBL_SZ);
+    double * amps = (double*)malloc(vd.num_points * 8 * DBL_SZ);
+    WMaxMin * bl_ws = (WMaxMin*)malloc(vd.num_baselines * sizeof(WMaxMin));
+    BlWMap * bl_wis = (BlWMap *)malloc(vd.num_baselines * sizeof(BlWMap));
 
     printf("Started to read and reshuffle ...\n");
-    if (readAndReshuffle(vdp, amps, uvws, &m, bl_ws, bl_wis) == 0) {
+    if (readAndReshuffle(&vd, amps, uvws, &m, bl_ws, bl_wis) == 0) {
       printf("Done. writing amps ...\n");
       __MKF("amp.dat")
-      fwrite(amps, 8 * sizeof(double), vdp->num_points, f);
+      fwrite(amps, 8 * sizeof(double), vd.num_points, f);
       fclose(f);
 
       printf("Done. writing uvws ...\n");
       __MKF("uvw.dat")
-      fwrite(uvws, 3 * sizeof(double), vdp->num_times_baselines, f);
+      fwrite(uvws, 3 * sizeof(double), vd.num_times_baselines, f);
       fclose(f);
 
       printf("Done. writing baseline stats ...\n");
       __MKF("bl_ws.dat")
-      fwrite(bl_ws, sizeof(WMaxMin), vdp->num_baselines, f);
+      fwrite(bl_ws, sizeof(WMaxMin), vd.num_baselines, f);
       fclose(f);
 
       printf("Done. writing baseline map ...\n");
       __MKF("bl_wis.dat")
-      fwrite(bl_wis, sizeof(int), vdp->num_baselines, f);
+      fwrite(bl_wis, sizeof(int), vd.num_baselines, f);
       fclose(f);
       
       printf("Done. writing metrix ...\n");
@@ -83,9 +83,9 @@ int main(int argc, const char * argv[])
         "minu = %f\n"
         "minv = %f\n"
         "minw = %f\n"
-       , vdp->num_channels
-       , vdp->num_times
-       , vdp->num_baselines
+       , vd.num_channels
+       , vd.num_times
+       , vd.num_baselines
        , m.maxu
        , m.maxv
        , m.maxw
@@ -97,13 +97,13 @@ int main(int argc, const char * argv[])
 
       printf("Done. printing baselines report ...\n");
       __MKF("bl_ws.txt")
-      for (int i = 0; i < vdp->num_baselines; i++)
+      for (int i = 0; i < vd.num_baselines; i++)
         fprintf(f, "%8d: %f %f\n", i, bl_ws[i].minw, bl_ws[i].maxw);
       fclose(f);
 
       printf("Done. printing baselines map ...\n");
       __MKF("bl_wis.txt")
-      for (int i = 0; i < vdp->num_baselines; i++)
+      for (int i = 0; i < vd.num_baselines; i++)
         fprintf(f, "%8d: %d\n", bl_wis[i].bl, bl_wis[i].wp);
       fclose(f);
 
@@ -115,8 +115,7 @@ int main(int argc, const char * argv[])
     free(bl_ws);
     free(bl_wis);
 
-    freeVisData(vdp);
-    deleteVisData(vdp);
+    freeBinHandler(&vd);
   }
   return 0;
 }

@@ -78,9 +78,8 @@ typedef struct WMaxMin_tag {
 } WMaxMin;
 
 
-VisData * mkFromFile(const char * filename);
-void freeVisData(VisData * vdp);
-void deleteVisData(VisData * vdp);
+int mkFromFile(VisData * vdp, const char * filename);
+void freeBinHandler(VisData * vdp);
 
 int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix * mp, WMaxMin * bl_ws, BlWMap * bl_wis);
 

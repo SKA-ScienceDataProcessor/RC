@@ -113,9 +113,9 @@ template<unsigned char data_type, typename... Args> int bin_read(
 const unsigned char vis_header_group = OSKAR_TAG_GROUP_VIS_HEADER;
 const unsigned char vis_block_group = OSKAR_TAG_GROUP_VIS_BLOCK;
 
-#define __CHECK  if (status != 0) {if (h != nullptr) oskar_binary_free(h); return nullptr;}
+#define __CHECK  if (status != 0) {if (h != nullptr) oskar_binary_free(h); return status;}
 
-VisData * mkFromFile(const char * filename) {
+int mkFromFile(VisData * vdp, const char * filename) {
   oskar_Binary* h;
   int      
       num_baselines
@@ -151,8 +151,7 @@ VisData * mkFromFile(const char * filename) {
 
   if ((amp_type & 0x0F) != OSKAR_DOUBLE) {
     printf("Invalid data !\n");
-    // return int(0xdeadbeef);
-    return nullptr;
+    return int(0xdeadbeef);
   }
 
   status = bin_read_d(h, vis_header_group, 0
@@ -171,7 +170,7 @@ VisData * mkFromFile(const char * filename) {
   num_times_baselines = num_times * num_baselines;
   num_points = num_times_baselines * num_channels;
 
-  return new VisData({
+  *vdp = VisData({
       h
     , num_baselines
     , num_channels
@@ -195,14 +194,12 @@ VisData * mkFromFile(const char * filename) {
     , channel_bandwidth_hz
     , time_average_sec
     });
+
+  return 0;
 }
 
-void freeVisData(VisData * vdp){
+void freeBinHandler(VisData * vdp){
   oskar_binary_free(vdp->h);
-}
-
-void deleteVisData(VisData * vdp){
-  delete vdp;
 }
 
 #define __CHECK1(s) if (status != 0) {printf("ERROR! at %s: %d\n", #s, status); goto cleanup;}
