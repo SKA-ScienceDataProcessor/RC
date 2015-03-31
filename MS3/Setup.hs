@@ -14,7 +14,7 @@ import Distribution.Simple.LocalBuildInfo
 import Distribution.Simple.Program
 import Distribution.Simple.Program.Find
 import Distribution.Simple.Program.Types
-import Distribution.Simple.Utils (die,installOrdinaryFile)
+import Distribution.Simple.Utils
 
 import Distribution.System
 
@@ -68,16 +68,13 @@ cudaConfigHook dat flags = do
   -- path relative to NVCC - awkward, but that's what the "cuda"
   -- package does, so who am I to judge.
   let flags' nvcc = flags { configExtraLibDirs = configExtraLibDirs flags ++
-                                                 [cudaLibDir, cuptiLibDir]
+                                                 [cudaLibDir]
                           , configExtraIncludeDirs = configExtraIncludeDirs flags ++
-                                                     [cudaIncDir, cuptiIncDir]
+                                                     [cudaIncDir]
                           }
         where cudaBaseDir = takeDirectory $ takeDirectory nvcc
               cudaLibDir = cudaBaseDir </> libDir
               cudaIncDir = cudaBaseDir </> "include"
-              cuptiBaseDir = cudaBaseDir </> "extras" </> "CUPTI"
-              cuptiLibDir = cuptiBaseDir </> libDir
-              cuptiIncDir = cuptiBaseDir </> "include"
               libDir = case buildPlatform of
                          Platform X86_64 Windows -> "lib" </> "x64"
                          Platform I386   Windows -> "lib" </> "Win32"
@@ -127,10 +124,11 @@ buildCuda doBuild package lbi verbosity = do
     let verbose = fromFlagOrDefault normal verbosity
     (nvcc,_) <- requireProgram verbose nvccProgram (withPrograms lbi)
     forM cudaSources $ \(name, cudaFile, cudaOpts) -> do
-        let out = maybe (buildDir lbi) (buildDir lbi </>) name
-                  </> replaceExtension (takeFileName cudaFile) "cubin"
+        let outDir = maybe (buildDir lbi) (buildDir lbi </>) name
+            out    = outDir </> replaceExtension (takeFileName cudaFile) "cubin"
         when doBuild $ do
              putStrLn $ "Building CUDA source " ++ cudaFile ++ "..."
+             createDirectoryIfMissingVerbose verbose True outDir
              runProgram verbose nvcc (cudaOpts ++ ["--cubin", cudaFile, "-o", out])
         return out
 
@@ -143,6 +141,7 @@ cudaCopyHook :: PackageDescription -> LocalBuildInfo -> UserHooks -> CopyFlags -
 cudaCopyHook package lbi hooks flags = do
   outs <- buildCuda False package lbi (copyVerbosity flags)
   let installDirs = absoluteInstallDirs package lbi (fromFlag (copyDest flags))
+  createDirectoryIfMissingVerbose (fromFlag $ copyVerbosity flags) True (datadir installDirs)
   forM_ outs $ \file ->
       installOrdinaryFile (fromFlag $ copyVerbosity flags) file
           (datadir installDirs </> takeFileName file)

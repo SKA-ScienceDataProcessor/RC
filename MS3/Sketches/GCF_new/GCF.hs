@@ -21,6 +21,8 @@ import qualified Foreign.CUDA.Driver as CUDA
 
 import FFT
 
+import Paths_dna_ms3 ( getDataFileName )
+
 -- Quick and dirty storable for Complex
 instance Storable CxDouble where
   sizeOf _ = 16
@@ -66,7 +68,7 @@ finalizeGCF (GCF _ _ gcfp layers) = CUDA.free layers >> CUDA.free gcfp
 
 doCuda :: Double -> [(Double, Int)] -> GCF -> IO ()
 doCuda t2 ws_hsupps gcf = do
-  m <- CUDA.loadFile "all.cubin"
+  m <- CUDA.loadFile =<< getDataFileName "all.cubin"
   [  fftshift_kernel
    , ifftshift_kernel
    , reduce_512_odd

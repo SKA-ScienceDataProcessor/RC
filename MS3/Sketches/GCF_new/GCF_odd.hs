@@ -22,7 +22,7 @@ import qualified Foreign.CUDA.Driver as CUDA
 
 import FFT
 
-import Paths_dna_ms3_sketches ( getDataFileName )
+import Paths_dna_ms3 ( getDataFileName )
 
 -- Quick and dirty storable for Complex
 instance Storable CxDouble where
