@@ -9,6 +9,7 @@ module DNA (
     , profile
     , duration
     , ProfileHint(..)
+    , floatHint, ioHint, haskellHint, cudaHint
        -- * Actors
     , Actor
     , actor
@@ -66,3 +67,4 @@ import Control.Distributed.Process.Closure (mkStaticClosure,remotable)
 import DNA.DSL
 import DNA.Types
 import DNA.Run
+import DNA.Logging
