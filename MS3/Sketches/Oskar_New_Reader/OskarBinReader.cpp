@@ -12,10 +12,16 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <cmath>
 
 #include <oskar_binary.h>
 
 #include "OskarBinReader.h"
+
+#if __GNUC__ == 4 && __GNUC_MINOR__ < 6
+#define __OLD
+#define nullptr NULL
+#endif
 
 #define SPEED_OF_LIGHT 299792458.0
 // FIXME: Centralize definitions further (this is duplicated in CUDA code)
@@ -78,9 +84,9 @@ template<> struct siz<OSKAR_DOUBLE_COMPLEX_MATRIX> { static const int val = 2 * 
 // Variadic read
 template<unsigned char data_type>
 int bin_read(
-  oskar_Binary* h
-  , unsigned char id_group
-  , int user_index
+  oskar_Binary*
+  , unsigned char
+  , int
   ) {
   return 0;
 }
@@ -172,7 +178,12 @@ int mkFromFile(VisData * vdp, const char * filename) {
   num_times_baselines = num_times * num_baselines;
   num_points = num_times_baselines * num_channels;
 
-  *vdp = VisData({
+#ifdef __OLD
+  VisData r
+#else
+  *vdp
+#endif
+  = {
       h
     , num_baselines
     , num_channels
@@ -195,7 +206,10 @@ int mkFromFile(VisData * vdp, const char * filename) {
       }
     , channel_bandwidth_hz
     , time_average_sec
-    });
+    };
+#ifdef __OLD
+  *vdp = r;
+#endif
 
   return 0;
 }
@@ -279,7 +293,8 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
     __CHECK1(FREQ_REF_INC_HZ + TIME_REF_INC_MJD_UTC)
 
     double cfreq;
-    for (int c = 0, cfreq = freq_start_inc[0]; c < vdp->num_channels; c++, cfreq +=freq_start_inc[0]) {
+    cfreq = freq_start_inc[0];
+    for (c = 0; c < vdp->num_channels; c++, cfreq +=freq_start_inc[0]) {
       inv_lambdas[c] = cfreq / SPEED_OF_LIGHT;
     }
 
@@ -387,9 +402,9 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
       // is greater than that determined by current data point
       // we point to nonsensical GCF data.
       if (cmax < 0.0)
-        bl_wis[i].wp = round(cmax);
+        bl_wis[i].wp = int(round(cmax));
       else if (cmin > 0.0)
-        bl_wis[i].wp = round(cmin);
+        bl_wis[i].wp = int(round(cmin));
       else
         bl_wis[i].wp = 0;
     }
