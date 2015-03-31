@@ -407,3 +407,25 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
 
   return status;
 }
+
+struct __s1 {
+  bool operator()(const BlWMap & l, const BlWMap & r) {
+    return l.wp < r.wp;
+  }
+} cmp_plane;
+
+struct __s2 {
+  bool operator()(BlWMap l, BlWMap r) {
+    if (l.wp < 0) l.wp = -l.wp;
+    if (r.wp < 0) r.wp = -r.wp;
+    return l.wp < r.wp;
+  }
+} cmp_abs;
+
+void sort_on_w(BlWMap * bl_wis, int n) {
+  sort(bl_wis, bl_wis + n, cmp_plane);
+}
+
+void sort_on_abs_w(BlWMap * bl_wis, int n) {
+  sort(bl_wis, bl_wis + n, cmp_abs);
+}

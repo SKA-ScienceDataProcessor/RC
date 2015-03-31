@@ -84,6 +84,8 @@ void deleteVisData(VisData * vdp);
 
 int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix * mp, WMaxMin * bl_ws, BlWMap * bl_wis);
 
+void sort_on_w(BlWMap * bl_wis, int n);
+void sort_on_abs_w(BlWMap * bl_wis, int n);
 
 #ifdef __cplusplus
 }
