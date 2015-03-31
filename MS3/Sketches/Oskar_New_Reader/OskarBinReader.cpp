@@ -18,6 +18,8 @@
 #include "OskarBinReader.h"
 
 #define SPEED_OF_LIGHT 299792458.0
+// FIXME: Centralize definitions further (this is duplicated in CUDA code)
+#define WPLANES 63
 
 using namespace std;
 
@@ -361,7 +363,7 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
 
     double
         maxxw = max(mp->maxw, -mp->minw)
-      , wstep = maxxw/32 // 65 planes total
+      , wstep = maxxw/(WPLANES/2)
       , cmax, cmin
       ;
     mp->wstep = wstep;
