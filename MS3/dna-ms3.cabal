@@ -169,6 +169,7 @@ executable GCF_DNA
     mmap,
     time >=1.4.2,
     bytestring >= 0.10.4.0,
+    storable-complex,
     dna-ms3
   if flag(cuda) {
      build-depends:    cuda >=0.6.6, cufft
