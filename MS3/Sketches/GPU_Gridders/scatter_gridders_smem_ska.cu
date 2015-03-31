@@ -235,15 +235,22 @@ __device__ __inline__ void addBaselinesToGrid(
     );
 }
 
+#define GRID_SIZE 4096
+#define OVER 8
+#define BASELINES 32131
+#define WPLANES 63
+#define TIMESTEPS 200
+#define CHANNELS 1
+
 __global__ void addBaselineToGrid(
     double scale
   , int max_supp
-  , Double4c grid[4096][4096]
-  , const complexd * gcf_layers[65]
-  , const double3 uvw[200]
-  , const Double4c vis[200]
+  , Double4c grid[GRID_SIZE][GRID_SIZE]
+  , const complexd * gcf_layers[WPLANES]
+  , const double3 uvw[TIMESTEPS]
+  , const Double4c vis[TIMESTEPS]
   ) {
-  addBaselineToGrid<8, 65, 4096, 200, 1>
+  addBaselineToGrid<OVER, WPLANES, GRID_SIZE, TIMESTEPS, CHANNELS>
     ( scale
     , max_supp
     , grid
@@ -255,13 +262,13 @@ __global__ void addBaselineToGrid(
 
 __global__ void addBaselinesToGridSkaMid(
     double scale
-  , const BlWMap permutations[32131]
-  , Double4c grid[4096][4096]
-  , const complexd * gcf_layers[65]
-  , const double3 uvw[32131][200]
-  , const Double4c vis[32131][200]
+  , const BlWMap permutations[BASELINES]
+  , Double4c grid[GRID_SIZE][GRID_SIZE]
+  , const complexd * gcf_layers[WPLANES]
+  , const double3 uvw[BASELINES][TIMESTEPS]
+  , const Double4c vis[BASELINES][TIMESTEPS]
   ) {
-  addBaselinesToGrid<8, 65, 4096, 32131, 200, 1, false>
+  addBaselinesToGrid<OVER, WPLANES, GRID_SIZE, BASELINES, TIMESTEPS, CHANNELS, false>
     ( scale
     , permutations
     , grid
@@ -273,13 +280,13 @@ __global__ void addBaselinesToGridSkaMid(
 
 __global__ void addBaselinesToGridSkaMidWithUsingPermutations(
     double scale
-  , const BlWMap permutations[32131]
-  , Double4c grid[4096][4096]
-  , const complexd * gcf_layers[65]
-  , const double3 uvw[32131][200]
-  , const Double4c vis[32131][200]
+  , const BlWMap permutations[BASELINES]
+  , Double4c grid[GRID_SIZE][GRID_SIZE]
+  , const complexd * gcf_layers[WPLANES]
+  , const double3 uvw[BASELINES][TIMESTEPS]
+  , const Double4c vis[BASELINES][TIMESTEPS]
   ) {
-  addBaselinesToGrid<8, 65, 4096, 32131, 200, 1, true>
+  addBaselinesToGrid<OVER, WPLANES, GRID_SIZE, BASELINES, TIMESTEPS, CHANNELS, true>
     ( scale
     , permutations
     , grid
@@ -291,8 +298,8 @@ __global__ void addBaselinesToGridSkaMidWithUsingPermutations(
 
 __global__ void  extractPolarization(
     int pol
-  , complexd dst_grid[4096][4096]
-  , const complexd src_grid[4096][4096][4]
+  , complexd dst_grid[GRID_SIZE][GRID_SIZE]
+  , const complexd src_grid[GRID_SIZE][GRID_SIZE][4]
   )
 {
   const int
