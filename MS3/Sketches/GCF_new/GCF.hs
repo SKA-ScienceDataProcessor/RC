@@ -13,13 +13,6 @@ import Foreign.Storable
 import Foreign.Ptr
 -- import Foreign.Marshal.Alloc -- for DEBUG only!
 import Data.Time.Clock
-{-
-import System.IO.MMap (
-    mmapFilePtr
-  , munmapFilePtr
-  , Mode(..)
-  )
- -}
 import qualified Data.ByteString.Unsafe      as BS
 import qualified Data.ByteString             as BS
 -- import Text.Printf(printf)
@@ -55,25 +48,24 @@ launchNormalize f normp ptr len =
   CUDA.launchKernel f (128,1,1) (512,1,1) 0 Nothing
     [CUDA.VArg normp, CUDA.VArg ptr, CUDA.IArg len]
 
-kernelNames :: [String]
-kernelNames =
-  [ "fftshift_kernel"
-  , "ifftshift_kernel"
-  , "reduce_512_odd"
-  , "r2"
-  , "wkernff"
-  , "copy_2_over"
-  , "transpose_over0"
-  , "normalize"
-  , "wextract1"
-  ]
+data GCF = GCF {
+    gcfSize   :: !Int
+  , gcfNumOfLayers :: !Int
+  , gcfPtr    :: !CxDoubleDevPtr
+  , gcfLayers :: !(CUDA.DevicePtr CxDoubleDevPtr)
+  }
 
-doCuda :: Double -> [(Double, Int)] -> Int -> IO ()
-doCuda t2 ws_hsupps gcfSize = do
-  -- hnormp <- malloc  -- for DEBUG only!
-  CUDA.initialise []
-  dev0 <- CUDA.device 0
-  ctx <- CUDA.create dev0 [CUDA.SchedAuto]
+allocateGCF :: Int -> Int -> IO GCF
+allocateGCF nOfLayers sizeOfGCFInComplexD = do
+  gcfp <- CUDA.mallocArray sizeOfGCFInComplexD
+  layers <- CUDA.mallocArray nOfLayers
+  return $ GCF sizeOfGCFInComplexD nOfLayers gcfp layers
+
+finalizeGCF :: GCF -> IO ()
+finalizeGCF (GCF _ _ gcfp layers) = CUDA.free layers >> CUDA.free gcfp
+
+doCuda :: Double -> [(Double, Int)] -> GCF -> IO ()
+doCuda t2 ws_hsupps gcf = do
   m <- CUDA.loadFile "all.cubin"
   [  fftshift_kernel
    , ifftshift_kernel
@@ -86,75 +78,85 @@ doCuda t2 ws_hsupps gcfSize = do
    , wextract1 ] <- mapM (CUDA.getFun m) kernelNames
 
   CUDA.allocaArray (256*256) $ \(ffp0 :: CxDoubleDevPtr) -> do
-    print "Preparing r2 ..."
     launchOnFF r2 1 [CUDA.VArg ffp0, CUDA.VArg t2]
     CUDA.allocaArray (256*256) $ \(ffpc :: CxDoubleDevPtr) ->
       CUDA.allocaArray (256*256*8*8) $ \(overo :: CxDoubleDevPtr) ->
         CUDA.allocaArray (256*256*8*8) $ \(overt :: CxDoubleDevPtr) ->
-          -- FIXME: Factor CUDA initialization and host ptr creation out
-          CUDA.allocaArray gcfSize $ \(out :: CxDoubleDevPtr) ->
-            CUDA.allocaArray 1 $ \(normp :: DoubleDevPtr Double) -> do
-              st <- getCurrentTime
-              let
-                go ((w, hsupp):rest) outp0 = do
-                   let
-                     supp2 = let supp = 1 + 2 * fromIntegral hsupp in supp * supp
-                   CUDA.sync
-                   launchOnFF wkernff 1 [CUDA.VArg ffpc, CUDA.VArg ffp0, CUDA.VArg w]
-                   CUDA.memset (CUDA.castDevPtr overo) (256*256*8*8 * 4) (0 :: Int32)
-                   CUDA.sync
-                   launchOnFF copy_2_over 1 [CUDA.VArg overo, CUDA.VArg ffpc]
-                   fft2dComplexDSqInplaceCentered Nothing Inverse (256*8) overo ifftshift_kernel fftshift_kernel
-                   launchOnFF transpose_over0 64 [CUDA.VArg overt, CUDA.VArg overo]
-                   CUDA.sync
-                   let
-                     normAndExtractLayers outp layerp n
-                       | n > 0 = do
-                                   launchReduce reduce_512_odd layerp normp (256*256)
-                                   CUDA.sync
-                                   -- CUDA.peekArray 1 normp hnormp -- DEBUG
-                                   -- peek hnormp >>= print
-                                   launchNormalize normalize normp layerp (256*256)
-                                   CUDA.sync
-                                   launchOnFF wextract1 1 [CUDA.IArg (fromIntegral hsupp), CUDA.VArg outp, CUDA.VArg layerp]
-                                   CUDA.sync
-                                   normAndExtractLayers (CUDA.advanceDevPtr outp supp2) (CUDA.advanceDevPtr layerp $ 256*256) (n-1)
-                       | otherwise = return ()
-                   normAndExtractLayers outp0 overt (8*8 :: Int)
-                   go rest (CUDA.advanceDevPtr outp0 $ supp2 * 8 * 8)
-                go [] _ = do
-                            ft <- getCurrentTime
-                            print (diffUTCTime ft st)
-                            {-
-                            (ptr_host, rawsize, offset, _size) <- mmapFilePtr "GCF.dat" ReadWriteEx $ Just (0, gcfSize * 16)
-                            CUDA.peekArray gcfSize out (plusPtr ptr_host offset)
-                            munmapFilePtr ptr_host rawsize
-                            -}
-                            ptr_host <- CUDA.mallocHostArray [CUDA.DeviceMapped, CUDA.WriteCombined] gcfSize
-                            {-
-                            writeStreams <- sequence $ replicate 16 (CUDAS.create [])
-                            let chunkSize = gcfSize `div` 16
-                            mapM_ (\(i, str) -> 
-                                      let off = chunkSize * i
-                                      in CUDA.peekArrayAsync chunkSize (CUDA.advanceDevPtr out off) (CUDA.advanceHostPtr ptr_host off) (Just str)
-                              ) $ zip [0..15] writeStreams
-                            CUDA.sync
-                            mapM_ (CUDAS.destroy) writeStreams
-                             -}
-                            CUDA.peekArrayAsync gcfSize out ptr_host Nothing
-                            CUDA.sync
-                            BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr ptr_host), gcfSize * sizeOf (undefined :: CxDouble)) >>= BS.writeFile "GCF.dat"
-                            CUDA.freeHost ptr_host
-                            ft1 <- getCurrentTime
-                            print (diffUTCTime ft1 ft)
-              go ws_hsupps out
-  CUDA.destroy ctx
+          CUDA.allocaArray 1 $ \(normp :: DoubleDevPtr Double) ->
+            let
+              go ((w, hsupp):rest) outp0 offrlist = do
+                 let
+                   supp2 = let supp = 1 + 2 * fromIntegral hsupp in supp * supp
+                 CUDA.sync
+                 launchOnFF wkernff 1 [CUDA.VArg ffpc, CUDA.VArg ffp0, CUDA.VArg w]
+                 CUDA.memset (CUDA.castDevPtr overo) (256*256*8*8 * 4) (0 :: Int32)
+                 CUDA.sync
+                 launchOnFF copy_2_over 1 [CUDA.VArg overo, CUDA.VArg ffpc]
+                 fft2dComplexDSqInplaceCentered Nothing Inverse (256*8) overo ifftshift_kernel fftshift_kernel
+                 launchOnFF transpose_over0 64 [CUDA.VArg overt, CUDA.VArg overo]
+                 CUDA.sync
+                 let
+                   normAndExtractLayers outp layerp n
+                     | n > 0 = do
+                                 launchReduce reduce_512_odd layerp normp (256*256)
+                                 CUDA.sync
+                                 -- CUDA.peekArray 1 normp hnormp -- DEBUG
+                                 -- peek hnormp >>= print
+                                 launchNormalize normalize normp layerp (256*256)
+                                 CUDA.sync
+                                 launchOnFF wextract1 1 [CUDA.IArg (fromIntegral hsupp), CUDA.VArg outp, CUDA.VArg layerp]
+                                 CUDA.sync
+                                 normAndExtractLayers (CUDA.advanceDevPtr outp supp2) (CUDA.advanceDevPtr layerp $ 256*256) (n-1)
+                     | otherwise = return ()
+                 normAndExtractLayers outp0 overt (8*8 :: Int)
+                 let
+                   nextPtr = CUDA.advanceDevPtr outp0 $ supp2 * 8 * 8
+                 go rest nextPtr (nextPtr:offrlist)
+              go [] _ offrlist = CUDA.pokeListArray (init $ reverse offrlist) (gcfLayers gcf)
+            in go ws_hsupps (gcfPtr gcf) [CUDA.DevicePtr nullPtr]
+  where
+    kernelNames =
+      [ "fftshift_kernel"
+      , "ifftshift_kernel"
+      , "reduce_512_odd"
+      , "r2"
+      , "wkernff"
+      , "copy_2_over"
+      , "transpose_over0"
+      , "normalize"
+      , "wextract1"
+      ]
 
-doit :: Int -> Double -> Int -> Double -> IO ()
-doit n t2 hsupp_step wstep = doCuda t2 wsp sizeOfGCFInComplexD
+
+createGCF :: Int -> Double -> Int -> Double -> IO GCF
+createGCF n t2 hsupp_step wstep = do
+    gcf <- allocateGCF n sizeOfGCFInComplexD
+    doCuda t2 wsp gcf
+    return gcf
   where
     wsp = take n $ iterate (\(w, hs) -> (w + wstep, hs + hsupp_step)) (0.0, 0)
     sizeOfGCFInComplexD = sum $ map (\(_, hsupp) -> let supp = 2 * hsupp + 1 in supp * supp * 8 * 8) wsp
 
 main :: IO ()
-main = doit 32 0.25 4 50.0
+main = do
+  CUDA.initialise []
+  dev0 <- CUDA.device 0
+  ctx <- CUDA.create dev0 [CUDA.SchedAuto]
+
+  t0 <- getCurrentTime
+  gcf <- createGCF 31 0.25 4 50.0
+  t1 <- getCurrentTime
+
+  let gsize = gcfSize gcf
+  ptr_host <- CUDA.mallocHostArray [] gsize
+  CUDA.peekArrayAsync gsize (gcfPtr gcf) ptr_host Nothing
+  CUDA.sync
+  BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr ptr_host), gsize * sizeOf (undefined :: CxDouble)) >>= BS.writeFile "GCF.dat"
+  t2 <- getCurrentTime
+  finalizeGCF gcf
+  CUDA.freeHost ptr_host
+
+  print (diffUTCTime t1 t0)
+  print (diffUTCTime t2 t1)
+
+  CUDA.destroy ctx
