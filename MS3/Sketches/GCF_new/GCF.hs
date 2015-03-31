@@ -84,7 +84,7 @@ doCuda t2 ws_hsupps gcf = do
         CUDA.allocaArray (256*256*8*8) $ \(overt :: CxDoubleDevPtr) ->
           CUDA.allocaArray 1 $ \(normp :: DoubleDevPtr Double) ->
             let
-              go ((w, hsupp):rest) outp0 offrlist = do
+              go ((w, hsupp):rest) outp0 lptrrlist = do
                  let
                    supp2 = let supp = 1 + 2 * fromIntegral hsupp in supp * supp
                  CUDA.sync
@@ -111,9 +111,10 @@ doCuda t2 ws_hsupps gcf = do
                  normAndExtractLayers outp0 overt (8*8 :: Int)
                  let
                    nextPtr = CUDA.advanceDevPtr outp0 $ supp2 * 8 * 8
-                 go rest nextPtr (nextPtr:offrlist)
-              go [] _ offrlist = CUDA.pokeListArray (init $ reverse offrlist) (gcfLayers gcf)
-            in go ws_hsupps (gcfPtr gcf) [CUDA.DevicePtr nullPtr]
+                 go rest nextPtr (nextPtr:lptrrlist)
+              go [] _ lptrrlist = CUDA.pokeListArray (init $ reverse lptrrlist) (gcfLayers gcf)
+              gcfptr = gcfPtr gcf
+            in go ws_hsupps gcfptr [gcfptr]
   where
     kernelNames =
       [ "fftshift_kernel"
