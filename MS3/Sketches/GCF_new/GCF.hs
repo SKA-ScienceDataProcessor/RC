@@ -7,9 +7,9 @@
 
 module Main where
 
-import Data.Complex
 import Data.Int
 import Foreign.Storable
+import Foreign.Storable.Complex ()
 import Foreign.Ptr
 -- import Foreign.Marshal.Alloc -- for DEBUG only!
 import Data.Time.Clock
@@ -22,18 +22,6 @@ import qualified Foreign.CUDA.Driver as CUDA
 import FFT
 
 import Paths_dna_ms3 ( getDataFileName )
-
--- Quick and dirty storable for Complex
-instance Storable CxDouble where
-  sizeOf _ = 16
-  alignment _ = 16
-  peek p = do
-    re <- peek (castPtr p)
-    im <- peekByteOff p 8
-    return (re :+ im)
-  poke p (re :+ im) = do
-    poke (castPtr p) re
-    pokeByteOff p 8 im
 
 launchOnFF :: CUDA.Fun -> Int -> [CUDA.FunParam] -> IO ()
 launchOnFF k xdim  = CUDA.launchKernel k (8,8,xdim) (32,32,1) 0 Nothing

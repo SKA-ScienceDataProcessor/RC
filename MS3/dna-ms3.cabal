@@ -147,7 +147,8 @@ executable GCF
     base >=4.6,
     mmap,
     time >=1.4.2,
-    bytestring >= 0.10.4.0
+    bytestring >= 0.10.4.0,
+    storable-complex
   if flag(cuda) {
      build-depends:    cuda >=0.6.6, cufft
      x-cuda-sources:   Sketches/GCF_new/all.cu
