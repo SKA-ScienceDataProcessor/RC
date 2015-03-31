@@ -37,6 +37,7 @@ module DNA.Logging
     , logProfile
 
     , ProfileHint(..)
+    , floatHint, ioHint, haskellHint, cudaHint
     ) where
 
 import Control.Applicative
@@ -189,6 +190,22 @@ data ProfileHint
       -- transfers we expect to be targetting the device and the host
       -- respectively.
 
+-- | Default @FloatHint@.
+floatHint :: ProfileHint
+floatHint = FloatHint 0 0
+
+-- | Default @IOHint@.
+ioHint :: ProfileHint
+ioHint = IOHint 0 0
+
+-- | Default @HaskellHint@.
+haskellHint :: ProfileHint
+haskellHint = HaskellHint 0
+
+-- | Default @CUDAHint@.
+cudaHint :: ProfileHint
+cudaHint = CUDAHint 0 0
+
 -- | Main profiling function. The concrete information output to the
 -- event log depends on the hints about the code's actions.
 --
@@ -313,6 +330,9 @@ cudaAttrs = do
 #ifndef USE_CUDA
     return []
 #else
+    -- TODO: Only do this once, and disable at some point...!
+    cuptiEnable
+
     -- Flush, so statistics are current
     cuptiFlush
 
