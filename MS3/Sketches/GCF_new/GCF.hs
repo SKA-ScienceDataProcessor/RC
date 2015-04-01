@@ -20,8 +20,7 @@ import Foreign.Storable
 import Foreign.Storable.Complex ()
 -- import Foreign.Marshal.Alloc -- for DEBUG only!
 -- import Text.Printf(printf)
-import qualified Foreign.CUDA.Driver as CUDA
--- import qualified Foreign.CUDA.Driver.Stream as CUDAS
+import qualified CUDAEx as CUDA
 
 import GHC.Generics (Generic)
 import Data.Binary
@@ -96,7 +95,7 @@ doCuda t2 ws_hsupps gcf = do
                    supp2 = let supp = 1 + 2 * fromIntegral hsupp in supp * supp
                  CUDA.sync
                  launchOnFF wkernff 1 [CUDA.VArg ffpc, CUDA.VArg ffp0, CUDA.VArg w]
-                 CUDA.memset (CUDA.castDevPtr overo) (256*256*8*8 * 4) (0 :: Int32)
+                 CUDA.memset (CUDA.castDevPtr overo) (256*256*8*8 * 16) 0
                  CUDA.sync
                  launchOnFF copy_2_over 1 [CUDA.VArg overo, CUDA.VArg ffpc]
                  fft2dComplexDSqInplaceCentered Nothing Inverse (256*8) overo ifftshift_kernel fftshift_kernel

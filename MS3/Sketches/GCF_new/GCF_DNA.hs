@@ -15,8 +15,7 @@ import Foreign
 import qualified Data.ByteString.Unsafe      as BS
 import qualified Data.ByteString             as BS
 -- import Text.Printf(printf)
-import qualified Foreign.CUDA.Driver as CUDA
--- import qualified Foreign.CUDA.Driver.Stream as CUDAS
+import qualified CUDAEx as CUDA
 
 import DNA
 
@@ -25,9 +24,7 @@ cdSize = sizeOf (undefined :: Complex Double)
 
 runGCF :: ([(Double, Int)], Int) -> IO ()
 runGCF ws_hsupps_size = do
-  CUDA.initialise []
-  dev0 <- CUDA.device 0
-  ctx <- CUDA.create dev0 [CUDA.SchedAuto]
+  CUDA.get >>= print
   gcf <- createGCF 0.25 ws_hsupps_size
   let gsize = gcfSize gcf
   ptr_host <- CUDA.mallocHostArray [] gsize
@@ -36,7 +33,7 @@ runGCF ws_hsupps_size = do
   BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr ptr_host), gsize * cdSize) >>= BS.writeFile "GCF.dat"
   finalizeGCF gcf
   CUDA.freeHost ptr_host
-  CUDA.destroy ctx
+  CUDA.reset
 
 main :: IO ()
 main = dnaRun id $ flip eval () $ actor $ \() ->

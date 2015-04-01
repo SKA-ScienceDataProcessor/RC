@@ -1,14 +1,9 @@
 module FFT where
 
 import Data.Complex
-import Foreign.CUDA.Driver (
-    Fun
-  , launchKernel
-  , FunParam(..)
-  )
-import Foreign.CUDA.Types (Stream)
-import Foreign.CUDA.Ptr (DevicePtr, castDevPtr)
+
 import Foreign.CUDA.FFT
+import CUDAEx
 
 data Mode =
     Forward

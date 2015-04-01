@@ -16,17 +16,14 @@ import Data.Time.Clock
 import qualified Data.ByteString.Unsafe      as BS
 import qualified Data.ByteString             as BS
 -- import Text.Printf(printf)
-import qualified Foreign.CUDA.Driver as CUDA
--- import qualified Foreign.CUDA.Driver.Stream as CUDAS
+import qualified CUDAEx as CUDA
 
 main :: IO ()
 main = do
-  CUDA.initialise []
-  dev0 <- CUDA.device 0
-  ctx <- CUDA.create dev0 [CUDA.SchedAuto]
+  CUDA.get >>= print
 
   t0 <- getCurrentTime
-  gcf <- createGCF 0.25 $ prepareFullGCF 32 4 50.0
+  gcf <- createGCF 0.25 $ prepareFullGCF 11 4 50.0
   t1 <- getCurrentTime
 
   let gsize = gcfSize gcf
@@ -37,8 +34,7 @@ main = do
   t2 <- getCurrentTime
   finalizeGCF gcf
   CUDA.freeHost ptr_host
+  CUDA.reset
 
   print (diffUTCTime t1 t0)
   print (diffUTCTime t2 t1)
-
-  CUDA.destroy ctx
