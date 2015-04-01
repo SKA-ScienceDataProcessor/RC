@@ -147,4 +147,4 @@ main = dnaRun id $ flip eval () $ actor $ \() ->
   profile "GCF" [ cudaHint{hintCopyBytesHost = cxDSize * sizeOfGCFInComplexD ws_hsupps} ] $ do
     liftIO $ runGCF ws_hsupps
  where cxDSize = sizeOf (undefined :: CxDouble)
-       ws_hsupps = take 31 $ zip [0.0,50.0..] [0,4..]
+       ws_hsupps = take 32 $ zip [0.0,50.0..] [0,4..]

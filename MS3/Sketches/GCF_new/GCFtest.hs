@@ -26,7 +26,7 @@ main = do
   ctx <- CUDA.create dev0 [CUDA.SchedAuto]
 
   t0 <- getCurrentTime
-  gcf <- createGCF 31 0.25 4 50.0
+  gcf <- createGCF 32 0.25 4 50.0
   t1 <- getCurrentTime
 
   let gsize = gcfSize gcf
