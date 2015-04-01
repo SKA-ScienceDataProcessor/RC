@@ -128,7 +128,7 @@ createGCFWith mirror n t2 hsupp_step wstep = do
   where
     wsp0 = take n $ iterate (\(w, hs) -> (w + wstep, hs + hsupp_step)) (0.0, 0)
     wsp = mirror wsp0 ++ wsp0
-    sizeOfGCFInComplexD = sum $ map (\(_, hsupp) -> let supp = 2 * hsupp + 1 in supp * supp * 8 * 8) wsp
+    sizeOfGCFInComplexD = (sum $ map (\(_, hsupp) -> let supp = 2 * hsupp + 1 in supp * supp) wsp) * 8 * 8
 
 createGCF, createFullGCF :: Int -> Double -> Int -> Double -> IO GCF
 createGCF = createGCFWith (const [])
