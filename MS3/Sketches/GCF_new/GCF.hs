@@ -122,7 +122,7 @@ doCuda t2 ws_hsupps gcf = do
 
 createGCFWith :: ([(Double, Int)] -> [(Double, Int)]) -> Int -> Double -> Int -> Double -> IO GCF
 createGCFWith mirror n t2 hsupp_step wstep = do
-    gcf <- allocateGCF n sizeOfGCFInComplexD
+    gcf <- allocateGCF (length wsp) sizeOfGCFInComplexD
     doCuda t2 wsp gcf
     return gcf
   where
