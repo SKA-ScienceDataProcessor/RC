@@ -7,8 +7,9 @@
   #-}
 
 module GCF (
-    createGCF
-  , createFullGCF
+    prepareHalfGCF
+  , prepareFullGCF
+  , createGCF
   , finalizeGCF
   , getCentreOfFullGCF
   , GCF(..)
@@ -135,18 +136,23 @@ doCuda t2 ws_hsupps gcf = do
       ]
 
 
-createGCFWith :: ([(Double, Int)] -> [(Double, Int)]) -> Int -> Double -> Int -> Double -> IO GCF
-createGCFWith mirror n t2 hsupp_step wstep = do
-    gcf <- allocateGCF (length wsp) sizeOfGCFInComplexD
-    doCuda t2 wsp gcf
-    return gcf
+type LD = [(Double, Int)]
+
+prepareGCFWith :: (LD -> LD) -> Int -> Int -> Double -> (LD, Int)
+prepareGCFWith mirror n hsupp_step wstep = (wsp, sizeOfGCFInComplexD)
   where
     wsp0 = take n $ iterate (\(w, hs) -> (w + wstep, hs + hsupp_step)) (0.0, 0)
     wsp = mirror wsp0 ++ wsp0
     sizeOfGCFInComplexD = (sum $ map (\(_, hsupp) -> let supp = 2 * hsupp + 1 in supp * supp) wsp) * 8 * 8
 
-createGCF, createFullGCF :: Int -> Double -> Int -> Double -> IO GCF
-createGCF = createGCFWith (const [])
-createFullGCF = createGCFWith mirror
+prepareHalfGCF, prepareFullGCF :: Int -> Int -> Double -> (LD, Int)
+prepareHalfGCF = prepareGCFWith (const [])
+prepareFullGCF = prepareGCFWith mirror
   where
     mirror wsp0 = map (\(w,h) -> (-w,h)) (reverse $ tail wsp0)
+
+createGCF :: Double -> (LD, Int) -> IO GCF
+createGCF t2 (wsp, sizeOfGCFInComplexD) = do
+    gcf <- allocateGCF (length wsp) sizeOfGCFInComplexD
+    doCuda t2 wsp gcf
+    return gcf
