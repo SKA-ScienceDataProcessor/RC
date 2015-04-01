@@ -7,6 +7,7 @@
 
 module GCF (
     createGCF
+  , createFullGCF
   , finalizeGCF
   , GCF(..)
   ) where
@@ -119,11 +120,18 @@ doCuda t2 ws_hsupps gcf = do
       ]
 
 
-createGCF :: Int -> Double -> Int -> Double -> IO GCF
-createGCF n t2 hsupp_step wstep = do
+createGCFWith :: ([(Double, Int)] -> [(Double, Int)]) -> Int -> Double -> Int -> Double -> IO GCF
+createGCFWith mirror n t2 hsupp_step wstep = do
     gcf <- allocateGCF n sizeOfGCFInComplexD
     doCuda t2 wsp gcf
     return gcf
   where
-    wsp = take n $ iterate (\(w, hs) -> (w + wstep, hs + hsupp_step)) (0.0, 0)
+    wsp0 = take n $ iterate (\(w, hs) -> (w + wstep, hs + hsupp_step)) (0.0, 0)
+    wsp = mirror wsp0 ++ wsp0
     sizeOfGCFInComplexD = sum $ map (\(_, hsupp) -> let supp = 2 * hsupp + 1 in supp * supp * 8 * 8) wsp
+
+createGCF, createFullGCF :: Int -> Double -> Int -> Double -> IO GCF
+createGCF = createGCFWith (const [])
+createFullGCF = createGCFWith mirror
+  where
+    mirror wsp0 = map (\(w,h) -> (-w,h)) (reverse $ tail wsp0) ++ wsp0
