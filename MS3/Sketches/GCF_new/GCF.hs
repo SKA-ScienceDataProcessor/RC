@@ -134,4 +134,4 @@ createGCF, createFullGCF :: Int -> Double -> Int -> Double -> IO GCF
 createGCF = createGCFWith (const [])
 createFullGCF = createGCFWith mirror
   where
-    mirror wsp0 = map (\(w,h) -> (-w,h)) (reverse $ tail wsp0) ++ wsp0
+    mirror wsp0 = map (\(w,h) -> (-w,h)) (reverse $ tail wsp0)
