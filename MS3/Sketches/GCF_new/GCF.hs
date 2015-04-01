@@ -3,6 +3,7 @@
     , ScopedTypeVariables
     , FlexibleInstances
     , TypeSynonymInstances
+    , DeriveGeneric
   #-}
 
 module GCF (
@@ -20,6 +21,10 @@ import Foreign.Storable.Complex ()
 -- import Text.Printf(printf)
 import qualified Foreign.CUDA.Driver as CUDA
 -- import qualified Foreign.CUDA.Driver.Stream as CUDAS
+
+import GHC.Generics (Generic)
+import Data.Binary
+import BinaryInstances ()
 
 import FFT
 
@@ -49,7 +54,9 @@ data GCF = GCF {
   , gcfNumOfLayers :: !Int
   , gcfPtr    :: !CxDoubleDevPtr
   , gcfLayers :: !(CUDA.DevicePtr CxDoubleDevPtr)
-  }
+  } deriving (Generic)
+
+instance Binary GCF
 
 getCentreOfFullGCF :: GCF -> CUDA.DevicePtr CxDoubleDevPtr
 getCentreOfFullGCF (GCF _ n _ l) = CUDA.advanceDevPtr l (n `div` 2)

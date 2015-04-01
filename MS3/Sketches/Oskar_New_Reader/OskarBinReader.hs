@@ -1,8 +1,8 @@
 {-# LANGUAGE
       TypeSynonymInstances
     , FlexibleInstances
+    , DeriveGeneric
   #-}
-
 
 module OskarBinReader where
 
@@ -11,6 +11,10 @@ import Foreign
 import Foreign.C
 import Foreign.Storable.Complex ()
 import Text.Printf
+
+import GHC.Generics (Generic)
+import Data.Binary
+import BinaryInstances ()
 
 data TaskData = TaskData {
     tdBaselines :: !Int
@@ -21,7 +25,9 @@ data TaskData = TaskData {
   , tdVisibilies :: !(Ptr CxDouble)
   , tdUVWs :: !(Ptr CDouble)
   , tdMap  :: !(Ptr BlWMap)
-}
+} deriving (Generic)
+
+instance Binary TaskData
 
 finalizeTaskData :: TaskData -> IO ()
 finalizeTaskData td = do
