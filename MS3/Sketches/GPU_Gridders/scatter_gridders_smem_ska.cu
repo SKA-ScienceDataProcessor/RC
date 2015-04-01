@@ -43,8 +43,6 @@ __inline__ __device__ void loadIntoSharedMem (
       , over_v = round(over * (coords.y - v))
       , w_plane = round (coords.z / (w_planes/2))
       ;
-    // Mirror if necessary for using in GCF
-    if (w_plane < 0) w_plane = - w_plane;
     // uvo_shared[i] = {short(u), short(v), (char)w_plane, (char)(over_u * over + over_v), (short)get_supp(w_plane)};
     uvo_shared[i].u = short(u);
     uvo_shared[i].v = short(v);
@@ -99,9 +97,17 @@ void gridKernel_scatter_kernel_small(
     myGridV = v + myConvV;
 
     int supp = uvo_shared[i].gcf_layer_supp;
+
+    int wplane, wplane_m;
+    wplane = uvo_shared[i].gcf_layer_w_plane;
+    if (wplane < 0) wplane_m = -wplane; else wplane_m = wplane;
     complexd supportPixel =
-      gcf_layer[uvo_shared[i].gcf_layer_w_plane]
+      gcf_layer[wplane_m]
         [(uvo_shared[i].gcf_layer_over * supp + myConvU) * supp + myConvV];
+    // if mirrored make conjugation
+    if (wplane < 0)
+      supportPixel.y = - supportPixel.y;
+
     if (myGridU != grid_point_u || myGridV != grid_point_v) {
       atomicAdd(&grid[grid_point_u][grid_point_v], sumXX, sumXY, sumYX, sumYY);
         sumXX
