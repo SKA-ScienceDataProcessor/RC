@@ -22,7 +22,11 @@ import qualified Foreign.CUDA.Driver as CUDA
 
 import FFT
 
+#ifndef QUICK_TEST
 import Paths_dna_ms3 ( getDataFileName )
+#else
+#define getDataFileName return
+#endif
 
 launchOnFF :: CUDA.Fun -> Int -> [CUDA.FunParam] -> IO ()
 launchOnFF k xdim  = CUDA.launchKernel k (8,8,xdim) (32,32,1) 0 Nothing
