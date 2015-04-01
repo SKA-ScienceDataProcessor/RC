@@ -17,6 +17,7 @@ data TaskData = TaskData {
   , tdTimes     :: !Int
   , tdChannels  :: !Int
   , tdPoints    :: !Int
+  , tdWstep     :: !CDouble
   , tdVisibilies :: !(ForeignPtr CxDouble)
   , tdUVWs :: !(ForeignPtr CDouble)
   , tdMap  :: !(ForeignPtr BlWMap)
@@ -49,4 +50,5 @@ readOskarData fname = withCString fname doRead
             withForeignPtr uvwFptr $ \uwvptr ->
               withForeignPtr mapFptr $ \mapptr -> do
                 throwErr $ readAndReshuffle vptr visptr uwvptr mptr mmptr mapptr
-                return $ TaskData nb (fi ntms) (fi nchs) n visFptr uvwFptr mapFptr
+                wstp <- wstep mptr
+                return $ TaskData nb (fi ntms) (fi nchs) n wstp visFptr uvwFptr mapFptr
