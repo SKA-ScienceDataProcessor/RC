@@ -18,10 +18,16 @@ data TaskData = TaskData {
   , tdChannels  :: !Int
   , tdPoints    :: !Int
   , tdWstep     :: !CDouble
-  , tdVisibilies :: !(ForeignPtr CxDouble)
-  , tdUVWs :: !(ForeignPtr CDouble)
-  , tdMap  :: !(ForeignPtr BlWMap)
+  , tdVisibilies :: !(Ptr CxDouble)
+  , tdUVWs :: !(Ptr CDouble)
+  , tdMap  :: !(Ptr BlWMap)
 }
+
+finalizeTaskData :: TaskData -> IO ()
+finalizeTaskData td = do
+  free $ tdMap td
+  free $ tdUVWs td
+  free $ tdVisibilies td
 
 readOskarData :: String -> IO TaskData
 readOskarData fname = withCString fname doRead
@@ -41,14 +47,11 @@ readOskarData fname = withCString fname doRead
         visSize = n * sizeOf (undefined :: CxDouble) * 4
         uvwSize = n * sizeOf (undefined :: CDouble) * 3
         mapSize = nb * sizeOf (undefined :: BlWMap)
-      visFptr <- mallocForeignPtrBytes visSize
-      uvwFptr <- mallocForeignPtrBytes uvwSize
-      mapFptr <- mallocForeignPtrBytes mapSize
+      visptr <- mallocBytes visSize
+      uvwptr <- mallocBytes uvwSize
+      mapptr <- mallocBytes mapSize
       alloca $ \mptr ->
-        allocaBytes (nb * sizeOf (undefined :: WMaxMin)) $ \mmptr ->
-          withForeignPtr visFptr $ \visptr ->
-            withForeignPtr uvwFptr $ \uwvptr ->
-              withForeignPtr mapFptr $ \mapptr -> do
-                throwErr $ readAndReshuffle vptr visptr uwvptr mptr mmptr mapptr
-                wstp <- wstep mptr
-                return $ TaskData nb (fi ntms) (fi nchs) n wstp visFptr uvwFptr mapFptr
+        allocaBytes (nb * sizeOf (undefined :: WMaxMin)) $ \mmptr -> do
+          throwErr $ readAndReshuffle vptr visptr uvwptr mptr mmptr mapptr
+          wstp <- wstep mptr
+          return $ TaskData nb (fi ntms) (fi nchs) n wstp visptr uvwptr mapptr
