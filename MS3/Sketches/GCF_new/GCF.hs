@@ -9,6 +9,7 @@ module GCF (
     createGCF
   , createFullGCF
   , finalizeGCF
+  , getCentreOfFullGCF
   , GCF(..)
   ) where
 
@@ -49,6 +50,9 @@ data GCF = GCF {
   , gcfPtr    :: !CxDoubleDevPtr
   , gcfLayers :: !(CUDA.DevicePtr CxDoubleDevPtr)
   }
+
+getCentreOfFullGCF :: GCF -> CUDA.DevicePtr CxDoubleDevPtr
+getCentreOfFullGCF (GCF _ n _ l) = CUDA.advanceDevPtr l (n `div` 2)
 
 allocateGCF :: Int -> Int -> IO GCF
 allocateGCF nOfLayers sizeOfGCFInComplexD = do
