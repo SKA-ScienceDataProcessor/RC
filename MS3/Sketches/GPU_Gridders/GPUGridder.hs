@@ -4,8 +4,6 @@
     , FlexibleInstances
     , TypeSynonymInstances
     , DeriveGeneric
-    , OverlappingInstances
-    , IncoherentInstances
   #-}
 
 module GPUGridder where
