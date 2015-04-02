@@ -2,6 +2,7 @@
       TypeSynonymInstances
     , FlexibleInstances
     , DeriveGeneric
+    , DeriveDataTypeable
   #-}
 
 module OskarBinReader where
@@ -15,6 +16,7 @@ import Text.Printf
 import GHC.Generics (Generic)
 import Data.Binary
 import BinaryInstances ()
+import Data.Typeable
 
 data TaskData = TaskData {
     tdBaselines :: !Int
@@ -26,7 +28,7 @@ data TaskData = TaskData {
   , tdVisibilies :: !(Ptr CxDouble)
   , tdUVWs :: !(Ptr CDouble)
   , tdMap  :: !(Ptr BlWMap)
-} deriving (Generic)
+} deriving (Generic, Typeable)
 
 instance Binary TaskData
 

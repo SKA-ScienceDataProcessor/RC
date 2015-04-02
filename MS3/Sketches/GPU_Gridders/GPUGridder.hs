@@ -4,6 +4,7 @@
     , FlexibleInstances
     , TypeSynonymInstances
     , DeriveGeneric
+    , DeriveDataTypeable
   #-}
 
 module GPUGridder where
@@ -16,6 +17,7 @@ import qualified CUDAEx as CUDA
 import GHC.Generics (Generic)
 import Data.Binary
 import BinaryInstances ()
+import Data.Typeable
 
 import ArgMapper
 import OskarBinReader
@@ -31,7 +33,7 @@ import Paths_dna_ms3 ( getDataFileName )
 data Grid = Grid {
     gridSize :: !Int
   , gridPtr  :: !CUDA.CxDoubleDevPtr
-  } deriving (Generic)
+  } deriving (Generic, Typeable)
 
 finalizeGrid :: Grid -> IO ()
 finalizeGrid (Grid _ p) = CUDA.free p
@@ -72,7 +74,7 @@ launchAddBaselines f scale gridptr gcflp uvwp visp numOfBaselines maxSupp permut
     nOfThreads = min 1024 (maxSupp * maxSupp)
     params = mapArgs $ scale :. permutations :. gridptr :. gcflp :. uvwp :. visp :. Z
 
-data GridConfig = GridConfig {
+data GridderConfig = GridderConfig {
     gcKernelName :: !String
   , gcGCFIsFull :: !Bool
   , gcIter :: !AddBaselinesIter
@@ -81,8 +83,8 @@ data GridConfig = GridConfig {
 gridderModule :: IO CUDA.Module
 gridderModule = getDataFileName "scatter_gridders_smem_ska.cubin" >>= CUDA.loadFile
 
-runGridder :: GridConfig -> TaskData -> GCF -> IO Grid
-runGridder (GridConfig gfname gcfIsFull iter) td gcf = do
+runGridder :: GridderConfig -> TaskData -> GCF -> IO Grid
+runGridder (GridderConfig gfname gcfIsFull iter) td gcf = do
     fun <- (`CUDA.getFun` gfname) =<< gridderModule
     gridptr <- CUDA.mallocArray gridsize
     CUDA.memset gridptr (fromIntegral $ gridsize * cxdSize) 0

@@ -4,6 +4,7 @@
     , FlexibleInstances
     , TypeSynonymInstances
     , DeriveGeneric
+    , DeriveDataTypeable
   #-}
 
 module GCF (
@@ -26,6 +27,7 @@ import CUDAEx (CxDoubleDevPtr)
 import GHC.Generics (Generic)
 import Data.Binary
 import BinaryInstances ()
+import Data.Typeable
 
 import FFT
 
@@ -55,7 +57,7 @@ data GCF = GCF {
   , gcfNumOfLayers :: !Int
   , gcfPtr    :: !CxDoubleDevPtr
   , gcfLayers :: !(CUDA.DevicePtr CxDoubleDevPtr)
-  } deriving (Generic)
+  } deriving (Generic, Typeable)
 
 instance Binary GCF
 
