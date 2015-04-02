@@ -1,6 +1,7 @@
 {-# LANGUAGE
       TypeOperators
     , FlexibleInstances
+    , OverlappingInstances
   #-}
 
 module ArgMapper where
