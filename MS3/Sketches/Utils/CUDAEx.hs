@@ -10,6 +10,7 @@ import Foreign.CUDA.Driver (
     Fun
   , launchKernel
   , FunParam(..)
+  , Module
   , loadFile
   , getFun
   )

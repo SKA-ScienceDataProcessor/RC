@@ -4,6 +4,8 @@
     , FlexibleInstances
     , TypeSynonymInstances
     , DeriveGeneric
+    , OverlappingInstances
+    , IncoherentInstances
   #-}
 
 module GPUGridder where
@@ -78,9 +80,12 @@ data GridConfig = GridConfig {
   , gcIter :: !AddBaselinesIter
   }
 
+gridderModule :: IO CUDA.Module
+gridderModule = getDataFileName "scatter_gridders_smem_ska.cubin" >>= CUDA.loadFile
+
 runGridder :: GridConfig -> TaskData -> GCF -> IO Grid
 runGridder (GridConfig gfname gcfIsFull iter) td gcf = do
-    fun <- (`CUDA.getFun` gfname) =<< CUDA.loadFile =<< getDataFileName "scatter_gridders_smem_ska.cubin"
+    fun <- (`CUDA.getFun` gfname) =<< gridderModule
     gridptr <- CUDA.mallocArray gridsize
     CUDA.memset gridptr (fromIntegral $ gridsize * cxdSize) 0
     CUDA.allocaArray uvwSize $ \uvwp ->
@@ -102,3 +107,9 @@ runGridder (GridConfig gfname gcfIsFull iter) td gcf = do
     gridsize = 4096 * 4096 * 4
     cxdSize = sizeOf (undefined :: CxDouble)
     -- permutations gridptr uvwp visp
+
+normalizeAndExtractPolarization :: Int32 -> CUDA.CxDoubleDevPtr -> Grid -> IO ()
+normalizeAndExtractPolarization pol polp (Grid _ gridp) = do
+  f <- (`CUDA.getFun` "normalizeAndExtractPolarization") =<< gridderModule
+  -- 128 * 32 = 4096
+  CUDA.launchKernel f (128, 128, 1) (32, 32, 1) 0 Nothing $ mapArgs $ pol :. polp :. gridp :. Z
