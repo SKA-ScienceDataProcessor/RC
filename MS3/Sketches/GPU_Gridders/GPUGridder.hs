@@ -27,7 +27,7 @@ import Paths_dna_ms3 ( getDataFileName )
 
 data Grid = Grid {
     gridSize :: !Int
-  , gridPtr  :: !(CUDA.DevicePtr CUDA.CxDoubleDevPtr)
+  , gridPtr  :: !CUDA.CxDoubleDevPtr
   } deriving (Generic)
 
 instance Binary Grid
