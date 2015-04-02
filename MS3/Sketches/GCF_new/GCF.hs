@@ -14,6 +14,7 @@ module GCF (
   , finalizeGCF
   , getCentreOfFullGCF
   , GCF(..)
+  , GCFCfg(..)
   ) where
 
 import Data.Int
@@ -139,6 +140,16 @@ doCuda t2 ws_hsupps gcf = do
 
 
 type LD = [(Double, Int)]
+
+data GCFCfg = GCFCfg {
+    gcfcSuppDiv2Step :: Int
+  , gcfcLayersDiv2   :: Int
+  , gcfcIsFull :: Bool
+  , gcfcT2     :: Double
+  , gcfcWStep  :: Double
+} deriving (Generic, Typeable)
+
+instance Binary GCFCfg
 
 prepareGCFWith :: (LD -> LD) -> Int -> Int -> Double -> (LD, Int)
 prepareGCFWith mirror n hsupp_step wstep = (wsp, sizeOfGCFInComplexD)
