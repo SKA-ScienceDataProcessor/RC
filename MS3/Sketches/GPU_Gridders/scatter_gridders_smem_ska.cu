@@ -322,7 +322,9 @@ __global__ void addBaselinesToGridSkaMidUsingPermutations##suff(                
 addBaselinesToGridSkaMidUsingPermutations(HalfGCF, true)
 addBaselinesToGridSkaMidUsingPermutations(FullGCF, false)
 
-__global__ void  extractPolarization(
+#include "../GCF_new/scale_complex_by_dbl.cuh"
+
+__global__ void  normalizeAndExtractPolarization(
     int pol
   , complexd dst_grid[GRID_SIZE][GRID_SIZE]
   , const complexd src_grid[GRID_SIZE][GRID_SIZE][4]
@@ -332,5 +334,5 @@ __global__ void  extractPolarization(
       x = blockIdx.x * blockDim.x + threadIdx.x
     , y = blockIdx.y * blockDim.y + threadIdx.y;
 
-  dst_grid[x][y] = src_grid[x][y][pol];
+  dst_grid[x][y] = cuMulComplexByDouble(src_grid[x][y][pol], 1.0/(GRID_SIZE*GRID_SIZE));
 }
