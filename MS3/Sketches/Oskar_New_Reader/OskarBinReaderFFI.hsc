@@ -19,6 +19,10 @@ import Data.Complex
 #opaq WMaxMin
 #opaq VisData
 
+baseline, wplane :: Ptr BlWMap -> IO CInt
+baseline = #peek BlWMap, bl
+wplane   = #peek BlWMap, wp
+
 numBaselines, numTimes, numChannels, numPoints :: Ptr VisData -> IO CInt
 numBaselines = #peek VisData, num_baselines
 numTimes     = #peek VisData, num_times
