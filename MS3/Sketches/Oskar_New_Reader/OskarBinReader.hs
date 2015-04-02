@@ -21,6 +21,7 @@ data TaskData = TaskData {
   , tdTimes     :: !Int
   , tdChannels  :: !Int
   , tdPoints    :: !Int
+  , tdMaxx      :: !CDouble
   , tdWstep     :: !CDouble
   , tdVisibilies :: !(Ptr CxDouble)
   , tdUVWs :: !(Ptr CDouble)
@@ -60,4 +61,5 @@ readOskarData fname = withCString fname doRead
         allocaBytes (nb * sizeOf (undefined :: WMaxMin)) $ \mmptr -> do
           throwErr $ readAndReshuffle vptr visptr uvwptr mptr mmptr mapptr
           wstp <- wstep mptr
-          return $ TaskData nb (fi ntms) (fi nchs) n wstp visptr uvwptr mapptr
+          mxx <- maxx mptr
+          return $ TaskData nb (fi ntms) (fi nchs) n mxx wstp visptr uvwptr mapptr

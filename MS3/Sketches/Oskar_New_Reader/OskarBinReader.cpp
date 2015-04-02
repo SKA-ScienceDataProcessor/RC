@@ -382,6 +382,13 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
       , cmax, cmin
       ;
     mp->wstep = wstep;
+    mp->maxx = max(
+          max(
+            max(mp->maxu, -mp->minu)
+          , max(mp->maxv, -mp->minv)
+          )
+        , maxxw
+        );
 
     for (int i = 0; i < vdp->num_baselines; i++) {
       cmax = bl_ws[i].maxw/wstep;

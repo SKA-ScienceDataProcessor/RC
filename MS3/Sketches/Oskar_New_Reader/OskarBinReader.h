@@ -65,6 +65,7 @@ typedef struct Metrix_tag {
     , minu
     , minv
     , minw
+    , maxx
     , wstep
     ;
 } Metrix;
