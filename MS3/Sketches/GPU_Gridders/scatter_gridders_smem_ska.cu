@@ -265,8 +265,8 @@ __global__ void addBaselineToGrid##suff(                                   \
   , int max_supp                                                           \
   , Double4c grid[GRID_SIZE][GRID_SIZE]                                    \
   , const complexd * gcf_layers[WPLANES]                                   \
-  , const double3 uvw[TIMESTEPS]                                           \
-  , const Double4c vis[TIMESTEPS]                                          \
+  , const double3 uvw[TIMESTEPS*CHANNELS]                                  \
+  , const Double4c vis[TIMESTEPS*CHANNELS]                                 \
   ) {                                                                      \
   addBaselineToGrid<OVER, WPLANES, GRID_SIZE, TIMESTEPS, CHANNELS, ishalf> \
     ( scale                                                                \
@@ -286,8 +286,8 @@ __global__ void addBaselinesToGridSkaMid##suff(                                 
   , const BlWMap permutations[BASELINES]                                                      \
   , Double4c grid[GRID_SIZE][GRID_SIZE]                                                       \
   , const complexd * gcf_layers[WPLANES]                                                      \
-  , const double3 uvw[BASELINES][TIMESTEPS]                                                   \
-  , const Double4c vis[BASELINES][TIMESTEPS]                                                  \
+  , const double3 uvw[BASELINES][TIMESTEPS*CHANNELS]                                          \
+  , const Double4c vis[BASELINES][TIMESTEPS*CHANNELS]                                         \
   ) {                                                                                         \
   addBaselinesToGrid<OVER, WPLANES, GRID_SIZE, BASELINES, TIMESTEPS, CHANNELS, ishalf, false> \
     ( scale                                                                                   \
@@ -307,8 +307,8 @@ __global__ void addBaselinesToGridSkaMidUsingPermutations##suff(                
   , const BlWMap permutations[BASELINES]                                                     \
   , Double4c grid[GRID_SIZE][GRID_SIZE]                                                      \
   , const complexd * gcf_layers[WPLANES]                                                     \
-  , const double3 uvw[BASELINES][TIMESTEPS]                                                  \
-  , const Double4c vis[BASELINES][TIMESTEPS]                                                 \
+  , const double3 uvw[BASELINES][TIMESTEPS*CHANNELS]                                         \
+  , const Double4c vis[BASELINES][TIMESTEPS*CHANNELS]                                        \
   ) {                                                                                        \
   addBaselinesToGrid<OVER, WPLANES, GRID_SIZE, BASELINES, TIMESTEPS, CHANNELS, ishalf, true> \
     ( scale                                                                                  \
