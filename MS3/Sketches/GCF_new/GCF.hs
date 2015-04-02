@@ -21,6 +21,7 @@ import Foreign.Storable.Complex ()
 -- import Foreign.Marshal.Alloc -- for DEBUG only!
 -- import Text.Printf(printf)
 import qualified CUDAEx as CUDA
+import CUDAEx (CxDoubleDevPtr)
 
 import GHC.Generics (Generic)
 import Data.Binary
