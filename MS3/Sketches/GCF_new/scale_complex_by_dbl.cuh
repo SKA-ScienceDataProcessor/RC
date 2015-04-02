@@ -1,9 +1,7 @@
 #ifndef __SCALE_COMPLEX_BY_DBL_CUH
 #define __SCALE_COMPLEX_BY_DBL_CUH
 
-#include <cuda.h>
 #include <cuComplex.h>
-#include <math_constants.h>
 
 __device__ static __inline__ cuDoubleComplex cuMulComplexByDouble(cuDoubleComplex v,
                                                              double y){
