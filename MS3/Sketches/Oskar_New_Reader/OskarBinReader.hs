@@ -53,14 +53,11 @@ readOskarData fname = withCString fname doRead
       let
         n = fi npts
         nb = fi nbls
-        visSize = n * sizeOf (undefined :: CxDouble) * 4
-        uvwSize = n * sizeOf (undefined :: CDouble) * 3
-        mapSize = nb * sizeOf (undefined :: BlWMap)
-      visptr <- mallocBytes visSize
-      uvwptr <- mallocBytes uvwSize
-      mapptr <- mallocBytes mapSize
+      visptr <- mallocArray (n * 4)
+      uvwptr <- mallocArray (n * 3)
+      mapptr <- mallocArray nb
       alloca $ \mptr ->
-        allocaBytes (nb * sizeOf (undefined :: WMaxMin)) $ \mmptr -> do
+        allocaArray nb $ \mmptr -> do
           throwErr $ readAndReshuffle vptr visptr uvwptr mptr mmptr mapptr
           wstp <- wstep mptr
           mxx <- maxx mptr
