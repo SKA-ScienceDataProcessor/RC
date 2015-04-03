@@ -36,7 +36,7 @@ __inline__ __device__ void loadIntoSharedMem (
     coords.z *= scale;
     int
         // We additionally translate these u v by -max_supp/2
-        // because gridding procedure translate them back
+        // because gridding procedure translates them back
         u = round(coords.x) + grid_size/2 - max_supp/2
       , v = round(coords.y) + grid_size/2 - max_supp/2
       , over_u = round(over * (coords.x - u))
