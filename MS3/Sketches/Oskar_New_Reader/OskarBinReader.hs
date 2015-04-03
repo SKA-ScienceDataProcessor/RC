@@ -38,6 +38,26 @@ finalizeTaskData td = do
   free $ tdUVWs td
   free $ tdVisibilies td
 
+data SortType = NoSort | PlainSort | NormSort
+
+-- FIXME: Add type layer to distingush between cloned and original data.
+-- Another option is to attach finalizer to the data itself, but
+--  that would require bothering with Binary instance.
+mkSortedClone :: SortType -> TaskData -> IO TaskData
+mkSortedClone st td = do
+    newMap <- mallocArray n
+    copyArray newMap (tdMap td) n
+    sort st newMap (fromIntegral n)
+    return td {tdMap = newMap}
+  where
+    n = tdBaselines td
+    sort NoSort = \_ _ -> return ()
+    sort PlainSort = sort_on_w
+    sort NormSort = sort_on_abs_w
+
+finalizeSortedClone :: TaskData -> IO ()
+finalizeSortedClone td = free $ tdMap td
+
 readOskarData :: String -> IO TaskData
 readOskarData fname = withCString fname doRead
   where
