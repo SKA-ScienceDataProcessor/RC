@@ -13,6 +13,7 @@
 
 using namespace std;
 
+/*
 template <
     int grid_size
   , int over
@@ -51,7 +52,7 @@ inline void pregridPoint(double scale, Double3 uvw, Pregridded & res){
       res.gcf_layer_index = (w_plane * over + over_u) * over + over_v;
     }
     res.gcf_layer_supp = max_supp;
-}
+} */
 
 typedef unsigned int uint;
 

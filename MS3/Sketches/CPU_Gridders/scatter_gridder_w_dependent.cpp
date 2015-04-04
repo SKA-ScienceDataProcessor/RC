@@ -1,59 +1,13 @@
-#include "scatter_gridder.h"
+#include "common.h"
 
-template <
-    int w_planes
-  , int half_supp_step
-  , int grid_size
-  >
-TaskCfg mkCfg (
-    double min_u
-  , double max_u
-  , double min_v
-  , double max_v
-  , double min_w
-  , double max_w
-  , double min_freq
-  , double max_freq
-  ) {
-  const int max_supp = (w_planes - 1) * half_supp_step * 2;
-  const int uv_shift_in_pixels = (max_supp + grid_size) / 2;
-  double
-      min_wavelength = SPEED_OF_LIGHT / max_freq
-    , max_inverse_wave_length = max_freq / SPEED_OF_LIGHT
-    , maxx_u = std::max(max_u, -min_u)
-    , maxx_v = std::max(max_v, -min_v)
-    , maxx0 = std::max(maxx_u, maxx_v)
-    , maxx = maxx0 * max_freq / min_freq
-    , cellsize = maxx / double (uv_shift_in_pixels)
-    , cellsizeWL = cellsize * max_inverse_wave_length
-    , scale = double (uv_shift_in_pixels) / maxx
-    , scaleWL = scale * min_wavelength
-    , w_step = (max_w - min_w) / double(w_planes) + WSTEP_CORRECT
-    , w_stepWL = w_step * scaleWL
-    , w_shift = -min_w
-    , w_shiftWL = w_shift * scaleWL
-    ;
-  return {
-      min_wavelength
-    , max_inverse_wave_length
-    , cellsize
-    , cellsizeWL
-    , scale
-    , scaleWL
-    , w_step
-    , w_stepWL
-    , w_shift
-    , w_shiftWL
-    };
-}
-
+/*
 struct Pregridded
 {
   short u;
   short v;
   short gcf_layer_index;
   short half_supp_size;
-};
+}; */
 
 template <
     int w_planes

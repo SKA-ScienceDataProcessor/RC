@@ -22,6 +22,7 @@ __inline__ __device__ void loadIntoSharedMem (
   , Double4c vis_shared[timesteps * channels]
   ) {
   for (int i = threadIdx.x; i < timesteps * channels; i += blockDim.x) {
+    /*
     double3 coords = uvw[i];
     coords.x *= scale;
     coords.y *= scale;
@@ -51,7 +52,9 @@ __inline__ __device__ void loadIntoSharedMem (
     } else {
         uvo_shared[i].gcf_layer_index = (w_plane * over + over_u) * over + over_v;
     }
-    uvo_shared[i].gcf_layer_supp = get_supp(w_plane);
+    uvo_shared[i].gcf_layer_supp = get_supp(w_plane); */
+    // uvo_shared[i] is passed by reference and updated!
+    pregridPoint<grid_size, over, w_planes, do_mirror>(scale, uvw[i], uvo_shared[i]);
     vis_shared[i] = vis[i];
   }
 }
