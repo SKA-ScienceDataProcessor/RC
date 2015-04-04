@@ -45,7 +45,7 @@ typedef unsigned int uint;
 template <int divs>
 struct filegrid {
 
-  void flush(const char * prefix) {
+  int flush(const char * prefix) {
     for(int i = 0; i < divs; i++) {
       for(int j = 0; j < divs; j++) {
         if (pre_files[i][j].tellp() > 0) {
@@ -58,8 +58,10 @@ struct filegrid {
 
           sprintf(last, "-pre.dat");
           f = fopen(name, "wb");
-          if (f == nullptr)
+          if (f == nullptr) {
             printf("Gone bad at %s on (%u,%u) with %d\n", name, i, j, errno);
+            return errno;
+          }
           cnt = pre_files[i][j].tellp();
           buf = new char[cnt];
           pre_files[i][j].read(buf, cnt);
@@ -69,8 +71,10 @@ struct filegrid {
 
           sprintf(last, "-vis.dat");
           f = fopen(name, "wb");
-          if (f == nullptr)
+          if (f == nullptr) {
             printf("Gone bad at %s on (%u,%u) with %d\n", name, i, j, errno);
+            return errno;
+          }
           cnt = vis_files[i][j].tellp();
           buf = new char[cnt];
           vis_files[i][j].read(buf, cnt);
@@ -80,6 +84,7 @@ struct filegrid {
         }
       }
     }
+    return 0;
   }
 
   void put_point(uint x, uint y, const Pregridded & p, const Double4c & vis){
@@ -175,7 +180,8 @@ inline int doit(const char * prefix, int num_channels, int num_points, double sc
   for(int i = 0; i < num_channels; i++){
     char new_prefix[256];
     snprintf(new_prefix, 256, "%s%06d-", prefix, i);
-    filesp[i].flush(new_prefix);
+    res = filesp[i].flush(new_prefix);
+    if (res != 0) break;
   }
 
   delete [] filesp;
