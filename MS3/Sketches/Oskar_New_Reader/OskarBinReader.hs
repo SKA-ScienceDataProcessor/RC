@@ -80,6 +80,7 @@ readOskarData fname = withCString fname doRead
       alloca $ \mptr ->
         allocaArray nb $ \mmptr -> do
           throwErr $ readAndReshuffle vptr visptr uvwptr mptr mmptr mapptr
+          freeBinHandler vptr
           wstp <- wstep mptr
           mxx <- maxx mptr
           return $ TaskData nb (fi ntms) (fi nchs) n mxx wstp visptr uvwptr mapptr
