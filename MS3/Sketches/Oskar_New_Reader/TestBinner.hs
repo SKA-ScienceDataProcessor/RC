@@ -13,6 +13,6 @@ main = do
   print "Task data are read."
   let prefix = "bins/"
   createDirectoryIfMissing True prefix
-  bin prefix td
+  bin prefix False td
   -- writeTaskData "" td
   finalizeTaskData td

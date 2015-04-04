@@ -17,27 +17,40 @@ template <
     int grid_size
   , int over
   , int w_planes
+  , bool do_mirror
   >
 inline void pregridPoint(double scale, Double3 uvw, Pregridded & res){
     uvw.u *= scale;
     uvw.v *= scale;
     uvw.w *= scale;
-    int
-        w_plane = int(round (uvw.w / (w_planes/2)))
-      , max_supp = int(get_supp(w_plane))
+    short
+        w_plane = short(round (uvw.w / (w_planes/2)))
+      , max_supp = short(get_supp(w_plane))
       // We additionally translate these u v by -max_supp/2
       // because gridding procedure translates them back
-      , u = int(round(uvw.u) + grid_size/2 - max_supp/2)
-      , v = int(round(uvw.v) + grid_size/2 - max_supp/2)
-      , over_u = int(round(over * (uvw.u - u)))
-      , over_v = int(round(over * (uvw.v - v)))
+      , u = short(round(uvw.u) + grid_size/2 - max_supp/2)
+      , v = short(round(uvw.v) + grid_size/2 - max_supp/2)
+      , over_u = short(round(over * (uvw.u - u)))
+      , over_v = short(round(over * (uvw.v - v)))
       ;
-
-    res.u = (short)u;
-    res.v = (short)v;
-    res.gcf_layer_w_plane = (char)w_plane;
-    res.gcf_layer_over = (char)(over_u * over + over_v);
-    res.gcf_layer_supp = (short)max_supp;
+    res.u = u;
+    res.v = v;
+    // Well, this is a kind of trick:
+    // For full GCF we can have w_plane and hence gcf_layer_index negative.
+    // But for half GCF we have both positive. Thus to convey an information
+    // about original w being negative we negate the whole index.
+    // When inspecting it client of half GCF if looking negative index should
+    // both negate it *and* conjugate support pixel.
+    if (do_mirror) {
+      if (w_plane < 0) {
+          res.gcf_layer_index = -((-w_plane * over + over_u) * over + over_v);
+      } else {
+          res.gcf_layer_index = (w_plane * over + over_u) * over + over_v;
+      }
+    } else {
+      res.gcf_layer_index = (w_plane * over + over_u) * over + over_v;
+    }
+    res.gcf_layer_supp = max_supp;
 }
 
 typedef unsigned int uint;
@@ -102,6 +115,7 @@ template <
   , int over
   , int w_planes
   , int divs
+  , bool do_mirror
   >
 // We don't perform baselines sorting yet.
 // But it is not so hard to implement it.
@@ -120,7 +134,7 @@ inline int doit(const char * prefix, int num_channels, int num_points, double sc
   while(amp_curr < amps_end){
     for(int i = 0; i < num_channels; i++){
       Pregridded p;
-      pregridPoint<grid_size, over, w_planes>(scale, *uvw_curr, p); // p is passed as reference and updated!
+      pregridPoint<grid_size, over, w_planes, do_mirror>(scale, *uvw_curr, p); // p is passed as reference and updated!
       div_t us, vs;
       // NOTE: we have u and v translated by -p.gcf_layer_supp/2
       // in pregridPoint, thus we temporarily put them back.
@@ -188,7 +202,11 @@ inline int doit(const char * prefix, int num_channels, int num_points, double sc
   return res;
 }
 
-extern "C"
+extern "C" {
 int bin(const char * prefix, int num_channels, int num_points, double scale, Double4c* amps, Double3 * uvws) {
-  return doit<GRID_SIZE, OVER, WPLANES, DIVIDERS>(prefix, num_channels, num_points, scale, amps, uvws);
+  return doit<GRID_SIZE, OVER, WPLANES, DIVIDERS, false>(prefix, num_channels, num_points, scale, amps, uvws);
+}
+int binm(const char * prefix, int num_channels, int num_points, double scale, Double4c* amps, Double3 * uvws) {
+  return doit<GRID_SIZE, OVER, WPLANES, DIVIDERS, true>(prefix, num_channels, num_points, scale, amps, uvws);
+}
 }

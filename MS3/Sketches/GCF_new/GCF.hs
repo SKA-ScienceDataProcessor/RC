@@ -63,12 +63,12 @@ data GCF = GCF {
 instance Binary GCF
 
 getCentreOfFullGCF :: GCF -> CUDA.DevicePtr CxDoubleDevPtr
-getCentreOfFullGCF (GCF _ n _ l) = CUDA.advanceDevPtr l (n `div` 2)
+getCentreOfFullGCF (GCF _ n _ l) = CUDA.advanceDevPtr l ((n `div` 2) * 8 * 8)
 
 allocateGCF :: Int -> Int -> IO GCF
 allocateGCF nOfLayers sizeOfGCFInComplexD = do
   gcfp <- CUDA.mallocArray sizeOfGCFInComplexD
-  layers <- CUDA.mallocArray nOfLayers
+  layers <- CUDA.mallocArray (nOfLayers * 8 * 8)
   return $ GCF sizeOfGCFInComplexD nOfLayers gcfp layers
 
 finalizeGCF :: GCF -> IO ()
@@ -94,7 +94,7 @@ doCuda t2 ws_hsupps gcf = do
         CUDA.allocaArray (256*256*8*8) $ \(overt :: CxDoubleDevPtr) ->
           CUDA.allocaArray 1 $ \(normp :: DoubleDevPtr Double) ->
             let
-              go ((w, hsupp):rest) outp0 lptrrlist = do
+              go ((w, hsupp):rest) lptrrlist = do
                  let
                    supp2 = let supp = 1 + 2 * fromIntegral hsupp in supp * supp
                  CUDA.sync
@@ -106,7 +106,7 @@ doCuda t2 ws_hsupps gcf = do
                  launchOnFF transpose_over0 64 [CUDA.VArg overt, CUDA.VArg overo]
                  CUDA.sync
                  let
-                   normAndExtractLayers outp layerp n
+                   normAndExtractLayers outplist layerp n
                      | n > 0 = do
                                  launchReduce reduce_512_odd layerp normp (256*256)
                                  CUDA.sync
@@ -114,17 +114,16 @@ doCuda t2 ws_hsupps gcf = do
                                  -- peek hnormp >>= print
                                  launchNormalize normalize normp layerp (256*256)
                                  CUDA.sync
+                                 let outp = head outplist
                                  launchOnFF wextract1 1 [CUDA.IArg (fromIntegral hsupp), CUDA.VArg outp, CUDA.VArg layerp]
                                  CUDA.sync
-                                 normAndExtractLayers (CUDA.advanceDevPtr outp supp2) (CUDA.advanceDevPtr layerp $ 256*256) (n-1)
-                     | otherwise = return ()
-                 normAndExtractLayers outp0 overt (8*8 :: Int)
-                 let
-                   nextPtr = CUDA.advanceDevPtr outp0 $ supp2 * 8 * 8
-                 go rest nextPtr (nextPtr:lptrrlist)
-              go [] _ lptrrlist = CUDA.pokeListArray (init $ reverse lptrrlist) (gcfLayers gcf)
-              gcfptr = gcfPtr gcf
-            in go ws_hsupps gcfptr [gcfptr]
+                                 let nextPtr = CUDA.advanceDevPtr outp supp2
+                                 normAndExtractLayers (nextPtr:outplist) (CUDA.advanceDevPtr layerp $ 256*256) (n-1)
+                     | otherwise = return outplist
+                 olist <- normAndExtractLayers lptrrlist overt (8*8 :: Int)
+                 go rest olist
+              go [] lptrrlist = CUDA.pokeListArray (init $ reverse lptrrlist) (gcfLayers gcf)
+            in go ws_hsupps [gcfPtr gcf]
   where
     kernelNames =
       [ "fftshift_kernel"

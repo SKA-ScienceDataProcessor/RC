@@ -35,8 +35,7 @@ struct Pregridded
 {
   short u;
   short v;
-  char gcf_layer_w_plane;
-  char gcf_layer_over;
+  short gcf_layer_index;
   short gcf_layer_supp;
 };
 
