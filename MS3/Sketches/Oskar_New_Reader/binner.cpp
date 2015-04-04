@@ -13,47 +13,6 @@
 
 using namespace std;
 
-/*
-template <
-    int grid_size
-  , int over
-  , int w_planes
-  , bool do_mirror
-  >
-inline void pregridPoint(double scale, Double3 uvw, Pregridded & res){
-    uvw.u *= scale;
-    uvw.v *= scale;
-    uvw.w *= scale;
-    short
-        w_plane = short(round (uvw.w / (w_planes/2)))
-      , max_supp = short(get_supp(w_plane))
-      // We additionally translate these u v by -max_supp/2
-      // because gridding procedure translates them back
-      , u = short(round(uvw.u) + grid_size/2 - max_supp/2)
-      , v = short(round(uvw.v) + grid_size/2 - max_supp/2)
-      , over_u = short(round(over * (uvw.u - u)))
-      , over_v = short(round(over * (uvw.v - v)))
-      ;
-    res.u = u;
-    res.v = v;
-    // Well, this is a kind of trick:
-    // For full GCF we can have w_plane and hence gcf_layer_index negative.
-    // But for half GCF we have both positive. Thus to convey an information
-    // about original w being negative we negate the whole index.
-    // When inspecting it client of half GCF if looking negative index should
-    // both negate it *and* conjugate support pixel.
-    if (do_mirror) {
-      if (w_plane < 0) {
-          res.gcf_layer_index = -((-w_plane * over + over_u) * over + over_v);
-      } else {
-          res.gcf_layer_index = (w_plane * over + over_u) * over + over_v;
-      }
-    } else {
-      res.gcf_layer_index = (w_plane * over + over_u) * over + over_v;
-    }
-    res.gcf_layer_supp = max_supp;
-} */
-
 typedef unsigned int uint;
 
 template <int divs>

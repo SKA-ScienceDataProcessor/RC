@@ -22,37 +22,6 @@ __inline__ __device__ void loadIntoSharedMem (
   , Double4c vis_shared[timesteps * channels]
   ) {
   for (int i = threadIdx.x; i < timesteps * channels; i += blockDim.x) {
-    /*
-    double3 coords = uvw[i];
-    coords.x *= scale;
-    coords.y *= scale;
-    coords.z *= scale;
-    short
-        // We additionally translate these u v by -max_supp/2
-        // because gridding procedure translates them back
-        u = short(round(coords.x) + grid_size/2 - max_supp/2)
-      , v = short(round(coords.y) + grid_size/2 - max_supp/2)
-      , over_u = short(round(over * (coords.x - u)))
-      , over_v = short(round(over * (coords.y - v)))
-      , w_plane = short(round (coords.z / (w_planes/2)))
-      ;
-    uvo_shared[i].u = u;
-    uvo_shared[i].v = v;
-    // For full GCF we can have w_plane and hence gcf_layer_index negative.
-    // But for half GCF we have both positive. Thus to convey an information
-    // about original w being negative we negate the whole index.
-    // When inspecting it client of half GCF if looking negative index should
-    // both negate it *and* conjugate support pixel.
-    if (do_mirror) {
-      if (w_plane < 0) {
-          uvo_shared[i].gcf_layer_index = -((-w_plane * over + over_u) * over + over_v);
-      } else {
-          uvo_shared[i].gcf_layer_index = (w_plane * over + over_u) * over + over_v;
-      }
-    } else {
-        uvo_shared[i].gcf_layer_index = (w_plane * over + over_u) * over + over_v;
-    }
-    uvo_shared[i].gcf_layer_supp = get_supp(w_plane); */
     // uvo_shared[i] is passed by reference and updated!
     pregridPoint<grid_size, over, w_planes, do_mirror>(scale, uvw[i], uvo_shared[i]);
     vis_shared[i] = vis[i];
