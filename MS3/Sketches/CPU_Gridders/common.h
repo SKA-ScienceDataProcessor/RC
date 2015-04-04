@@ -1,5 +1,5 @@
-#ifndef __SCATTER_GRIDDER_H
-#define __SCATTER_GRIDDER_H
+#ifndef __COMMON_H
+#define __COMMON_H
 
 #if defined __AVX__
 #include <immintrin.h>
@@ -31,31 +31,21 @@ struct Double3
   double w;
 };
 
+struct Pregridded
+{
+  short u;
+  short v;
+  char gcf_layer_w_plane;
+  char gcf_layer_over;
+  short gcf_layer_supp;
+};
+
 // We have original u,v,w, in meters.
 // To go to u,v,w in wavelengths we shall multiply them with freq/SPEED_OF_LIGHT
 
 #ifndef SPEED_OF_LIGHT
 #define SPEED_OF_LIGHT 299792458.0
 #endif
-
-#ifndef WSTEP_CORRECT
-#define WSTEP_CORRECT 0.00001
-#endif
-
-struct TaskCfg {
-  double
-      min_wave_length
-    , max_inverse_wave_length
-    , cellsize
-    , cellsizeWL
-    , scale
-    , scaleWL
-    , w_step
-    , w_stepWL
-    , w_shift
-    , w_shiftWL
-    ;
-};
 
 #ifdef __CUDACC__
 __device__ __inline__ static 
@@ -66,5 +56,13 @@ __inline static
     if (w < 0) w = -w;
     return w * 8 + 1;
   }
+
+#if __GNUC__ == 4 && __GNUC_MINOR__ < 6
+#define __OLD
+#endif
+
+#ifdef __OLD
+#define nullptr NULL
+#endif
 
 #endif
