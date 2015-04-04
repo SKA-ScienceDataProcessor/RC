@@ -16,16 +16,9 @@
 
 #include <oskar_binary.h>
 
+#include "common.h"
+#include "metrix.h"
 #include "OskarBinReader.h"
-
-#if __GNUC__ == 4 && __GNUC_MINOR__ < 6
-#define __OLD
-#define nullptr NULL
-#endif
-
-#define SPEED_OF_LIGHT 299792458.0
-// FIXME: Centralize definitions further (this is duplicated in CUDA code)
-#define WPLANES 63
 
 using namespace std;
 
