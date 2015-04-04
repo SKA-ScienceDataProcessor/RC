@@ -1,50 +1,13 @@
 #include "common.h"
-
-/*
-struct Pregridded
-{
-  short u;
-  short v;
-  short gcf_layer_index;
-  short half_supp_size;
-}; */
+#include "metrix.h"
 
 template <
-    int w_planes
-  , int half_supp_step
-  , int grid_size
-  , int over
-  >
-Pregridded pregrid(const Double3 & uvw, const TaskCfg & cfg) {
-  const int max_supp = (w_planes - 1) * half_supp_step * 2;
-  double
-      us = uvw.u * cfg.scaleWL
-    , vs = uvw.v * cfg.scaleWL
-    ;
-  int
-      u = int(us)
-    , v = int(vs)
-    , wplane = int((uvw.w + cfg.w_shift)/ cfg.w_step)
-    , uv_shift_in_pixels = (max_supp + grid_size) / 2
-    ;
-  short
-      fracu = short(double(over) * (us - double(u)))
-    , fracv = short(double(over) * (vs - double(v)))
-    ;
-  const int overu = over;
-  const int overv = over;
-  return {u + uv_shift_in_pixels, v + uv_shift_in_pixels, (wplane * overu + fracu) * overv + fracv, wplane * half_supp_step};
-}
-
-template <
-    int w_planes
-  , int half_supp_step
-  , int grid_size
-  , int over
+    int grid_size
 
   , int baselines
   , int timesteps
   , int channels
+  , bool is_half_gcf
   >
 // grid must be initialized to 0s.
 void gridKernel_scatter(
@@ -61,12 +24,10 @@ void gridKernel_scatter(
   for (int sv = 0; /* see CHECK_SUPP comment */ ; sv++) { // Moved from 2-levels below according to Romein
     for (int i = 0; i < baselines * timesteps * channels; i++) {
       const int
-        max_supp_here = uvw[i].half_supp_size * 2;
+        max_supp_here = uvw[i].gcf_layer_supp;
 
       if (sv > max_supp_here)
         return; // CHECK_SUPP
-
-      const complexd * gcf_layer = gcf + uvw[i].gcf_layer_index;
 
 #ifdef __AVX__
       // We port Romein CPU code to doubles here (for MS2 we didn't)
@@ -82,15 +43,30 @@ void gridKernel_scatter(
       // but what I definitely see gcc generates 4-times shorter code for it!
       // We need to investigate this!
       // for (int sv = 0; sv < max_supp_here; sv++) {
+        // Don't forget our u v are already translated by -max_supp_here/2
         int gsu, gsv;
-        gsu = uvw[i].u + su - uvw[i].half_supp_size;
-        gsv = uvw[i].v + sv - uvw[i].half_supp_size;
+        gsu = uvw[i].u + su;
+        gsv = uvw[i].v + sv;
 
-        int gcf_index = su * max_supp_here + sv;
+        complexd supportPixel;
+        #define __layeroff su * max_supp_here + sv
+        if (is_half_gcf) {
+          int index = uvw[i].gcf_layer_index;
+          // Negative index indicates that original w was mirrored
+          // and we shall negate the index to obtain correct
+          // offset *and* conjugate the result.
+          if (index < 0) {
+            supportPixel = conj((gcf - index)[__layeroff]);
+          } else {
+            supportPixel = (gcf + index)[__layeroff];
+          }
+        } else {
+            supportPixel = (gcf + uvw[i].gcf_layer_index)[__layeroff];
+        }
 
 #ifdef __AVX__
-        __m256d weight_r = _mm256_set1_pd(gcf_layer[gcf_index].real());
-        __m256d weight_i = _mm256_set1_pd(gcf_layer[gcf_index].imag());
+        __m256d weight_r = _mm256_set1_pd(supportPixel.real());
+        __m256d weight_i = _mm256_set1_pd(supportPixel.imag());
 
         /* _mm256_permute_pd(x, 5) swaps adjacent doubles pairs of x:
            d0, d1, d2, d3 goes to d1, d0, d3, d2
@@ -106,7 +82,7 @@ void gridKernel_scatter(
         __DO(0, XX);
         __DO(1, YX);
 #else
-        #define __GRID_POL(pol) grid[gsu][gsv].pol += vis[i].pol * gcf_layer[gcf_index]
+        #define __GRID_POL(pol) grid[gsu][gsv].pol += vis[i].pol * supportPixel
         __GRID_POL(XX);
         __GRID_POL(XY);
         __GRID_POL(YX);
@@ -117,10 +93,13 @@ void gridKernel_scatter(
   }
 }
 
+
 // Test instantiation
-template void gridKernel_scatter<32, 4, 2048, 8, 50*99, 20, 1>(
+void gridKernel_scatter1(
     const complexd * gcf
-  , Double4c grid[2048][2048]
-  , const Pregridded uvw[(50*90) * 20 * 1]
-  , const Double4c vis[(50*90) * 20 * 1]
-  );
+  , Double4c grid[GRID_SIZE][GRID_SIZE]
+  , const Pregridded uvw[BASELINES * TIMESTEPS * CHANNELS]
+  , const Double4c vis[BASELINES * TIMESTEPS * CHANNELS]
+  ){
+  gridKernel_scatter<GRID_SIZE, BASELINES, TIMESTEPS, CHANNELS, false>(gcf, grid, uvw, vis);
+  }
