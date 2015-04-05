@@ -91,7 +91,7 @@ void gridKernel_scatter(
 #pragma omp parallel
   {
     auto grid = grids[omp_get_thread_num()];
-  
+
 #pragma omp for schedule(dynamic)
     for(int bl0 = 0; bl0 < baselines; bl0++) {
       int bl;
@@ -102,7 +102,7 @@ void gridKernel_scatter(
         for (int i = 0; i < ts_ch; i++) {
             Pregridded p;
             cvt<grid_size, over, w_planes, is_half_gcf, Inp>::pre(scale, uvw[bl][i], p);
-  
+
 #ifdef __AVX__
           // We port Romein CPU code to doubles here (for MS2 we didn't)
           // vis0 covers XX and XY, vis1 -- YX and YY
@@ -110,7 +110,7 @@ void gridKernel_scatter(
           vis0 = _mm256_load_pd((const double *) &vis[bl][i].XX);
           vis1 = _mm256_load_pd((const double *) &vis[bl][i].YX);
 #endif
-    
+
           for (int su = 0; su <= max_supp_here; su++) {
           // NOTE: Romein writes about moving this to the very outer scope
           // (2 levels up) to make things more cache-friendly.
@@ -119,7 +119,7 @@ void gridKernel_scatter(
             int gsu, gsv;
             gsu = p.u + su;
             gsv = p.v + sv;
-    
+
             complexd supportPixel;
             #define __layeroff su * max_supp_here + sv
             if (is_half_gcf) {
@@ -136,12 +136,12 @@ void gridKernel_scatter(
             } else {
                 supportPixel = (gcf + p.gcf_layer_index)[__layeroff];
             }
-    
+
 #ifdef __AVX__
             __m256d weight_r, weight_i;
             weight_r = _mm256_set1_pd(supportPixel.real());
             weight_i = _mm256_set1_pd(supportPixel.imag());
-    
+
             /* _mm256_permute_pd(x, 5) swaps adjacent doubles pairs of x:
                d0, d1, d2, d3 goes to d1, d0, d3, d2
              */
@@ -152,7 +152,7 @@ void gridKernel_scatter(
             __m256d tp##p = _mm256_permute_pd(ti##p, 5);          \
             __m256d t##p = _mm256_addsub_pd(tr##p, tp##p);        \
             gridptr##p[p] = _mm256_add_pd(gridptr##p[p], t##p)
-    
+
             __DO(0, XX);
             __DO(1, YX);
 #else
@@ -211,7 +211,7 @@ void gridKernel_scatter_full(
     , w_planes
     , is_half_gcf
     , use_permutations
-    
+
     , baselines
     , grid_size
     , ts_ch
@@ -225,7 +225,7 @@ void gridKernel_scatter_full(
     , w_planes
     , is_half_gcf
     , use_permutations
-    
+
     , baselines
     , grid_size
     , ts_ch
