@@ -268,22 +268,23 @@ void gridKernel_scatter1(
  */
 
 template <int grid_size, int num_pols>
-void extractPolarization(
+void normalizeAndExtractPolarization(
     int n
   , complexd dst[grid_size][grid_size]
   , const complexd src[grid_size][grid_size][num_pols]
   )
 {
+  const double norm = 1.0/double(grid_size * grid_size);
 #pragma omp parallel for
   for (int i = 0; i < grid_size*grid_size; i++) {
-    dst[0][i] = src[0][i][n];
+    dst[0][i] = src[0][i][n] * norm;
   }
 }
 
-extern "C" void extractPolarization(
+extern "C" void normalizeAndExtractPolarization(
     int n
   , complexd dst[GRID_SIZE][GRID_SIZE]
   , const complexd src[GRID_SIZE][GRID_SIZE][NUM_POL]
   ) {
-  return extractPolarization<GRID_SIZE, NUM_POL>(n, dst, src);
+  return normalizeAndExtractPolarization<GRID_SIZE, NUM_POL>(n, dst, src);
 }
