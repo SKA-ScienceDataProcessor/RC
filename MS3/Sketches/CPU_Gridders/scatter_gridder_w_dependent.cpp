@@ -32,8 +32,9 @@ void gridKernel_scatter(
 #ifdef __AVX__
       // We port Romein CPU code to doubles here (for MS2 we didn't)
       // vis0 covers XX and XY, vis1 -- YX and YY
-      __m256d vis0 = _mm256_load_pd((const double *) &vis[i].XX);
-      __m256d vis1 = _mm256_load_pd((const double *) &vis[i].YX);
+      __m256d vis0, vis1;
+      vis0 = _mm256_load_pd((const double *) &vis[i].XX);
+      vis1 = _mm256_load_pd((const double *) &vis[i].YX);
 #endif
 
       for (int su = 0; su <= max_supp_here; su++) {
@@ -51,7 +52,8 @@ void gridKernel_scatter(
         complexd supportPixel;
         #define __layeroff su * max_supp_here + sv
         if (is_half_gcf) {
-          int index = uvw[i].gcf_layer_index;
+          int index;
+          index = uvw[i].gcf_layer_index;
           // Negative index indicates that original w was mirrored
           // and we shall negate the index to obtain correct
           // offset *and* conjugate the result.
@@ -65,8 +67,9 @@ void gridKernel_scatter(
         }
 
 #ifdef __AVX__
-        __m256d weight_r = _mm256_set1_pd(supportPixel.real());
-        __m256d weight_i = _mm256_set1_pd(supportPixel.imag());
+        __m256d weight_r, weight_i;
+        weight_r = _mm256_set1_pd(supportPixel.real());
+        weight_i = _mm256_set1_pd(supportPixel.imag());
 
         /* _mm256_permute_pd(x, 5) swaps adjacent doubles pairs of x:
            d0, d1, d2, d3 goes to d1, d0, d3, d2
