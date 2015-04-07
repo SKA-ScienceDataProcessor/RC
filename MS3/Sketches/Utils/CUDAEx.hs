@@ -9,6 +9,7 @@ module CUDAEx(
  , module Foreign.CUDA.Runtime
  , module Foreign.CUDA.Driver
  , CxDoubleDevPtr
+ , CxDoubleHostPtr
  , DoubleDevPtr
  , DevicePtr(..)
  , HostPtr(..)
@@ -35,6 +36,7 @@ import Data.Typeable
 
 type CxDouble = Complex Double
 type CxDoubleDevPtr = DevicePtr CxDouble
+type CxDoubleHostPtr = HostPtr CxDouble
 type DoubleDevPtr = DevicePtr Double
 
 deriving instance Typeable DevicePtr
