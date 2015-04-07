@@ -58,23 +58,28 @@ instance Binary Grid
  -}
 
 type At =
-      Int
-   -> Int
-   -> CUDA.DevicePtr BlWMap
+      Int                   -- Support size for launch
+   -> Int                   -- Num of baselines in launch
+   -> CUDA.DevicePtr BlWMap -- Pointer to mapping location in launch
    -> IO ()
 
 type AddBaselinesFun =
-      CDouble
-   -> CUDA.CxDoubleDevPtr
-   -> CUDA.DevicePtr CUDA.CxDoubleDevPtr
-   -> CUDA.DoubleDevPtr
-   -> CUDA.CxDoubleDevPtr
+      CDouble                             -- Scale
+   -> CUDA.CxDoubleDevPtr                 -- Visibilities ptr
+   -> CUDA.DevicePtr CUDA.CxDoubleDevPtr  -- GCF layers ptr
+   -> CUDA.DoubleDevPtr                   -- UVW ptr
+   -> CUDA.CxDoubleDevPtr                 -- Mapper ptr
    -> At
 
-type AddBaselinesIter = Int -> Ptr BlWMap -> At -> IO ()
+type AddBaselinesIter =
+      Int                   -- Num of baselines total
+   -> Ptr BlWMap            -- Pointer to mapping vector
+   -> CUDA.DevicePtr BlWMap -- Device pointer to mapping vector
+   -> At
+   -> IO ()
 
 launchAddBaselines :: CUDA.Fun -> AddBaselinesFun
-launchAddBaselines f scale gridptr gcflp uvwp visp numOfBaselines maxSupp permutations =
+launchAddBaselines f scale gridptr gcflp uvwp visp maxSupp numOfBaselines permutations =
   CUDA.launchKernel f (numOfBaselines, 1, 1) (nOfThreads, 1, 1) 0 Nothing params
   where
     nOfThreads = min 1024 (maxSupp * maxSupp)
@@ -102,7 +107,7 @@ runGridder (GridderConfig gfname gcfIsFull iter) td gcf = do
           CUDA.pokeArray uvwSize (castPtr $ tdUVWs td) uvwp
           CUDA.pokeArray visSize (castPtr $ tdVisibilies td) visp
           CUDA.pokeArray nBaselines perms permp
-          iter nBaselines perms (launchAddBaselines fun scale visp gcfptr uvwp visp)
+          iter nBaselines perms permp (launchAddBaselines fun scale visp gcfptr uvwp visp)
     return $ Grid gridsize gridptr
   where
     -- FIXME: Move this to top level and
