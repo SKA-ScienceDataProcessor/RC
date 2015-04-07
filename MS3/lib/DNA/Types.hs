@@ -60,14 +60,23 @@ data TimeOut = TimeOut ActorID
                  deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary TimeOut
 
+
 -- | Resources allocated to single process. It always have access to
 --   node it owns and possibly list of other nodes.
 data VirtualCAD = VirtualCAD
     { vcadLoc      :: Location
-    , vcadNode     :: NodeId
-    , vcadNodePool :: [NodeId]
+    , vcadNode     :: NodeInfo
+    , vcadNodePool :: [NodeInfo]
     } 
     deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary VirtualCAD
+
+-- | Information about node
+data NodeInfo = NodeInfo
+  { nodeId :: NodeId
+  }
+  deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary NodeInfo
 
 data Location = Remote
               | Local

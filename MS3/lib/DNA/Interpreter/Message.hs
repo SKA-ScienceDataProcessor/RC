@@ -86,7 +86,7 @@ handleProcessRestart oldPID mtch clos p0 = do
     --        data from parent process
     --
     -- Restart process
-    (pid,_) <- liftP $ spawnSupervised (vcadNode cad) clos
+    (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) clos
     liftP $ forward p0 pid
     taggedMessage "INFO" $ printf "%s died, respawned as %s" (show oldPID) (show pid)
     -- Record updated information about actor

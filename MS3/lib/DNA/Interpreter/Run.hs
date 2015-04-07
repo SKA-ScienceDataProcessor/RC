@@ -193,7 +193,7 @@ runDnaParam p action = do
   runDnaMonad (actorRank p)
               (actorGroupSize p)
               (actorInterpreter p)
-              (actorNodes       p)
+              (vcadNodePool $ actorNodes       p)
               (actorDebugFlags  p)
     $ dnaInterpreter interpreter action
 

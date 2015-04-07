@@ -192,7 +192,7 @@ spawnSingleActor res mmatch spwn = do
        =<< addLocal flags
        =<< requestResources res
     -- Start actor
-    (pid,_) <- liftP $ spawnSupervised (vcadNode cad) act
+    (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) act
     -- Add timeout for actor
     liftP $ setTimeout flags (SingleActor pid)
     -- Record data about actor
@@ -230,7 +230,7 @@ spawnActorGroup res resG spwn = do
     -- Spawn actors
     forM_ ([0..] `zip` rs) $ \(rnk,cad) -> do
         (pid,_) <- liftP
-                 $ spawnSupervised (vcadNode cad) act
+                 $ spawnSupervised (nodeId $ vcadNode cad) act
         sendActorParam pid (Rank rnk) (GroupSize k) cad
             (concat [fs | UseDebug fs <- flags])
         stChildren . at pid .= Just (Right gid)
@@ -264,7 +264,7 @@ sendActorParam pid rnk g cad flags = do
             , actorInterpreter = interp
             , actorRank        = rnk
             , actorGroupSize   = g
-            , actorNodes       = vcadNodePool cad
+            , actorNodes       = cad
             , actorDebugFlags  = flags
             }
     liftP $ send pid p
@@ -323,7 +323,7 @@ assembleShellMapper gid shells =
 ----------------------------------------------------------------
 
 -- Allocate list of resources for actor/actors
-requestResources :: Res -> Controller [NodeId]
+requestResources :: Res -> Controller [NodeInfo]
 requestResources r = do
     free <- Set.toList <$> use stNodePool
     taggedMessage "DNA" $ "Req: " ++ show r ++ " pool: " ++ show free
@@ -342,23 +342,25 @@ requestResources r = do
         return used
 
 -- Create virtual CAD for single actor
-makeResource :: Location -> [NodeId] -> Controller VirtualCAD
+makeResource :: Location -> [NodeInfo] -> Controller VirtualCAD
 makeResource Remote []     = fatal "Need positive number of nodes"
 makeResource Remote (n:ns) = return (VirtualCAD Remote n ns)
 makeResource Local  ns     = do
     n <- lift $ lift getSelfNode
-    return $ VirtualCAD Local n ns
+    return $ VirtualCAD Local (NodeInfo n) ns
 
 -- Add local node to the list of nodes if needed
-addLocal :: [SpawnFlag] -> [NodeId] -> Controller [NodeId]
+addLocal :: [SpawnFlag] -> [NodeInfo] -> Controller [NodeInfo]
 addLocal flags nodes
   | UseLocal `elem` flags = do
         n <- liftP getSelfNode
-        return $ n:nodes
+        -- FIXME: We need to store information about local node
+        --        somewhere
+        return $ NodeInfo n : nodes
   | otherwise             = return nodes
 
 -- Split resources for multiple actors
-splitResources :: ResGroup -> [NodeId] -> Controller [VirtualCAD]
+splitResources :: ResGroup -> [NodeInfo] -> Controller [VirtualCAD]
 splitResources resG nodes = case resG of
     NWorkers k -> do
         chunks <- toNChunks k nodes
@@ -372,8 +374,8 @@ splitResources resG nodes = case resG of
         chunks <- toSizedChunks k nodes
         forM chunks $ \ns -> case ns of
             []     -> fatal "Impossible: empty nodelist"
-            -- FIXME: Local/Remote!
             n:rest -> return $ VirtualCAD Remote n rest
+            -- FIXME: Local/Remote!
 
 
 

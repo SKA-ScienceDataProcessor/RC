@@ -55,7 +55,7 @@ runDnaMonad
     :: Rank
     -> GroupSize
     -> Closure DnaInterpreter
-    -> [NodeId]
+    -> [NodeInfo]
     -> [DebugFlag]
     -> DnaMonad a
     -> Process a
@@ -108,7 +108,7 @@ data ActorParam = ActorParam
       -- ^ Rank of an actor
     , actorGroupSize   :: GroupSize
       -- ^ Size of group of actors
-    , actorNodes       :: [NodeId]
+    , actorNodes       :: VirtualCAD
       -- ^ Nodes allocated to an actor
     , actorDebugFlags  :: [DebugFlag]
       -- ^ Extra flags for debugging
@@ -127,7 +127,7 @@ data StateDNA = StateDNA
     , _stDebugFlags  :: [DebugFlag]
 
       -- Resource
-    , _stNodePool      :: !(Set NodeId)
+    , _stNodePool      :: !(Set NodeInfo)
       -- ^ Unused nodes which could be reused
     , _stUsedResources :: !(Map ProcessId VirtualCAD)
       -- ^ Resources used by some process
@@ -206,7 +206,7 @@ stChildren = lens _stChildren (\a x -> x { _stChildren = a})
 stGroups :: Lens' StateDNA (Map GroupID GroupState)
 stGroups = lens _stGroups (\a x -> x { _stGroups = a})
 
-stNodePool :: Lens' StateDNA (Set NodeId)
+stNodePool :: Lens' StateDNA (Set NodeInfo)
 stNodePool = lens _stNodePool (\a x -> x { _stNodePool = a})
 
 stUsedResources :: Lens' StateDNA (Map ProcessId VirtualCAD)
