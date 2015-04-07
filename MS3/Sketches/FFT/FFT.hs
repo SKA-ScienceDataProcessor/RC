@@ -1,7 +1,15 @@
+{-# LANGUAGE CPP #-}
+
 module FFT where
 
 import Foreign.CUDA.FFT
 import CUDAEx
+
+#ifndef QUICK_TEST
+import Paths_dna_ms3 ( getDataFileName )
+#else
+#define getDataFileName return
+#endif
 
 data Mode =
     Forward
@@ -33,3 +41,12 @@ fft2dComplexDSqInplaceCentered mbstream mode size inoutp ifftshift fftshift = do
     mkshift sfun =
       launchKernel sfun (blocks_per_dim, blocks_per_dim, 1) (threads_per_dim, threads_per_dim, 1)
         0 mbstream [VArg inoutp, IArg $ fromIntegral size]
+
+
+fftGridPolarization :: CxDoubleDevPtr -> IO ()
+fftGridPolarization polp = do
+    m <- loadFile =<< getDataFileName "cufftshift.cubin"
+    shift <- getFun m "fftshift_kernel"
+    fft2dComplexDSqInplaceCentered Nothing Forward gridsize polp shift shift
+  where
+    gridsize = 4096 * 4096

@@ -18,6 +18,7 @@ import Foreign.Storable.Complex ()
 import OskarBinReader
 import GCF
 import GPUGridder
+import FFT
 
 import DNA
 
@@ -64,6 +65,9 @@ extractPolarizationActor :: Actor (Int32, CUDA.CxDoubleDevPtr, Grid) ()
 extractPolarizationActor = actor (liftIO . go)
   where go (pol, polp, grid) = normalizeAndExtractPolarization pol polp grid
 
+fftPolarizationActor :: Actor CUDA.CxDoubleDevPtr ()
+fftPolarizationActor = actor (liftIO . fftGridPolarization)
+
 gpuToHostActor :: Actor (Int, CUDA.CxDoubleDevPtr) CUDA.CxDoubleHostPtr
 gpuToHostActor = actor (liftIO . go)
   where
@@ -87,6 +91,7 @@ remotable [
   , 'simpleRomeinUsingPermutationsFullGCF
   , 'simpleRomeinUsingPermutationsHalfGCF
   , 'extractPolarizationActor
+  , 'fftPolarizationActor
   , 'gpuToHostActor
   , 'hostToDiskActor
   ]
@@ -112,6 +117,7 @@ main = dnaRun id $ do
     let
       extract n = do
         eval extractPolarizationActor (n, polptr, grid)
+        eval fftPolarizationActor polptr
         hostpol <- eval gpuToHostActor (gridsize, polptr)
         eval hostToDiskActor (gridsize, hostpol, "test_p00_s00_f00_p" ++ show n)
         liftIO $ CUDA.freeHost hostpol
