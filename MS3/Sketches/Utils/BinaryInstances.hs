@@ -28,6 +28,11 @@ instance Binary (DevicePtr a) where
   get = fmap i2a get
     where i2a (I# i#) = DevicePtr (Ptr (int2Addr# i#))
 
+instance Binary (HostPtr a) where
+  put (HostPtr (Ptr addr#)) = put (I# (addr2Int# addr#))
+  get = fmap i2a get
+    where i2a (I# i#) = HostPtr (Ptr (int2Addr# i#))
+
 instance Binary CDouble where
   put (CDouble d) = put d
   get = fmap CDouble get

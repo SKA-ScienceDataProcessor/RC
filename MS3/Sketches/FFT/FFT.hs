@@ -1,7 +1,5 @@
 module FFT where
 
-import Data.Complex
-
 import Foreign.CUDA.FFT
 import CUDAEx
 
@@ -9,9 +7,6 @@ data Mode =
     Forward
   | Reverse
   | Inverse
-
-type CxDouble = Complex Double
-type CxDoubleDevPtr = DevicePtr CxDouble
 
 fft2dComplexDSqInplace :: Maybe Stream -> Mode -> Int -> CxDoubleDevPtr -> IO ()
 fft2dComplexDSqInplace mbstream mode size inoutp = do

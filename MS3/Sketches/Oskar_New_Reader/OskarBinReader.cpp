@@ -16,16 +16,9 @@
 
 #include <oskar_binary.h>
 
+#include "common.h"
+#include "metrix.h"
 #include "OskarBinReader.h"
-
-#if __GNUC__ == 4 && __GNUC_MINOR__ < 6
-#define __OLD
-#define nullptr NULL
-#endif
-
-#define SPEED_OF_LIGHT 299792458.0
-// FIXME: Centralize definitions further (this is duplicated in CUDA code)
-#define WPLANES 63
 
 using namespace std;
 
@@ -382,6 +375,13 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
       , cmax, cmin
       ;
     mp->wstep = wstep;
+    mp->maxx = max(
+          max(
+            max(mp->maxu, -mp->minu)
+          , max(mp->maxv, -mp->minv)
+          )
+        , maxxw
+        );
 
     for (int i = 0; i < vdp->num_baselines; i++) {
       cmax = bl_ws[i].maxw/wstep;

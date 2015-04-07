@@ -22,6 +22,11 @@
 #define __MKDNAME sprintf(fname, "%s%s", __PREFIX, argv[1]);
 #define __MKF(n) sprintf(fname, "%s%s/%s", __PREFIX, argv[1], n); f = fopen(fname, "wb");
 
+#ifndef _MSC_VER
+extern "C"
+#endif
+int bin(const char * prefix, int num_channels, int num_points, double scale, double * amps, double * uvws);
+
 int main(int argc, const char * argv[])
 {
   VisData vd;
@@ -109,6 +114,10 @@ int main(int argc, const char * argv[])
 
 #endif
     }
+
+    printf("Now binning ...\n");
+    my_mk_dir("bins", 0);
+    bin("bins/", vd.num_channels, vd.num_points, (2048 - 124 - 1) / m.maxx, amps, uvws);
 
     free(amps);
     free(uvws);

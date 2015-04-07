@@ -19,14 +19,19 @@ import Data.Complex
 #opaq WMaxMin
 #opaq VisData
 
+baseline, wplane :: Ptr BlWMap -> IO CInt
+baseline = #peek BlWMap, bl
+wplane   = #peek BlWMap, wp
+
 numBaselines, numTimes, numChannels, numPoints :: Ptr VisData -> IO CInt
 numBaselines = #peek VisData, num_baselines
 numTimes     = #peek VisData, num_times
 numChannels  = #peek VisData, num_channels
 numPoints    = #peek VisData, num_points
 
-wstep :: Ptr Metrix -> IO CDouble
+wstep, maxx :: Ptr Metrix -> IO CDouble
 wstep = #peek Metrix, wstep
+maxx  = #peek Metrix, maxx
 
 #fic mkFromFile :: Ptr VisData -> CString -> IO CInt 
 #fic freeBinHandler :: Ptr VisData -> IO () 
