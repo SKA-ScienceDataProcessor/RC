@@ -11,11 +11,8 @@ import Foreign
 -- import Data.Typeable
 import qualified Data.ByteString.Unsafe as BS
 import qualified Data.ByteString        as BS
-
-{-
 import Data.Complex
 import Foreign.Storable.Complex ()
- -}
 
 import OskarBinReader
 import GCF
@@ -66,7 +63,7 @@ extractPolarizationActor :: Actor (Int32, CUDA.CxDoubleDevPtr, Grid) ()
 extractPolarizationActor = actor (liftIO . go)
   where go (pol, polp, grid) = normalizeAndExtractPolarization pol polp grid
 
-gpuToHostActor :: Actor (Int, CUDA.DevicePtr Double) (CUDA.HostPtr Double)
+gpuToHostActor :: Actor (Int, CUDA.CxDoubleDevPtr) CUDA.CxDoubleHostPtr
 gpuToHostActor = actor (liftIO . go)
   where
     go (size, devptr) = do
@@ -75,11 +72,11 @@ gpuToHostActor = actor (liftIO . go)
       CUDA.sync
       return hostptr
 
-hostToDiskActor :: Actor (Int, CUDA.HostPtr Double, String) ()
+hostToDiskActor :: Actor (Int, CUDA.CxDoubleHostPtr, String) ()
 hostToDiskActor = actor (liftIO . go)
   where
      go (size, hostptr, fname) =
-       BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr hostptr), size * sizeOf (undefined :: Double)) >>= BS.writeFile fname
+       BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr hostptr), size * sizeOf (undefined :: Complex Double)) >>= BS.writeFile fname
 
 remotable [
     'binReaderActor
