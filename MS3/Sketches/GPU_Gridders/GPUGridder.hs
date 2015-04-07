@@ -139,7 +139,7 @@ type RawPtr = CUDA.DevicePtr Word8
 --   and *generate* name from gcfIsFull and permutation option
 runGatherGridder :: GridderConfig -> String -> TaskData -> GCF -> IO Grid
 runGatherGridder (GridderConfig gfname gcfIsFull _) prefix td gcf = do
-    fun <- (`CUDA.getFun` gfname) =<< gridderModule
+    fun <- (`CUDA.getFun` gfname) =<< gatherGridderModule
     gridptr <- CUDA.mallocArray gridsize
     CUDA.memset gridptr (fromIntegral $ gridsize * cxdSize) 0
     --
