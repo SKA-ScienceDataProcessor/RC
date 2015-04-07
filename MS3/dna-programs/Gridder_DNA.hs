@@ -8,6 +8,7 @@ module Main where
 import Data.Int
 import qualified CUDAEx as CUDA
 import Foreign
+import Foreign.C
 -- import Data.Typeable
 import qualified Data.ByteString.Unsafe as BS
 import qualified Data.ByteString        as BS
@@ -23,8 +24,8 @@ import DNA
 binReaderActor :: Actor String TaskData
 binReaderActor = actor (liftIO . readOskarData)
 
-mkGcfCFG :: Bool -> Double -> GCFCfg
-mkGcfCFG isFull wstep = GCFCfg {
+mkGcfCFG :: Bool -> CDouble -> GCFCfg
+mkGcfCFG isFull (CDouble wstep) = GCFCfg {
     gcfcSuppDiv2Step = 4
   , gcfcLayersDiv2 = 31
   , gcfcIsFull = isFull
@@ -90,6 +91,35 @@ remotable [
   , 'hostToDiskActor
   ]
 
--- Stub at the moment
+-- Simple sequential 1-node program to test if
+--   all parts work together.
+-- No final fft yet.
 main :: IO ()
-main = return ()
+main = dnaRun id $ do
+    {-
+      resBR <- select Local (N 0)
+      shellBR <- startActor resBR $(mkStaticClosure 'binReaderActor)
+      sendParam "test_p00_s00_f00.vis" shellBR
+      futBR <- delay Local shellBR
+      taskData <- await futBR
+    -}
+    taskData <- eval binReaderActor "test_p00_s00_f00.vis"
+    gcf <- eval gcfCalcActor $ mkGcfCFG True (tdWstep taskData)
+    grid <- eval simpleRomeinFullGCF (taskData, gcf)
+    liftIO $ finalizeTaskData taskData
+    liftIO $ finalizeGCF gcf
+    polptr <- liftIO $ CUDA.mallocArray gridsize
+    let
+      extract n = do
+        eval extractPolarizationActor (n, polptr, grid)
+        hostpol <- eval gpuToHostActor (gridsize, polptr)
+        eval hostToDiskActor (gridsize, hostpol, "test_p00_s00_f00_p" ++ show n)
+        liftIO $ CUDA.freeHost hostpol
+    extract 0
+    extract 1
+    extract 2
+    extract 3
+    liftIO $ finalizeGrid grid
+    liftIO $ CUDA.free polptr
+  where
+    gridsize = 4096 * 4096
