@@ -97,7 +97,7 @@ void gridKernel_scatter_kernel_small(
       = sumXY
       = sumYX
       = sumYY
-      = {0, 0};
+      = make_cuDoubleComplex(0.0, 0.0);
       grid_point_u = myGridU;
       grid_point_v = myGridV;
     }
