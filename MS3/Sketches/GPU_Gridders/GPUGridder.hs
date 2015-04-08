@@ -107,7 +107,7 @@ runGridder (GridderConfig gfname gcfIsFull iter) td gcf = do
           CUDA.pokeArray uvwSize (castPtr $ tdUVWs td) uvwp
           CUDA.pokeArray visSize (castPtr $ tdVisibilies td) visp
           CUDA.pokeArray nBaselines perms permp
-          iter nBaselines perms permp (launchAddBaselines fun scale visp gcfptr uvwp visp)
+          iter nBaselines perms permp (launchAddBaselines fun scale gridptr gcfptr uvwp visp)
     return $ Grid gridsize gridptr
   where
     -- FIXME: Move this to top level and
