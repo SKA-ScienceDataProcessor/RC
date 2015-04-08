@@ -51,9 +51,9 @@ mkGPUGridderActor gcfg = actor (liftIO . uncurry gridder)
   where gridder = runGridder gcfg
 
 #define str(x) "x"
-#define __SIMPLE_ROMEIN(perm, gcf, ishalf)                 \
+#define __SIMPLE_ROMEIN(perm, gcf, isfull)                 \
 simpleRomein/**/perm/**/gcf :: Actor (TaskData, GCF) Grid; \
-simpleRomein/**/perm/**/gcf = mkGPUGridderActor (GridderConfig str(addBaselinesToGridSkaMid/**/perm/**/gcf) ishalf simpleRomeinIter)
+simpleRomein/**/perm/**/gcf = mkGPUGridderActor (GridderConfig str(addBaselinesToGridSkaMid/**/perm/**/gcf) isfull simpleRomeinIter)
 
 __SIMPLE_ROMEIN(,FullGCF,True)
 __SIMPLE_ROMEIN(,HalfGCF,False)
