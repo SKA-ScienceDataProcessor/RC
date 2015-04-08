@@ -49,4 +49,4 @@ fftGridPolarization polp = do
     shift <- getFun m "fftshift_kernel"
     fft2dComplexDSqInplaceCentered Nothing Forward gridsize polp shift shift
   where
-    gridsize = 4096 * 4096
+    gridsize = 4096
