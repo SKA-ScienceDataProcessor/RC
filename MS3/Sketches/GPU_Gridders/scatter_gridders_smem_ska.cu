@@ -1,4 +1,5 @@
 #include "common.h"
+#include "metrix.h"
 #include "atomic_add.h"
 #include "OskarBinReader.h"
 
@@ -231,14 +232,8 @@ __device__ __inline__ void addBaselinesToGrid(
     );
 }
 
-#define GRID_SIZE 4096
-#define OVER 8
-#define BASELINES 32131
-#define WPLANES 63
-#define TIMESTEPS 200
-#define CHANNELS 1
-
 #define addBaselineToGrid(suff, ishalf)                                    \
+extern "C"                                                                 \
 __global__ void addBaselineToGrid##suff(                                   \
     double scale                                                           \
   , int max_supp                                                           \
@@ -260,6 +255,7 @@ addBaselineToGrid(HalfGCF, true)
 addBaselineToGrid(FullGCF, false)
 
 #define addBaselinesToGridSkaMid(suff, ishalf)                                                \
+extern "C"                                                                                    \
 __global__ void addBaselinesToGridSkaMid##suff(                                               \
     double scale                                                                              \
   , const BlWMap permutations[BASELINES]                                                      \
@@ -281,6 +277,7 @@ addBaselinesToGridSkaMid(HalfGCF, true)
 addBaselinesToGridSkaMid(FullGCF, false)
 
 #define addBaselinesToGridSkaMidUsingPermutations(suff, ishalf)                              \
+extern "C"                                                                                   \
 __global__ void addBaselinesToGridSkaMidUsingPermutations##suff(                             \
     double scale                                                                             \
   , const BlWMap permutations[BASELINES]                                                     \
@@ -303,6 +300,7 @@ addBaselinesToGridSkaMidUsingPermutations(FullGCF, false)
 
 #include "../GCF_new/scale_complex_by_dbl.cuh"
 
+extern "C"
 __global__ void  normalizeAndExtractPolarization(
     int pol
   , complexd dst_grid[GRID_SIZE][GRID_SIZE]
