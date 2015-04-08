@@ -142,7 +142,7 @@ type LD = [(Double, Int)]
 
 data GCFCfg = GCFCfg {
     gcfcSuppDiv2Step :: Int
-  , gcfcLayersDiv2   :: Int
+  , gcfcLayersDiv2Plus1 :: Int
   , gcfcIsFull :: Bool
   , gcfcT2     :: Double
   , gcfcWStep  :: Double
