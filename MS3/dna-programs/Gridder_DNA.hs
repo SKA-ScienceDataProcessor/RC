@@ -98,7 +98,6 @@ remotable [
 
 -- Simple sequential 1-node program to test if
 --   all parts work together.
--- No final fft yet.
 main :: IO ()
 main = dnaRun id $ do
     {-
