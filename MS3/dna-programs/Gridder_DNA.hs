@@ -16,6 +16,7 @@ import Data.Complex
 import Foreign.Storable.Complex ()
 
 import OskarBinReader
+import Binner
 import GCF
 import GPUGridder
 import FFT
@@ -83,8 +84,34 @@ hostToDiskActor = actor (liftIO . go)
      go (size, hostptr, fname) =
        BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr hostptr), size * sizeOf (undefined :: Complex Double)) >>= BS.writeFile fname
 
+writeTaskDataActor :: Actor (String, TaskData) ()
+writeTaskDataActor = actor (liftIO . uncurry writeTaskData)
+
+readTaskDataActor :: Actor String TaskData
+readTaskDataActor = actor (liftIO . readTaskData)
+
+binAndPregridActor :: Actor (String, Bool, TaskData) ()
+binAndPregridActor = actor (liftIO . go)
+  where go (namespace, isForHalfGCF, td) = bin namespace isForHalfGCF td
+
+mkGatherGridderActor :: GridderConfig -> Actor (String, TaskData, GCF) Grid
+mkGatherGridderActor gcfg = actor (liftIO . gridder)
+  where gridder (namespace, td, gcf) = runGatherGridder gcfg namespace td gcf
+
+i0 :: AddBaselinesIter
+i0 _ _ _ _ = return ()
+
+gatherGridderActorFullGcf, gatherGridderActorHalfGcf :: Actor (String, TaskData, GCF) Grid
+gatherGridderActorFullGcf = mkGatherGridderActor (GridderConfig "gridKernelGatherFullGCF" True i0)
+gatherGridderActorHalfGcf = mkGatherGridderActor (GridderConfig "gridKernelGatherHalfGCF" False i0)
+
 remotable [
     'binReaderActor
+  , 'writeTaskDataActor
+  , 'readTaskDataActor
+  , 'binAndPregridActor
+  , 'gatherGridderActorFullGcf
+  , 'gatherGridderActorHalfGcf
   , 'gcfCalcActor
   , 'simpleRomeinFullGCF
   , 'simpleRomeinHalfGCF
@@ -95,6 +122,7 @@ remotable [
   , 'gpuToHostActor
   , 'hostToDiskActor
   ]
+
 
 -- Simple sequential 1-node program to test if
 --   all parts work together.
