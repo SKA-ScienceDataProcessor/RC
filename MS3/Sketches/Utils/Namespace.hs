@@ -13,7 +13,7 @@ createNameSpace :: NSType -> FilePath -> IO FilePath
 createNameSpace nstyp fp = do
     onWilkes <- doesDirectoryExist ramdir
     let fn = if onWilkes && (isRam nstyp) then ramdir </> n else n
-    createDirectory fn
+    createDirectoryIfMissing True fn
     return fn
   where
     n = takeBaseName fp
