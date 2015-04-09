@@ -50,7 +50,9 @@ messageHandlers =
 
 -- Process need to terminate immediately
 handleTerminate :: Terminate -> Controller ()
-handleTerminate _ = fatal "Terminate arrived"
+handleTerminate (Terminate msg) = do
+    liftIO $ putStrLn $ "actor terminated because of: " ++ msg
+    fatal $ "Terminate arrived: " ++ msg
 
 
 -- Monitored process terminated normally or abnormally
@@ -64,7 +66,7 @@ handleProcessTermination (ProcessMonitorNotification _ pid reason) =
           m <- use $ stRestartable . at pid
           case m of
             Just (mtch,clos,msg) -> handleProcessRestart pid mtch clos msg
-            Nothing              -> handleProcessCrash pid
+            Nothing              -> handleProcessCrash (show reason) pid
 
 -- Handle restart of a process
 handleProcessRestart
@@ -164,9 +166,8 @@ handleProcessDone pid = do
     dropPID pid
 
 -- Monitored process crashed or was disconnected
-handleProcessCrash :: ProcessId -> Controller ()
-handleProcessCrash pid = do
-    liftIO $ print ("Child CRASH",pid)
+handleProcessCrash :: String -> ProcessId -> Controller ()
+handleProcessCrash msg pid = do
     handlePidEvent pid
         (return ())
         (\p -> case p of
@@ -175,18 +176,18 @@ handleProcessCrash pid = do
            Unconnected  -> return $ Just Failed
            Connected acps -> do
                liftIO $ print acps
-               liftP $ forM_ acps $ \pp -> send pp Terminate
+               liftP $ forM_ acps $ \pp -> send pp (Terminate msg)
                return Nothing
            Failed       -> fatal "Impossible: Process crashed twice"
         )
         (\g gid -> case g of
            -- Normal groups
            GrUnconnected Normal _ -> do
-               terminateGroup gid
+               terminateGroup msg gid
                return $ Just GrFailed
            GrConnected Normal _ _ acps -> do
-               terminateGroup gid
-               liftP $ forM_ acps $ \p -> send p Terminate
+               terminateGroup msg gid
+               liftP $ forM_ acps $ \p -> send p (Terminate msg)
                return Nothing
            -- Failout groups
            GrUnconnected Failout (n,k) ->
@@ -238,12 +239,12 @@ handleTimeout (TimeOut aid) = case aid of
     SingleActor pid -> do
         m <- use $ stChildren . at pid
         case m of
-          Just (Left  _) -> do liftP $ send pid Terminate
+          Just (Left  _) -> do liftP $ send pid (Terminate "Timeout")
                                dropPID pid
           Just (Right _) -> fatal "Group ID encountered"
           Nothing        -> return ()
     ActorGroup gid -> do
-        terminateGroup gid
+        terminateGroup "Timeout" gid
         dropGroup gid
 
 

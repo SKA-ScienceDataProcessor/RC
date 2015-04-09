@@ -285,8 +285,8 @@ getGroupPids gid = do
                  , g == gid
                  ]
 
-terminateGroup :: GroupID -> Controller ()
-terminateGroup gid = do
+terminateGroup :: String -> GroupID -> Controller ()
+terminateGroup msg gid = do
     pids <- getGroupPids gid
-    liftP $ forM_ pids $ \p -> send p Terminate
+    liftP $ forM_ pids $ \p -> send p (Terminate msg)
 

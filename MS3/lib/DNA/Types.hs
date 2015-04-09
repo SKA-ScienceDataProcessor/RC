@@ -51,7 +51,7 @@ data DoneTask = DoneTask
                 deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary DoneTask
 
-data Terminate = Terminate
+newtype Terminate = Terminate String
                  deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary Terminate
 

@@ -208,7 +208,7 @@ recordConnection (ActorGroup gid) dest port = runController $
           GrUnconnected ty nProc ->
               stGroups . at gid .= Just (GrConnected ty nProc port [pid])
           GrConnected{}  -> fatal "Double connect"
-          GrFailed       -> do lift $ lift $ send pid Terminate
+          GrFailed       -> do lift $ lift $ send pid (Terminate "data dependency failed")
                                dropGroup gid
     ActorGroup dstGid -> do
         pids <- getGroupPids dstGid
@@ -217,7 +217,7 @@ recordConnection (ActorGroup gid) dest port = runController $
           GrUnconnected ty nProc ->
               stGroups . at gid .= Just (GrConnected ty nProc port pids)
           GrConnected{} -> fatal "Double connect"
-          GrFailed      -> do lift $ lift $ forM_ pids $ \p -> send p Terminate
+          GrFailed      -> do lift $ lift $ forM_ pids $ \p -> send p (Terminate "data dependency failed")
                               dropGroup gid
 
 
