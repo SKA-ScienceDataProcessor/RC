@@ -5,170 +5,50 @@
 
 module Main where
 
-import Data.Int
-import qualified CUDAEx as CUDA
-import Foreign
-import Foreign.C
--- import Data.Typeable
-import qualified Data.ByteString.Unsafe as BS
-import qualified Data.ByteString        as BS
-import Data.Complex
-import Foreign.Storable.Complex ()
-import System.FilePath
-
 import Control.Distributed.Static (Closure)
 
+import Namespace
 import OskarBinReader
-import Binner
 import GCF
 import GPUGridder
-import FFT
-import Namespace
+
+import GridderActors
 
 import DNA
 
-binReaderActor :: Actor String TaskData
-binReaderActor = actor $
-  profile "OskarBinaryReader" [ioHint{hintReadBytes = 565536297}] . liftIO . readOskarData
-
-mkGcfCFG :: Bool -> CDouble -> GCFCfg
-mkGcfCFG isFull (CDouble wstep) = GCFCfg {
-    gcfcSuppDiv2Step = 4
-  , gcfcLayersDiv2Plus1 = 32
-  , gcfcIsFull = isFull
-  , gcfcT2 = 0.2
-  , gcfcWStep = wstep
-  }
-
-gcfCalcActor :: Actor GCFCfg GCF
-gcfCalcActor = actor $ duration "GCF" . liftIO . crGcf
-  where
-    crGcf (GCFCfg hsupp_step n isFull t2 wstep) =
-      let prep = if isFull then prepareFullGCF else prepareHalfGCF
-      in createGCF t2 $ prep n hsupp_step wstep
-
--- Romein make the single kernel launch for all baselines with max support
-simpleRomeinIter :: AddBaselinesIter
-simpleRomeinIter baselines _mapper dev_mapper launch = launch ((32-1)*8+1) baselines dev_mapper
-
--- TODO: factor out host-to-GPU marshalling actor?
-mkGPUGridderActor :: GridderConfig -> Actor (TaskData, GCF) Grid
-mkGPUGridderActor gcfg = actor $ duration (gcKernelName gcfg) . liftIO . uncurry gridder
-  where gridder = runGridder gcfg
-
-#define str(x) "x"
-#define __SIMPLE_ROMEIN(perm, gcf, isfull)                 \
-simpleRomein/**/perm/**/gcf :: Actor (TaskData, GCF) Grid; \
-simpleRomein/**/perm/**/gcf = mkGPUGridderActor (GridderConfig str(addBaselinesToGridSkaMid/**/perm/**/gcf) isfull simpleRomeinIter)
-
-__SIMPLE_ROMEIN(,FullGCF,True)
-__SIMPLE_ROMEIN(,HalfGCF,False)
-__SIMPLE_ROMEIN(UsingPermutations,FullGCF,True)
-__SIMPLE_ROMEIN(UsingPermutations,HalfGCF,False)
-
--- Target array ('polp') must be preallocated
-extractPolarizationActor :: Actor (Int32, CUDA.CxDoubleDevPtr, Grid) ()
-extractPolarizationActor = actor $ duration "ExtractPolarizaton" . liftIO . go
-  where go (pol, polp, grid) = normalizeAndExtractPolarization pol polp grid
-
-fftPolarizationActor :: Actor CUDA.CxDoubleDevPtr ()
-fftPolarizationActor = actor $ duration "FftPolarizaton" . liftIO . fftGridPolarization
-
-gpuToHostActor :: Actor (Int, CUDA.CxDoubleDevPtr) CUDA.CxDoubleHostPtr
-gpuToHostActor = actor go
-  where
-    go (size, devptr) = profile "GPU2Host" [cudaHint{hintCopyBytesHost = size * cdSize}] $ liftIO $ do
-      hostptr <- CUDA.mallocHostArray [] size 
-      CUDA.peekArrayAsync size devptr hostptr Nothing
-      CUDA.sync
-      return hostptr
-    cdSize = sizeOf (undefined :: Complex Double)
-
-hostToDiskActor :: Actor (Int, CUDA.CxDoubleHostPtr, String) ()
-hostToDiskActor = actor go
-  where
-    go (size, hostptr, fname) = profile "Host2Disk" [ioHint{hintWriteBytes = size * cdSize}] $ liftIO $
-      BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr hostptr), size * sizeOf (undefined :: Complex Double)) >>= BS.writeFile fname
-    cdSize = sizeOf (undefined :: Complex Double)
-
-writeTaskDataActor :: Actor (String, TaskData) ()
-writeTaskDataActor = actor (profile "WriteTaskData" [ioHint{hintReadBytes = 565762696}] . liftIO . uncurry writeTaskData)
-
-readTaskDataActor :: Actor String TaskData
-readTaskDataActor = actor (profile "ReadTaskData" [ioHint{hintReadBytes = 565762696}] . liftIO . readTaskData)
-
-binAndPregridActor :: Actor (String, Bool, TaskData) ()
-binAndPregridActor = actor (liftIO . go)
-  where go (namespace, isForHalfGCF, td) = bin namespace isForHalfGCF td
-
-mkGatherGridderActor :: GridderConfig -> Actor (String, TaskData, GCF) Grid
-mkGatherGridderActor gcfg = actor (liftIO . gridder)
-  where gridder (namespace, td, gcf) = runGatherGridder gcfg namespace td gcf
-
-i0 :: AddBaselinesIter
-i0 _ _ _ _ = return ()
-
-gatherGridderActorFullGcf, gatherGridderActorHalfGcf :: Actor (String, TaskData, GCF) Grid
-gatherGridderActorFullGcf = mkGatherGridderActor (GridderConfig "gridKernelGatherFullGCF" True i0)
-gatherGridderActorHalfGcf = mkGatherGridderActor (GridderConfig "gridKernelGatherHalfGCF" False i0)
-
-runGridderWith :: Closure (Actor (TaskData, GCF) Grid) -> TaskData -> String -> DNA ()
-runGridderWith gridactor taskData ns_out = do
-    gcf <- eval gcfCalcActor $ mkGcfCFG True (tdWstep taskData)
-    grid <- evalClosure gridactor (taskData, gcf)
-    liftIO $ finalizeTaskData taskData
-    liftIO $ finalizeGCF gcf
-    polptr <- liftIO $ CUDA.mallocArray gridsize
-    let
-      extract n = do
-        eval extractPolarizationActor (n, polptr, grid)
-        eval fftPolarizationActor polptr
-        hostpol <- eval gpuToHostActor (gridsize, polptr)
-        eval hostToDiskActor (gridsize, hostpol, ns_out </> 'p': show n)
-        liftIO $ CUDA.freeHost hostpol
-    extract 0
-    extract 1
-    extract 2
-    extract 3
-    liftIO $ finalizeGrid grid
-    liftIO $ CUDA.free polptr
-  where
-    gridsize = 4096 * 4096
-
-runGridderOnSavedData :: Actor(String, String, Closure (Actor (TaskData, GCF) Grid)) ()
-runGridderOnSavedData = actor $ \(ns_in, ns_out, gridactor) -> do
-  taskData <- eval readTaskDataActor ns_in
-  runGridderWith gridactor taskData ns_out
+saveDataAndRunRemote :: Actor(String, String, TaskData, Closure (Actor (TaskData, GCF) Grid)) ()
+saveDataAndRunRemote = actor $ \(ns, ns_out, td, gridderClosure) -> do
+  eval writeTaskDataActor (ns, td)
+  shellRG <- startActor (N 1) $ return $(mkStaticClosure 'runGridderOnSavedData)
+  sendParam (ns, ns_out, gridderClosure) shellRG
+  futRG <- delay Remote shellRG
+  await futRG
 
 remotable [
-    'binReaderActor
-  , 'writeTaskDataActor
-  , 'readTaskDataActor
-  , 'binAndPregridActor
-  , 'gatherGridderActorFullGcf
-  , 'gatherGridderActorHalfGcf
-  , 'gcfCalcActor
-  , 'simpleRomeinFullGCF
-  , 'simpleRomeinHalfGCF
-  , 'simpleRomeinUsingPermutationsFullGCF
-  , 'simpleRomeinUsingPermutationsHalfGCF
-  , 'extractPolarizationActor
-  , 'fftPolarizationActor
-  , 'gpuToHostActor
-  , 'hostToDiskActor
+    'saveDataAndRunRemote
   ]
 
 -- Simple sequential 1-node program to test if
 --   all parts work together.
 main :: IO ()
-main = dnaRun Main.__remoteTable $ do
-    {-
-      resBR <- select Local (N 0)
-      shellBR <- startActor resBR $(mkStaticClosure 'binReaderActor)
-      sendParam "test_p00_s00_f00.vis" shellBR
-      futBR <- delay Local shellBR
-      taskData <- await futBR
-    -}
-    ns <- liftIO $ createNameSpace Persistent "test_p00_s00_f00.vis"
-    taskData <- eval binReaderActor "test_p00_s00_f00.vis"
-    runGridderWith $(mkStaticClosure 'simpleRomeinFullGCF) taskData ns
+main = do
+    nst <- createNameSpace RAM dataset
+    ns_loc <- createNameSpace Persistent dataset
+    ns_rem <- addNameSpace ns_loc "from_1"
+    dnaRun rt $ do
+      taskData <- eval binReaderActor dataset
+      -- Now we locally start actor which writes converted
+      --  data do tmp location and start remote actor using these data
+      -- but writing result back to persisten location
+      shellSDRR <- startActor (N 0) $ useLocal >> return $(mkStaticClosure 'saveDataAndRunRemote)
+      shellLoc <- startActor (N 0) $ useLocal >> return $(mkStaticClosure 'runGridderOnLocalData)
+      sendParam (nst, ns_rem, taskData, $(mkStaticClosure 'simpleRomeinUsingHalfOfFullGCF)) shellSDRR
+      sendParam (ns_loc, taskData, $(mkStaticClosure 'simpleRomeinFullGCF)) shellLoc
+      futSDRR <- delay Local shellSDRR
+      futLoc <- delay Local shellLoc
+      await futSDRR
+      await futLoc
+  where
+    rt = GridderActors.__remoteTable
+       . Main.__remoteTable
+    dataset = "test_p00_s00_f00.vis"
