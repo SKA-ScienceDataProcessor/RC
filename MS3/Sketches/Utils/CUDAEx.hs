@@ -8,6 +8,7 @@ module CUDAEx(
    module Foreign.CUDA.Types
  , module Foreign.CUDA.Runtime
  , module Foreign.CUDA.Driver
+ , CxDouble
  , CxDoubleDevPtr
  , CxDoubleHostPtr
  , DoubleDevPtr

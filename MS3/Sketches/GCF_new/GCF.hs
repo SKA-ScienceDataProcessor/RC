@@ -14,6 +14,7 @@ module GCF (
   , finalizeGCF
   , getCentreOfFullGCF
   , GCF(..)
+  , GCFDev
   , GCFCfg(..)
   ) where
 
@@ -23,7 +24,7 @@ import Foreign.Storable.Complex ()
 -- import Foreign.Marshal.Alloc -- for DEBUG only!
 -- import Text.Printf(printf)
 import qualified CUDAEx as CUDA
-import CUDAEx (CxDoubleDevPtr)
+import CUDAEx (CxDoubleDevPtr, CxDouble)
 
 import GHC.Generics (Generic)
 import Data.Binary
@@ -53,28 +54,30 @@ launchNormalize f normp ptr len =
   CUDA.launchKernel f (128,1,1) (512,1,1) 0 Nothing
     [CUDA.VArg normp, CUDA.VArg ptr, CUDA.IArg len]
 
-data GCF = GCF {
+data GCF ptrt = GCF {
     gcfSize   :: !Int
   , gcfNumOfLayers :: !Int
-  , gcfPtr    :: !CxDoubleDevPtr
-  , gcfLayers :: !(CUDA.DevicePtr CxDoubleDevPtr)
+  , gcfPtr    :: !(ptrt CxDouble)
+  , gcfLayers :: !(ptrt (ptrt CxDouble))
   } deriving (Generic, Typeable)
 
-instance Binary GCF
+type GCFDev = GCF CUDA.DevicePtr
 
-getCentreOfFullGCF :: GCF -> CUDA.DevicePtr CxDoubleDevPtr
+instance Binary GCFDev
+
+getCentreOfFullGCF :: GCFDev -> CUDA.DevicePtr CxDoubleDevPtr
 getCentreOfFullGCF (GCF _ n _ l) = CUDA.advanceDevPtr l ((n `div` 2) * 8 * 8)
 
-allocateGCF :: Int -> Int -> IO GCF
+allocateGCF :: Int -> Int -> IO GCFDev
 allocateGCF nOfLayers sizeOfGCFInComplexD = do
   gcfp <- CUDA.mallocArray sizeOfGCFInComplexD
   layers <- CUDA.mallocArray (nOfLayers * 8 * 8)
   return $ GCF sizeOfGCFInComplexD nOfLayers gcfp layers
 
-finalizeGCF :: GCF -> IO ()
+finalizeGCF :: GCFDev -> IO ()
 finalizeGCF (GCF _ _ gcfp layers) = CUDA.free layers >> CUDA.free gcfp
 
-doCuda :: Double -> [(Double, Int)] -> GCF -> IO ()
+doCuda :: Double -> [(Double, Int)] -> GCFDev -> IO ()
 doCuda t2 ws_hsupps gcf = do
   m <- CUDA.loadFile =<< getDataFileName "all.cubin"
   [  fftshift_kernel
@@ -163,7 +166,7 @@ prepareFullGCF = prepareGCFWith mirror
   where
     mirror wsp0 = map (\(w,h) -> (-w,h)) (reverse $ tail wsp0)
 
-createGCF :: Double -> (LD, Int) -> IO GCF
+createGCF :: Double -> (LD, Int) -> IO GCFDev
 createGCF t2 (wsp, sizeOfGCFInComplexD) = do
     gcf <- allocateGCF (length wsp) sizeOfGCFInComplexD
     doCuda t2 wsp gcf

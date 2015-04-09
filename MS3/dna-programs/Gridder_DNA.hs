@@ -16,7 +16,7 @@ import GridderActors
 
 import DNA
 
-saveDataAndRunRemote :: Actor(String, String, TaskData, Closure (Actor (TaskData, GCF) Grid)) ()
+saveDataAndRunRemote :: Actor(String, String, TaskData, Closure (Actor (TaskData, GCFDev) Grid)) ()
 saveDataAndRunRemote = actor $ \(ns, ns_out, td, gridderClosure) -> do
   eval writeTaskDataActor (ns, td)
   shellRG <- startActor (N 1) $ return $(mkStaticClosure 'runGridderOnSavedData)

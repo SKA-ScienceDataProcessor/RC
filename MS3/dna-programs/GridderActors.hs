@@ -39,7 +39,7 @@ mkGcfCFG isFull (CDouble wstep) = GCFCfg {
   , gcfcWStep = wstep
   }
 
-gcfCalcActor :: Actor GCFCfg GCF
+gcfCalcActor :: Actor GCFCfg GCFDev
 gcfCalcActor = actor $ duration "GCF" . liftIO . crGcf
   where
     crGcf (GCFCfg hsupp_step n isFull t2 wstep) =
@@ -51,13 +51,13 @@ simpleRomeinIter :: AddBaselinesIter
 simpleRomeinIter baselines _mapper dev_mapper launch = launch ((32-1)*8+1) baselines dev_mapper
 
 -- TODO: factor out host-to-GPU marshalling actor?
-mkGPUGridderActor :: GridderConfig -> Actor (TaskData, GCF) Grid
+mkGPUGridderActor :: GridderConfig -> Actor (TaskData, GCFDev) Grid
 mkGPUGridderActor gcfg = actor $ duration (gcKernelName gcfg) . liftIO . uncurry gridder
   where gridder = runGridder gcfg
 
 #define str(x) "x"
 #define __SIMPLE_ROMEIN(perm, gcf, isfull)                 \
-simpleRomein/**/perm/**/gcf :: Actor (TaskData, GCF) Grid; \
+simpleRomein/**/perm/**/gcf :: Actor (TaskData, GCFDev) Grid; \
 simpleRomein/**/perm/**/gcf = mkGPUGridderActor (GridderConfig str(addBaselinesToGridSkaMid/**/perm/**/gcf) isfull simpleRomeinIter)
 
 __SIMPLE_ROMEIN(,FullGCF,True)
@@ -65,7 +65,7 @@ __SIMPLE_ROMEIN(,HalfGCF,False)
 __SIMPLE_ROMEIN(UsingPermutations,FullGCF,True)
 __SIMPLE_ROMEIN(UsingPermutations,HalfGCF,False)
 
-simpleRomeinUsingHalfOfFullGCF :: Actor (TaskData, GCF) Grid
+simpleRomeinUsingHalfOfFullGCF :: Actor (TaskData, GCFDev) Grid
 simpleRomeinUsingHalfOfFullGCF = mkGPUGridderActor (GridderConfig "addBaselinesToGridSkaMidHalfGCF" True simpleRomeinIter)
 
 -- Target array ('polp') must be preallocated
@@ -103,18 +103,18 @@ binAndPregridActor :: Actor (String, Bool, TaskData) ()
 binAndPregridActor = actor (liftIO . go)
   where go (namespace, isForHalfGCF, td) = bin namespace isForHalfGCF td
 
-mkGatherGridderActor :: GridderConfig -> Actor (String, TaskData, GCF) Grid
+mkGatherGridderActor :: GridderConfig -> Actor (String, TaskData, GCFDev) Grid
 mkGatherGridderActor gcfg = actor (liftIO . gridder)
   where gridder (namespace, td, gcf) = runGatherGridder gcfg namespace td gcf
 
 i0 :: AddBaselinesIter
 i0 _ _ _ _ = return ()
 
-gatherGridderActorFullGcf, gatherGridderActorHalfGcf :: Actor (String, TaskData, GCF) Grid
+gatherGridderActorFullGcf, gatherGridderActorHalfGcf :: Actor (String, TaskData, GCFDev) Grid
 gatherGridderActorFullGcf = mkGatherGridderActor (GridderConfig "gridKernelGatherFullGCF" True i0)
 gatherGridderActorHalfGcf = mkGatherGridderActor (GridderConfig "gridKernelGatherHalfGCF" False i0)
 
-runGridderWith :: Closure (Actor (TaskData, GCF) Grid) -> TaskData -> String -> DNA ()
+runGridderWith :: Closure (Actor (TaskData, GCFDev) Grid) -> TaskData -> String -> DNA ()
 runGridderWith gridactor taskData ns_out = do
     gcf <- eval gcfCalcActor $ mkGcfCFG True (tdWstep taskData)
     grid <- evalClosure gridactor (taskData, gcf)
@@ -137,12 +137,12 @@ runGridderWith gridactor taskData ns_out = do
   where
     gridsize = 4096 * 4096
 
-runGridderOnSavedData :: Actor(String, String, Closure (Actor (TaskData, GCF) Grid)) ()
+runGridderOnSavedData :: Actor(String, String, Closure (Actor (TaskData, GCFDev) Grid)) ()
 runGridderOnSavedData = actor $ \(ns_in, ns_out, gridactor) -> do
   taskData <- eval readTaskDataActor ns_in
   runGridderWith gridactor taskData ns_out
 
-runGridderOnLocalData :: Actor(String, TaskData, Closure (Actor (TaskData, GCF) Grid)) ()
+runGridderOnLocalData :: Actor(String, TaskData, Closure (Actor (TaskData, GCFDev) Grid)) ()
 runGridderOnLocalData = actor $ \(ns_out, taskdata, gridactor) ->
   runGridderWith gridactor taskdata ns_out
 

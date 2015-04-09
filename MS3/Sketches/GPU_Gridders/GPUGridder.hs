@@ -96,7 +96,7 @@ gridderModule = getDataFileName "scatter_gridders_smem_ska.cubin" >>= CUDA.loadF
 
 -- FIXME: Add permutations option to config
 --   and *generate* name from gcfIsFull and permutation option
-runGridder :: GridderConfig -> TaskData -> GCF -> IO Grid
+runGridder :: GridderConfig -> TaskData -> GCFDev -> IO Grid
 runGridder (GridderConfig gfname gcfIsFull iter) td gcf = do
     fun <- (`CUDA.getFun` gfname) =<< gridderModule
     gridptr <- CUDA.mallocArray gridsize
@@ -137,7 +137,7 @@ type RawPtr = CUDA.DevicePtr Word8
 
 -- FIXME: Add permutations option to config
 --   and *generate* name from gcfIsFull and permutation option
-runGatherGridder :: GridderConfig -> String -> TaskData -> GCF -> IO Grid
+runGatherGridder :: GridderConfig -> String -> TaskData -> GCFDev -> IO Grid
 runGatherGridder (GridderConfig gfname gcfIsFull _) prefix td gcf = do
     fun <- (`CUDA.getFun` gfname) =<< gatherGridderModule
     gridptr <- CUDA.mallocArray gridsize
