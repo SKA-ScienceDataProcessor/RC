@@ -15,6 +15,8 @@ import qualified Data.ByteString        as BS
 import Data.Complex
 import Foreign.Storable.Complex ()
 
+import Control.Distributed.Static (Closure)
+
 import OskarBinReader
 import Binner
 import GCF
@@ -24,7 +26,8 @@ import FFT
 import DNA
 
 binReaderActor :: Actor String TaskData
-binReaderActor = actor (liftIO . readOskarData)
+binReaderActor = actor $
+  profile "OskarBinaryReader" [ioHint{hintReadBytes = 565536297}] . liftIO . readOskarData
 
 mkGcfCFG :: Bool -> CDouble -> GCFCfg
 mkGcfCFG isFull (CDouble wstep) = GCFCfg {
@@ -36,7 +39,7 @@ mkGcfCFG isFull (CDouble wstep) = GCFCfg {
   }
 
 gcfCalcActor :: Actor GCFCfg GCF
-gcfCalcActor = actor (liftIO . crGcf)
+gcfCalcActor = actor $ duration "GCF" . liftIO . crGcf
   where
     crGcf (GCFCfg hsupp_step n isFull t2 wstep) =
       let prep = if isFull then prepareFullGCF else prepareHalfGCF
@@ -48,7 +51,7 @@ simpleRomeinIter baselines _mapper dev_mapper launch = launch ((32-1)*8+1) basel
 
 -- TODO: factor out host-to-GPU marshalling actor?
 mkGPUGridderActor :: GridderConfig -> Actor (TaskData, GCF) Grid
-mkGPUGridderActor gcfg = actor (liftIO . uncurry gridder)
+mkGPUGridderActor gcfg = actor $ duration (gcKernelName gcfg) . liftIO . uncurry gridder
   where gridder = runGridder gcfg
 
 #define str(x) "x"
@@ -63,32 +66,34 @@ __SIMPLE_ROMEIN(UsingPermutations,HalfGCF,False)
 
 -- Target array ('polp') must be preallocated
 extractPolarizationActor :: Actor (Int32, CUDA.CxDoubleDevPtr, Grid) ()
-extractPolarizationActor = actor (liftIO . go)
+extractPolarizationActor = actor $ duration "ExtractPolarizaton" . liftIO . go
   where go (pol, polp, grid) = normalizeAndExtractPolarization pol polp grid
 
 fftPolarizationActor :: Actor CUDA.CxDoubleDevPtr ()
-fftPolarizationActor = actor (liftIO . fftGridPolarization)
+fftPolarizationActor = actor $ duration "FftPolarizaton" . liftIO . fftGridPolarization
 
 gpuToHostActor :: Actor (Int, CUDA.CxDoubleDevPtr) CUDA.CxDoubleHostPtr
-gpuToHostActor = actor (liftIO . go)
+gpuToHostActor = actor go
   where
-    go (size, devptr) = do
+    go (size, devptr) = profile "GPU2Host" [cudaHint{hintCopyBytesHost = size * cdSize}] $ liftIO $ do
       hostptr <- CUDA.mallocHostArray [] size 
       CUDA.peekArrayAsync size devptr hostptr Nothing
       CUDA.sync
       return hostptr
+    cdSize = sizeOf (undefined :: Complex Double)
 
 hostToDiskActor :: Actor (Int, CUDA.CxDoubleHostPtr, String) ()
-hostToDiskActor = actor (liftIO . go)
+hostToDiskActor = actor go
   where
-     go (size, hostptr, fname) =
-       BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr hostptr), size * sizeOf (undefined :: Complex Double)) >>= BS.writeFile fname
+    go (size, hostptr, fname) = profile "Host2Disk" [ioHint{hintWriteBytes = size * cdSize}] $ liftIO $
+      BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr hostptr), size * sizeOf (undefined :: Complex Double)) >>= BS.writeFile fname
+    cdSize = sizeOf (undefined :: Complex Double)
 
 writeTaskDataActor :: Actor (String, TaskData) ()
-writeTaskDataActor = actor (liftIO . uncurry writeTaskData)
+writeTaskDataActor = actor (profile "WriteTaskData" [ioHint{hintReadBytes = 565762696}] . liftIO . uncurry writeTaskData)
 
 readTaskDataActor :: Actor String TaskData
-readTaskDataActor = actor (liftIO . readTaskData)
+readTaskDataActor = actor (profile "ReadTaskData" [ioHint{hintReadBytes = 565762696}] . liftIO . readTaskData)
 
 binAndPregridActor :: Actor (String, Bool, TaskData) ()
 binAndPregridActor = actor (liftIO . go)
@@ -123,7 +128,6 @@ remotable [
   , 'hostToDiskActor
   ]
 
-
 -- Simple sequential 1-node program to test if
 --   all parts work together.
 main :: IO ()
@@ -135,18 +139,18 @@ main = dnaRun id $ do
       futBR <- delay Local shellBR
       taskData <- await futBR
     -}
-    taskData <- profile "OskarBinaryReader" [ioHint{hintReadBytes = 565536297}] $ eval binReaderActor "test_p00_s00_f00.vis"
-    gcf <- duration "GCF" $ eval gcfCalcActor $ mkGcfCFG True (tdWstep taskData)
-    grid <- duration "SimpleRomeinGridder" $ eval simpleRomeinFullGCF (taskData, gcf)
+    taskData <- eval binReaderActor "test_p00_s00_f00.vis"
+    gcf <- eval gcfCalcActor $ mkGcfCFG True (tdWstep taskData)
+    grid <- eval simpleRomeinFullGCF (taskData, gcf)
     liftIO $ finalizeTaskData taskData
     liftIO $ finalizeGCF gcf
     polptr <- liftIO $ CUDA.mallocArray gridsize
     let
       extract n = do
-        duration "ExtractPolarizaton" $ eval extractPolarizationActor (n, polptr, grid)
-        duration "FFTPolarizaton" $ eval fftPolarizationActor polptr
-        hostpol <- profile "GPU2Host" [cudaHint{hintCopyBytesHost = gridsize * cdSize}] $ eval gpuToHostActor (gridsize, polptr)
-        profile "Host2Disk" [ioHint{hintWriteBytes = gridsize * cdSize}] $ eval hostToDiskActor (gridsize, hostpol, "test_p00_s00_f00_p" ++ show n)
+        eval extractPolarizationActor (n, polptr, grid)
+        eval fftPolarizationActor polptr
+        hostpol <- eval gpuToHostActor (gridsize, polptr)
+        eval hostToDiskActor (gridsize, hostpol, "test_p00_s00_f00_p" ++ show n)
         liftIO $ CUDA.freeHost hostpol
     extract 0
     extract 1
@@ -156,4 +160,3 @@ main = dnaRun id $ do
     liftIO $ CUDA.free polptr
   where
     gridsize = 4096 * 4096
-    cdSize = sizeOf (undefined :: Complex Double)
