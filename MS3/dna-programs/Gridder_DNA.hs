@@ -14,6 +14,7 @@ import qualified Data.ByteString.Unsafe as BS
 import qualified Data.ByteString        as BS
 import Data.Complex
 import Foreign.Storable.Complex ()
+import System.FilePath
 
 import Control.Distributed.Static (Closure)
 
@@ -22,6 +23,7 @@ import Binner
 import GCF
 import GPUGridder
 import FFT
+import Namespace
 
 import DNA
 
@@ -110,6 +112,34 @@ gatherGridderActorFullGcf, gatherGridderActorHalfGcf :: Actor (String, TaskData,
 gatherGridderActorFullGcf = mkGatherGridderActor (GridderConfig "gridKernelGatherFullGCF" True i0)
 gatherGridderActorHalfGcf = mkGatherGridderActor (GridderConfig "gridKernelGatherHalfGCF" False i0)
 
+runGridderWith :: Closure (Actor (TaskData, GCF) Grid) -> TaskData -> String -> DNA ()
+runGridderWith gridactor taskData ns_out = do
+    gcf <- eval gcfCalcActor $ mkGcfCFG True (tdWstep taskData)
+    grid <- evalClosure gridactor (taskData, gcf)
+    liftIO $ finalizeTaskData taskData
+    liftIO $ finalizeGCF gcf
+    polptr <- liftIO $ CUDA.mallocArray gridsize
+    let
+      extract n = do
+        eval extractPolarizationActor (n, polptr, grid)
+        eval fftPolarizationActor polptr
+        hostpol <- eval gpuToHostActor (gridsize, polptr)
+        eval hostToDiskActor (gridsize, hostpol, ns_out </> 'p': show n)
+        liftIO $ CUDA.freeHost hostpol
+    extract 0
+    extract 1
+    extract 2
+    extract 3
+    liftIO $ finalizeGrid grid
+    liftIO $ CUDA.free polptr
+  where
+    gridsize = 4096 * 4096
+
+runGridderOnSavedData :: Actor(String, String, Closure (Actor (TaskData, GCF) Grid)) ()
+runGridderOnSavedData = actor $ \(ns_in, ns_out, gridactor) -> do
+  taskData <- eval readTaskDataActor ns_in
+  runGridderWith gridactor taskData ns_out
+
 remotable [
     'binReaderActor
   , 'writeTaskDataActor
@@ -139,24 +169,6 @@ main = dnaRun id $ do
       futBR <- delay Local shellBR
       taskData <- await futBR
     -}
+    ns <- liftIO $ createNameSpace Persistent "test_p00_s00_f00.vis"
     taskData <- eval binReaderActor "test_p00_s00_f00.vis"
-    gcf <- eval gcfCalcActor $ mkGcfCFG True (tdWstep taskData)
-    grid <- eval simpleRomeinFullGCF (taskData, gcf)
-    liftIO $ finalizeTaskData taskData
-    liftIO $ finalizeGCF gcf
-    polptr <- liftIO $ CUDA.mallocArray gridsize
-    let
-      extract n = do
-        eval extractPolarizationActor (n, polptr, grid)
-        eval fftPolarizationActor polptr
-        hostpol <- eval gpuToHostActor (gridsize, polptr)
-        eval hostToDiskActor (gridsize, hostpol, "test_p00_s00_f00_p" ++ show n)
-        liftIO $ CUDA.freeHost hostpol
-    extract 0
-    extract 1
-    extract 2
-    extract 3
-    liftIO $ finalizeGrid grid
-    liftIO $ CUDA.free polptr
-  where
-    gridsize = 4096 * 4096
+    runGridderWith $(mkStaticClosure 'simpleRomeinFullGCF) taskData ns
