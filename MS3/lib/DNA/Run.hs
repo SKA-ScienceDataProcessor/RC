@@ -17,6 +17,7 @@ import System.Environment (getExecutablePath,getEnv,lookupEnv)
 import System.Directory
 import System.Process
 import System.FilePath    ((</>))
+import System.Exit
 import System.Posix.Process (getProcessID,executeFile)
 import Text.ParserCombinators.ReadP hiding (many)
 import Text.Printf
@@ -90,10 +91,12 @@ runSlurmWorker rtable dir common dna = do
       0 -> startMaster backend $ \n -> do
                synchronizationPoint "CH"
                r <- executeDNA dna n
-               case r of
-                 Just e  -> taggedMessage "FATAL" $ "main actor died: " ++ show e
-                 Nothing -> return ()
                terminateAllSlaves backend
+               case r of
+                 Just e  -> do taggedMessage "FATAL" $ "main actor died: " ++ show e
+                               -- FIXME: a bit klunky
+                               liftIO exitFailure
+                 Nothing -> return ()
       _ -> startSlave backend
 
 slurmRank :: IO Int
@@ -279,6 +282,7 @@ runUnixWorker rtable opts common dna = do
             case r of
               Just e  -> do taggedMessage "FATAL" $ "main actor died: " ++ show e
                             liftIO $ print e
+                            liftIO exitFailure
               Nothing -> return ()
     -- Start master or slave program
     case rank of
