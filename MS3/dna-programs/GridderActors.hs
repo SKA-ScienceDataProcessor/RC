@@ -66,7 +66,7 @@ __SIMPLE_ROMEIN(UsingPermutations,FullGCF,True)
 __SIMPLE_ROMEIN(UsingPermutations,HalfGCF,False)
 
 simpleRomeinUsingHalfOfFullGCF :: Actor (TaskData, GCF) Grid
-simpleRomeinUsingHalfOfFullGCF = mkGPUGridderActor (GridderConfig "addBaselinesToGridSkaMidHalf" True simpleRomeinIter)
+simpleRomeinUsingHalfOfFullGCF = mkGPUGridderActor (GridderConfig "addBaselinesToGridSkaMidHalfGCF" True simpleRomeinIter)
 
 -- Target array ('polp') must be preallocated
 extractPolarizationActor :: Actor (Int32, CUDA.CxDoubleDevPtr, Grid) ()
