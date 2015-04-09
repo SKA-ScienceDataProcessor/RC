@@ -3,10 +3,16 @@ module Namespace where
 import System.Directory
 import System.FilePath
 
-createNameSpace :: FilePath -> IO FilePath
-createNameSpace fp = do
-    onWilkes <- doesDirectoryExist "/ramdisks"
-    let fn = if onWilkes then ramdir </> n else n
+data NSType = RAM | Persistent
+
+isRam :: NSType -> Bool
+isRam RAM = True
+isRam _   = False
+
+createNameSpace :: NSType -> FilePath -> IO FilePath
+createNameSpace nstyp fp = do
+    onWilkes <- doesDirectoryExist ramdir
+    let fn = if onWilkes && (isRam nstyp) then ramdir </> n else n
     createDirectory fn
     return fn
   where
