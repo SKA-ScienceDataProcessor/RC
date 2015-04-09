@@ -12,17 +12,21 @@ module GCF (
   , prepareFullGCF
   , createGCF
   , finalizeGCF
+  , finalizeGCFHost
+  , marshalGCF2Host
   , getCentreOfFullGCF
+  , getCentreOfFullGCFHost
   , GCF(..)
   , GCFDev
+  , GCFHost
   , GCFCfg(..)
   ) where
 
 import Data.Int
 import Foreign.Storable
 import Foreign.Storable.Complex ()
--- import Foreign.Marshal.Alloc -- for DEBUG only!
--- import Text.Printf(printf)
+import Foreign.Ptr
+import Foreign.Marshal.Array
 import qualified CUDAEx as CUDA
 import CUDAEx (CxDoubleDevPtr, CxDouble)
 
@@ -62,11 +66,15 @@ data GCF ptrt = GCF {
   } deriving (Generic, Typeable)
 
 type GCFDev = GCF CUDA.DevicePtr
+type GCFHost = GCF Ptr
 
 instance Binary GCFDev
 
 getCentreOfFullGCF :: GCFDev -> CUDA.DevicePtr CxDoubleDevPtr
 getCentreOfFullGCF (GCF _ n _ l) = CUDA.advanceDevPtr l ((n `div` 2) * 8 * 8)
+
+getCentreOfFullGCFHost :: GCFHost -> Ptr (Ptr CxDouble)
+getCentreOfFullGCFHost (GCF _ n _ l) = advancePtr l ((n `div` 2) * 8 * 8)
 
 allocateGCF :: Int -> Int -> IO GCFDev
 allocateGCF nOfLayers sizeOfGCFInComplexD = do
@@ -74,8 +82,39 @@ allocateGCF nOfLayers sizeOfGCFInComplexD = do
   layers <- CUDA.mallocArray (nOfLayers * 8 * 8)
   return $ GCF sizeOfGCFInComplexD nOfLayers gcfp layers
 
+allocateGCFHost :: Int -> Int -> IO GCFHost
+allocateGCFHost nOfLayers sizeOfGCFInComplexD = do
+  gcfp <- CUDA.mallocHostArray [] sizeOfGCFInComplexD
+  layers <- CUDA.mallocHostArray [] (nOfLayers * 8 * 8)
+  return $ GCF sizeOfGCFInComplexD nOfLayers (CUDA.useHostPtr gcfp) (CUDA.useHostPtr layers)
+
+marshalGCF2Host :: GCFDev -> IO GCFHost
+marshalGCF2Host (GCF size nol gcfp lrsp) = do
+    gcfh@(GCF _ _ gcfhp lrshp) <- allocateGCFHost nol size
+    CUDA.peekArrayAsync size gcfp (CUDA.HostPtr gcfhp) Nothing
+    CUDA.peekArrayAsync lsiz lrsp (CUDA.HostPtr $ castPtr lrshp) Nothing
+    CUDA.sync
+    let
+      lptrend = advancePtr lrshp lsiz
+      gcf_p = CUDA.useDevicePtr gcfp
+      go lptr
+        | lptr < lptrend = do
+            dlptr <- peek lptr
+            let off = minusPtr gcf_p dlptr
+            poke lptr (advancePtr gcfhp off)
+            go (advancePtr lptr 1)
+        | otherwise = return ()
+    go lrshp
+    return gcfh
+  where
+    lsiz = nol * 8 * 8
+
 finalizeGCF :: GCFDev -> IO ()
 finalizeGCF (GCF _ _ gcfp layers) = CUDA.free layers >> CUDA.free gcfp
+
+finalizeGCFHost :: GCFHost -> IO ()
+finalizeGCFHost (GCF _ _ gcfp layers) =
+  CUDA.freeHost (CUDA.HostPtr layers) >> CUDA.freeHost (CUDA.HostPtr gcfp)
 
 doCuda :: Double -> [(Double, Int)] -> GCFDev -> IO ()
 doCuda t2 ws_hsupps gcf = do
