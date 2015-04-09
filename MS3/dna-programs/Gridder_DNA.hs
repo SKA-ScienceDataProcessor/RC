@@ -161,7 +161,7 @@ remotable [
 -- Simple sequential 1-node program to test if
 --   all parts work together.
 main :: IO ()
-main = dnaRun id $ do
+main = dnaRun Main.__remoteTable $ do
     {-
       resBR <- select Local (N 0)
       shellBR <- startActor resBR $(mkStaticClosure 'binReaderActor)
