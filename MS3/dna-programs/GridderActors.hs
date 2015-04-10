@@ -52,7 +52,7 @@ simpleRomeinIter baselines _mapper dev_mapper launch = launch ((32-1)*8+1) basel
 
 -- TODO: factor out host-to-GPU marshalling actor?
 mkGPUGridderActor :: GridderConfig -> Actor (String, TaskData, GCFDev) Grid
-mkGPUGridderActor gcfg = actor $ duration (gcKernelName gcfg) . liftIO . gridder
+mkGPUGridderActor gcfg = actor $ profile (gcKernelName gcfg) [ioHint{hintCopyBytesDevice = 565762648}] . liftIO . gridder
   where gridder (_, td, gcf) = runGridder gcfg td gcf
 
 #define str(x) "x"
