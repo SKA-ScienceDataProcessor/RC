@@ -100,7 +100,7 @@ readTaskDataActor :: Actor String TaskData
 readTaskDataActor = actor (profile "ReadTaskData" [ioHint{hintReadBytes = 565762696}] . liftIO . readTaskData)
 
 binAndPregridActor :: Actor (String, Bool, TaskData) ()
-binAndPregridActor = actor (liftIO . go)
+binAndPregridActor = actor (duration "Binner" . liftIO . go)
   where go (namespace, isForHalfGCF, td) = bin namespace isForHalfGCF td
 
 mkGatherGridderActor :: GridderConfig -> Actor (String, TaskData, GCFDev) Grid
