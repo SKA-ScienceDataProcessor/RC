@@ -104,7 +104,7 @@ binAndPregridActor = actor (liftIO . go)
   where go (namespace, isForHalfGCF, td) = bin namespace isForHalfGCF td
 
 mkGatherGridderActor :: GridderConfig -> Actor (String, TaskData, GCFDev) Grid
-mkGatherGridderActor gcfg = actor (liftIO . gridder)
+mkGatherGridderActor gcfg = actor (duration (gcKernelName gcfg) . liftIO . gridder)
   where gridder (namespace, td, gcf) = runGatherGridder gcfg namespace td gcf
 
 i0 :: AddBaselinesIter
