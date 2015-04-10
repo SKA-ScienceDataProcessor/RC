@@ -189,7 +189,6 @@ spawnSingleActor res mmatch spwn = do
     -- Acquire resources
     cad <- runController
          $ makeResource (if UseLocal `elem` flags then Local else Remote)
-       =<< addLocal flags
        =<< requestResources res
     -- Start actor
     (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) act
