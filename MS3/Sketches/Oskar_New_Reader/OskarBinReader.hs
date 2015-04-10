@@ -13,6 +13,7 @@ import Foreign.C
 import Foreign.Storable.Complex ()
 import Text.Printf
 import System.IO
+import System.FilePath
 
 import GHC.Generics (Generic)
 import Data.Binary
@@ -109,7 +110,7 @@ writeTaskData namespace (TaskData nb nt nc np mxx wstp visptr uvwptr mapptr) =
           hput visptr (np * 8 * cdb_siz)
           hput uvwptr (np * 3 * cdb_siz)
           hput mapptr (nb * sizeOf (undefined :: BlWMap))
-      withBinaryFile (namespace ++ "taskdata.dat") WriteMode writeb
+      withBinaryFile (namespace </> "taskdata.dat") WriteMode writeb
   where
     cdb_siz = sizeOf (undefined :: CDouble)
 
@@ -117,7 +118,7 @@ readTaskData :: String -> IO TaskData
 readTaskData namespace =
   allocaArray 4 $ \ip ->
     allocaArray 2 $ \cdp ->
-      withBinaryFile (namespace ++ "taskdata.dat") ReadMode $ \handle -> do
+      withBinaryFile (namespace </> "taskdata.dat") ReadMode $ \handle -> do
         let hget p siz = throwIf_ (/= siz)
                            (\n -> printf "While reading taskdata from %s got %d instead of %d" namespace n siz)
                            (hGetBuf handle p siz)
