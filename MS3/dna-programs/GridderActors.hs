@@ -94,7 +94,7 @@ hostToDiskActor = actor go
     cdSize = sizeOf (undefined :: Complex Double)
 
 writeTaskDataActor :: Actor (String, TaskData) ()
-writeTaskDataActor = actor (profile "WriteTaskData" [ioHint{hintReadBytes = 565762696}] . liftIO . uncurry writeTaskData)
+writeTaskDataActor = actor (profile "WriteTaskData" [ioHint{hintWriteBytes = 565762696}] . liftIO . uncurry writeTaskData)
 
 readTaskDataActor :: Actor String TaskData
 readTaskDataActor = actor (profile "ReadTaskData" [ioHint{hintReadBytes = 565762696}] . liftIO . readTaskData)
