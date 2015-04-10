@@ -5,48 +5,53 @@
 
 module Main where
 
-import Control.Distributed.Static (Closure)
-
-import Namespace
-import OskarBinReader
-import GCF
-import GPUGridder
-
-import GridderActors
-
 import DNA
 
-saveDataAndRunRemote :: Actor(String, String, TaskData, Closure (Actor (TaskData, GCFDev) Grid)) ()
-saveDataAndRunRemote = actor $ \(ns, ns_out, td, gridderClosure) -> do
-  eval writeTaskDataActor (ns, td)
-  shellRG <- startActor (N 1) $ return $(mkStaticClosure 'runGridderOnSavedData)
-  sendParam (ns, ns_out, gridderClosure) shellRG
-  futRG <- delay Remote shellRG
-  await futRG
+import Namespace
+import GridderActors
+
+-- We have only 2 gather gridder variants at the moment and the selection is determined
+--   by how we bin data -- for full or half gcf usage
+runGatherGridderOnSavedData :: Actor (String, String, Bool) ()
+runGatherGridderOnSavedData = actor $ \(ns_in, ns_out, useHalfGcf) -> do
+  taskData <- eval readTaskDataActor ns_in
+  eval binAndPregridActor (ns_in, useHalfGcf, taskData)
+  runGridderWith (if useHalfGcf then hc else fc) taskData ns_in ns_out
+  where
+     hc = $(mkStaticClosure 'gatherGridderActorHalfGcf)
+     fc = $(mkStaticClosure 'gatherGridderActorFullGcf)
 
 remotable [
-    'saveDataAndRunRemote
+    'runGatherGridderOnSavedData
   ]
 
--- Simple sequential 1-node program to test if
---   all parts work together.
+
 main :: IO ()
 main = do
     nst <- createNameSpace RAM dataset
     ns_loc <- createNameSpace Persistent dataset
-    ns_rem <- addNameSpace ns_loc "from_1"
+    ns_rem1 <- addNameSpace ns_loc "from_1"
+    ns_rem2 <- addNameSpace ns_loc "from_2"
     dnaRun rt $ do
       taskData <- eval binReaderActor dataset
-      -- Now we locally start actor which writes converted
-      --  data do tmp location and start remote actor using these data
-      -- but writing result back to persisten location
-      shellSDRR <- startActor (N 0) $ useLocal >> return $(mkStaticClosure 'saveDataAndRunRemote)
+      --
       shellLoc <- startActor (N 0) $ useLocal >> return $(mkStaticClosure 'runGridderOnLocalData)
-      sendParam (nst, ns_rem, taskData, $(mkStaticClosure 'simpleRomeinUsingHalfOfFullGCF)) shellSDRR
       sendParam (ns_loc, taskData, $(mkStaticClosure 'simpleRomeinFullGCF)) shellLoc
-      futSDRR <- delay Local shellSDRR
+      --
+      eval writeTaskDataActor (nst, taskData)
+      --
+      shellRG <- startActor (N 1) $ return $(mkStaticClosure 'runGridderOnSavedData)
+      sendParam (nst, ns_rem1, $(mkStaticClosure 'simpleRomeinUsingHalfOfFullGCF)) shellRG
+      --
+      shellGG <- startActor (N 2) $ return $(mkStaticClosure 'runGatherGridderOnSavedData)
+      sendParam (nst, ns_rem2, False) shellGG
+      --
+      futRG <- delay Remote shellRG
+      futGG <- delay Remote shellGG
       futLoc <- delay Local shellLoc
-      await futSDRR
+
+      await futRG
+      await futGG
       await futLoc
   where
     rt = GridderActors.__remoteTable
