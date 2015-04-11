@@ -204,6 +204,8 @@ void gridKernel_scatter_full(
 #pragma omp single
   nthreads = omp_get_num_threads();
 
+  // Also nullify incoming grid.
+  memset(grid, 0, sizeof(GT));
   GT * tmpgrids = new GT[nthreads];
   memset(tmpgrids, 0, nthreads * sizeof(GT));
   gridKernel_scatter<
