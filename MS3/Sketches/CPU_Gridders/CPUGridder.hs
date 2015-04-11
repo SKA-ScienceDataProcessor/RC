@@ -3,9 +3,11 @@
 module CPUGridder where
 
 import Data.Complex
+import Foreign.C
+import Foreign.Ptr
 import OskarBinReaderFFI
 
-typedef CPUGridderType = Double -> Ptr BlWMap -> Ptr (Complex Double) -> Ptr (Ptr (Complex Double)) -> Ptr Double -> Ptr (Complex Double) -> IO ()
+type CPUGridderType = Double -> Ptr BlWMap -> Ptr (Complex Double) -> Ptr (Ptr (Complex Double)) -> Ptr CDouble -> Ptr (Complex Double) -> IO ()
 
 #define __CPU_GRIDDER(fun) \
 foreign import ccall "& fun" fun/**/_ptr :: FunPtr CPUGridderType
