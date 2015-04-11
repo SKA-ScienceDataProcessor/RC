@@ -146,8 +146,8 @@ runGatherGridder (GridderConfig gfname gcfIsFull _) prefix td gcf = do
     let processBin (c, up, vp) = do
           let
             binbasename = printf "%s%06d-%03d-%03d" prefix c up vp
-            binprename = binbasename ++ ".pre"
-            binvisname = binbasename ++ ".vis"
+            binprename = binbasename ++ "-pre.dat"
+            binvisname = binbasename ++ "-vis.dat"
           doMe <- doesFileExist binprename
           if doMe
             then do
