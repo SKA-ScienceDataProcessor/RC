@@ -69,6 +69,7 @@ type GCFDev = GCF CUDA.DevicePtr
 type GCFHost = GCF Ptr
 
 instance Binary GCFDev
+instance Binary GCFHost
 
 getCentreOfFullGCF :: GCFDev -> CUDA.DevicePtr CxDoubleDevPtr
 getCentreOfFullGCF (GCF _ n _ l) = CUDA.advanceDevPtr l ((n `div` 2) * 8 * 8)
