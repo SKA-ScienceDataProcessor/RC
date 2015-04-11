@@ -24,6 +24,8 @@ import GCF
 import GPUGridder
 import FFT
 
+import CPUGridder
+
 import DNA
 
 binReaderActor :: Actor String TaskData
@@ -146,6 +148,40 @@ runGridderOnLocalData :: Actor(String, TaskData, Closure (Actor (String, TaskDat
 runGridderOnLocalData = actor $ \(ns_out, taskdata, gridactor) ->
   runGridderWith gridactor taskdata "" ns_out
 
+marshalGCF2HostActor :: Actor GCFDev GCFHost
+marshalGCF2HostActor = actor go
+  where
+    go gcfd@(GCF gcfsize nol _ _) =
+      profile "MarshalGCF2Host" [cudaHint{hintCopyBytesHost = gcfsize * cdSize + nol * 8 * 8 * pSize}]
+        $ liftIO $ marshalGCF2Host gcfd
+    cdSize = sizeOf (undefined :: Complex Double)
+    pSize = sizeOf (undefined :: CUDA.DevicePtr (CUDA.CxDoubleDevPtr))
+
+
+-- We could import foreign functions directly (not their pointers),
+-- but pointers can be passed to actors because they have binary instances
+-- and while we don't do this at the moment we leave the door open to
+-- this in future. 
+#define __MKP(a) (mkCPUGridderFun a/**/_ptr, "a")
+
+-- Use no GridderConfig here
+-- We have 4 variants only and all are covered by this code
+mkCpuGridderActor :: Bool -> Bool -> Actor(Double, TaskData, GCFHost) (Ptr (Complex Double))
+mkCpuGridderActor isFullGcf usePermutations = actor go
+  where
+    go (scale, td, gcfh) = duration gname $ liftIO $ do
+      let gcfp = if isFullGcf then getCentreOfFullGCFHost gcfh else gcfLayers gcfh
+      gridp <- mallocArray gridsize
+      gfun scale (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
+      return gridp
+    gridsize = 4096 * 4096 * 4
+    (gfun, gname) = mk isFullGcf usePermutations
+    mk True  False = __MKP(gridKernelCPUFullGCF)
+    mk True  True  = __MKP(gridKernelCPUFullGCFPerm)
+    mk False False = __MKP(gridKernelCPUHalfGCF)
+    mk False True  = __MKP(gridKernelCPUHalfGCFPerm)
+
+
 remotable [
     'binReaderActor
   , 'writeTaskDataActor
@@ -165,4 +201,5 @@ remotable [
   , 'hostToDiskActor
   , 'runGridderOnSavedData
   , 'runGridderOnLocalData
+  , 'mkCpuGridderActor
   ]
