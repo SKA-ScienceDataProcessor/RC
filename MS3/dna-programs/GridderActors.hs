@@ -152,8 +152,8 @@ marshalGCF2HostP gcfd@(GCF gcfsize nol _ _) =
 
 -- Use no GridderConfig here
 -- We have 4 variants only and all are covered by this code
-mkCpuGridderActor :: Bool -> Bool -> Actor(Double, TaskData, GCFHost) (Ptr (Complex Double))
-mkCpuGridderActor isFullGcf usePermutations = actor go
+mkCpuGridderActor :: Bool -> Bool -> Bool -> Actor(Double, TaskData, GCFHost) (Ptr (Complex Double))
+mkCpuGridderActor isFullGcf useFullGcf usePermutations = actor go
   where
     go (scale, td, gcfh) = duration gname $ liftIO $ do
       let gcfp = if isFullGcf then getCentreOfFullGCFHost gcfh else gcfLayers gcfh
@@ -161,7 +161,7 @@ mkCpuGridderActor isFullGcf usePermutations = actor go
       gfun scale (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
       return gridp
     gridsize = 4096 * 4096 * 4
-    (gfun, gname) = mk isFullGcf usePermutations
+    (gfun, gname) = mk useFullGcf usePermutations
     mk True  False = __MKP(gridKernelCPUFullGCF)
     mk True  True  = __MKP(gridKernelCPUFullGCFPerm)
     mk False False = __MKP(gridKernelCPUHalfGCF)
