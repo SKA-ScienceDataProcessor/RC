@@ -34,6 +34,7 @@ main = do
     ns_loc <- createNameSpace Persistent dataset
     ns_rem1 <- addNameSpace ns_loc "from_1"
     ns_rem2 <- addNameSpace ns_loc "from_2"
+    ns_loc_cpu <- addNameSpace ns_loc "from_CPU"
     dnaRun rt $ do
       taskData <- binReader dataset
       --
@@ -52,10 +53,12 @@ main = do
       futGG <- delay Remote shellGG
       futLoc <- delay Local shellLoc
 
+      await futLoc
+      eval (mkGcfAndCpuGridderActor True False False) (ns_loc_cpu, taskData)
+      liftIO $ finalizeTaskData taskData
+
       await futRG
       await futGG
-      await futLoc
-      liftIO $ finalizeTaskData taskData
   where
     rt = GridderActors.__remoteTable
        . Main.__remoteTable

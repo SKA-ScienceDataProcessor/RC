@@ -152,26 +152,25 @@ marshalGCF2HostP gcfd@(GCF gcfsize nol _ _) =
 
 -- Use no GridderConfig here
 -- We have 4 variants only and all are covered by this code
-mkCpuGridderActor :: Bool -> Bool -> Bool -> Actor(String, TaskData, GCFHost) ()
-mkCpuGridderActor isFullGcf useFullGcf usePermutations = actor go
+cpuGridder :: Bool -> Bool -> Bool -> String -> TaskData -> GCFHost -> DNA ()
+cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh = do
+    gridp <- liftIO $ mallocArray (gridsize * 4)
+    duration gname $ liftIO $ gfun scale (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
+    polptr <- liftIO $ mallocArray gridsize
+    let extract n = do
+          duration "ExtractPolarizatonCPU" . liftIO $ CPU.normalizeAndExtractPolarization n polptr gridp
+          duration "FftPolarizatonCPU" . liftIO $ CPU.fft_inplace_even polptr
+          hostToDisk gridsize polptr (ns_out </> 'p': show n)
+    extract 0
+    extract 1
+    extract 2
+    extract 3
+    liftIO $ free polptr
+    liftIO $ free gridp
   where
-    go (ns_out, td, gcfh) = do
-      let gcfp = if isFullGcf then getCentreOfFullGCFHost gcfh else gcfLayers gcfh
-      gridp <- liftIO $ mallocArray (gridsize * 4)
-      duration gname $ liftIO $ gfun (scale td) (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
-      polptr <- liftIO $ mallocArray gridsize
-      let extract n = do
-            duration "ExtractPolarizatonCPU" . liftIO $ CPU.normalizeAndExtractPolarization n polptr gridp
-            duration "FftPolarizatonCPU" . liftIO $ CPU.fft_inplace_even polptr
-            hostToDisk gridsize polptr (ns_out </> 'p': show n)
-      extract 0
-      extract 1
-      extract 2
-      extract 3
-      liftIO $ free polptr
-      liftIO $ free gridp
+    gcfp = if isFullGcf then getCentreOfFullGCFHost gcfh else gcfLayers gcfh
     gridsize = 4096 * 4096
-    scale td = let CDouble sc = (2048 - 124 - 1) / (tdMaxx td) in sc -- 124 max hsupp
+    scale = let CDouble sc = (2048 - 124 - 1) / (tdMaxx td) in sc -- 124 max hsupp
     (gfun, gname) = mk useFullGcf usePermutations
     --
     mk True  False = __MKP(gridKernelCPUFullGCF)
@@ -179,6 +178,16 @@ mkCpuGridderActor isFullGcf useFullGcf usePermutations = actor go
     mk False False = __MKP(gridKernelCPUHalfGCF)
     mk False True  = __MKP(gridKernelCPUHalfGCFPerm)
 
+
+mkGcfAndCpuGridderActor :: Bool -> Bool -> Bool -> Actor(String, TaskData) ()
+mkGcfAndCpuGridderActor isFullGcf useFullGcf usePermutations = actor go
+  where
+    go (ns_out, td) = do
+      gcfd <- gcfCalc $ mkGcfCFG True (tdWstep td)
+      gcfh <- marshalGCF2HostP gcfd
+      liftIO $ finalizeGCF gcfd
+      cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh
+      liftIO $ finalizeGCFHost gcfh
 
 remotable [
     'gatherGridderActorFullGcf
@@ -190,5 +199,4 @@ remotable [
   , 'simpleRomeinUsingHalfOfFullGCF
   , 'runGridderOnSavedData
   , 'runGridderOnLocalData
-  , 'mkCpuGridderActor
   ]
