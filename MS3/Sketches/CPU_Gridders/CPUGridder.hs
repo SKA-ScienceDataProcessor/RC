@@ -18,3 +18,6 @@ __CPU_GRIDDER(gridKernelCPUHalfGCF)
 __CPU_GRIDDER(gridKernelCPUHalfGCFPerm)
 __CPU_GRIDDER(gridKernelCPUFullGCF)
 __CPU_GRIDDER(gridKernelCPUFullGCFPerm)
+
+foreign import ccall fft_inplace_even :: Ptr (Complex Double) -> IO ()
+foreign import ccall normalizeAndExtractPolarization :: CInt -> Ptr (Complex Double) -> Ptr (Complex Double) -> IO ()

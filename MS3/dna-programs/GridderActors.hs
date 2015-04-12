@@ -23,7 +23,7 @@ import GCF
 import GPUGridder
 import FFT
 
-import CPUGridder
+import qualified CPUGridder as CPU
 
 import DNA
 
@@ -148,7 +148,7 @@ marshalGCF2HostP gcfd@(GCF gcfsize nol _ _) =
 -- but pointers can be passed to actors because they have binary instances
 -- and while we don't do this at the moment we leave the door open to
 -- this in future. 
-#define __MKP(a) (mkCPUGridderFun a/**/_ptr, "a")
+#define __MKP(a) (CPU.mkCPUGridderFun CPU.a/**/_ptr, "a")
 
 -- Use no GridderConfig here
 -- We have 4 variants only and all are covered by this code
