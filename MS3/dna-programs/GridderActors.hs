@@ -5,7 +5,6 @@
 
 module GridderActors where
 
-import Data.Int
 import qualified CUDAEx as CUDA
 import Foreign
 import Foreign.C
@@ -28,9 +27,8 @@ import CPUGridder
 
 import DNA
 
-binReaderActor :: Actor String TaskData
-binReaderActor = actor $
-  profile "OskarBinaryReader" [ioHint{hintReadBytes = 565536297}] . liftIO . readOskarData
+binReader :: String -> DNA TaskData
+binReader = profile "OskarBinaryReader" [ioHint{hintReadBytes = 565536297}] . liftIO . readOskarData
 
 mkGcfCFG :: Bool -> CDouble -> GCFCfg
 mkGcfCFG isFull (CDouble wstep) = GCFCfg {
@@ -41,8 +39,8 @@ mkGcfCFG isFull (CDouble wstep) = GCFCfg {
   , gcfcWStep = wstep
   }
 
-gcfCalcActor :: Actor GCFCfg GCFDev
-gcfCalcActor = actor $ duration "GCF" . liftIO . crGcf
+gcfCalc :: GCFCfg -> DNA GCFDev
+gcfCalc = duration "GCF" . liftIO . crGcf
   where
     crGcf (GCFCfg hsupp_step n isFull t2 wstep) =
       let prep = if isFull then prepareFullGCF else prepareHalfGCF
@@ -70,40 +68,30 @@ __SIMPLE_ROMEIN(UsingPermutations,HalfGCF,False)
 simpleRomeinUsingHalfOfFullGCF :: Actor (String, TaskData, GCFDev) Grid
 simpleRomeinUsingHalfOfFullGCF = mkGPUGridderActor (GridderConfig "addBaselinesToGridSkaMidHalfGCF" True simpleRomeinIter)
 
--- Target array ('polp') must be preallocated
-extractPolarizationActor :: Actor (Int32, CUDA.CxDoubleDevPtr, Grid) ()
-extractPolarizationActor = actor $ duration "ExtractPolarizaton" . liftIO . go
-  where go (pol, polp, grid) = normalizeAndExtractPolarization pol polp grid
+cdSize :: Int
+cdSize = sizeOf (undefined :: Complex Double)
+{-# INLINE cdSize #-}
 
-fftPolarizationActor :: Actor CUDA.CxDoubleDevPtr ()
-fftPolarizationActor = actor $ duration "FftPolarizaton" . liftIO . fftGridPolarization
+gpuToHost :: Int -> CUDA.CxDoubleDevPtr -> DNA CUDA.CxDoubleHostPtr
+gpuToHost size devptr = profile "GPU2Host" [cudaHint{hintCopyBytesHost = size * cdSize}] $ liftIO $ do
+    hostptr <- CUDA.mallocHostArray [] size 
+    CUDA.peekArrayAsync size devptr hostptr Nothing
+    CUDA.sync
+    return hostptr
 
-gpuToHostActor :: Actor (Int, CUDA.CxDoubleDevPtr) CUDA.CxDoubleHostPtr
-gpuToHostActor = actor go
-  where
-    go (size, devptr) = profile "GPU2Host" [cudaHint{hintCopyBytesHost = size * cdSize}] $ liftIO $ do
-      hostptr <- CUDA.mallocHostArray [] size 
-      CUDA.peekArrayAsync size devptr hostptr Nothing
-      CUDA.sync
-      return hostptr
-    cdSize = sizeOf (undefined :: Complex Double)
+hostToDisk :: Int -> CUDA.CxDoubleHostPtr -> String -> DNA ()
+hostToDisk size hostptr fname = profile "Host2Disk" [ioHint{hintWriteBytes = size * cdSize}] $ liftIO $
+    BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr hostptr), size * cdSize) >>= BS.writeFile fname
 
-hostToDiskActor :: Actor (Int, CUDA.CxDoubleHostPtr, String) ()
-hostToDiskActor = actor go
-  where
-    go (size, hostptr, fname) = profile "Host2Disk" [ioHint{hintWriteBytes = size * cdSize}] $ liftIO $
-      BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr hostptr), size * sizeOf (undefined :: Complex Double)) >>= BS.writeFile fname
-    cdSize = sizeOf (undefined :: Complex Double)
+writeTaskDataP :: String -> TaskData -> DNA ()
+writeTaskDataP = (profile "WriteTaskData" [ioHint{hintWriteBytes = 565762696}] .) . (liftIO .) . writeTaskData
 
-writeTaskDataActor :: Actor (String, TaskData) ()
-writeTaskDataActor = actor (profile "WriteTaskData" [ioHint{hintWriteBytes = 565762696}] . liftIO . uncurry writeTaskData)
+readTaskDataP :: String -> DNA TaskData
+readTaskDataP = profile "ReadTaskData" [ioHint{hintReadBytes = 565762696}] . liftIO . readTaskData
 
-readTaskDataActor :: Actor String TaskData
-readTaskDataActor = actor (profile "ReadTaskData" [ioHint{hintReadBytes = 565762696}] . liftIO . readTaskData)
-
-binAndPregridActor :: Actor (String, Bool, TaskData) ()
-binAndPregridActor = actor (duration "Binner" . liftIO . go)
-  where go (namespace, isForHalfGCF, td) = bin namespace isForHalfGCF td
+binAndPregrid :: String -> Bool -> TaskData -> DNA ()
+binAndPregrid namespace isForHalfGCF td = duration "Binner" . liftIO $
+  bin namespace isForHalfGCF td
 
 mkGatherGridderActor :: GridderConfig -> Actor (String, TaskData, GCFDev) Grid
 mkGatherGridderActor gcfg = actor (duration (gcKernelName gcfg) . liftIO . gridder)
@@ -118,17 +106,17 @@ gatherGridderActorHalfGcf = mkGatherGridderActor (GridderConfig "gridKernelGathe
 
 runGridderWith :: Closure (Actor (String, TaskData, GCFDev) Grid) -> TaskData -> String -> String -> DNA ()
 runGridderWith gridactor taskData ns_in ns_out = do
-    gcf <- eval gcfCalcActor $ mkGcfCFG True (tdWstep taskData)
+    gcf <- gcfCalc $ mkGcfCFG True (tdWstep taskData)
     grid <- evalClosure gridactor (ns_in, taskData, gcf)
     liftIO $ finalizeTaskData taskData
     liftIO $ finalizeGCF gcf
     polptr <- liftIO $ CUDA.mallocArray gridsize
     let
       extract n = do
-        eval extractPolarizationActor (n, polptr, grid)
-        eval fftPolarizationActor polptr
-        hostpol <- eval gpuToHostActor (gridsize, polptr)
-        eval hostToDiskActor (gridsize, hostpol, ns_out </> 'p': show n)
+        duration "ExtractPolarizaton" . liftIO $ normalizeAndExtractPolarization n polptr grid
+        duration "FftPolarizaton" . liftIO $ fftGridPolarization polptr
+        hostpol <- gpuToHost gridsize polptr
+        hostToDisk gridsize hostpol (ns_out </> 'p': show n)
         liftIO $ CUDA.freeHost hostpol
     extract 0
     extract 1
@@ -141,20 +129,18 @@ runGridderWith gridactor taskData ns_in ns_out = do
 
 runGridderOnSavedData :: Actor(String, String, Closure (Actor (String, TaskData, GCFDev) Grid)) ()
 runGridderOnSavedData = actor $ \(ns_in, ns_out, gridactor) -> do
-  taskData <- eval readTaskDataActor ns_in
+  taskData <- readTaskDataP ns_in
   runGridderWith gridactor taskData "" ns_out
 
 runGridderOnLocalData :: Actor(String, TaskData, Closure (Actor (String, TaskData, GCFDev) Grid)) ()
 runGridderOnLocalData = actor $ \(ns_out, taskdata, gridactor) ->
   runGridderWith gridactor taskdata "" ns_out
 
-marshalGCF2HostActor :: Actor GCFDev GCFHost
-marshalGCF2HostActor = actor go
+marshalGCF2HostP :: GCFDev -> DNA GCFHost
+marshalGCF2HostP gcfd@(GCF gcfsize nol _ _) =
+    profile "MarshalGCF2Host" [cudaHint{hintCopyBytesHost = gcfsize * cdSize + nol * 8 * 8 * pSize}]
+      $ liftIO $ marshalGCF2Host gcfd
   where
-    go gcfd@(GCF gcfsize nol _ _) =
-      profile "MarshalGCF2Host" [cudaHint{hintCopyBytesHost = gcfsize * cdSize + nol * 8 * 8 * pSize}]
-        $ liftIO $ marshalGCF2Host gcfd
-    cdSize = sizeOf (undefined :: Complex Double)
     pSize = sizeOf (undefined :: CUDA.DevicePtr (CUDA.CxDoubleDevPtr))
 
 
@@ -183,22 +169,13 @@ mkCpuGridderActor isFullGcf usePermutations = actor go
 
 
 remotable [
-    'binReaderActor
-  , 'writeTaskDataActor
-  , 'readTaskDataActor
-  , 'binAndPregridActor
-  , 'gatherGridderActorFullGcf
+    'gatherGridderActorFullGcf
   , 'gatherGridderActorHalfGcf
-  , 'gcfCalcActor
   , 'simpleRomeinFullGCF
   , 'simpleRomeinHalfGCF
   , 'simpleRomeinUsingPermutationsFullGCF
   , 'simpleRomeinUsingPermutationsHalfGCF
   , 'simpleRomeinUsingHalfOfFullGCF
-  , 'extractPolarizationActor
-  , 'fftPolarizationActor
-  , 'gpuToHostActor
-  , 'hostToDiskActor
   , 'runGridderOnSavedData
   , 'runGridderOnLocalData
   , 'mkCpuGridderActor
