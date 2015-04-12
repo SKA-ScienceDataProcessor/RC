@@ -79,9 +79,9 @@ gpuToHost size devptr = profile "GPU2Host" [cudaHint{hintCopyBytesHost = size * 
     CUDA.sync
     return hostptr
 
-hostToDisk :: Int -> CUDA.CxDoubleHostPtr -> String -> DNA ()
+hostToDisk :: Int -> Ptr (Complex Double) -> String -> DNA ()
 hostToDisk size hostptr fname = profile "Host2Disk" [ioHint{hintWriteBytes = size * cdSize}] $ liftIO $
-    BS.unsafePackCStringLen (castPtr (CUDA.useHostPtr hostptr), size * cdSize) >>= BS.writeFile fname
+    BS.unsafePackCStringLen (castPtr hostptr, size * cdSize) >>= BS.writeFile fname
 
 writeTaskDataP :: String -> TaskData -> DNA ()
 writeTaskDataP = (profile "WriteTaskData" [ioHint{hintWriteBytes = 565762696}] .) . (liftIO .) . writeTaskData
@@ -115,7 +115,7 @@ runGridderWith gridactor taskData ns_in ns_out = do
         duration "ExtractPolarizaton" . liftIO $ normalizeAndExtractPolarization n polptr grid
         duration "FftPolarizaton" . liftIO $ fftGridPolarization polptr
         hostpol <- gpuToHost gridsize polptr
-        hostToDisk gridsize hostpol (ns_out </> 'p': show n)
+        hostToDisk gridsize (CUDA.useHostPtr hostpol) (ns_out </> 'p': show n)
         liftIO $ CUDA.freeHost hostpol
     extract 0
     extract 1
@@ -152,16 +152,28 @@ marshalGCF2HostP gcfd@(GCF gcfsize nol _ _) =
 
 -- Use no GridderConfig here
 -- We have 4 variants only and all are covered by this code
-mkCpuGridderActor :: Bool -> Bool -> Bool -> Actor(Double, TaskData, GCFHost) (Ptr (Complex Double))
+mkCpuGridderActor :: Bool -> Bool -> Bool -> Actor(String, TaskData, GCFHost) ()
 mkCpuGridderActor isFullGcf useFullGcf usePermutations = actor go
   where
-    go (scale, td, gcfh) = duration gname $ liftIO $ do
+    go (ns_out, td, gcfh) = do
       let gcfp = if isFullGcf then getCentreOfFullGCFHost gcfh else gcfLayers gcfh
-      gridp <- mallocArray gridsize
-      gfun scale (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
-      return gridp
-    gridsize = 4096 * 4096 * 4
+      gridp <- liftIO $ mallocArray (gridsize * 4)
+      duration gname $ liftIO $ gfun (scale td) (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
+      polptr <- liftIO $ mallocArray gridsize
+      let extract n = do
+            duration "ExtractPolarizatonCPU" . liftIO $ CPU.normalizeAndExtractPolarization n polptr gridp
+            duration "FftPolarizatonCPU" . liftIO $ CPU.fft_inplace_even polptr
+            hostToDisk gridsize polptr (ns_out </> 'p': show n)
+      extract 0
+      extract 1
+      extract 2
+      extract 3
+      liftIO $ free polptr
+      liftIO $ free gridp
+    gridsize = 4096 * 4096
+    scale td = let CDouble sc = (2048 - 124 - 1) / (tdMaxx td) in sc -- 124 max hsupp
     (gfun, gname) = mk useFullGcf usePermutations
+    --
     mk True  False = __MKP(gridKernelCPUFullGCF)
     mk True  True  = __MKP(gridKernelCPUFullGCFPerm)
     mk False False = __MKP(gridKernelCPUHalfGCF)
