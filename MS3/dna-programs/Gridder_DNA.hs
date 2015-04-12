@@ -7,6 +7,7 @@ module Main where
 
 import DNA
 
+import OskarBinReader
 import Namespace
 import GridderActors
 
@@ -17,6 +18,7 @@ runGatherGridderOnSavedData = actor $ \(ns_in, ns_tmp, ns_out, useHalfGcf) -> do
   taskData <- readTaskDataP ns_in
   binAndPregrid ns_tmp useHalfGcf taskData
   runGridderWith (if useHalfGcf then hc else fc) taskData ns_tmp ns_out
+  liftIO $ finalizeTaskData taskData
   where
      hc = $(mkStaticClosure 'gatherGridderActorHalfGcf)
      fc = $(mkStaticClosure 'gatherGridderActorFullGcf)
@@ -53,6 +55,7 @@ main = do
       await futRG
       await futGG
       await futLoc
+      liftIO $ finalizeTaskData taskData
   where
     rt = GridderActors.__remoteTable
        . Main.__remoteTable

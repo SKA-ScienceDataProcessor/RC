@@ -108,7 +108,6 @@ runGridderWith :: Closure (Actor (String, TaskData, GCFDev) Grid) -> TaskData ->
 runGridderWith gridactor taskData ns_in ns_out = do
     gcf <- gcfCalc $ mkGcfCFG True (tdWstep taskData)
     grid <- evalClosure gridactor (ns_in, taskData, gcf)
-    liftIO $ finalizeTaskData taskData
     liftIO $ finalizeGCF gcf
     polptr <- liftIO $ CUDA.mallocArray gridsize
     let
@@ -131,6 +130,7 @@ runGridderOnSavedData :: Actor(String, String, Closure (Actor (String, TaskData,
 runGridderOnSavedData = actor $ \(ns_in, ns_out, gridactor) -> do
   taskData <- readTaskDataP ns_in
   runGridderWith gridactor taskData "" ns_out
+  liftIO $ finalizeTaskData taskData
 
 runGridderOnLocalData :: Actor(String, TaskData, Closure (Actor (String, TaskData, GCFDev) Grid)) ()
 runGridderOnLocalData = actor $ \(ns_out, taskdata, gridactor) ->
