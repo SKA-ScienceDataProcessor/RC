@@ -43,7 +43,7 @@ void gridKernel_scatter_kernel_small(
     int max_supp
     // For full-size GCF should be passed 0-centered,
     // i.e. with 0-index in the middle
-  , const complexd * gcf
+  , const complexd * gcf[]
   , Double4c grid[grid_size][grid_size]
   , const Pregridded uvo_shared[timesteps * channels]
   , const Double4c vis[timesteps * channels]
@@ -83,13 +83,13 @@ void gridKernel_scatter_kernel_small(
       // and we shall negate the index to obtain correct
       // offset *and* conjugate the result.
       if (index < 0) {
-        supportPixel = (gcf - index)[__layeroff];
+        supportPixel = gcf[-index][__layeroff];
         supportPixel.y = - supportPixel.y;
       } else {
-        supportPixel = (gcf + index)[__layeroff];
+        supportPixel = gcf[index][__layeroff];
       }
     } else {
-        supportPixel = (gcf + uvo_shared[i].gcf_layer_index)[__layeroff];
+        supportPixel = gcf[uvo_shared[i].gcf_layer_index][__layeroff];
     }
 
     if (myGridU != grid_point_u || myGridV != grid_point_v) {
@@ -123,7 +123,7 @@ __inline__ __device__
 // grid must be initialized to 0s.
 void gridKernel_scatter_kernel(
     int max_supp
-  , const complexd * gcf
+  , const complexd * gcf[]
   , Double4c grid[grid_size][grid_size]
   , const Pregridded uvo_shared[timesteps * channels]
   , const Double4c vis[timesteps * channels]
@@ -157,7 +157,7 @@ __device__ __inline__ void addBaselineToGrid(
     double scale
   , int max_supp
   , Double4c grid[grid_size][grid_size]
-  , const complexd * gcf
+  , const complexd * gcf[]
   , const double3 uvw[timesteps * channels]
   , const Double4c vis[timesteps * channels]
   ) {
@@ -208,7 +208,7 @@ __device__ __inline__ void addBaselinesToGrid(
     double scale
   , const BlWMap permutations[baselines]
   , Double4c grid[grid_size][grid_size]
-  , const complexd * gcf
+  , const complexd * gcf[]
   , const double3 uvw[baselines][timesteps * channels]
   , const Double4c vis[baselines][timesteps * channels]
   ) {
@@ -238,7 +238,7 @@ __global__ void addBaselineToGrid##suff(                                   \
     double scale                                                           \
   , int max_supp                                                           \
   , Double4c grid[GRID_SIZE][GRID_SIZE]                                    \
-  , const complexd * gcf                                                   \
+  , const complexd * gcf[]                                                 \
   , const double3 uvw[TIMESTEPS*CHANNELS]                                  \
   , const Double4c vis[TIMESTEPS*CHANNELS]                                 \
   ) {                                                                      \
@@ -260,7 +260,7 @@ __global__ void addBaselinesToGridSkaMid##suff(                                 
     double scale                                                                              \
   , const BlWMap permutations[BASELINES]                                                      \
   , Double4c grid[GRID_SIZE][GRID_SIZE]                                                       \
-  , const complexd * gcf                                                                      \
+  , const complexd * gcf[]                                                                    \
   , const double3 uvw[BASELINES][TIMESTEPS*CHANNELS]                                          \
   , const Double4c vis[BASELINES][TIMESTEPS*CHANNELS]                                         \
   ) {                                                                                         \
@@ -282,7 +282,7 @@ __global__ void addBaselinesToGridSkaMidUsingPermutations##suff(                
     double scale                                                                             \
   , const BlWMap permutations[BASELINES]                                                     \
   , Double4c grid[GRID_SIZE][GRID_SIZE]                                                      \
-  , const complexd * gcf                                                                     \
+  , const complexd * gcf[]                                                                   \
   , const double3 uvw[BASELINES][TIMESTEPS*CHANNELS]                                         \
   , const Double4c vis[BASELINES][TIMESTEPS*CHANNELS]                                        \
   ) {                                                                                        \

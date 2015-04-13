@@ -84,7 +84,7 @@ void gridKernel_scatter(
     // We have a [w_planes][over][over]-shaped array of pointers to
     // variable-sized gcf layers, but we precompute (in pregrid)
     // exact index into this array, thus we use plain pointer here
-  , const complexd * gcf
+  , const complexd * gcf[]
   , const Inp uvw[baselines][ts_ch]
   , const Double4c vis[baselines][ts_ch]
   ) {
@@ -129,12 +129,12 @@ void gridKernel_scatter(
               // and we shall negate the index to obtain correct
               // offset *and* conjugate the result.
               if (index < 0) {
-                supportPixel = conj((gcf - index)[__layeroff]);
+                supportPixel = conj(gcf[-index][__layeroff]);
               } else {
-                supportPixel = (gcf + index)[__layeroff];
+                supportPixel = gcf[index][__layeroff];
               }
             } else {
-                supportPixel = (gcf + p.gcf_layer_index)[__layeroff];
+                supportPixel = gcf[p.gcf_layer_index][__layeroff];
             }
 
 #ifdef __AVX__
@@ -191,7 +191,7 @@ void gridKernel_scatter_full(
     // We have a [w_planes][over][over]-shaped array of pointers to
     // variable-sized gcf layers, but we precompute (in pregrid)
     // exact index into this array, thus we use plain pointer here
-  , const complexd * gcf
+  , const complexd * gcf[]
   , const Inp uvw[baselines][ts_ch]
   , const Double4c vis[baselines][ts_ch]
   ) {
@@ -242,7 +242,7 @@ void gridKernelCPU##hgcfSuff##permSuff(                                        \
     double scale                                                               \
   , const BlWMap permutations[BASELINES]                                       \
   , Double4c grid[GRID_SIZE][GRID_SIZE]                                        \
-  , const complexd * gcf                                                       \
+  , const complexd * gcf[]                                                     \
   , const Double3 uvw[BASELINES][TIMESTEPS*CHANNELS]                           \
   , const Double4c vis[BASELINES][TIMESTEPS*CHANNELS]                          \
   ){                                                                           \

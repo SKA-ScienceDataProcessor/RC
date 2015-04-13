@@ -19,7 +19,7 @@ __device__ __inline__ static void grid_kernel_gather(
   , const Pregridded * uvo
   , const Double4c * vis
   , int num_of_vals
-  , const cuDoubleComplex * gcf
+  , const cuDoubleComplex * gcf[]
   , Double4c grid[grid_size][grid_size]
   ){
   int gu = blockIdx.x * blockDim.x + threadIdx.x + BU * bstep;
@@ -40,13 +40,13 @@ __device__ __inline__ static void grid_kernel_gather(
         // and we shall negate the index to obtain correct
         // offset *and* conjugate the result.
         if (index < 0) {
-          supportPixel = (gcf - index)[__layeroff];
+          supportPixel = gcf[-index][__layeroff];
           supportPixel.y = - supportPixel.y;
         } else {
-          supportPixel = (gcf + index)[__layeroff];
+          supportPixel = gcf[index][__layeroff];
         }
       } else {
-          supportPixel = (gcf + uvo[i].gcf_layer_index)[__layeroff];
+          supportPixel = gcf[uvo[i].gcf_layer_index][__layeroff];
       }
       #define __ADDPOL(pol) grid[gu][gv].pol = cuCfma(supportPixel, vis[i].XX, grid[gu][gv].pol);
       __ADDPOL(XX)
@@ -64,7 +64,7 @@ extern "C" __global__ void gridKernelGather##suff( \
   , const Pregridded * uvo                         \
   , const Double4c * vis                           \
   , int num_of_vals                                \
-  , const cuDoubleComplex * gcf                    \
+  , const cuDoubleComplex * gcf[]                  \
   , Double4c grid[GRID_SIZE][GRID_SIZE]            \
 ) {                                                \
   grid_kernel_gather<GRID_SIZE, BSTEP, ishalf>(    \
