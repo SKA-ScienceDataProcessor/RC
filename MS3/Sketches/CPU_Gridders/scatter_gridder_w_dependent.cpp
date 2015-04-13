@@ -288,5 +288,5 @@ extern "C" void normalizeAndExtractPolarization(
   , complexd dst[GRID_SIZE][GRID_SIZE]
   , const complexd src[GRID_SIZE][GRID_SIZE][NUM_POL]
   ) {
-  return normalizeAndExtractPolarization<GRID_SIZE, NUM_POL>(n, dst, src);
+  normalizeAndExtractPolarization<GRID_SIZE, NUM_POL>(n, dst, src);
 }
