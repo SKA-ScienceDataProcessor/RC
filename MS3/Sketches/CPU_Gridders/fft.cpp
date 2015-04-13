@@ -2,8 +2,6 @@
 #include "common.h"
 #include "metrix.h"
 
-// Very simple. Only for even sizes.
-// And for even sizes fftshift and ifftshift coinside.
 template<int N> void fft_center(complexd data[N][N]){
   bool flip = false;
   for (int i = 0; i < N; i++) {
@@ -14,6 +12,8 @@ template<int N> void fft_center(complexd data[N][N]){
   }
 }
 
+// Very simple. Only for even sizes.
+// And for even sizes fftshift and ifftshift coinside.
 template<int N> void fftshift_even(complexd data[N][N]){
   complexd tmp;
   for (int i = 0; i < N/2; i++) {
