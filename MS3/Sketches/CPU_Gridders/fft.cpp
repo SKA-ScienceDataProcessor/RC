@@ -4,6 +4,16 @@
 
 // Very simple. Only for even sizes.
 // And for even sizes fftshift and ifftshift coinside.
+template<int N> void fft_center(complexd data[N][N]){
+  bool flip = false;
+  for (int i = 0; i < N; i++) {
+    for (int j = 0; j < N; j++) {
+      if (flip) data[i][j] = std::complex<double>(-data[i][j].real(), -data[i][j].imag());
+      flip = !flip;
+    }
+  }
+}
+
 template<int N> void fftshift_even(complexd data[N][N]){
   complexd tmp;
   for (int i = 0; i < N/2; i++) {
@@ -17,11 +27,13 @@ template<int N> void fftshift_even(complexd data[N][N]){
 
 #define dp reinterpret_cast<fftw_complex*>(&data[0][0])
 template<int N> void __fft_inplace(complexd data[N][N]){
-  fftshift_even<N>(data);
+  fft_center<N>(data);
   fftw_plan p = fftw_plan_dft_2d(N, N, dp, dp, FFTW_FORWARD, FFTW_ESTIMATE);
   fftw_execute(p);
   fftw_destroy_plan(p);
-  fftshift_even<N>(data);
+  // Temporarily disable the shifting of the result because
+  // of slowness
+  // fftshift_even<N>(data);
 }
 
 extern "C"
