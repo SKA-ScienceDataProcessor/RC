@@ -54,7 +54,7 @@ main = do
       futLoc <- delay Local shellLoc
 
       await futLoc
-      eval (mkGcfAndCpuGridderActor True False False) (ns_loc_cpu, taskData)
+      eval (mkGcfAndCpuGridderActor True True False) (ns_loc_cpu, taskData)
       liftIO $ finalizeTaskData taskData
 
       await futRG
