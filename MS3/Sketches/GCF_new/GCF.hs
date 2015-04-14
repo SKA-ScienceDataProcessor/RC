@@ -101,8 +101,8 @@ marshalGCF2Host (GCF size nol gcfp lrsp) = do
       go lptr
         | lptr < lptrend = do
             dlptr <- peek lptr
-            let off = minusPtr gcf_p dlptr
-            poke lptr (advancePtr gcfhp off)
+            let off = minusPtr dlptr gcf_p
+            poke lptr (plusPtr gcfhp off)
             go (advancePtr lptr 1)
         | otherwise = return ()
     go lrshp
