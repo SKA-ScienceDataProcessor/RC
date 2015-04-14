@@ -119,7 +119,7 @@ measurement :: MonadIO m
 measurement sample attrs msg dna = do
     -- Get start sample
     sample0 <- sample
-    message "START" sample0 msg
+    message "START" (attrs ++ sample0) msg
     -- Perform action
     r <- liftIO . evaluate =<< dna
     -- Get end sample, return
