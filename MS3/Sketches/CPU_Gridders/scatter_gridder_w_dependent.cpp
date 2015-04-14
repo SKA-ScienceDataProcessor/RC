@@ -51,7 +51,7 @@ template <
   , int w_planes
   , bool do_mirror
   > struct cvt<grid_size, over, w_planes, do_mirror, Pregridded> {
-  static void pre(double, Pregridded inp, Pregridded & outpr) {outpr = inp;}
+  static void pre(double, double, Pregridded inp, Pregridded & outpr) {outpr = inp;}
 };
 
 template <
@@ -60,8 +60,8 @@ template <
   , int w_planes
   , bool do_mirror
   > struct cvt<grid_size, over, w_planes, do_mirror, Double3> {
-  static void pre(double scale, Double3 inp, Pregridded & outpr) {
-    pregridPoint<grid_size, over, w_planes, do_mirror>(scale, inp, outpr);
+  static void pre(double scale, double wstep, Double3 inp, Pregridded & outpr) {
+    pregridPoint<grid_size, over, w_planes, do_mirror>(scale, wstep, inp, outpr);
   }
 };
 
@@ -79,6 +79,7 @@ template <
 // grid must be initialized to 0s.
 void gridKernel_scatter(
     double scale
+  , double wstep
   , const BlWMap permutations[baselines]
   , Double4c grids[][grid_size][grid_size]
     // We have a [w_planes][over][over]-shaped array of pointers to
@@ -101,7 +102,7 @@ void gridKernel_scatter(
       for (int sv = 0; sv < max_supp_here; sv++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
             Pregridded p;
-            cvt<grid_size, over, w_planes, is_half_gcf, Inp>::pre(scale, uvw[bl][i], p);
+            cvt<grid_size, over, w_planes, is_half_gcf, Inp>::pre(scale, wstep, uvw[bl][i], p);
 
 #ifdef __AVX__
           // We port Romein CPU code to doubles here (for MS2 we didn't)
@@ -186,6 +187,7 @@ template <
 // grid must be initialized to 0s.
 void gridKernel_scatter_full(
     double scale
+  , double wstep
   , const BlWMap permutations[baselines]
   , Double4c grid[grid_size][grid_size]
     // We have a [w_planes][over][over]-shaped array of pointers to
@@ -218,7 +220,7 @@ void gridKernel_scatter_full(
     , grid_size
     , ts_ch
     , Inp
-    >(scale, permutations, tmpgrids, gcf, uvw, vis);
+    >(scale, wstep, permutations, tmpgrids, gcf, uvw, vis);
   addGrids<grid_size>(grid, tmpgrids, nthreads);
   delete [] tmpgrids;
 #else
@@ -232,7 +234,7 @@ void gridKernel_scatter_full(
     , grid_size
     , ts_ch
     , Inp
-    >(scale, permutations, reinterpret_cast<GT*>(&grid), gcf, uvw, vis);
+    >(scale, wstep, permutations, reinterpret_cast<GT*>(&grid), gcf, uvw, vis);
 #endif
 }
 
@@ -240,6 +242,7 @@ void gridKernel_scatter_full(
 extern "C"                                                                     \
 void gridKernelCPU##hgcfSuff##permSuff(                                        \
     double scale                                                               \
+  , double wstep                                                               \
   , const BlWMap permutations[BASELINES]                                       \
   , Double4c grid[GRID_SIZE][GRID_SIZE]                                        \
   , const complexd * gcf[]                                                     \
@@ -247,27 +250,13 @@ void gridKernelCPU##hgcfSuff##permSuff(                                        \
   , const Double4c vis[BASELINES][TIMESTEPS*CHANNELS]                          \
   ){                                                                           \
   gridKernel_scatter_full<OVER, WPLANES, isHgcf, isPerm, BASELINES, GRID_SIZE> \
-    (scale, permutations, grid, gcf, uvw, vis);                                \
+    (scale, wstep, permutations, grid, gcf, uvw, vis);                         \
 }
 
 gridKernelCPU(HalfGCF, true, Perm, true)
 gridKernelCPU(HalfGCF, true, , false)
 gridKernelCPU(FullGCF, false, Perm, true)
 gridKernelCPU(FullGCF, false, , false)
-
-/*
-extern "C"
-void gridKernel_scatter1(
-    const BlWMap permutations[BASELINES]
-  , Double4c grid[GRID_SIZE][GRID_SIZE]
-  , const complexd * gcf
-  , const Pregridded uvw[BASELINES][TIMESTEPS*CHANNELS]
-  , const Double4c vis[BASELINES][TIMESTEPS*CHANNELS]
-  ){
-  // We don't use scale here
-  gridKernel_scatter_full<OVER, WPLANES, false, false, BASELINES, GRID_SIZE>(0.0, permutations, grid, gcf, uvw, vis);
-  }
- */
 
 template <int grid_size, int num_pols>
 void normalizeAndExtractPolarization(

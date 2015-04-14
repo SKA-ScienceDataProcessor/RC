@@ -40,7 +40,7 @@ struct Pregridded
 };
 
 #ifdef __CUDACC__
-__host__ __device__ __inline__ static 
+__host__ __device__ __inline__ static
 #else
 __inline static
 #endif
@@ -57,7 +57,7 @@ template <
   , bool do_mirror
   >
 #ifndef __CUDACC__
-inline 
+inline
 #else
 // FIXME: this is a bit messy because of renaming.
 // Investigate how to get rid of this better.
@@ -67,20 +67,22 @@ inline
 #define w z
 __inline__ __host__ __device__
 #endif
-static void pregridPoint(double scale, Double3 uvw, Pregridded & res){
+static void pregridPoint(double scale, double wstep, Double3 uvw, Pregridded & res){
     uvw.u *= scale;
     uvw.v *= scale;
     uvw.w *= scale;
     short
-        w_plane = short(round (uvw.w / (w_planes/2)))
+        w_plane = short(round (uvw.w / wstep))
       , max_supp = short(get_supp(w_plane))
-      // We additionally translate these u v by -max_supp/2
-      // because gridding procedure translates them back
-      , u = short(round(uvw.u) + grid_size/2 - max_supp/2)
-      , v = short(round(uvw.v) + grid_size/2 - max_supp/2)
-      , over_u = short(round(over * (uvw.u - u)))
-      , over_v = short(round(over * (uvw.v - v)))
+      , u = short(floor(uvw.u))
+      , v = short(floor(uvw.v))
+      , over_u = short(floor(over * (uvw.u - u)))
+      , over_v = short(floor(over * (uvw.v - v)))
       ;
+    // We additionally translate these u v by -max_supp/2
+    // because gridding procedure translates them back
+    u += grid_size / 2 - max_supp / 2;
+    v += grid_size / 2 - max_supp / 2;
 #ifndef __CUDACC__
     res.u = u;
     res.v = v;

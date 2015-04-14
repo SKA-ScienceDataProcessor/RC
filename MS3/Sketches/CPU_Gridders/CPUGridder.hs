@@ -7,7 +7,7 @@ import Foreign.C
 import Foreign.Ptr
 import OskarBinReaderFFI
 
-type CPUGridderType = Double -> Ptr BlWMap -> Ptr (Complex Double) -> Ptr (Ptr (Complex Double)) -> Ptr CDouble -> Ptr (Complex Double) -> IO ()
+type CPUGridderType = Double -> CDouble -> Ptr BlWMap -> Ptr (Complex Double) -> Ptr (Ptr (Complex Double)) -> Ptr CDouble -> Ptr (Complex Double) -> IO ()
 
 #define __CPU_GRIDDER(fun) \
 foreign import ccall "& fun" fun/**/_ptr :: FunPtr CPUGridderType

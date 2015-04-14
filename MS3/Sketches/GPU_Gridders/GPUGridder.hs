@@ -65,6 +65,7 @@ type At =
 
 type AddBaselinesFun =
       CDouble                             -- Scale
+   -> CDouble                             -- WStep
    -> CUDA.CxDoubleDevPtr                 -- Visibilities ptr
    -> CUDA.DevicePtr CUDA.CxDoubleDevPtr  -- GCF layers ptr
    -> CUDA.DoubleDevPtr                   -- UVW ptr
@@ -79,11 +80,11 @@ type AddBaselinesIter =
    -> IO ()
 
 launchAddBaselines :: CUDA.Fun -> AddBaselinesFun
-launchAddBaselines f scale gridptr gcflp uvwp visp maxSupp numOfBaselines permutations =
+launchAddBaselines f scale wstp gridptr gcflp uvwp visp maxSupp numOfBaselines permutations =
   CUDA.launchKernel f (numOfBaselines, 1, 1) (nOfThreads, 1, 1) 0 Nothing params
   where
     nOfThreads = min 1024 (maxSupp * maxSupp)
-    params = mapArgs $ scale :. permutations :. gridptr :. gcflp :. uvwp :. visp :. Z
+    params = mapArgs $ scale :. wstp :. permutations :. gridptr :. gcflp :. uvwp :. visp :. Z
 
 data GridderConfig = GridderConfig {
     gcKernelName :: !String
@@ -107,7 +108,7 @@ runGridder (GridderConfig gfname gcfIsFull iter) td gcf = do
           CUDA.pokeArray uvwSize (castPtr $ tdUVWs td) uvwp
           CUDA.pokeArray visSize (castPtr $ tdVisibilies td) visp
           CUDA.pokeArray nBaselines perms permp
-          iter nBaselines perms permp (launchAddBaselines fun scale gridptr gcfptr uvwp visp)
+          iter nBaselines perms permp (launchAddBaselines fun scale (tdWstep td) gridptr gcfptr uvwp visp)
     return $ Grid gridsize gridptr
   where
     -- FIXME: Move this to top level and
