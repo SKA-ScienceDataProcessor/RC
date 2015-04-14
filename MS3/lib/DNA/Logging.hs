@@ -247,6 +247,12 @@ consAttrNZ :: (Eq a, Num a, Show a)
 consAttrNZ _ 0 = id
 consAttrNZ n v = ((n, show v):)
 
+-- | As @consAttrNZ@, but with reference time
+consAttrNZT :: (Eq a, Num a, Show a)
+           => String -> a -> a -> [Attr] -> [Attr]
+consAttrNZT _ 0 _ = id
+consAttrNZT n v t = ((n, show v ++ "/" ++ show t):)
+
 ----------------------------------------------------------------
 -- perf_events sampling
 ----------------------------------------------------------------
@@ -349,12 +355,9 @@ cudaAttrs = do
                         <*> cuptiGetMemcpyBytesTo CUptiArray
 
     -- Generate attributes
-    return $ consAttrNZ "cuda:memset-time" memsetTime
-           $ consAttrNZ "cuda:kernel-time" kernelTime
+    return $ consAttrNZ "cuda:kernel-time" kernelTime
            $ consAttrNZ "cuda:overhead-time" overheadTime
-           $ consAttrNZ "cuda:memset-bytes" memsetBytes
-           $ consAttrNZ "cuda:memcpy-time-host" memcpyTimeH
-           $ consAttrNZ "cuda:memcpy-bytes-host" memcpyBytesH
-           $ consAttrNZ "cuda:memcpy-time-device" memcpyTimeD
-           $ consAttrNZ "cuda:memcpy-bytes-device" memcpyBytesD []
+           $ consAttrNZT "cuda:memset-bytes" memsetBytes memsetTime
+           $ consAttrNZT "cuda:memcpy-bytes-host" memcpyBytesH memcpyTimeH
+           $ consAttrNZT "cuda:memcpy-bytes-device" memcpyBytesD memcpyTimeD []
 #endif
