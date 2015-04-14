@@ -146,7 +146,8 @@ marshalGCF2HostP gcfd@(GCF gcfsize nol _ _) =
 
 -- Need 32-byte alignment for AVX m256-family. GHC has no them. Using
 --  aligned alloca is possible only in IO. Thus need this.
-foreign import ccall unsafe aligned_alloc :: Int -> Int -> IO (Ptr a)
+-- foreign import ccall unsafe aligned_alloc :: Int -> Int -> IO (Ptr a)
+foreign import ccall unsafe valloc :: Int -> IO (Ptr a)
 
 -- We could import foreign functions directly (not their pointers),
 -- but pointers can be passed to actors because they have binary instances
@@ -158,9 +159,9 @@ foreign import ccall unsafe aligned_alloc :: Int -> Int -> IO (Ptr a)
 -- We have 4 variants only and all are covered by this code
 cpuGridder :: Bool -> Bool -> Bool -> String -> TaskData -> GCFHost -> DNA ()
 cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh = do
-    gridp <- liftIO $ aligned_alloc 32 (gridsize * 4 * cdSize)
+    gridp <- liftIO $ {-aligned_alloc 32-} valloc (gridsize * 4 * cdSize)
     duration gname $ liftIO $ gfun scale (tdWstep td) (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
-    polptr <- liftIO $ aligned_alloc 32 (gridsize * cdSize)
+    polptr <- liftIO $ {-aligned_alloc 32-} valloc (gridsize * cdSize)
     let extract n = do
           duration "ExtractPolarizatonCPU" . liftIO $ CPU.normalizeAndExtractPolarization n polptr gridp
           duration "FftPolarizatonCPU" . liftIO $ CPU.fft_inplace_even polptr
