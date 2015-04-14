@@ -108,8 +108,11 @@ void gridKernel_scatter(
           // We port Romein CPU code to doubles here (for MS2 we didn't)
           // vis0 covers XX and XY, vis1 -- YX and YY
           __m256d vis0, vis1;
-          vis0 = _mm256_load_pd((const double *) &vis[bl][i].XX);
-          vis1 = _mm256_load_pd((const double *) &vis[bl][i].YX);
+          // Temporarily use unaligned load
+          // vis0 = _mm256_load_pd((const double *) &vis[bl][i].XX);
+          // vis1 = _mm256_load_pd((const double *) &vis[bl][i].YX);
+          vis0 = _mm256_loadu_pd((const double *) &vis[bl][i].XX);
+          vis1 = _mm256_loadu_pd((const double *) &vis[bl][i].YX);
 #endif
 
           for (int su = 0; su <= max_supp_here; su++) {
