@@ -25,7 +25,8 @@ void addGrids(
 {
 #pragma omp parallel for
   for (int i = 0; i < grid_size*grid_size*sizeof(Double4c)/(256/8); i++) {
-    __m256d sum = as256pc(srcs[0])[i];
+    // __m256d sum = as256pc(srcs[0])[i];
+    __m256d sum = _mm256_loadu_pd(reinterpret_cast<const double*>(as256pc(srcs[0])+i));
 
     for (int g = 1; g < nthreads; g ++)
       sum = _mm256_add_pd(sum, as256pc(srcs[g])[i]);
@@ -155,7 +156,7 @@ void gridKernel_scatter(
             __m256d ti##p = _mm256_mul_pd(weight_i, vis##p);      \
             __m256d tp##p = _mm256_permute_pd(ti##p, 5);          \
             __m256d t##p = _mm256_addsub_pd(tr##p, tp##p);        \
-            gridptr##p[p] = _mm256_add_pd(gridptr##p[p], t##p)
+            _mm256_storeu_pd(reinterpret_cast<double*>(gridptr##p + p), _mm256_add_pd(gridptr##p[p], t##p));
 
             __DO(0, XX);
             __DO(1, YX);
@@ -172,8 +173,6 @@ void gridKernel_scatter(
     }
   }
 }
-
-
 
 
 template <
