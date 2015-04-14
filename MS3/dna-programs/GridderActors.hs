@@ -161,7 +161,7 @@ cpuGridder :: Bool -> Bool -> Bool -> String -> TaskData -> GCFHost -> DNA ()
 cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh = do
     gridp <- liftIO $ {-aligned_alloc 32-} valloc (gridsize * 4 * cdSize)
     duration gname $ liftIO $ gfun scale (tdWstep td) (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
-    polptr <- liftIO $ {-aligned_alloc 32-} valloc (gridsize * cdSize)
+    polptr <- liftIO $ mallocArray gridsize
     let extract n = do
           duration "ExtractPolarizatonCPU" . liftIO $ CPU.normalizeAndExtractPolarization n polptr gridp
           duration "FftPolarizatonCPU" . liftIO $ CPU.fft_inplace_even polptr
