@@ -180,15 +180,13 @@ cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh = do
     mk False True  = __MKP(gridKernelCPUHalfGCFPerm)
 
 
-mkGcfAndCpuGridderActor :: Bool -> Bool -> Bool -> Actor(String, TaskData) ()
-mkGcfAndCpuGridderActor isFullGcf useFullGcf usePermutations = actor go
-  where
-    go (ns_out, td) = do
-      gcfd <- gcfCalc $ mkGcfCFG True (tdWstep td)
-      gcfh <- marshalGCF2HostP gcfd
-      liftIO $ finalizeGCF gcfd
-      cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh
-      liftIO $ finalizeGCFHost gcfh
+mkGcfAndCpuGridder :: Bool -> Bool -> Bool -> String -> TaskData -> DNA ()
+mkGcfAndCpuGridder isFullGcf useFullGcf usePermutations ns_out td = do
+  gcfd <- gcfCalc $ mkGcfCFG True (tdWstep td)
+  gcfh <- marshalGCF2HostP gcfd
+  liftIO $ finalizeGCF gcfd
+  cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh
+  liftIO $ finalizeGCFHost gcfh
 
 remotable [
     'gatherGridderActorFullGcf

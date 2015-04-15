@@ -23,10 +23,17 @@ runGatherGridderOnSavedData = actor $ \(ns_in, ns_tmp, ns_out, useHalfGcf) -> do
      hc = $(mkStaticClosure 'gatherGridderActorHalfGcf)
      fc = $(mkStaticClosure 'gatherGridderActorFullGcf)
 
+runCPUGridderOnSavedDataWithSorting :: Actor (String, String) ()
+runCPUGridderOnSavedDataWithSorting = actor $ \(ns_in, ns_out) -> do
+  taskData <- readTaskDataP ns_in
+  tdSorted <- liftIO $ mkSortedClone NormSort taskData
+  mkGcfAndCpuGridder True True True ns_out tdSorted
+  liftIO $ finalizeSortedClone tdSorted >> finalizeTaskData taskData
+
 remotable [
     'runGatherGridderOnSavedData
+  , 'runCPUGridderOnSavedDataWithSorting
   ]
-
 
 main :: IO ()
 main = do
@@ -35,6 +42,7 @@ main = do
     ns_rem1 <- addNameSpace ns_loc "from_1"
     ns_rem2 <- addNameSpace ns_loc "from_2"
     ns_loc_cpu <- addNameSpace ns_loc "from_CPU"
+    ns_loc_cpus <- addNameSpace ns_loc "from_CPU_s"
     dnaRun rt $ do
       taskData <- binReader dataset
       --
@@ -49,16 +57,21 @@ main = do
       shellGG <- startActor (N 2) $ return $(mkStaticClosure 'runGatherGridderOnSavedData)
       sendParam (ns_loc, nst, ns_rem2, False) shellGG
       --
+      shellCPUS <- startActor (N 3) $ return $(mkStaticClosure 'runCPUGridderOnSavedDataWithSorting)
+      sendParam (ns_loc, ns_loc_cpus) shellCPUS
+      --
+      futLoc <- delay Local shellLoc
       futRG <- delay Remote shellRG
       futGG <- delay Remote shellGG
-      futLoc <- delay Local shellLoc
-
+      futCPUS <- delay Remote shellCPUS
+      --
       await futLoc
-      eval (mkGcfAndCpuGridderActor True True False) (ns_loc_cpu, taskData)
+      mkGcfAndCpuGridder True True False ns_loc_cpu taskData
       liftIO $ finalizeTaskData taskData
-
+      --
       await futRG
       await futGG
+      await futCPUS
   where
     rt = GridderActors.__remoteTable
        . Main.__remoteTable
