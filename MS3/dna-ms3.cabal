@@ -166,7 +166,7 @@ executable Gridder_DNA
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -eventlog
   Hs-source-dirs:      dna-programs Sketches/GCF_new Sketches/GPU_Gridders Sketches/CPU_Gridders Sketches/Oskar_New_Reader Sketches/FFT Sketches/Utils
-  include-dirs:        ../../oskar_binary Sketches/Oskar_New_Reader Sketches/GPU_Gridders Sketches/CPU_Gridders
+  include-dirs:        ../../oskar_binary Sketches/Utils Sketches/Oskar_New_Reader Sketches/GPU_Gridders Sketches/CPU_Gridders
   extra-libraries:     oskar_binary stdc++ gomp fftw3
   extra-lib-dirs:      ../../oskar_binary
   cc-options:          --std=c++0x -ffast-math -mavx -fopenmp
@@ -193,6 +193,7 @@ executable Gridder_DNA
   other-modules:
     OskarBinReaderFFI
   c-sources:
+    Sketches/Utils/aligned_malloc.cpp
     Sketches/Oskar_New_Reader/OskarBinReader.cpp
     Sketches/Oskar_New_Reader/binner.cpp
     Sketches/CPU_Gridders/scatter_gridder_w_dependent.cpp

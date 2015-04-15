@@ -22,6 +22,7 @@ import Binner
 import GCF
 import GPUGridder
 import FFT
+import Utils
 
 import qualified CPUGridder as CPU
 
@@ -144,11 +145,6 @@ marshalGCF2HostP gcfd@(GCF gcfsize nol _ _) =
     pSize = sizeOf (undefined :: CUDA.DevicePtr (CUDA.CxDoubleDevPtr))
 
 
--- Need 32-byte alignment for AVX m256-family. GHC has no them. Using
---  aligned alloca is possible only in IO. Thus need this.
--- foreign import ccall unsafe aligned_alloc :: Int -> Int -> IO (Ptr a)
-foreign import ccall unsafe valloc :: Int -> IO (Ptr a)
-
 -- We could import foreign functions directly (not their pointers),
 -- but pointers can be passed to actors because they have binary instances
 -- and while we don't do this at the moment we leave the door open to
@@ -159,7 +155,7 @@ foreign import ccall unsafe valloc :: Int -> IO (Ptr a)
 -- We have 4 variants only and all are covered by this code
 cpuGridder :: Bool -> Bool -> Bool -> String -> TaskData -> GCFHost -> DNA ()
 cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh = do
-    gridp <- liftIO $ {-aligned_alloc 32-} valloc (gridsize * 4 * cdSize)
+    gridp <- liftIO $ alignedMallocArray (gridsize * 4) 32
     duration gname $ liftIO $ gfun scale (tdWstep td) (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
     polptr <- liftIO $ mallocArray gridsize
     let extract n = do

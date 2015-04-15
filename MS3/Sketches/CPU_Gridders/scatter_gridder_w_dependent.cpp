@@ -12,6 +12,7 @@
 #include "common.h"
 #include "metrix.h"
 #include "OskarBinReader.h"
+#include "aligned_malloc.h"
 
 #define as256p(p) (reinterpret_cast<__m256d*>(p))
 #define as256pc(p) (reinterpret_cast<const __m256d*>(p))
@@ -210,7 +211,7 @@ void gridKernel_scatter_full(
 
   // Also nullify incoming grid.
   memset(grid, 0, sizeof(GT));
-  GT * tmpgrids = new GT[nthreads];
+  GT * tmpgrids = alignedMallocArray<GT>(nthreads, 32);
   memset(tmpgrids, 0, nthreads * sizeof(GT));
   gridKernel_scatter<
       over
@@ -224,7 +225,7 @@ void gridKernel_scatter_full(
     , Inp
     >(scale, wstep, permutations, tmpgrids, gcf, uvw, vis);
   addGrids<grid_size>(grid, tmpgrids, nthreads);
-  delete [] tmpgrids;
+  free(tmpgrids);
 #else
   gridKernel_scatter<
       over

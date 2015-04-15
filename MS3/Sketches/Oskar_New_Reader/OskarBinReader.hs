@@ -20,6 +20,8 @@ import Data.Binary
 import BinaryInstances ()
 import Data.Typeable
 
+import Utils
+
 data TaskData = TaskData {
     tdBaselines :: !Int
   , tdTimes     :: !Int
@@ -75,7 +77,7 @@ readOskarData fname = withCString fname doRead
       let
         n = fi npts
         nb = fi nbls
-      visptr <- mallocArray (n * 4)
+      visptr <- alignedMallocArray (n * 4) 32
       uvwptr <- mallocArray (n * 3)
       mapptr <- mallocArray nb
       alloca $ \mptr ->
@@ -133,7 +135,7 @@ readTaskData namespace =
         np   <- peeki 3
         mxx  <- peekc 0
         wstp <- peekc 1
-        visptr <- mallocArray (np * 4)
+        visptr <- alignedMallocArray (np * 4) 32
         uvwptr <- mallocArray (np * 3)
         mapptr <- mallocArray nb
         hget visptr (np * 8 * cdb_siz)
