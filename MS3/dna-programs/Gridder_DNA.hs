@@ -54,10 +54,10 @@ main = do
       shellRG <- startActor (N 1) $ return $(mkStaticClosure 'runGridderOnSavedData)
       sendParam (ns_loc, ns_rem1, $(mkStaticClosure 'simpleRomeinUsingHalfOfFullGCF)) shellRG
       --
-      shellGG <- startActor (N 2) $ return $(mkStaticClosure 'runGatherGridderOnSavedData)
+      shellGG <- startActor (N 1) $ return $(mkStaticClosure 'runGatherGridderOnSavedData)
       sendParam (ns_loc, nst, ns_rem2, False) shellGG
       --
-      shellCPUS <- startActor (N 3) $ return $(mkStaticClosure 'runCPUGridderOnSavedDataWithSorting)
+      shellCPUS <- startActor (N 1) $ return $(mkStaticClosure 'runCPUGridderOnSavedDataWithSorting)
       sendParam (ns_loc, ns_loc_cpus) shellCPUS
       --
       futLoc <- delay Local shellLoc
