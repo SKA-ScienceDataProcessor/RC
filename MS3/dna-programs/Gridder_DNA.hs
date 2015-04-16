@@ -62,20 +62,27 @@ main = do
       -- Don't fuse also
       taskData <- mapM binReader datasets
       --
-      let simpleRomeinFullGCFClo = $(mkStaticClosure 'simpleRomeinFullGCF)
-      locRomeinFull <- mapM (locActor $(mkStaticClosure 'runGridderOnLocalData)) $ zip3 ns_loc taskData (repeat simpleRomeinFullGCFClo)
+      let
+        simpleRomeinFullGCFClos = repeat $(mkStaticClosure 'simpleRomeinFullGCF)
+        -- 4 tasks will run locally, remaining 8 -- remotely
+        locs = take 4 $ zip3 ns_loc taskData simpleRomeinFullGCFClos
+      locRomeinFull <- mapM (locActor $(mkStaticClosure 'runGridderOnLocalData)) locs
       --
       mapM_ (uncurry writeTaskDataP) $ zip ns_loc taskData
       --
       let simpleRomeinUsingHalfOfFullGCFClo = $(mkStaticClosure 'simpleRomeinUsingHalfOfFullGCF)
-      remRomeinUseHalf <- mapM (remActor $(mkStaticClosure 'runGridderOnSavedData)) $ zip3 ns_loc ns_rem1 (repeat simpleRomeinUsingHalfOfFullGCFClo)
+      remRomeinUseHalf <- mapM (remActor romeinRemote) $ zip3 ns_loc ns_rem1 (repeat simpleRomeinUsingHalfOfFullGCFClo)
+      --
+      let rems = zip3 (drop 4 ns_loc) (drop 4 ns_loc) simpleRomeinFullGCFClos
+      remRomeinFull <- mapM (remActor romeinRemote) rems
       --
       remGather <- mapM (remActor $(mkStaticClosure 'runGatherGridderOnSavedData)) $ zip4 ns_loc nst ns_rem2 (repeat False)
       --
       remCPUSorted <- mapM (remActor $(mkStaticClosure 'runCPUGridderOnSavedDataWithSorting)) $ zip ns_loc ns_loc_cpus
       --
-      mapM_ await $ locRomeinFull ++ remRomeinUseHalf ++ remGather ++ remCPUSorted
+      mapM_ await $ locRomeinFull ++ remRomeinFull ++ remRomeinUseHalf ++ remGather ++ remCPUSorted
   where
+    romeinRemote = $(mkStaticClosure 'runGridderOnSavedData)
     rt = GridderActors.__remoteTable
        . Main.__remoteTable
     datasets = [pr p s f | p <- [0, 1], s <- [0..2], f <- [0,1]]
