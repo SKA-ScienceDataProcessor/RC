@@ -5,6 +5,11 @@
 
 module Main where
 
+import Data.List
+import Text.Printf
+import Control.Distributed.Process.Serializable (Serializable)
+import Control.Distributed.Static (Closure)
+
 import DNA
 
 import OskarBinReader
@@ -35,44 +40,44 @@ remotable [
   , 'runCPUGridderOnSavedDataWithSorting
   ]
 
+remActor, locActor :: (Serializable a, Serializable b) => Closure (Actor a b) -> a -> DNA (Promise b)
+remActor clo par = do
+  shell <- startActor (N 1) (return clo)
+  sendParam par shell
+  delay Remote shell
+locActor clo par = do
+  shell <- startActor (N 0) (useLocal >> return clo)
+  sendParam par shell
+  delay Remote shell
+
 main :: IO ()
 main = do
-    nst <- createNameSpace RAM dataset
-    ns_loc <- createNameSpace Persistent dataset
-    ns_rem1 <- addNameSpace ns_loc "from_1"
-    ns_rem2 <- addNameSpace ns_loc "from_2"
-    ns_loc_cpu <- addNameSpace ns_loc "from_CPU"
-    ns_loc_cpus <- addNameSpace ns_loc "from_CPU_s"
+    -- Don't fuse these ATM
+    nst <- mapM (createNameSpace RAM) datasets
+    ns_loc <- mapM (createNameSpace Persistent) datasets
+    ns_rem1 <- mapM (`addNameSpace` "from_1") ns_loc
+    ns_rem2 <- mapM (`addNameSpace` "from_2") ns_loc
+    ns_loc_cpus <- mapM (`addNameSpace` "from_CPU_s") ns_loc
     dnaRun rt $ do
-      taskData <- binReader dataset
+      -- Don't fuse also
+      taskData <- mapM binReader datasets
       --
-      shellLoc <- startActor (N 0) $ useLocal >> return $(mkStaticClosure 'runGridderOnLocalData)
-      sendParam (ns_loc, taskData, $(mkStaticClosure 'simpleRomeinFullGCF)) shellLoc
+      let simpleRomeinFullGCFClo = $(mkStaticClosure 'simpleRomeinFullGCF)
+      locRomeinFull <- mapM (locActor $(mkStaticClosure 'runGridderOnLocalData)) $ zip3 ns_loc taskData (repeat simpleRomeinFullGCFClo)
       --
-      writeTaskDataP ns_loc taskData
+      mapM_ (uncurry writeTaskDataP) $ zip ns_loc taskData
       --
-      shellRG <- startActor (N 1) $ return $(mkStaticClosure 'runGridderOnSavedData)
-      sendParam (ns_loc, ns_rem1, $(mkStaticClosure 'simpleRomeinUsingHalfOfFullGCF)) shellRG
+      let simpleRomeinUsingHalfOfFullGCFClo = $(mkStaticClosure 'simpleRomeinUsingHalfOfFullGCF)
+      remRomeinUseHalf <- mapM (remActor $(mkStaticClosure 'runGridderOnSavedData)) $ zip3 ns_loc ns_rem1 (repeat simpleRomeinUsingHalfOfFullGCFClo)
       --
-      shellGG <- startActor (N 1) $ return $(mkStaticClosure 'runGatherGridderOnSavedData)
-      sendParam (ns_loc, nst, ns_rem2, False) shellGG
+      remGather <- mapM (remActor $(mkStaticClosure 'runGatherGridderOnSavedData)) $ zip4 ns_loc nst ns_rem2 (repeat False)
       --
-      shellCPUS <- startActor (N 1) $ return $(mkStaticClosure 'runCPUGridderOnSavedDataWithSorting)
-      sendParam (ns_loc, ns_loc_cpus) shellCPUS
+      remCPUSorted <- mapM (remActor $(mkStaticClosure 'runCPUGridderOnSavedDataWithSorting)) $ zip ns_loc ns_loc_cpus
       --
-      futLoc <- delay Local shellLoc
-      futRG <- delay Remote shellRG
-      futGG <- delay Remote shellGG
-      futCPUS <- delay Remote shellCPUS
-      --
-      await futLoc
-      mkGcfAndCpuGridder True True False ns_loc_cpu taskData
-      liftIO $ finalizeTaskData taskData
-      --
-      await futRG
-      await futGG
-      await futCPUS
+      mapM_ await $ locRomeinFull ++ remRomeinUseHalf ++ remGather ++ remCPUSorted
   where
     rt = GridderActors.__remoteTable
        . Main.__remoteTable
-    dataset = "test_p00_s00_f00.vis"
+    datasets = [pr p s f | p <- [0, 1], s <- [0..2], f <- [0,1]]
+    pr :: Int -> Int -> Int -> String
+    pr = printf "test_p%02d_s%02d_f%02d.vis"
