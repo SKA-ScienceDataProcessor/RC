@@ -66,7 +66,8 @@ main = do
         simpleRomeinFullGCFClos = repeat $(mkStaticClosure 'simpleRomeinFullGCF)
         -- 4 tasks will run locally, remaining 8 -- remotely
         locs = take 4 $ zip3 ns_loc taskData simpleRomeinFullGCFClos
-      locRomeinFull <- mapM (locActor $(mkStaticClosure 'runGridderOnLocalData)) locs
+        startLoc = locActor $(mkStaticClosure 'runGridderOnLocalData)
+      locRomeinFull <- startLoc (head locs)
       --
       mapM_ (uncurry writeTaskDataP) $ zip ns_loc taskData
       --
@@ -79,8 +80,10 @@ main = do
       remGather <- mapM (remActor $(mkStaticClosure 'runGatherGridderOnSavedData)) $ zip4 ns_loc nst ns_rem2 (repeat False)
       --
       remCPUSorted <- mapM (remActor $(mkStaticClosure 'runCPUGridderOnSavedDataWithSorting)) $ zip ns_loc ns_loc_cpus
-      --
-      mapM_ await $ locRomeinFull ++ remRomeinFull ++ remRomeinUseHalf ++ remGather ++ remCPUSorted
+      -- Local actor executed sequentially
+      await locRomeinFull
+      mapM_ ((>>= await) . startLoc) (tail locs)
+      mapM_ await $ remRomeinFull ++ remRomeinUseHalf ++ remGather ++ remCPUSorted
   where
     romeinRemote = $(mkStaticClosure 'runGridderOnSavedData)
     rt = GridderActors.__remoteTable
