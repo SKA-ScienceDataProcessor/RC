@@ -182,6 +182,7 @@ executable Gridder_DNA
     filepath,
     storable-complex,
     distributed-static,
+    distributed-process,
     dna-ms3
   if flag(cuda) {
      build-depends:    cuda >=0.6.6, cufft
