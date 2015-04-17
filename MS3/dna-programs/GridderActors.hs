@@ -156,7 +156,7 @@ marshalGCF2HostP gcfd@(GCF gcfsize nol _ _) =
 cpuGridder :: Bool -> Bool -> Bool -> String -> TaskData -> GCFHost -> DNA ()
 cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh = do
     gridp <- liftIO $ alignedMallocArray (gridsize * 4) 32
-    duration gname $ liftIO $ gfun scale (tdWstep td) (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
+    profile gname [floatHint {hintDoubleOps = 25}] $ liftIO $ gfun scale (tdWstep td) (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
     polptr <- liftIO $ mallocArray gridsize
     let extract n = do
           duration "ExtractPolarizatonCPU" . liftIO $ CPU.normalizeAndExtractPolarization n polptr gridp
