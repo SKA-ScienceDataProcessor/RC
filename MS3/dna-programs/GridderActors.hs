@@ -34,7 +34,7 @@ binReader = profile "OskarBinaryReader" [ioHint{hintReadBytes = 565536297}] . li
 mkGcfCFG :: Bool -> CDouble -> GCFCfg
 mkGcfCFG isFull (CDouble wstep) = GCFCfg {
     gcfcSuppDiv2Step = 4
-  , gcfcLayersDiv2Plus1 = 32
+  , gcfcLayersDiv2Plus1 = 30
   , gcfcIsFull = isFull
   , gcfcT2 = 0.2
   , gcfcWStep = wstep
@@ -49,7 +49,7 @@ gcfCalc = duration "GCF" . liftIO . crGcf
 
 -- Romein make the single kernel launch for all baselines with max support
 simpleRomeinIter :: AddBaselinesIter
-simpleRomeinIter baselines _mapper dev_mapper launch = launch ((32-1)*8+1) baselines dev_mapper
+simpleRomeinIter baselines _mapper dev_mapper launch = launch ((30-1)*8+17) baselines dev_mapper
 
 -- TODO: factor out host-to-GPU marshalling actor?
 mkGPUGridderActor :: GridderConfig -> Actor (String, TaskData, GCFDev) Grid

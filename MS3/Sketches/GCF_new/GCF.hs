@@ -198,7 +198,7 @@ prepareGCFWith mirror n hsupp_step wstep = (wsp, sizeOfGCFInComplexD)
   where
     wsp0 = take n $ iterate (\(w, hs) -> (w + wstep, hs + hsupp_step)) (0.0, 0)
     wsp = mirror wsp0 ++ wsp0
-    sizeOfGCFInComplexD = (sum $ map (\(_, hsupp) -> let supp = 2 * hsupp + 1 in supp * supp) wsp) * 8 * 8
+    sizeOfGCFInComplexD = (sum $ map (\(_, hsupp) -> let supp = 2 * hsupp + 17 in supp * supp) wsp) * 8 * 8
 
 prepareHalfGCF, prepareFullGCF :: Int -> Int -> Double -> (LD, Int)
 prepareHalfGCF = prepareGCFWith (const [])

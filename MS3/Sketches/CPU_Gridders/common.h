@@ -46,7 +46,7 @@ __inline static
 #endif
   int get_supp(int w) {
     if (w < 0) w = -w;
-    return w * 8 + 1;
+    return w * 8 + 17;
   }
 
 #if defined __cplusplus || defined __CUDACC__

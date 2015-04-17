@@ -4,7 +4,7 @@
 #define GRID_SIZE 4096
 #define OVER 8
 #define BASELINES 32131
-#define WPLANES 63
+#define WPLANES 59
 #define TIMESTEPS 200
 #define CHANNELS 1
 #define DIVIDERS 32
