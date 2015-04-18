@@ -326,6 +326,8 @@ hintToSample pt hh@HaskellHint{}
 hintToSample pt ch@CUDAHint{}
     = consHint pt "hint:memcpy-bytes-host" (hintCopyBytesHost ch)
     . consHint pt "hint:memcpy-bytes-device" (hintCopyBytesDevice ch)
+    . consHint pt "hint:gpu-float-ops" (hintCudaFloatOps ch)
+    . consHint pt "hint:gpu-double-ops" (hintCudaDoubleOps ch)
     <$> cudaAttrs pt
 
 -- | Prepend an attribute if this is the start point, and it is non-zero
@@ -487,7 +489,8 @@ cudaAttrs pt = do
     state <- readIORef loggerStateVar
     metrics <- cuptiGetMetrics
     let metricNames = map fst $ cudaMetricNames $ loggerOpt state
-        metricAttrs = zipWith (,) metricNames (map show metrics)
+        formatMetric m = show m ++ "/" ++ show kernelTime
+        metricAttrs = zipWith (,) metricNames (map formatMetric metrics)
 
     -- Generate attributes
     return $ consAttrNZ "cuda:kernel-time" kernelTime
