@@ -17,6 +17,7 @@ import Control.Monad
 import Options.Applicative
 import System.Environment
 
+import DNA.Logging
 
 
 -- | Options for different methods of starting DNA program
@@ -40,6 +41,7 @@ data UnixStart = UnixStart
 -- | Options common for all method of starting DNA program.
 data CommonOpt = CommonOpt
     { dnaBasePort :: Int        -- ^ Base port for program
+    , dnaLogger   :: LoggerOpt  -- ^ Logger options
     }
     deriving (Show)
 
@@ -87,7 +89,8 @@ dnaParseOptions = do
         )
     optSlurm  = pure Slurm
     optSlurmWorker = SlurmWorker <$> optWDir
-    optCommon = CommonOpt <$> optBasePort
+    optCommon = CommonOpt <$> optBasePort <*> optLogger
+    optLogger = LoggerOpt <$> optVerbosity <*> optMeasure
     -- Parsers for
     optWDir = option str
             ( metavar "DIR"
@@ -118,7 +121,18 @@ dnaParseOptions = do
              <> long "nprocs"
              <> help "number of processe to spawn"
               )
-
+    optVerbosity = option positiveNum
+              ( metavar "VERBOSE"
+              <> short 'v'
+              <> help "steers amount of log messages to output"
+              )
+              <|> pure 0
+    optMeasure = option str
+               ( metavar "MEASURE"
+               <> long "measure"
+               <> help "do accurate measurements of metrics, at the expense of performance"
+               )
+               <|> pure ""
 
 positiveNum :: (Read a, Ord a, Num a) => ReadM a
 positiveNum = do

@@ -38,6 +38,7 @@ import DNA.Interpreter.Types
 dnaRun :: (RemoteTable -> RemoteTable) -> DNA () -> IO ()
 dnaRun remoteTable dna = do
     (opts,common) <- dnaParseOptions
+    initLogging (dnaLogger common)
     case opts of
       Unix n        -> runUnix n common
       UnixWorker o  -> runUnixWorker rtable o common dna
@@ -234,6 +235,8 @@ runUnix n common = do
         , "--internal-pid",  dnaPID
         , "--workdir",       workdir
         , "--base-port",     show (dnaBasePort common)
+        , "-v",              show $ logOptVerbose (dnaLogger common)
+        , "--measure",       logOptMeasure (dnaLogger common)
         ] Nothing
 
 runUnixWorker :: RemoteTable -> UnixStart -> CommonOpt -> DNA () -> IO ()
@@ -260,6 +263,8 @@ runUnixWorker rtable opts common dna = do
                         , "--internal-rank", show rnk
                         , "--internal-pid",  dnaPID
                         , "--workdir",       dnaUnixWDir opts
+                        , "-v",              show $ logOptVerbose (dnaLogger common)
+                        , "--measure",       logOptMeasure (dnaLogger common)
                         ]
         _ -> return []
     -- Go back to working dir
