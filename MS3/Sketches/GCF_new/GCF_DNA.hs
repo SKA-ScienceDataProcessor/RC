@@ -37,7 +37,9 @@ runGCF ws_hsupps_size = do
 
 main :: IO ()
 main = dnaRun id $ flip eval () $ actor $ \() ->
-  profile "GCF" [ cudaHint{hintCopyBytesHost = cdSize * snd ws_hsupps_size} ] $ do
+  profile "GCF" [ cudaHint{ hintCopyBytesHost = cdSize * snd ws_hsupps_size
+                          , hintCudaDoubleOps = flopsPerCD * snd ws_hsupps_size } ] $ do
     liftIO $ runGCF ws_hsupps_size
  where
    ws_hsupps_size = prepareFullGCF 30 4 50.0
+   flopsPerCD = 400 -- determined experimentally
