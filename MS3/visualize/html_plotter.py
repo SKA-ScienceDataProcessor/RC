@@ -209,10 +209,11 @@ def write_timeline_body(logs, conf) :
             cur_tags = total_tags.get(e.msg, {})
             cur_tags_time = total_tags_time.get(e.msg, {})
             hint_re = re.compile(r'hint:')
-            for t in e.tags2.iterkeys():
+            for t in e.tags.iterkeys():
                 if hint_re.match(t) != None:
-                    cur_hints[t] = int(e.tags2[t]) + cur_hints.get(t, 0)
-                else:
+                    cur_hints[t] = int(e.tags[t]) + cur_hints.get(t, 0)
+            for t in e.tags2.iterkeys():
+                if hint_re.match(t) == None:
                     d = e.diff(t)
                     if d != None: cur_tags[t] = d + cur_tags.get(t, 0)
                     d = e.diff_t(t)
@@ -230,15 +231,15 @@ def write_timeline_body(logs, conf) :
       <tr><td></td><th>Instances</th><th>Time</th><th colspan=4>IO</th><th colspan=4>Instructions</th></tr>''')
 
     def format_num(rate) :
-        if rate < 10000 :
-            return '%.2f ' % rate
-        if rate < 10000000 :
-            return '%.2f k' % (rate / 1000)
-        if rate < 10000000000 :
-            return '%.2f M' % (rate / 1000000)
-        if rate < 10000000000000 :
-            return '%.2f G' % (rate / 1000000000)
-        return '%.2f T' % (rate / 1000000000000)
+        if rate < 1000 :
+            return '%d ' % rate
+        if rate < 1000000 :
+            return '%.2f k' % (float(rate) / 1000)
+        if rate < 1000000000 :
+            return '%.2f M' % (float(rate) / 1000000)
+        if rate < 1000000000000 :
+            return '%.2f G' % (float(rate) / 1000000000)
+        return '%.2f T' % (float(rate) / 1000000000000)
     class Metric:
         "Performance metric"
         def __init__(self, name, val, hint, time, unit):
@@ -250,18 +251,20 @@ def write_timeline_body(logs, conf) :
             if self.name == None: return '';
             else: return self.name + ':'
         def format_val(self):
-            if self.val == None:
-                if self.hint == None: return '-'
-                return '(' + format_num(self.hint) + self.unit + ')'
+            if self.name == None: return ''
+            if self.val == None: return '-'
             return format_num(self.val) + self.unit
         def format_hint(self):
-            if self.val == None or self.hint == None: return '';
-            if self.val == 0:
+            if self.hint == None: return '';
+            if self.val == 0 or self.val == None:
                 return '[' + format_num(self.hint) + self.unit + ']'
-            return '[%.1f%%]' % (100 * self.val / self.hint);
+            return '[%.1f%%]' % (float(100) * self.val / self.hint);
         def format_rate(self):
-            if self.val == None or self.time == None: return ''
-            if self.val == 0: return '0'
+            if self.time == None: return ''
+            if self.val == 0 or self.val == None:
+                if self.hint != None and self.hint != 0:
+                    return '[' + format_num(self.hint / self.time) + self.unit + '/s]'
+                return '0'
             return format_num(self.val / self.time) + self.unit + '/s'
 
     for a in instances.iterkeys() :
@@ -272,13 +275,27 @@ def write_timeline_body(logs, conf) :
         if econf.get('ignore', False) :
             continue
 
-        # Backwards compat
-        if total_tags[a].has_key('cuda:memset-time'):
-            total_tags_time[a]['cuda:memset-bytes'] = total_tags[a]['cuda:memset-time']
-        if total_tags[a].has_key('cuda:memcpy-time-host'):
-            total_tags_time['cuda:memcpy-bytes-host'] = total_tags[a]['cuda:memcpy-time-host']
-        if total_tags[a].has_key('cuda:memcpy-time-device'):
-            total_tags_time[a]['cuda:memcpy-bytes-device'] = total_tags[a]['cuda:memcpy-time-device']
+        # Put reference values where we can determine them
+        referenceTable = {
+            'cuda:memset-time': ['cuda:memset-bytes'],
+            'cuda:memcpy-time-host': ['cuda:memcpy-bytes-host'],
+            'cuda:memcpy-time-device': ['cuda:memcpy-bytes-device'],
+            'cuda:kernel-time': [ 'cuda:gpu-float-ops'
+                                , 'cuda:gpu-float-ops-add'
+                                , 'cuda:gpu-float-ops-mul'
+                                , 'cuda:gpu-float-ops-fma'
+                                , 'cuda:gpu-double-ops'
+                                , 'cuda:gpu-double-ops-add'
+                                , 'cuda:gpu-double-ops-mul'
+                                , 'cuda:gpu-double-ops-fma'
+                                , 'cuda:gpu-float-instrs'
+                                , 'cuda:gpu-double-instrs'
+                                ]
+        }
+        for (time_attr, val_attrs) in referenceTable.items():
+            if total_tags[a].has_key(time_attr):
+                for val_attr in val_attrs:
+                    total_tags_time[a][val_attr] = total_tags[a][time_attr]
 
         # Calculate metrics
         metrics = {'io':[], 'instr':[] }
@@ -308,6 +325,17 @@ def write_timeline_body(logs, conf) :
         mk_metric('instr', 'double (sse)', 'perf:sse-double-ops', None, us, 'OP');
         mk_metric('instr', 'float (avx)', 'perf:avx-float-ops', None, us, 'OP');
         mk_metric('instr', 'double (avx)', 'perf:avx-double-ops', None, us, 'OP');
+        mk_metric('instr', 'float (gpu)', 'cuda:gpu-float-ops', 'hint:gpu-float-ops', us, 'OP');
+        mk_metric('instr', 'float (gpu add)', 'cuda:gpu-float-ops-add', None, us, 'OP');
+        mk_metric('instr', 'float (gpu mul)', 'cuda:gpu-float-ops-mul', None, us, 'OP');
+        mk_metric('instr', 'float (gpu fma)', 'cuda:gpu-float-ops-fma', None, us, 'OP');
+        mk_metric('instr', 'double (gpu)', 'cuda:gpu-double-ops', 'hint:gpu-double-ops', us, 'OP');
+        mk_metric('instr', 'double (gpu add)', 'cuda:gpu-double-ops-add', None, us, 'OP');
+        mk_metric('instr', 'double (gpu mul)', 'cuda:gpu-double-ops-mul', None, us, 'OP');
+        mk_metric('instr', 'double (gpu fma)', 'cuda:gpu-double-ops-fma', None, us, 'OP');
+        mk_metric('instr', 'float (gpu?)', 'cuda:gpu-float-instrs', None, us, 'OP');
+        mk_metric('instr', 'double (gpu?)', 'cuda:gpu-double-instrs', None, us, 'OP');
+
 
         # Print row(s)
         defMetric = Metric(None, None, None, None, '')
