@@ -3,6 +3,8 @@
 
 module Main where
 
+import Control.Monad ( forM_ )
+
 import qualified Data.Array.Accelerate as A
 import qualified Data.Array.Accelerate.IO as A
 import qualified Data.Array.Accelerate.CUDA as CUDA
@@ -12,6 +14,7 @@ import qualified Data.Vector.Storable as S
 import Data.Time.Clock
 
 import Profiling.CUDA.Activity
+import Profiling.CUDA.Metrics
 
 import Text.Printf
 
@@ -31,11 +34,22 @@ main = do
       !in1d = S.replicate size 10
       !in2d = S.generate size (\i -> 0.1 * fromIntegral i)
 
+  let metricNames
+        -- = ["flop_count_dp", "flop_count_dp_add", "flop_count_dp_mul", "flop_count_dp_fma"]
+        -- = ["flop_count_sp", "flop_count_sp_add", "flop_count_sp_mul", "flop_count_sp_fma"]
+        -- = ["inst_fp_64", "inst_fp_32"]
+        -- = ["inst_executed", "inst_issued"]
+        = ["inst_integer"]
+  cuptiMetricsInit metricNames
+
   -- Profile
   beginTime <- getCurrentTime
   cuptiEnable
+  cuptiMetricsEnable
   !_ <- accelerateDDP in1d in2d
+  cuptiMetricsDisable
   cuptiDisable
+  metrics <- cuptiGetMetrics
   endTime <- getCurrentTime
 
   -- Read stats
@@ -56,3 +70,7 @@ main = do
   putStrLn $ printf "Memcpy:        %9d ms, %6d KB" (sum memcpyTimes `div` 1000000) (sum memcpyBytess `div` 1000)
   putStrLn $ printf "Kernel:        %9d ms" (kernelTime `div` 1000000)
   putStrLn $ printf "Overhead time: %9d ms" (overheadTime `div` 1000000)
+
+  putStrLn ""
+  forM_ (zip metricNames metrics) $ \(name, v) ->
+    putStrLn $ printf "Metric %s: %d" name v
