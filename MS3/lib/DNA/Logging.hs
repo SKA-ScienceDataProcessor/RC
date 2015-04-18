@@ -276,7 +276,10 @@ floatCounterDescs
 -- allocated on the first use of this variable, and will stay open
 -- until the process finishes.
 floatCounters :: PerfStatGroup
-floatCounters = unsafePerformIO $ perfEventOpen $ map snd floatCounterDescs
+floatCounters = unsafePerformIO $ do
+  counters <- perfEventOpen $ map snd floatCounterDescs
+  perfEventEnable counters
+  return counters
 
 -- | Generate message attributes from current floating point counter values
 floatCounterAttrs :: IO [Attr]
