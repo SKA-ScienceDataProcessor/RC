@@ -31,6 +31,10 @@ import DNA
 binReader :: String -> DNA TaskData
 binReader = profile "OskarBinaryReader" [ioHint{hintReadBytes = 565536297}] . liftIO . readOskarData
 
+cdSize :: Int
+cdSize = sizeOf (undefined :: Complex Double)
+{-# INLINE cdSize #-}
+
 mkGcfCFG :: Bool -> CDouble -> GCFCfg
 mkGcfCFG isFull (CDouble wstep) = GCFCfg {
     gcfcSuppDiv2Step = 4
@@ -41,11 +45,16 @@ mkGcfCFG isFull (CDouble wstep) = GCFCfg {
   }
 
 gcfCalc :: GCFCfg -> DNA GCFDev
-gcfCalc = duration "GCF" . liftIO . crGcf
+gcfCalc (GCFCfg hsupp_step n isFull t2 wstep) = 
+    profile "GCF" [ cudaHint{ hintCopyBytesHost = cdSize * ws_size
+                            , hintCudaDoubleOps = flopsPerCD * ws_size
+                            } ] $ liftIO $ createGCF t2 ws_hsupps_size
+
   where
-    crGcf (GCFCfg hsupp_step n isFull t2 wstep) =
-      let prep = if isFull then prepareFullGCF else prepareHalfGCF
-      in createGCF t2 $ prep n hsupp_step wstep
+    prep = if isFull then prepareFullGCF else prepareHalfGCF
+    ws_hsupps_size = prep n hsupp_step wstep
+    ws_size = snd ws_hsupps_size
+    flopsPerCD = 400 -- determined experimentally
 
 -- Romein make the single kernel launch for all baselines with max support
 simpleRomeinIter :: AddBaselinesIter
@@ -68,10 +77,6 @@ __SIMPLE_ROMEIN(UsingPermutations,HalfGCF,False)
 
 simpleRomeinUsingHalfOfFullGCF :: Actor (String, TaskData, GCFDev) Grid
 simpleRomeinUsingHalfOfFullGCF = mkGPUGridderActor (GridderConfig "addBaselinesToGridSkaMidHalfGCF" True simpleRomeinIter)
-
-cdSize :: Int
-cdSize = sizeOf (undefined :: Complex Double)
-{-# INLINE cdSize #-}
 
 gpuToHost :: Int -> CUDA.CxDoubleDevPtr -> DNA CUDA.CxDoubleHostPtr
 gpuToHost size devptr = profile "GPU2Host" [cudaHint{hintCopyBytesHost = size * cdSize}] $ liftIO $ do
