@@ -287,6 +287,12 @@ static void cupti_callback_launch_kernel(cupti_user_t *user, CUpti_CallbackData 
     if (!counter_data) {
         if (cbdata->callbackSite == CUPTI_API_ENTER) {
             fprintf(stderr, "CUPTI warning: Could not find context for kernel start!\n");
+            // Simply generate it. Use user data as a cheap way to
+            // prevent an infinite loop.
+            if (user) {
+                cupti_callback_context_created(user, cbdata);
+                cupti_callback_launch_kernel(NULL, cbdata);
+            }
         }
         return;
     }
