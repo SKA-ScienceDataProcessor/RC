@@ -46,8 +46,7 @@ mkGcfCFG isFull (CDouble wstep) = GCFCfg {
 
 gcfCalc :: GCFCfg -> DNA GCFDev
 gcfCalc (GCFCfg hsupp_step n isFull t2 wstep) = 
-    profile "GCF" [ cudaHint{ hintCopyBytesHost = cdSize * ws_size
-                            , hintCudaDoubleOps = flopsPerCD * ws_size
+    profile "GCF" [ cudaHint{ hintCudaDoubleOps = flopsPerCD * ws_size
                             } ] $ liftIO $ createGCF t2 ws_hsupps_size
 
   where
