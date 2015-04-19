@@ -208,6 +208,7 @@ prepareFullGCF = prepareGCFWith mirror
 
 createGCF :: Double -> (LD, Int) -> IO GCFDev
 createGCF t2 (wsp, sizeOfGCFInComplexD) = do
+    CUDA.sync
     gcf <- allocateGCF (length wsp) sizeOfGCFInComplexD
     doCuda t2 wsp gcf
     return gcf
