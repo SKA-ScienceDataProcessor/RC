@@ -88,6 +88,8 @@ main = do
     romeinRemote = $(mkStaticClosure 'runGridderOnSavedData)
     rt = GridderActors.__remoteTable
        . Main.__remoteTable
-    datasets = [pr p s f | p <- [0, 1], s <- [0..2], f <- [0,1]]
+    -- datasets = [pr p s f | p <- [0, 1], s <- [0] {- ..2] -}, f <- [0,1]]
+    -- datasets = [pr p s f | p <- [0, 1], s <- [0..2], f <- [0,1]]
+    datasets = take 4 [pr p s f | p <- [0, 1], s <- [0..2], f <- [0,1]]
     pr :: Int -> Int -> Int -> String
     pr = printf "test_p%02d_s%02d_f%02d.vis"
