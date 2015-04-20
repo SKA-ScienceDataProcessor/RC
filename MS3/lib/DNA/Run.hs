@@ -73,6 +73,8 @@ runSlurm common = do
         [ "+RTS", "-l-au", "-T", "-RTS"
         , "--base-port", show (dnaBasePort common)
         , "--workdir", dir
+        , "-v",              show $ logOptVerbose (dnaLogger common)
+        , "--measure",       logOptMeasure (dnaLogger common)
         ] Nothing
 
 runSlurmWorker :: RemoteTable -> FilePath -> CommonOpt -> DNA () -> IO ()
