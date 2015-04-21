@@ -18,8 +18,9 @@ module DNA.Interpreter.Message (
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Reader
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.State.Strict
+import Control.Monad.State.Strict
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 -- import qualified Data.Map as Map
@@ -263,12 +264,14 @@ handleRecieve
 handleRecieve auxMs mA
     = loop
   where
-    matches s = map toMatch ((fmap . fmap) Right mA)
-             ++ [ match $ \a -> Left <$> runStateT (runController (f a)) s
-                | MatchS f <- auxMs]
+    matches e s
+        =  map toMatch ((fmap . fmap) Right mA)
+        ++ [ match $ \a -> Left <$> runReaderT (runStateT (runController (f a)) s) e
+           | MatchS f <- auxMs]
     loop = do
+        e <- ask
         s <- get
-        r <- lift $ receiveWait $ matches s
+        r <- lift $ lift $ receiveWait $ matches e s
         case r of
           Right a      -> return a
           Left ((),s') -> put s' >> loop

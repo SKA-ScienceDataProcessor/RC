@@ -23,6 +23,7 @@ module DNA.Interpreter.Spawn (
 import Control.Applicative
 import Control.Concurrent  (threadDelay)
 import Control.Monad
+import Control.Monad.Reader
 import Control.Monad.Trans.Class
 import Control.Monad.Except
 import Control.Distributed.Static  (closureApply)
@@ -257,7 +258,7 @@ sendActorParam
     :: ProcessId -> Rank -> GroupSize -> VirtualCAD -> [DebugFlag] -> DnaMonad ActorParam
 sendActorParam pid rnk g cad flags = do
     me     <- liftP getSelfPid
-    interp <- use stInterpreter
+    interp <- envInterpreter <$> ask
     let p = ActorParam
             { actorParent      = me
             , actorInterpreter = interp
@@ -345,7 +346,7 @@ makeResource :: Location -> [NodeInfo] -> Controller VirtualCAD
 makeResource Remote []     = fatal "Need positive number of nodes"
 makeResource Remote (n:ns) = return (VirtualCAD Remote n ns)
 makeResource Local  ns     = do
-    n <- lift $ lift getSelfNode
+    n <- liftP getSelfNode
     return $ VirtualCAD Local (NodeInfo n) ns
 
 -- Add local node to the list of nodes if needed

@@ -9,9 +9,10 @@ module DNA.Interpreter.Types where
 
 import Control.Applicative
 import Control.Monad
-import Control.Monad.Trans.Class
-import Control.Monad.State.Strict
 import Control.Monad.Except
+import Control.Monad.Reader
+import Control.Monad.State.Strict
+import Control.Monad.Trans.Class
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Data.Monoid
@@ -34,7 +35,7 @@ import DNA.DSL
 ----------------------------------------------------------------
 
 -- | Type synonym for monad which is used for interpretation of
-type DnaMonad = StateT StateDNA Process
+type DnaMonad = StateT StateDNA (ReaderT Env Process)
 
 -- | Monad for event handlers. It adds explicit error handling
 type Controller = ExceptT String DnaMonad
@@ -60,13 +61,14 @@ runDnaMonad
     -> DnaMonad a
     -> Process a
 runDnaMonad (Rank rnk) (GroupSize grp) interp nodes flags =
-    flip evalStateT s0
+    flip runReaderT env . flip evalStateT s0
   where
+    env = Env { envRank        = rnk
+              , envGroupSize   = grp
+              , envInterpreter = interp
+              }
     s0 = StateDNA
            { _stCounter   = 0
-           , _stRank      = rnk
-           , _stGroupSize = grp
-           , _stInterpreter = interp
            , _stDebugFlags  = flags
            , _stNodePool      = Set.fromList nodes
            , _stUsedResources = Map.empty
@@ -117,13 +119,17 @@ data ActorParam = ActorParam
 instance Binary ActorParam
 
 
+-- | Parameters of an actor which are constant during its execution
+data Env = Env
+    { envRank        :: !Int
+    , envGroupSize   :: !Int
+    , envInterpreter :: !(Closure DnaInterpreter)
+    }
+
 -- | State of interpreter
 data StateDNA = StateDNA
     { _stCounter   :: !Int
       -- Counter for generation of unique IDs
-    , _stRank        :: !Int
-    , _stGroupSize   :: !Int
-    , _stInterpreter :: !(Closure DnaInterpreter)
     , _stDebugFlags  :: [DebugFlag]
 
       -- Resource
@@ -187,15 +193,6 @@ data GroupState
 
 stCounter :: Lens' StateDNA Int
 stCounter = lens _stCounter (\a x -> x { _stCounter = a})
-
-stRank :: Lens' StateDNA Int
-stRank = lens _stRank (\a x -> x { _stRank = a})
-
-stGroupSize :: Lens' StateDNA Int
-stGroupSize = lens _stGroupSize (\a x -> x { _stCounter = a})
-
-stInterpreter :: Lens' StateDNA (Closure DnaInterpreter)
-stInterpreter = lens _stInterpreter (\a x -> x { _stInterpreter = a})
 
 stDebugFlag :: Lens' StateDNA [DebugFlag]
 stDebugFlag = lens _stDebugFlags (\a x -> x { _stDebugFlags = a})

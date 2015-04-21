@@ -19,7 +19,7 @@ module DNA.Interpreter (
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Class
--- import Control.Monad.Trans.State.Strict
+import Control.Monad.Reader
 import Control.Monad.Except
 import Control.Monad.Operational
 import Control.Concurrent.Async
@@ -63,8 +63,8 @@ interpretDNA (DNA m) =
     runOp :: DnaF a -> DnaMonad a
     runOp op = case op of
       Kernel     io   -> execKernel io
-      DnaRank         -> use stRank
-      DnaGroupSize    -> use stGroupSize
+      DnaRank         -> envRank      <$> ask
+      DnaGroupSize    -> envGroupSize <$> ask
       AvailNodes      -> Set.size <$> use stNodePool
       -- Logging
       LogMessage msg   -> taggedMessage "MSG" msg
