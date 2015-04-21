@@ -328,7 +328,7 @@ hintToSample pt ch@CUDAHint{}
     . consHint pt "hint:memcpy-bytes-device" (hintCopyBytesDevice ch)
     . consHint pt "hint:gpu-float-ops" (hintCudaFloatOps ch)
     . consHint pt "hint:gpu-double-ops" (hintCudaDoubleOps ch)
-    <$> cudaAttrs pt
+    <$> cudaAttrs
 
 -- | Prepend an attribute if this is the start point, and it is non-zero
 consHint :: (Eq a, Num a, Show a)
