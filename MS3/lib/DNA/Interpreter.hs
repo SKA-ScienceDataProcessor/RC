@@ -70,7 +70,7 @@ interpretDNA (DNA m) =
       LogMessage msg   -> taggedMessage "MSG" msg
       Profile msg hints dna -> logProfile msg hints $ interpretDNA dna
       -- Spawning of actors
-      EvalClosure     a c -> do Actor f <- lift $ unClosure c
+      EvalClosure     a c -> do Actor f <- liftP $ unClosure c
                                 interpretDNA $ f a
       SpawnActor              r a -> execSpawnActor r a
       SpawnCollector          r a -> execSpawnCollector r a
@@ -145,9 +145,9 @@ execAwait (Promise ch) =
 execSendParam :: Serializable a => a -> Shell (Val a) b -> DnaMonad ()
 -- IMMEDIATE
 execSendParam a (Shell _ recv _) = case recv of
-    RecvVal       ch  -> lift $ sendChan ch a
+    RecvVal       ch  -> liftP $ sendChan ch a
     RecvBroadcast grp -> case grp of
-        RecvGrp p -> lift $ forM_ p $ \ch -> sendChan ch a
+        RecvGrp p -> liftP $ forM_ p $ \ch -> sendChan ch a
 
 -- Connect two shells to each other
 execConnect :: (Typeable tag, Serializable b) => Shell a (tag b) -> Shell (tag b) c -> DnaMonad  ()
@@ -208,7 +208,7 @@ recordConnection (ActorGroup gid) dest port = runController $
           GrUnconnected ty nProc ->
               stGroups . at gid .= Just (GrConnected ty nProc port [pid])
           GrConnected{}  -> fatal "Double connect"
-          GrFailed       -> do lift $ lift $ send pid (Terminate "data dependency failed")
+          GrFailed       -> do liftP $ send pid (Terminate "data dependency failed")
                                dropGroup gid
     ActorGroup dstGid -> do
         pids <- getGroupPids dstGid
@@ -217,7 +217,7 @@ recordConnection (ActorGroup gid) dest port = runController $
           GrUnconnected ty nProc ->
               stGroups . at gid .= Just (GrConnected ty nProc port pids)
           GrConnected{} -> fatal "Double connect"
-          GrFailed      -> do lift $ lift $ forM_ pids $ \p -> send p (Terminate "data dependency failed")
+          GrFailed      -> do liftP $ forM_ pids $ \p -> send p (Terminate "data dependency failed")
                               dropGroup gid
 
 
