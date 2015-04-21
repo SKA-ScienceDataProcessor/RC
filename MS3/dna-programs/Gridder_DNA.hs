@@ -48,7 +48,7 @@ remActor clo par = do
 locActor clo par = do
   shell <- startActor (N 0) (useLocal >> return clo)
   sendParam par shell
-  delay Remote shell
+  delay Local shell
 
 main :: IO ()
 main = do
