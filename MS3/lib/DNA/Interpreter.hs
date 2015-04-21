@@ -75,7 +75,8 @@ interpretDNA (DNA m) =
       SpawnActor              r a -> execSpawnActor r a
       SpawnCollector          r a -> execSpawnCollector r a
       SpawnGroup            r g a -> execSpawnGroup r g a
-      SpawnGroupN         r g n a -> execSpawnGroupN r g n a
+      SpawnGroupN         r g n a -> error "Not implemented"
+          -- execSpawnGroupN r g n a
       SpawnCollectorGroup   r g a -> execSpawnCollectorGroup r g a
       SpawnCollectorGroupMR r g a -> execSpawnCollectorGroupMR r g a
       SpawnMappers          r g a -> execSpawnMappers r g a

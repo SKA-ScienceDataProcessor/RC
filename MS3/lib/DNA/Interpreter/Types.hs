@@ -77,8 +77,8 @@ runDnaMonad (Rank rnk) (GroupSize grp) interp nodes flags =
            , _stConnUpstream  = Map.empty
            , _stConnDownstream= Map.empty
            , _stRestartable   = Map.empty
-           , _stCountRank     = Map.empty
-           , _stPooledProcs   = Map.empty
+           -- , _stCountRank     = Map.empty
+           -- , _stPooledProcs   = Map.empty
            }
 
 -- Generate unique ID
@@ -149,12 +149,14 @@ data StateDNA = StateDNA
       -- ^ Downstream connection of an actor. Could be parent act
     , _stRestartable    :: !(Map ProcessId (Match' (SomeRecvEnd,SomeSendEnd,[SendPort Int]), Closure (Process ()), Message))
       -- ^ Set of processes which could be restarted
-      
+
+{-
       -- Many rank actors
     , _stCountRank :: !(Map GroupID (Int,Int))
       -- ^ Unused ranks 
     , _stPooledProcs   :: !(Map GroupID [SendPort (Maybe Rank)])
       -- ^ Groups for which we can send enough of ranks message
+-}
     }
 
 -- | State of child process.
@@ -218,11 +220,13 @@ stConnDownstream = lens _stConnDownstream (\a x -> x { _stConnDownstream = a})
 stRestartable :: Lens' StateDNA (Map ProcessId (Match' (SomeRecvEnd,SomeSendEnd,[SendPort Int]), Closure (Process ()), Message))
 stRestartable = lens _stRestartable (\a x -> x { _stRestartable = a})
 
+{-
 stCountRank :: Lens' StateDNA (Map GroupID (Int,Int))
 stCountRank = lens _stCountRank (\a x -> x { _stCountRank = a})
 
 stPooledProcs :: Lens' StateDNA (Map GroupID [SendPort (Maybe Rank)])
 stPooledProcs = lens _stPooledProcs (\a x -> x { _stPooledProcs = a})
+-}
 
 -- Process event where we dispatch on PID of process
 handlePidEvent
@@ -265,8 +269,8 @@ dropPID pid = do
 dropGroup :: GroupID -> Controller ()
 dropGroup gid = do
     stGroups      . at gid .= Nothing
-    stPooledProcs . at gid .= Nothing
-    stCountRank   . at gid .= Nothing
+    -- stPooledProcs . at gid .= Nothing
+    -- stCountRank   . at gid .= Nothing
     stConnUpstream   . at (ActorGroup gid) .= Nothing
     stConnDownstream . at (ActorGroup gid) .= Nothing
     children <- use stChildren

@@ -43,8 +43,8 @@ messageHandlers :: [MatchS]
 messageHandlers =
     [ MatchS handleProcessTermination
     , MatchS handleTerminate
-    , MatchS handleReady
-    , MatchS handleDone
+    -- , MatchS handleReady
+    -- , MatchS handleDone
     , MatchS handleTimeout
     ]
 
@@ -202,7 +202,7 @@ handleProcessCrash msg pid = do
         )
     dropPID pid
 
-
+{-
 -- Many-rank actor is ready to process next message.
 handleReady :: (ProcessId,SendPort (Maybe Rank)) -> Controller ()
 handleReady (pid,chRnk) = do
@@ -217,6 +217,7 @@ handleReady (pid,chRnk) = do
        | otherwise -> do
           liftP $ sendChan chRnk (Just $ Rank n)
           stCountRank . at gid .= Just (n+1,nMax)
+
 
 -- Increment number of completed tasks for group of many-rank
 -- processes.
@@ -233,6 +234,7 @@ handleDone (pid,_) =
                return $ Just $ GrConnected ty (nR,nD+1) ch acps
            _ -> fatal "Invalid shell for group is received"
         )
+-}
 
 -- Some process timed out
 handleTimeout :: TimeOut -> Controller ()

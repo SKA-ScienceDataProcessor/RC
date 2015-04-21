@@ -14,7 +14,7 @@ module DNA.Interpreter.Spawn (
       execSpawnActor
     , execSpawnCollector
     , execSpawnGroup
-    , execSpawnGroupN
+    -- , execSpawnGroupN
     , execSpawnCollectorGroup
     , execSpawnCollectorGroupMR
     , execSpawnMappers
@@ -109,6 +109,7 @@ execSpawnGroup res resG act = do
     sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     return $ assembleShellGroup gid sh
 
+{-
 execSpawnGroupN
     :: (Serializable a, Serializable b)
     => Res
@@ -126,6 +127,7 @@ execSpawnGroupN res resG n act = do
     let (chN,shells) = unzip msgs
     stPooledProcs . at gid .= Just chN
     return $ broadcast $ assembleShellGroup gid shells
+-}
 
 -- |
 execSpawnCollectorGroup
