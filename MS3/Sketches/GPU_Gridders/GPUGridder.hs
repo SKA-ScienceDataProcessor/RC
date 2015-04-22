@@ -67,10 +67,10 @@ type At =
 type AddBaselinesFun =
       CDouble                             -- Scale
    -> CDouble                             -- WStep
-   -> CUDA.CxDoubleDevPtr                 -- Visibilities ptr
+   -> CUDA.CxDoubleDevPtr                 -- Grid ptr
    -> CUDA.DevicePtr CUDA.CxDoubleDevPtr  -- GCF layers ptr
    -> CUDA.DoubleDevPtr                   -- UVW ptr
-   -> CUDA.CxDoubleDevPtr                 -- Mapper ptr
+   -> CUDA.CxDoubleDevPtr                 -- Visibilities ptr
    -> At
 
 type AddBaselinesIter =
