@@ -38,6 +38,8 @@ CUpti_SubscriberHandle subscriber = NULL;
 
 int initialised = 0;
 
+#define LOG_ALL_DRIVER_CALLS
+
 void cupti_metrics_init(const char *metricList)
 {
     if (initialised) return;
@@ -94,8 +96,15 @@ int cupti_metrics_enable()
 
         // Hook kernel launch. This feels hacky, but is the approach
         // callback_metric.cu takes.
+#ifndef LOG_ALL_DRIVER_CALLS
         CUPTI_CALL(cuptiEnableCallback(1, subscriber, CUPTI_CB_DOMAIN_DRIVER_API, 
                                        CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel));
+#else
+        int i;
+        for (i = CUPTI_DRIVER_TRACE_CBID_cuInit; i < CUPTI_DRIVER_TRACE_CBID_SIZE; i++) {
+            CUPTI_CALL(cuptiEnableCallback(1, subscriber, CUPTI_CB_DOMAIN_DRIVER_API, i));
+        }
+#endif
     }
 
 }
@@ -469,10 +478,20 @@ static void cupti_callback(cupti_user_t *user, CUpti_CallbackDomain domain,
         switch (cbid) {
         case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
             cupti_callback_launch_kernel(user, (CUpti_CallbackData *)cbdata);
+#ifndef LOG_ALL_DRIVER_CALLS
             break;
         default:
             fprintf(stderr, "CUPTI metrics: Unexpected driver API callback received!\n");
             break;
+#else
+        default: {
+            CUpti_CallbackData *cd = (CUpti_CallbackData *)cbdata;
+            char host[257];
+            gethostname(host, 256);
+            fprintf(stderr, "%s: ctx %08x [uid %d] %s %s\n", host, cd->context, cd->contextUid, cd->functionName,
+                    cd->callbackSite == CUPTI_API_ENTER ? "enter" : "return");
+        }
+#endif
         }
         break;
     default:
