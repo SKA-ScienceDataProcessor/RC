@@ -61,8 +61,8 @@ simpleRomeinIter :: AddBaselinesIter
 simpleRomeinIter baselines _mapper launch = launch ((30-1)*8+17) 0 baselines
 
 -- Makes sense only for abs sorted mappers.
-mkOptRomeinIter :: AddBaselinesIter
-mkOptRomeinIter baselines _mapper launch = do
+optRomeinIter :: AddBaselinesIter
+optRomeinIter baselines _mapper launch = do
     mapp0 <- go 0 _mapper
     mapp1 <- go 1 mapp0
     let
