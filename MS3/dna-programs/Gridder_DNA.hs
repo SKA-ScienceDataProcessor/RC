@@ -40,15 +40,11 @@ remotable [
   , 'runCPUGridderOnSavedDataWithSorting
   ]
 
-remActor, locActor :: (Serializable a, Serializable b) => Closure (Actor a b) -> a -> DNA (Promise b)
+remActor :: (Serializable a, Serializable b) => Closure (Actor a b) -> a -> DNA (Promise b)
 remActor clo par = do
   shell <- startActor (N 1) (return clo)
   sendParam par shell
   delay Remote shell
-locActor clo par = do
-  shell <- startActor (N 0) (useLocal >> return clo)
-  sendParam par shell
-  delay Local shell
 
 main :: IO ()
 main = do
@@ -66,8 +62,10 @@ main = do
         simpleRomeinFullGCFClos = repeat $(mkStaticClosure 'simpleRomeinFullGCF)
         -- 4 tasks will run locally, remaining 8 -- remotely
         locs = take 4 $ zip3 ns_loc taskData simpleRomeinFullGCFClos
-        startLoc = locActor $(mkStaticClosure 'runGridderOnLocalData)
-      locRomeinFull <- startLoc (head locs)
+      locRomeinShell <- startActor (N 0) (useLocal >> return $(mkStaticClosure 'runGridderOnLocalData))
+      let
+        sendToLocalAndDelay p = sendParam p locRomeinShell >> delay Local locRomeinShell
+      locRomein <- sendToLocalAndDelay (head locs)
       --
       mapM_ (uncurry writeTaskDataP) $ zip ns_loc taskData
       --
@@ -81,8 +79,8 @@ main = do
       --
       remCPUSorted <- mapM (remActor $(mkStaticClosure 'runCPUGridderOnSavedDataWithSorting)) $ zip ns_loc ns_loc_cpus
       -- Local actor executed sequentially
-      await locRomeinFull
-      mapM_ ((>>= await) . startLoc) (tail locs)
+      await locRomein
+      mapM_ ((>>= await) . sendToLocalAndDelay) (tail locs)
       mapM_ await $ remRomeinFull ++ remRomeinUseHalf ++ remGather ++ remCPUSorted
   where
     romeinRemote = $(mkStaticClosure 'runGridderOnSavedData)
