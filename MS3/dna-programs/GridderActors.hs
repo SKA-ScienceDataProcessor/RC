@@ -18,6 +18,7 @@ import System.FilePath
 import Control.Distributed.Static (Closure)
 
 import OskarBinReader
+import OskarBinReaderFFI
 import Binner
 import GCF
 import GPUGridder
@@ -36,28 +37,48 @@ cdSize = sizeOf (undefined :: Complex Double)
 {-# INLINE cdSize #-}
 
 mkGcfCFG :: Bool -> CDouble -> GCFCfg
-mkGcfCFG isFull (CDouble wstep) = GCFCfg {
+mkGcfCFG isFull (CDouble wstp) = GCFCfg {
     gcfcSuppDiv2Step = 4
   , gcfcLayersDiv2Plus1 = 30
   , gcfcIsFull = isFull
   , gcfcT2 = 0.2
-  , gcfcWStep = wstep
+  , gcfcWStep = wstp
   }
 
 gcfCalc :: GCFCfg -> DNA GCFDev
-gcfCalc (GCFCfg hsupp_step n isFull t2 wstep) = 
+gcfCalc (GCFCfg hsupp_step n isFull t2 wstp) = 
     profile "GCF" [ cudaHint{ hintCudaDoubleOps = flopsPerCD * ws_size
                             } ] $ liftIO $ createGCF t2 ws_hsupps_size
 
   where
     prep = if isFull then prepareFullGCF else prepareHalfGCF
-    ws_hsupps_size = prep n hsupp_step wstep
+    ws_hsupps_size = prep n hsupp_step wstp
     ws_size = snd ws_hsupps_size
     flopsPerCD = 400 -- determined experimentally
 
 -- Romein make the single kernel launch for all baselines with max support
 simpleRomeinIter :: AddBaselinesIter
-simpleRomeinIter baselines _mapper dev_mapper launch = launch ((30-1)*8+17) 0 baselines dev_mapper
+simpleRomeinIter baselines _mapper launch = launch ((30-1)*8+17) 0 baselines
+
+-- Makes sense only for abs sorted mappers.
+mkOptRomeinIter :: AddBaselinesIter
+mkOptRomeinIter baselines _mapper launch = do
+    mapp0 <- go 0 _mapper
+    mapp1 <- go 1 mapp0
+    let
+      off0 = minusPtr mapp0 _mapper `div` msiz
+      off1 = minusPtr mapp1 _mapper `div` msiz
+    -- hardcoded max support sizes ATM
+    launch 17    0              off0
+    launch 25 off0 (     off1 - off0)
+    launch 33 off1 (baselines - off1) -- any max_supp > 32 would go
+  where
+    msiz = sizeOf (undefined :: BlWMap)
+    go n mapp = do
+      wp <- wplane mapp
+      if wp <= n
+        then go n (advancePtr mapp 1)
+        else return mapp
 
 -- TODO: factor out host-to-GPU marshalling actor?
 mkGPUGridderActor :: GridderConfig -> Actor (String, TaskData, GCFDev) Grid
@@ -103,7 +124,7 @@ mkGatherGridderActor gcfg = actor (duration (gcKernelName gcfg) . liftIO . gridd
   where gridder (namespace, td, gcf) = runGatherGridder gcfg namespace td gcf
 
 i0 :: AddBaselinesIter
-i0 _ _ _ _ = return ()
+i0 _ _ _ = return ()
 
 gatherGridderActorFullGcf, gatherGridderActorHalfGcf :: Actor (String, TaskData, GCFDev) Grid
 gatherGridderActorFullGcf = mkGatherGridderActor (GridderConfig "gridKernelGatherFullGCF" True i0)
