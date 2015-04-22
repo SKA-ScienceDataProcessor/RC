@@ -153,11 +153,16 @@ runGridderWith gridactor taskData ns_in ns_out = do
   where
     gridsize = 4096 * 4096
 
-runGridderOnSavedData :: Actor(String, String, Closure (Actor (String, TaskData, GCFDev) Grid)) ()
+runGridderOnSavedData, runGridderOnSavedDataWithSort :: Actor(String, String, Closure (Actor (String, TaskData, GCFDev) Grid)) ()
 runGridderOnSavedData = actor $ \(ns_in, ns_out, gridactor) -> do
   taskData <- readTaskDataP ns_in
   runGridderWith gridactor taskData "" ns_out
   liftIO $ finalizeTaskData taskData
+runGridderOnSavedDataWithSort = actor $ \(ns_in, ns_out, gridactor) -> do
+  taskData <- readTaskDataP ns_in
+  tdSorted <- liftIO $ mkSortedClone NormSort taskData
+  runGridderWith gridactor taskData "" ns_out
+  liftIO $ finalizeSortedClone tdSorted >> finalizeTaskData taskData
 
 runGridderOnLocalData :: Actor(String, TaskData, Closure (Actor (String, TaskData, GCFDev) Grid)) ()
 runGridderOnLocalData = actor $ \(ns_out, taskdata, gridactor) ->
@@ -223,5 +228,6 @@ remotable [
   , 'simpleRomeinUsingPermutationsHalfGCF
   , 'simpleRomeinUsingHalfOfFullGCF
   , 'runGridderOnSavedData
+  , 'runGridderOnSavedDataWithSort
   , 'runGridderOnLocalData
   ]
