@@ -7,6 +7,9 @@ module Main where
 
 import Data.List
 import Text.Printf
+
+import System.IO
+
 import Control.Distributed.Process.Serializable (Serializable)
 import Control.Distributed.Static (Closure)
 
@@ -28,16 +31,24 @@ runGatherGridderOnSavedData = actor $ \(ns_in, ns_tmp, ns_out, useHalfGcf) -> do
      hc = $(mkStaticClosure 'gatherGridderActorHalfGcf)
      fc = $(mkStaticClosure 'gatherGridderActorFullGcf)
 
-runCPUGridderOnSavedDataWithSorting :: Actor (String, String) ()
-runCPUGridderOnSavedDataWithSorting = actor $ \(ns_in, ns_out) -> do
+mkActorForSortedData :: (String -> TaskData -> DNA ()) -> Actor (String, String) ()
+mkActorForSortedData f = actor $ \(ns_in, ns_out) -> do
   taskData <- readTaskDataP ns_in
   tdSorted <- liftIO $ mkSortedClone NormSort taskData
-  mkGcfAndCpuGridder True True True ns_out tdSorted
+  f ns_out tdSorted
   liftIO $ finalizeSortedClone tdSorted >> finalizeTaskData taskData
+
+runCPUGridderOnSavedDataWithSorting, optRomeinFullGCFOnSavedData :: Actor (String, String) ()
+runCPUGridderOnSavedDataWithSorting = mkActorForSortedData (mkGcfAndCpuGridder True True True)
+-- Use dedicated actor ATM
+optRomeinFullGCFOnSavedData = mkActorForSortedData doIt
+  where
+    doIt ns_out tdSorted = runGridderWith $(mkStaticClosure 'optRomeinFullGCF) tdSorted "" ns_out
 
 remotable [
     'runGatherGridderOnSavedData
   , 'runCPUGridderOnSavedDataWithSorting
+  , 'optRomeinFullGCFOnSavedData
   ]
 
 remActor :: (Serializable a, Serializable b) => Closure (Actor a b) -> a -> DNA (Promise b)
@@ -45,6 +56,10 @@ remActor clo par = do
   shell <- startActor (N 1) (return clo)
   sendParam par shell
   delay Remote shell
+
+
+rep :: String -> DNA ()
+rep s = liftIO $ print s >> hFlush stdout
 
 main :: IO ()
 main = do
@@ -66,22 +81,30 @@ main = do
       let
         sendToLocalAndDelay p = sendParam p locRomeinShell >> delay Local locRomeinShell
       locRomein <- sendToLocalAndDelay (head locs)
+      rep "Here1"
       --
       mapM_ (uncurry writeTaskDataP) $ zip ns_loc taskData
       --
       let simpleRomeinUsingHalfOfFullGCFClo = $(mkStaticClosure 'simpleRomeinUsingHalfOfFullGCF)
       remRomeinUseHalf <- mapM (remActor romeinRemote) $ zip3 ns_loc ns_rem1 (repeat simpleRomeinUsingHalfOfFullGCFClo)
+      rep "Here2"
       --
       let rems = zip3 (drop 4 ns_loc) (drop 4 ns_loc) simpleRomeinFullGCFClos
       remRomeinFull <- mapM (remActor romeinRemote) rems
+      rep "Here3"
       --
       remGather <- mapM (remActor $(mkStaticClosure 'runGatherGridderOnSavedData)) $ zip4 ns_loc nst ns_rem2 (repeat False)
+      rep "Here4"
       --
       remCPUSorted <- mapM (remActor $(mkStaticClosure 'runCPUGridderOnSavedDataWithSorting)) $ zip ns_loc ns_loc_cpus
+      rep "Here5"
       -- Local actor executed sequentially
       await locRomein
+      rep "Here6"
       mapM_ ((>>= await) . sendToLocalAndDelay) (tail locs)
+      rep "Here7"
       mapM_ await $ remRomeinFull ++ remRomeinUseHalf ++ remGather ++ remCPUSorted
+      rep "Here8"
   where
     romeinRemote = $(mkStaticClosure 'runGridderOnSavedData)
     rt = GridderActors.__remoteTable
