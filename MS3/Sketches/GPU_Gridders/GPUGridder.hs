@@ -59,6 +59,7 @@ instance Binary Grid
 
 type At =
       Int                   -- Support size for launch
+   -> Int                   -- Baseline offset
    -> Int                   -- Num of baselines in launch
    -> CUDA.DevicePtr BlWMap -- Pointer to mapping location in launch
    -> IO ()
@@ -80,11 +81,18 @@ type AddBaselinesIter =
    -> IO ()
 
 launchAddBaselines :: CUDA.Fun -> AddBaselinesFun
-launchAddBaselines f scale wstp gridptr gcflp uvwp visp maxSupp numOfBaselines permutations =
+launchAddBaselines f scale wstp gridptr gcflp uvwp visp maxSupp off numOfBaselines permutations =
   CUDA.launchKernel f (numOfBaselines, 1, 1) (nOfThreads, 1, 1) 0 Nothing params
   where
     nOfThreads = min 1024 (maxSupp * maxSupp)
-    params = mapArgs $ scale :. wstp :. permutations :. gridptr :. gcflp :. uvwp :. visp :. Z
+    params = mapArgs $  scale
+                     :. wstp
+                     :. permutations
+                     :. gridptr
+                     :. gcflp
+                     :. (CUDA.advanceDevPtr uvwp off)
+                     :. (CUDA.advanceDevPtr visp off)
+                     :. Z
 
 data GridderConfig = GridderConfig {
     gcKernelName :: !String

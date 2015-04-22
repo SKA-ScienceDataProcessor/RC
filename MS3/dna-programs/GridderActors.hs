@@ -57,7 +57,7 @@ gcfCalc (GCFCfg hsupp_step n isFull t2 wstep) =
 
 -- Romein make the single kernel launch for all baselines with max support
 simpleRomeinIter :: AddBaselinesIter
-simpleRomeinIter baselines _mapper dev_mapper launch = launch ((30-1)*8+17) baselines dev_mapper
+simpleRomeinIter baselines _mapper dev_mapper launch = launch ((30-1)*8+17) 0 baselines dev_mapper
 
 -- TODO: factor out host-to-GPU marshalling actor?
 mkGPUGridderActor :: GridderConfig -> Actor (String, TaskData, GCFDev) Grid
