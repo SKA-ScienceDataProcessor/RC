@@ -95,8 +95,9 @@ __SIMPLE_ROMEIN(,HalfGCF,False)
 __SIMPLE_ROMEIN(UsingPermutations,FullGCF,True)
 __SIMPLE_ROMEIN(UsingPermutations,HalfGCF,False)
 
-simpleRomeinUsingHalfOfFullGCF :: Actor (String, TaskData, GCFDev) Grid
+simpleRomeinUsingHalfOfFullGCF, optRomeinFullGCF :: Actor (String, TaskData, GCFDev) Grid
 simpleRomeinUsingHalfOfFullGCF = mkGPUGridderActor (GridderConfig "addBaselinesToGridSkaMidHalfGCF" True simpleRomeinIter)
+optRomeinFullGCF = mkGPUGridderActor (GridderConfig "addBaselinesToGridSkaMidUsingPermutationsFullGCF" True optRomeinIter)
 
 gpuToHost :: Int -> CUDA.CxDoubleDevPtr -> DNA CUDA.CxDoubleHostPtr
 gpuToHost size devptr = profile "GPU2Host" [cudaHint{hintCopyBytesHost = size * cdSize}] $ liftIO $ do
