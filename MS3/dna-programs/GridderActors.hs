@@ -82,7 +82,11 @@ optRomeinIter baselines _mapper launch = do
 
 -- TODO: factor out host-to-GPU marshalling actor?
 mkGPUGridderActor :: GridderConfig -> Actor (String, TaskData, GCFDev) Grid
-mkGPUGridderActor gcfg = actor $ profile (gcKernelName gcfg) [cudaHint{hintCopyBytesDevice = 565762648}] . liftIO . gridder
+mkGPUGridderActor gcfg = actor $
+    profile (gcKernelName gcfg)
+      [ cudaHint{ hintCopyBytesDevice = 565762648
+                , hintCudaDoubleOps = 322380900646
+                }] . liftIO . gridder
   where gridder (_, td, gcf) = runGridder gcfg td gcf
 
 #define str(x) "x"
