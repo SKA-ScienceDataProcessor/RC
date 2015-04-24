@@ -37,6 +37,7 @@ module DNA.DSL (
     , rank
     , groupSize
     , kernel
+    , KernelMode(..)
       -- ** Actor spawning
     , eval
     , evalClosure
@@ -80,14 +81,19 @@ import DNA.Logging (ProfileHint(..))
 newtype DNA a = DNA (Program DnaF a)
                 deriving (Functor,Applicative,Monad)
 
+data KernelMode
+    = DefaultKernel -- ^ No restrictions on kernel execution
+    | BoundKernel   -- ^ Kernel relies on being bound to a single OS thread.
+
 instance MonadIO DNA where
-    liftIO = kernel
+    liftIO = kernel DefaultKernel
 
 -- | GADT which describe operations supported by DNA DSL
 data DnaF a where
     -- | Execute foreign kernel
     Kernel
-      :: IO a
+      :: KernelMode
+      -> IO a
       -> DnaF a
     DnaRank :: DnaF Int
     DnaGroupSize :: DnaF Int
@@ -179,7 +185,6 @@ data DnaF a where
       -> (b -> a -> IO b)
       -> b
       -> DnaF b
-
 
 -- | Spawn monad. It's used to carry all additional parameters for
 --   process spawning
@@ -290,8 +295,8 @@ rank = DNA $ singleton DnaRank
 groupSize :: DNA Int
 groupSize = DNA $ singleton DnaGroupSize
 
-kernel :: IO a -> DNA a
-kernel = DNA . singleton . Kernel
+kernel :: KernelMode -> IO a -> DNA a
+kernel mode = DNA . singleton . Kernel mode
 
 logMessage :: String -> DNA ()
 logMessage = DNA . singleton . LogMessage

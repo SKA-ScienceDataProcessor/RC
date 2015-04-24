@@ -10,6 +10,8 @@ module DNA (
     , duration
     , ProfileHint(..)
     , floatHint, ioHint, haskellHint, cudaHint
+    , kernel
+    , KernelMode(..)
        -- * Actors
     , Actor
     , actor

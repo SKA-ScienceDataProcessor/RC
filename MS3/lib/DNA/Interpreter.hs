@@ -62,7 +62,7 @@ interpretDNA (DNA m) =
   where
     runOp :: DnaF a -> DnaMonad a
     runOp op = case op of
-      Kernel     io   -> execKernel io
+      Kernel mode io  -> execKernel mode io
       DnaRank         -> use stRank
       DnaGroupSize    -> use stGroupSize
       AvailNodes      -> Set.size <$> use stNodePool
@@ -97,11 +97,13 @@ theInterpreter = DnaInterpreter interpretDNA
 
 -- Execute foreign kernel. Process will wait until kernel execution is
 -- complete but will be able to handle events in meantime.
-execKernel :: () => IO a -> DnaMonad a
+execKernel :: () => KernelMode -> IO a -> DnaMonad a
 -- BLOCKING
-execKernel io = do
+execKernel mode io = do
     -- FIXME: we can leave thread running! Clean up properly!
-    a <- liftIO $ async io
+    a <- case mode of
+           DefaultKernel -> liftIO $ async io
+           BoundKernel   -> liftIO $ asyncBound io
     handleRecieve messageHandlers [matchSTM' (waitSTM a)]
 
 
