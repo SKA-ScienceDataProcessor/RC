@@ -122,7 +122,7 @@ doCuda t2 ws_hsupps gcf = do
   m <- CUDA.loadFile =<< getDataFileName "all.cubin"
   [  fftshift_kernel
    , ifftshift_kernel
-   , reduce_512_odd
+   , reduce_512_e2
    , r2
    , wkernff
    , copy_2_over
@@ -151,7 +151,7 @@ doCuda t2 ws_hsupps gcf = do
                  let
                    normAndExtractLayers outplist layerp n
                      | n > 0 = do
-                                 launchReduce reduce_512_odd layerp normp (256*256)
+                                 launchReduce reduce_512_e2 layerp normp (256*256)
                                  CUDA.sync
                                  -- CUDA.peekArray 1 normp hnormp -- DEBUG
                                  -- peek hnormp >>= print
@@ -171,7 +171,7 @@ doCuda t2 ws_hsupps gcf = do
     kernelNames =
       [ "fftshift_kernel"
       , "ifftshift_kernel"
-      , "reduce_512_odd"
+      , "reduce_512_e2"
       , "r2"
       , "wkernff"
       , "copy_2_over"
