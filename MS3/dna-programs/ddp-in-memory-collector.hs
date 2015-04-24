@@ -1,7 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Main(main) where
 
-import DNA.Channel.File (readDataMMap)
 import DNA
 
 import DDP

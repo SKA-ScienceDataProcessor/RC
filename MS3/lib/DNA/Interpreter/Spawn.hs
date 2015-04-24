@@ -115,7 +115,7 @@ execSpawnGroupN
     -> Int
     -> Spawn (Closure (Actor a b))
     -> DnaMonad (Shell (Val a) (Grp b))
-execSpawnGroupN res resG n act = do
+execSpawnGroupN res resG _n act = do
     -- Spawn actors
     (k,gid) <- spawnActorGroup res resG
              $ closureApply $(mkStaticClosure 'runActorManyRanks) <$> act
@@ -230,7 +230,7 @@ spawnActorGroup res resG spwn = do
     forM_ ([0..] `zip` rs) $ \(rnk,cad) -> do
         (pid,_) <- liftP
                  $ spawnSupervised (nodeId $ vcadNode cad) act
-        sendActorParam pid (Rank rnk) (GroupSize k) cad
+        void $ sendActorParam pid (Rank rnk) (GroupSize k) cad
             (concat [fs | UseDebug fs <- flags])
         stChildren . at pid .= Just (Right gid)
     -- Add timeout for actor

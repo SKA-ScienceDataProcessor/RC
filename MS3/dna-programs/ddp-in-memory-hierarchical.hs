@@ -3,9 +3,6 @@
 {-# LANGUAGE BangPatterns #-}
 module Main(main) where
 
-import Data.Int
-import qualified Data.Vector.Storable as S
-
 import DNA
 
 import DDP

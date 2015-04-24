@@ -7,13 +7,10 @@
 -- | Data types for interpretation of DNA DSL using cloud haskell
 module DNA.Interpreter.Types where
 
-import Control.Applicative
 import Control.Monad
-import Control.Monad.Trans.Class
 import Control.Monad.State.Strict
 import Control.Monad.Except
 import Control.Distributed.Process
-import Control.Distributed.Process.Serializable
 import Data.Monoid
 import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
