@@ -30,12 +30,6 @@ import OskarBinReader
 import OskarBinReaderFFI
 import GCF
 
-#ifndef QUICK_TEST
-import Paths_dna_ms3 ( getDataFileName )
-#else
-#define getDataFileName return
-#endif
-
 data Grid = Grid {
     gridSize :: !Int
   , gridPtr  :: !CUDA.CxDoubleDevPtr
