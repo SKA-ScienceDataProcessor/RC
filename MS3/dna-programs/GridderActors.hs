@@ -195,7 +195,7 @@ cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh = do
     profile gname [floatHint {hintDoubleOps = 25}] $ liftIO $ gfun scale (tdWstep td) (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
     polptr <- liftIO $ mallocArray gridsize
     let extract n = do
-          duration "ExtractPolarizatonCPU" . liftIO $ CPU.normalizeAndExtractPolarization n polptr gridp
+          duration "ExtractPolarizatonCPU" . liftIO $ CPU.normalizeAndExtractPolarizationCPU n polptr gridp
           duration "FftPolarizatonCPU" . liftIO $ CPU.fft_inplace_even polptr
           hostToDisk gridsize polptr (ns_out </> 'p': show n)
     extract 0
