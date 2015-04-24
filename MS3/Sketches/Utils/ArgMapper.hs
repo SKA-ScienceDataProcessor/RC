@@ -6,7 +6,6 @@
 
 module ArgMapper where
 
-import Data.Int (Int32)
 import Foreign.Storable
 
 import CUDAEx
@@ -21,11 +20,14 @@ class ArgMapper a where
 
 instance ArgMapper Z where mapArgs _ = []
 
-instance ArgMapper ts => ArgMapper (Int32 :. ts) where
+instance ArgMapper ts => ArgMapper (Int :. ts) where
   mapArgs (v :. vs) = (IArg v) : mapArgs vs
 
 instance ArgMapper ts => ArgMapper (Float :. ts) where
   mapArgs (v :. vs) = (FArg v) : mapArgs vs
+
+instance ArgMapper ts => ArgMapper (Double :. ts) where
+  mapArgs (v :. vs) = (DArg v) : mapArgs vs
 
 instance (Storable t, ArgMapper ts) => ArgMapper (t :. ts) where
   mapArgs (v :. vs) = (VArg v) : mapArgs vs

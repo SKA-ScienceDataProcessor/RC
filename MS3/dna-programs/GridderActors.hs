@@ -90,9 +90,12 @@ mkGPUGridderActor gcfg = actor $
   where gridder (_, td, gcf) = runGridder gcfg td gcf
 
 #define str(x) "x"
-#define __SIMPLE_ROMEIN(perm, gcf, isfull)                 \
-simpleRomein/**/perm/**/gcf :: Actor (String, TaskData, GCFDev) Grid; \
-simpleRomein/**/perm/**/gcf = mkGPUGridderActor (GridderConfig str(addBaselinesToGridSkaMid/**/perm/**/gcf) isfull simpleRomeinIter)
+#define __mkWith(mk, k,f,i) mk (GridderConfig str(k) k f i)
+
+#define __SIMPLE_ROMEIN(perm, gcf, isfull)                                           \
+foreign import ccall unsafe "&" addBaselinesToGridSkaMid/**/perm/**/gcf :: CUDA.Fun; \
+simpleRomein/**/perm/**/gcf :: Actor (String, TaskData, GCFDev) Grid;                \
+simpleRomein/**/perm/**/gcf = __mkWith(mkGPUGridderActor, addBaselinesToGridSkaMid/**/perm/**/gcf, isfull, simpleRomeinIter)
 
 __SIMPLE_ROMEIN(,FullGCF,True)
 __SIMPLE_ROMEIN(,HalfGCF,False)
@@ -100,8 +103,8 @@ __SIMPLE_ROMEIN(UsingPermutations,FullGCF,True)
 __SIMPLE_ROMEIN(UsingPermutations,HalfGCF,False)
 
 simpleRomeinUsingHalfOfFullGCF, optRomeinFullGCF :: Actor (String, TaskData, GCFDev) Grid
-simpleRomeinUsingHalfOfFullGCF = mkGPUGridderActor (GridderConfig "addBaselinesToGridSkaMidHalfGCF" True simpleRomeinIter)
-optRomeinFullGCF = mkGPUGridderActor (GridderConfig "addBaselinesToGridSkaMidUsingPermutationsFullGCF" True optRomeinIter)
+simpleRomeinUsingHalfOfFullGCF = __mkWith(mkGPUGridderActor, addBaselinesToGridSkaMidHalfGCF, True, simpleRomeinIter)
+optRomeinFullGCF = __mkWith(mkGPUGridderActor, addBaselinesToGridSkaMidUsingPermutationsFullGCF, True, optRomeinIter)
 
 gpuToHost :: Int -> CUDA.CxDoubleDevPtr -> DNA CUDA.CxDoubleHostPtr
 gpuToHost size devptr = profile "GPU2Host" [cudaHint{hintCopyBytesHost = size * cdSize}] $ liftIO $ do
@@ -131,9 +134,12 @@ mkGatherGridderActor gcfg = actor (duration (gcKernelName gcfg) . liftIO . gridd
 i0 :: AddBaselinesIter
 i0 _ _ _ = return ()
 
+#define __k(n) foreign import ccall unsafe "&" n :: CUDA.Fun
+__k(gridKernelGatherFullGCF)
+__k(gridKernelGatherHalfGCF)
 gatherGridderActorFullGcf, gatherGridderActorHalfGcf :: Actor (String, TaskData, GCFDev) Grid
-gatherGridderActorFullGcf = mkGatherGridderActor (GridderConfig "gridKernelGatherFullGCF" True i0)
-gatherGridderActorHalfGcf = mkGatherGridderActor (GridderConfig "gridKernelGatherHalfGCF" False i0)
+gatherGridderActorFullGcf = __mkWith(mkGatherGridderActor, gridKernelGatherFullGCF, True, i0)
+gatherGridderActorHalfGcf = __mkWith(mkGatherGridderActor, gridKernelGatherHalfGCF, False, i0)
 
 runGridderWith :: Closure (Actor (String, TaskData, GCFDev) Grid) -> TaskData -> String -> String -> DNA ()
 runGridderWith gridactor taskData ns_in ns_out = do

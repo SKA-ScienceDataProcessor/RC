@@ -94,19 +94,16 @@ launchAddBaselines td f scale gridptr gcflp uvwp visp permp maxSupp blOff numOfB
                      :. Z
 
 data GridderConfig = GridderConfig {
-    gcKernelName :: !String
+    gcKernelName :: String
+  , gcKernel :: !CUDA.Fun
   , gcGCFIsFull :: !Bool
   , gcIter :: !AddBaselinesIter
   }
 
-gridderModule :: IO CUDA.Module
-gridderModule = getDataFileName "scatter_gridders_smem_ska.cubin" >>= CUDA.loadFile
-
 -- FIXME: Add permutations option to config
 --   and *generate* name from gcfIsFull and permutation option
 runGridder :: GridderConfig -> TaskData -> GCFDev -> IO Grid
-runGridder (GridderConfig gfname gcfIsFull iter) td gcf = do
-    fun <- (`CUDA.getFun` gfname) =<< gridderModule
+runGridder (GridderConfig _ fun gcfIsFull iter) td gcf = do
     gridptr <- CUDA.mallocArray gridsize
     CUDA.memset gridptr (fromIntegral $ gridsize * cxdSize) 0
     CUDA.allocaArray uvwSize $ \uvwp ->
@@ -132,22 +129,19 @@ runGridder (GridderConfig gfname gcfIsFull iter) td gcf = do
     gridsize = 4096 * 4096 * 4
     cxdSize = sizeOf (undefined :: CxDouble)
 
-normalizeAndExtractPolarization :: Int32 -> CUDA.CxDoubleDevPtr -> Grid -> IO ()
-normalizeAndExtractPolarization pol polp (Grid _ gridp) = do
-  f <- (`CUDA.getFun` "normalizeAndExtractPolarization") =<< gridderModule
-  -- 128 * 32 = 4096
-  CUDA.launchKernel f (128, 128, 1) (32, 32, 1) 0 Nothing $ mapArgs $ pol :. polp :. gridp :. Z
+foreign import ccall unsafe "&normalizeAndExtractPolarization" normalizeAndExtractPolarization_c :: CUDA.Fun
 
-gatherGridderModule :: IO CUDA.Module
-gatherGridderModule = getDataFileName "gather_gridder.cubin" >>= CUDA.loadFile
+normalizeAndExtractPolarization :: Int32 -> CUDA.CxDoubleDevPtr -> Grid -> IO ()
+normalizeAndExtractPolarization pol polp (Grid _ gridp) =
+  -- 128 * 32 = 4096
+  CUDA.launchKernel normalizeAndExtractPolarization_c (128, 128, 1) (32, 32, 1) 0 Nothing $ mapArgs $ pol :. polp :. gridp :. Z
 
 type RawPtr = CUDA.DevicePtr Word8
 
 -- FIXME: Add permutations option to config
 --   and *generate* name from gcfIsFull and permutation option
 runGatherGridder :: GridderConfig -> String -> TaskData -> GCFDev -> IO Grid
-runGatherGridder (GridderConfig gfname gcfIsFull _) prefix td gcf = do
-    fun <- (`CUDA.getFun` gfname) =<< gatherGridderModule
+runGatherGridder (GridderConfig _ fun gcfIsFull _) prefix td gcf = do
     gridptr <- CUDA.mallocArray gridsize
     CUDA.memset gridptr (fromIntegral $ gridsize * cxdSize) 0
     --

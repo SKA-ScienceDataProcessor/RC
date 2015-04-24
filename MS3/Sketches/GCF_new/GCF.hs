@@ -22,7 +22,6 @@ module GCF (
   , GCFCfg(..)
   ) where
 
-import Data.Int
 import Foreign.Storable
 import Foreign.Storable.Complex ()
 import Foreign.Ptr
@@ -50,10 +49,10 @@ type DoubleDevPtr = CUDA.DevicePtr
 
 launchReduce :: CUDA.Fun -> CxDoubleDevPtr -> DoubleDevPtr Double -> Int -> IO ()
 launchReduce f idata odata n =
-  CUDA.launchKernel f (n `div` 1024,1,1) (512,1,1) (512 * sizeOf (undefined :: Double)) Nothing
-    [CUDA.VArg idata, CUDA.VArg odata, CUDA.IArg $ fromIntegral n]
+  CUDA.launchKernel f (n `div` 1024,1,1) (512,1,1) (fromIntegral $ 512 * sizeOf (undefined :: Double)) Nothing
+    [CUDA.VArg idata, CUDA.VArg odata, CUDA.IArg n]
 
-launchNormalize :: CUDA.Fun -> DoubleDevPtr Double -> CxDoubleDevPtr -> Int32 -> IO ()
+launchNormalize :: CUDA.Fun -> DoubleDevPtr Double -> CxDoubleDevPtr -> Int -> IO ()
 launchNormalize f normp ptr len =
   CUDA.launchKernel f (128,1,1) (512,1,1) 0 Nothing
     [CUDA.VArg normp, CUDA.VArg ptr, CUDA.IArg len]
@@ -117,19 +116,19 @@ finalizeGCFHost :: GCFHost -> IO ()
 finalizeGCFHost (GCF _ _ gcfp layers) =
   CUDA.freeHost (CUDA.HostPtr layers) >> CUDA.freeHost (CUDA.HostPtr gcfp)
 
-doCuda :: Double -> [(Double, Int)] -> GCFDev -> IO ()
-doCuda t2 ws_hsupps gcf = do
-  m <- CUDA.loadFile =<< getDataFileName "all.cubin"
-  [  fftshift_kernel
-   , ifftshift_kernel
-   , reduce_512_e2
-   , r2
-   , wkernff
-   , copy_2_over
-   , transpose_over0
-   , normalize
-   , wextract1 ] <- mapM (CUDA.getFun m) kernelNames
+#define __k(n) foreign import ccall unsafe "&" n :: CUDA.Fun
 
+__k(ifftshift_kernel)
+__k(reduce_512_e2)
+__k(r2)
+__k(wkernff)
+__k(copy_2_over)
+__k(transpose_over0)
+__k(normalize)
+__k(wextract1)
+
+doCuda :: Double -> [(Double, Int)] -> GCFDev -> IO ()
+doCuda t2 ws_hsupps gcf =
   CUDA.allocaArray (256*256) $ \(ffp0 :: CxDoubleDevPtr) -> do
     launchOnFF r2 1 [CUDA.VArg ffp0, CUDA.VArg t2]
     CUDA.allocaArray (256*256) $ \(ffpc :: CxDoubleDevPtr) ->
@@ -167,19 +166,6 @@ doCuda t2 ws_hsupps gcf = do
                  go rest olist
               go [] lptrrlist = CUDA.pokeListArray (init $ reverse lptrrlist) (gcfLayers gcf)
             in go ws_hsupps [gcfPtr gcf]
-  where
-    kernelNames =
-      [ "fftshift_kernel"
-      , "ifftshift_kernel"
-      , "reduce_512_e2"
-      , "r2"
-      , "wkernff"
-      , "copy_2_over"
-      , "transpose_over0"
-      , "normalize"
-      , "wextract1"
-      ]
-
 
 type LD = [(Double, Int)]
 
