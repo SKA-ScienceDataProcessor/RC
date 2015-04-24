@@ -5,12 +5,6 @@ module FFT where
 import Foreign.CUDA.FFT
 import CUDAEx
 
-#ifndef QUICK_TEST
-import Paths_dna_ms3 ( getDataFileName )
-#else
-#define getDataFileName return
-#endif
-
 data Mode =
     Forward
   | Reverse
