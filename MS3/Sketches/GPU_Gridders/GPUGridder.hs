@@ -125,7 +125,7 @@ runGridder (GridderConfig _ fun gcfIsFull iter) td gcf = do
 
 foreign import ccall unsafe "&normalizeAndExtractPolarization" normalizeAndExtractPolarization_c :: CUDA.Fun
 
-normalizeAndExtractPolarization :: Int32 -> CUDA.CxDoubleDevPtr -> Grid -> IO ()
+normalizeAndExtractPolarization :: Int -> CUDA.CxDoubleDevPtr -> Grid -> IO ()
 normalizeAndExtractPolarization pol polp (Grid _ gridp) =
   -- 128 * 32 = 4096
   CUDA.launchKernel normalizeAndExtractPolarization_c (128, 128, 1) (32, 32, 1) 0 Nothing $ mapArgs $ pol :. polp :. gridp :. Z
@@ -164,7 +164,7 @@ runGatherGridder (GridderConfig _ fun gcfIsFull _) prefix td gcf = do
               --
               return $ Just (pre_data_in, vis_data_in)
             else return Nothing
-    resourcesToFree <- mapM processBin [(c, up, vp) | c <- [0::Int .. tdChannels td-1], up <- [0::Int32 .. 31], vp <- [0::Int32 .. 31]]
+    resourcesToFree <- mapM processBin [(c, up, vp) | c <- [0::Int .. tdChannels td-1], up <- [0::Int .. 31], vp <- [0::Int .. 31]]
     -- Cleanup
     mapM_ (\(p, v) -> CUDA.free p >> CUDA.free v) (catMaybes resourcesToFree)
     return $ Grid gridsize gridptr
@@ -174,4 +174,4 @@ runGatherGridder (GridderConfig _ fun gcfIsFull _) prefix td gcf = do
     -- FIXME:
     gridsize = 4096 * 4096 * 4
     cxdSize = sizeOf (undefined :: CxDouble)
-    vis_size = 64 :: Int32
+    vis_size = 64 :: Int
