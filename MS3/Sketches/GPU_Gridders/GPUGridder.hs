@@ -155,7 +155,7 @@ runGatherGridder (GridderConfig _ fun gcfIsFull _) prefix td gcf = do
               vis_data_in <- CUDA.mallocArray vis_data_size :: IO RawPtr
               CUDA.pokeArray vis_data_size (plusPtr vis_data_ptr_host vis_data_offset) vis_data_in
 
-              let len = fromIntegral vis_data_size `div` vis_size
+              let len = vis_data_size `div` vis_size
               CUDA.launchKernel fun (16,16, 1) (8,8,1) 0 Nothing
                 $ mapArgs $ up :. vp :. pre_data_in :. vis_data_in :. len :. gcfptr :. gridptr :. Z
               --
@@ -174,4 +174,4 @@ runGatherGridder (GridderConfig _ fun gcfIsFull _) prefix td gcf = do
     -- FIXME:
     gridsize = 4096 * 4096 * 4
     cxdSize = sizeOf (undefined :: CxDouble)
-    vis_size = 64 :: Int
+    vis_size = 64
