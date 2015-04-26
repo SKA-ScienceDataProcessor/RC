@@ -313,9 +313,9 @@ addBaselinesToGridSkaMidUsingPermutations(FullGCF, false)
 
 extern "C"
 __global__ void  normalizeAndExtractPolarization(
-    int pol
-  , complexd dst_grid[GRID_SIZE][GRID_SIZE]
+    complexd dst_grid[GRID_SIZE][GRID_SIZE]
   , const complexd src_grid[GRID_SIZE][GRID_SIZE][4]
+  , int pol
   )
 {
   const int

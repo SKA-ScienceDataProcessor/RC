@@ -128,7 +128,7 @@ foreign import ccall unsafe "&normalizeAndExtractPolarization" normalizeAndExtra
 normalizeAndExtractPolarization :: Int -> CUDA.CxDoubleDevPtr -> Grid -> IO ()
 normalizeAndExtractPolarization pol polp (Grid _ gridp) =
   -- 128 * 32 = 4096
-  CUDA.launchKernel normalizeAndExtractPolarization_c (128, 128, 1) (32, 32, 1) 0 Nothing $ mapArgs $ pol :. polp :. gridp :. Z
+  CUDA.launchKernel normalizeAndExtractPolarization_c (128, 128, 1) (32, 32, 1) 0 Nothing $ mapArgs $ polp :. gridp :. (fromIntegral pol :: Int32) :. Z
 
 type RawPtr = CUDA.DevicePtr Word8
 
@@ -155,16 +155,18 @@ runGatherGridder (GridderConfig _ fun gcfIsFull _) prefix td gcf = do
               vis_data_in <- CUDA.mallocArray vis_data_size :: IO RawPtr
               CUDA.pokeArray vis_data_size (plusPtr vis_data_ptr_host vis_data_offset) vis_data_in
 
-              let len = vis_data_size `div` vis_size
+              let
+                len :: Int32
+                len = fromIntegral (vis_data_size `div` vis_size)
               CUDA.launchKernel fun (16,16, 1) (8,8,1) 0 Nothing
-                $ mapArgs $ up :. vp :. pre_data_in :. vis_data_in :. len :. gcfptr :. gridptr :. Z
+                $ mapArgs $ pre_data_in :. vis_data_in :. gcfptr :. gridptr :. up :. vp :. len :. Z
               --
               munmapFilePtr pre_data_ptr_host pre_data_rawsize
               munmapFilePtr vis_data_ptr_host vis_data_rawsize
               --
               return $ Just (pre_data_in, vis_data_in)
             else return Nothing
-    resourcesToFree <- mapM processBin [(c, up, vp) | c <- [0::Int .. tdChannels td-1], up <- [0::Int .. 31], vp <- [0::Int .. 31]]
+    resourcesToFree <- mapM processBin [(c, up, vp) | c <- [0::Int .. tdChannels td-1], up <- [0::Int32 .. 31], vp <- [0::Int32 .. 31]]
     -- Cleanup
     mapM_ (\(p, v) -> CUDA.free p >> CUDA.free v) (catMaybes resourcesToFree)
     return $ Grid gridsize gridptr
