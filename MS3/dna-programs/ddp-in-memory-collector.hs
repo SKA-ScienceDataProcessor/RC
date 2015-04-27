@@ -35,7 +35,7 @@ main = dnaRun rtable $ do
         expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
     -- Run it
     b <- eval ddpDotProduct (Slice 0 n)
-    liftIO $ putStrLn $ concat
+    unboundKernel "output" [] $ liftIO $ putStrLn $ concat
       [ "RESULT: ", show b
       , " EXPECTED: ", show expected
       , if b == expected then " -- ok" else " -- WRONG!"

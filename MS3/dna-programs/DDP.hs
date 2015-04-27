@@ -49,7 +49,7 @@ scatterSlice n (Slice off0 size)
 --   > Output: data
 ddpComputeVector :: Actor Slice (S.Vector Double)
 ddpComputeVector = actor $ \(Slice off n) ->
-  profile "compute vector" [HaskellHint (fromIntegral $ n * 8)] $ do
+  unboundKernel "compute vector"  [HaskellHint (fromIntegral $ n * 8)] $ do
     return $ S.generate (fromIntegral n)
                (\i -> fromIntegral (fromIntegral i + off))
 
@@ -59,7 +59,7 @@ ddpComputeVector = actor $ \(Slice off n) ->
 --    * Output: data
 ddpReadVector :: Actor (String, Slice) (S.Vector Double)
 ddpReadVector = actor $ \(fname, Slice off n) ->
-  profile "read vector" [IOHint (fromIntegral $ n * 8) 0] $ do
+  unboundKernel "read vector" [IOHint (fromIntegral $ n * 8) 0] $ do
     -- FIXME: mmaping of vector is not implemented
     liftIO $ readData n off fname
     -- liftIO $ readDataMMap n off fname "FIXME"
@@ -70,8 +70,8 @@ ddpReadVector = actor $ \(fname, Slice off n) ->
 --    * Output: name of generated file
 ddpGenerateVector :: Actor Int64 String
 ddpGenerateVector = actor $ \n ->
-  profile "generate vector" [IOHint 0 (fromIntegral $ n * 8),
-                             HaskellHint (fromIntegral $ n * 8)] $
+  unboundKernel "generate vector" [IOHint 0 (fromIntegral $ n * 8),
+                                   HaskellHint (fromIntegral $ n * 8)] $
     liftIO $ do
       -- On Cambridge cluster we we write to the /ramdisk directory
       -- Otherwise we write to local directory

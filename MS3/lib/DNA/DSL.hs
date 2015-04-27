@@ -30,7 +30,6 @@ module DNA.DSL (
       -- * Smart constructors
       -- ** Logging
     , logMessage
-    , profile
     , duration
     , ProfileHint(..)
       -- ** Other
@@ -38,6 +37,7 @@ module DNA.DSL (
     , rank
     , groupSize
     , kernel
+    , unboundKernel
     , KernelMode(..)
       -- ** Actor spawning
     , eval
@@ -89,10 +89,6 @@ data KernelMode
     = DefaultKernel -- ^ No restrictions on kernel execution
     | BoundKernel   -- ^ Kernel relies on being bound to a single OS thread.
 
--- TODO: Remove?
-instance MonadIO DNA where
-    liftIO = kernel DefaultKernel . liftIO
-
 instance MonadIO Kern where
     liftIO = Kern
 
@@ -100,7 +96,9 @@ instance MonadIO Kern where
 data DnaF a where
     -- | Execute foreign kernel
     Kernel
-      :: KernelMode
+      :: String
+      -> KernelMode
+      -> [ProfileHint]
       -> Kern a
       -> DnaF a
     DnaRank :: DnaF Int
@@ -109,7 +107,7 @@ data DnaF a where
     AvailNodes :: DnaF Int
 
     LogMessage :: String -> DnaF ()
-    Profile    :: String -> [ProfileHint] -> DNA a -> DnaF a
+    Duration :: String -> DNA a -> DnaF a
 
     -- | Evaluate actor's closure
     EvalClosure
@@ -303,17 +301,17 @@ rank = DNA $ singleton DnaRank
 groupSize :: DNA Int
 groupSize = DNA $ singleton DnaGroupSize
 
-kernel :: KernelMode -> Kern a -> DNA a
-kernel mode = DNA . singleton . Kernel mode
+kernel :: String -> [ProfileHint] -> Kern a -> DNA a
+kernel msg hints = DNA . singleton . Kernel msg BoundKernel hints
+
+unboundKernel :: String -> [ProfileHint] -> Kern a -> DNA a
+unboundKernel msg hints = DNA . singleton . Kernel msg DefaultKernel hints
 
 logMessage :: String -> DNA ()
 logMessage = DNA . singleton . LogMessage
 
 duration :: String -> DNA a -> DNA a
-duration msg = profile msg []
-
-profile :: String -> [ProfileHint] -> DNA a -> DNA a
-profile msg hints dna = DNA $ singleton $ Profile msg hints dna
+duration msg = DNA . singleton . Duration msg
 
 delay :: Serializable b => Location -> Shell a (Val b) -> DNA (Promise b)
 delay loc sh = DNA $ singleton $ Delay loc sh

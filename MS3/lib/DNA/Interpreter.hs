@@ -62,13 +62,13 @@ interpretDNA (DNA m) =
   where
     runOp :: DnaF a -> DnaMonad a
     runOp op = case op of
-      Kernel mode io  -> execKernel mode io
+      Kernel msg mode hints io -> execKernel msg mode hints io
       DnaRank         -> use stRank
       DnaGroupSize    -> use stGroupSize
       AvailNodes      -> Set.size <$> use stNodePool
       -- Logging
       LogMessage msg   -> taggedMessage "MSG" msg
-      Profile msg hints dna -> logProfile msg hints $ interpretDNA dna
+      Duration msg dna -> logDuration msg $ interpretDNA dna
       -- Spawning of actors
       EvalClosure     a c -> do Actor f <- lift $ unClosure c
                                 interpretDNA $ f a
@@ -97,13 +97,19 @@ theInterpreter = DnaInterpreter interpretDNA
 
 -- Execute foreign kernel. Process will wait until kernel execution is
 -- complete but will be able to handle events in meantime.
-execKernel :: () => KernelMode -> Kern a -> DnaMonad a
+execKernel :: () => String -> KernelMode -> [ProfileHint] -> Kern a -> DnaMonad a
 -- BLOCKING
-execKernel mode io = do
+execKernel msg mode hints kern = do
     -- FIXME: we can leave thread running! Clean up properly!
+
+    -- IO code to run. Process atributes are derived before the spawn.
+    profAttrs <- processAttributes
+    let code = logProfile msg hints profAttrs $ runKern kern
+
+    -- Run according to requested mode
     a <- case mode of
-           DefaultKernel -> liftIO $ async $ runKern io
-           BoundKernel   -> liftIO $ asyncBound $ runKern io
+           DefaultKernel -> liftIO $ async code
+           BoundKernel   -> liftIO $ asyncBound code
     handleRecieve messageHandlers [matchSTM' (waitSTM a)]
 
 

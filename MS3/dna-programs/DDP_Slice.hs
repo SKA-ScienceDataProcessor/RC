@@ -39,9 +39,9 @@ ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
     --
     va <- duration "receive compute" $ await futVA
     vb <- duration "receive read"    $ await futVB
-    -- Clean up
-    liftIO $ removeFile fname
-    profile "compute sum" [FloatHint 0 (2 * fromIntegral n)] $
+    -- Clean up, compute sum
+    unboundKernel "compute sum" [FloatHint 0 (2 * fromIntegral n)] $ do
+      liftIO $ removeFile fname
       return (S.sum $ S.zipWith (*) va vb :: Double)
 
 -- | Calculate dot product of slice of vector.
@@ -78,9 +78,9 @@ ddpProductSliceFailure = actor $ \(fullSlice) -> duration "vector slice" $ do
         error "Process killed"
     va <- duration "receive compute" $ await futVA
     vb <- duration "receive read"    $ await futVB
-    -- Clean up
-    liftIO $ removeFile fname
-    profile "compute sum" [FloatHint 0 (2 * fromIntegral n)] $
+    -- Clean up, compute sum
+    unboundKernel "compute sum" [FloatHint 0 (2 * fromIntegral n)] $ do
+      liftIO $ removeFile fname
       return (S.sum $ S.zipWith (*) va vb :: Double)
 
 

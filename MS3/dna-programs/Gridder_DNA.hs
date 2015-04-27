@@ -26,7 +26,8 @@ runGatherGridderOnSavedData = actor $ \(ns_in, ns_tmp, ns_out, useHalfGcf) -> do
   taskData <- readTaskDataP ns_in
   binAndPregrid ns_tmp useHalfGcf taskData
   runGridderWith (if useHalfGcf then hc else fc) taskData ns_tmp ns_out
-  liftIO $ finalizeTaskData taskData
+  kernel "runGatherGridderOnSavedData/mem" [] $ liftIO $
+      finalizeTaskData taskData
   where
      hc = $(mkStaticClosure 'gatherGridderActorHalfGcf)
      fc = $(mkStaticClosure 'gatherGridderActorFullGcf)
@@ -34,9 +35,10 @@ runGatherGridderOnSavedData = actor $ \(ns_in, ns_tmp, ns_out, useHalfGcf) -> do
 mkActorForSortedData :: (String -> TaskData -> DNA ()) -> Actor (String, String) ()
 mkActorForSortedData f = actor $ \(ns_in, ns_out) -> do
   taskData <- readTaskDataP ns_in
-  tdSorted <- liftIO $ mkSortedClone NormSort taskData
+  tdSorted <- kernel "Sort" [] $ liftIO $ mkSortedClone NormSort taskData
   f ns_out tdSorted
-  liftIO $ finalizeSortedClone tdSorted >> finalizeTaskData taskData
+  kernel "Sort/mem" [] $ liftIO $
+    finalizeSortedClone tdSorted >> finalizeTaskData taskData
 
 runCPUGridderOnSavedDataWithSorting, optRomeinFullGCFOnSavedData :: Actor (String, String) ()
 runCPUGridderOnSavedDataWithSorting = mkActorForSortedData (mkGcfAndCpuGridder True True True)
@@ -62,7 +64,7 @@ locActor clo par = do
   delay Local shell
 
 rep :: String -> DNA ()
-rep s = liftIO $ print s >> hFlush stdout
+rep s = unboundKernel "rep" [] $ liftIO $ print s >> hFlush stdout
 
 main :: IO ()
 main = do
