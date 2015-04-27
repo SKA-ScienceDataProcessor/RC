@@ -41,7 +41,7 @@ def write_timeline_data(logs, conf) :
             delays.add(e.msg)
 
     f.write('''
-      var colorScale = d3.scale.category20().domain({});'''.format(list(delays)))
+      var colorScale = d3.scale.category20().domain({0});'''.format(list(delays)))
 
     f.write('''
       var color; var elems; var i;''')
@@ -159,8 +159,8 @@ def write_timeline_body(logs, conf) :
     f.write('''
     <h4>Program Configuration</h4>
     <table class="program-conf">
-      <tr><td class="key">Executable:</td><td class="val">{}</td></tr>
-      <tr><td class="key">Arguments:</td><td class="val">{}</td></tr>
+      <tr><td class="key">Executable:</td><td class="val">{0}</td></tr>
+      <tr><td class="key">Arguments:</td><td class="val">{1}</td></tr>
     </table>'''
             .format(args[0], ' '.join(args[1:])))
 
@@ -170,11 +170,11 @@ def write_timeline_body(logs, conf) :
         f.write('''
     <h4>SLURM Configuration</h4>
     <table class="slurm_conf">
-      <tr><td class="key">Job:</td><td>{} {}, started by {}</td></tr>
-      <tr><td class="key">Nodes:</td><td>{}: {}</td></tr>
-      <tr><td class="key">Tasks:</td><td>{} = {}</td></tr>
-      <tr><td class="key">Procs:</td><td>{}</td></tr>
-      <tr><td class="key">CPUS:</td><td>{}</td></tr>
+        <tr><td class="key">Job:</td><td>{0} {1}, started by {2}</td></tr>
+        <tr><td class="key">Nodes:</td><td>{3}: {4}</td></tr>
+        <tr><td class="key">Tasks:</td><td>{5} = {6}</td></tr>
+        <tr><td class="key">Procs:</td><td>{7}</td></tr>
+        <tr><td class="key">CPUS:</td><td>{8}</td></tr>
     </table>'''
                 .format(env.get('SLURM_JOB_NAME', '-'),
                         env.get('SLURM_JOB_UID', '-'),
