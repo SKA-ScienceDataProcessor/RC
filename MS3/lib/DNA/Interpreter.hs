@@ -97,13 +97,13 @@ theInterpreter = DnaInterpreter interpretDNA
 
 -- Execute foreign kernel. Process will wait until kernel execution is
 -- complete but will be able to handle events in meantime.
-execKernel :: () => KernelMode -> IO a -> DnaMonad a
+execKernel :: () => KernelMode -> Kern a -> DnaMonad a
 -- BLOCKING
 execKernel mode io = do
     -- FIXME: we can leave thread running! Clean up properly!
     a <- case mode of
-           DefaultKernel -> liftIO $ async io
-           BoundKernel   -> liftIO $ asyncBound io
+           DefaultKernel -> liftIO $ async $ runKern io
+           BoundKernel   -> liftIO $ asyncBound $ runKern io
     handleRecieve messageHandlers [matchSTM' (waitSTM a)]
 
 

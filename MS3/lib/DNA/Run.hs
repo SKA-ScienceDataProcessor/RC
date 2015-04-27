@@ -27,7 +27,7 @@ import qualified DNA.SlurmBackend as CH
 import DNA.CmdOpts
 import DNA.Logging
 import DNA.Types
-import DNA.DSL
+import DNA.DSL ( DNA(..) )
 import DNA.Interpreter
 import DNA.Interpreter.Run
 import DNA.Interpreter.Types

@@ -9,6 +9,7 @@ module DNA.DSL (
     , DnaF(..)
     , Promise(..)
     , Group(..)
+    , Kern(..)
       -- ** Spawn monad
     , Spawn(..)
     , SpawnFlag(..)
@@ -81,19 +82,26 @@ import DNA.Logging (ProfileHint(..))
 newtype DNA a = DNA (Program DnaF a)
                 deriving (Functor,Applicative,Monad)
 
+newtype Kern a = Kern { runKern :: IO a }
+               deriving (Functor,Applicative,Monad)
+
 data KernelMode
     = DefaultKernel -- ^ No restrictions on kernel execution
     | BoundKernel   -- ^ Kernel relies on being bound to a single OS thread.
 
+-- TODO: Remove?
 instance MonadIO DNA where
-    liftIO = kernel DefaultKernel
+    liftIO = kernel DefaultKernel . liftIO
+
+instance MonadIO Kern where
+    liftIO = Kern
 
 -- | GADT which describe operations supported by DNA DSL
 data DnaF a where
     -- | Execute foreign kernel
     Kernel
       :: KernelMode
-      -> IO a
+      -> Kern a
       -> DnaF a
     DnaRank :: DnaF Int
     DnaGroupSize :: DnaF Int
@@ -295,7 +303,7 @@ rank = DNA $ singleton DnaRank
 groupSize :: DNA Int
 groupSize = DNA $ singleton DnaGroupSize
 
-kernel :: KernelMode -> IO a -> DNA a
+kernel :: KernelMode -> Kern a -> DNA a
 kernel mode = DNA . singleton . Kernel mode
 
 logMessage :: String -> DNA ()
