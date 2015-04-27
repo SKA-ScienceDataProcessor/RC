@@ -44,10 +44,10 @@ module DNA.DSL (
     , startActor
     , startCollector
     , startGroup
-    , startGroupN
+    -- , startGroupN
     , startCollectorGroup
-    , startCollectorGroupMR
-    , startMappers
+    -- , startCollectorGroupMR
+    -- , startMappers
       -- ** Dataflow building
     , delay
     , await
@@ -120,31 +120,31 @@ data DnaF a where
       -> ResGroup
       -> Spawn (Closure (Actor a b))
       -> DnaF (Shell (Scatter a) (Grp b))
-    SpawnGroupN
-      :: (Serializable a, Serializable b)
-      => Res
-      -> ResGroup
-      -> Int
-      -> Spawn (Closure (Actor a b))
-      -> DnaF (Shell (Val a) (Grp b))
+    -- SpawnGroupN
+    --   :: (Serializable a, Serializable b)
+    --   => Res
+    --   -> ResGroup
+    --   -> Int
+    --   -> Spawn (Closure (Actor a b))
+    --   -> DnaF (Shell (Val a) (Grp b))
     SpawnCollectorGroup
       :: (Serializable a, Serializable b)
       => Res
       -> ResGroup   
       -> Spawn (Closure (CollectActor a b))
       -> DnaF (Shell (Grp a) (Grp b))
-    SpawnCollectorGroupMR
-      :: (Serializable a, Serializable b)
-      => Res
-      -> ResGroup
-      -> Spawn (Closure (CollectActor a b))
-      -> DnaF (Shell (MR a) (Grp b))
-    SpawnMappers
-      :: (Serializable a, Serializable b)
-      => Res
-      -> ResGroup
-      -> Spawn (Closure (Mapper a b))
-      -> DnaF (Shell (Scatter a) (MR b))
+    -- SpawnCollectorGroupMR
+    --   :: (Serializable a, Serializable b)
+    --   => Res
+    --   -> ResGroup
+    --   -> Spawn (Closure (CollectActor a b))
+    --   -> DnaF (Shell (MR a) (Grp b))
+    -- SpawnMappers
+    --   :: (Serializable a, Serializable b)
+    --   => Res
+    --   -> ResGroup
+    --   -> Spawn (Closure (Mapper a b))
+    --   -> DnaF (Shell (Scatter a) (MR b))
 
     -- | Connect running actors
     Connect
@@ -157,6 +157,12 @@ data DnaF a where
       :: Serializable a
       => a
       -> Shell (Val a) b
+      -> DnaF ()
+    -- | Send parameter to the actor
+    Broadcast
+      :: Serializable a
+      => a
+      -> Shell (Scatter a) b
       -> DnaF ()
 
     -- | Delay actor returning single value
@@ -330,13 +336,17 @@ gather g f = gatherM g (\b a -> return $ f b a)
 sendParam :: Serializable a => a -> Shell (Val a) b -> DNA ()
 sendParam a sh = DNA $ singleton $ SendParam a sh
 
+broadcast :: Serializable a => a -> Shell (Scatter a) b -> DNA ()
+broadcast a sh = DNA $ singleton $ Broadcast a sh
+
 connect :: (Serializable b, Typeable tag)
         => Shell a (tag b) -> Shell (tag b) c -> DNA ()
 connect a b = DNA $ singleton $ Connect a b
 
--- | Broadcast same parameter to all actors in group
-broadcast :: Shell (Scatter a) b -> Shell (Val a) b
-broadcast (Shell a r s) = Shell a (RecvBroadcast r) s
+-- -- | Broadcast same parameter to all actors in group
+-- broadcast :: Shell (Scatter a) b -> Shell (Val a) b
+-- broadcast = undefined -- (Shell a) = (Shell __ __ _ _ _ _ _  r s) = Shell a (RecvBroadcast r) s
+
 
 availableNodes :: DNA Int
 availableNodes = DNA $ singleton AvailNodes
@@ -372,15 +382,6 @@ startCollector :: (Serializable a, Serializable b)
 startCollector res child =
     DNA $ singleton $ SpawnCollector res child
 
-    -- (shellS,shellR) <- liftP newChan
-    -- let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
-    -- sendACP $ ReqSpawnShell clos shellS res
-    -- msg <- unwrapMessage =<< liftP (receiveChan shellR)
-    -- case msg of
-    --   Nothing -> error "Bad shell message"
-    --   Just  s -> return s
-
-
 -- | Start group of processes
 startGroup :: (Serializable a, Serializable b)
            => Res
@@ -389,34 +390,17 @@ startGroup :: (Serializable a, Serializable b)
            -> DNA (Shell (Scatter a) (Grp b))
 startGroup res resG child =
     DNA $ singleton $ SpawnGroup res resG child
-    -- (shellS,shellR) <- liftP newChan
-    -- let clos = $(mkStaticClosure 'runActor) `closureApply` child
-    -- sendACP $ ReqSpawnGroup clos shellS res groupTy
-    -- (gid,mbox) <- liftP (receiveChan shellR)
-    -- msgs <- mapM unwrapMessage mbox
-    -- case sequence msgs of
-    --   Nothing -> error "Bad shell message"
-    --   Just  s -> return $ assembleShellGroup gid s
 
--- | Start group of processes where we have more tasks then processes.
-startGroupN
-    :: (Serializable a, Serializable b)
-    => Res         -- ^ Resources for actors
-    -> ResGroup    -- ^
-    -> Int
-    -> Spawn (Closure (Actor a b))
-    -> DNA (Shell (Val a) (Grp b))
-startGroupN res resG nTasks child =
-    DNA $ singleton $ SpawnGroupN res resG nTasks child
-
-    -- (shellS,shellR) <- liftP newChan
-    -- let clos = $(mkStaticClosure 'runActorManyRanks) `closureApply` child
-    -- sendACP $ ReqSpawnGroupN clos shellS res nTasks groupTy
-    -- (gid,mbox) <- liftP (receiveChan shellR)
-    -- msgs <- mapM unwrapMessage mbox
-    -- case sequence msgs of
-    --   Nothing -> error "Bad shell message"
-    --   Just  s -> return $ broadcast $ assembleShellGroup gid s
+-- -- | Start group of processes where we have more tasks then processes.
+-- startGroupN
+--     :: (Serializable a, Serializable b)
+--     => Res         -- ^ Resources for actors
+--     -> ResGroup    -- ^
+--     -> Int
+--     -> Spawn (Closure (Actor a b))
+--     -> DNA (Shell (Val a) (Grp b))
+-- startGroupN res resG nTasks child =
+--     DNA $ singleton $ SpawnGroupN res resG nTasks child
 
 -- | Start group of collector processes
 startCollectorGroup
@@ -428,15 +412,7 @@ startCollectorGroup
 startCollectorGroup res resG child =
     DNA $ singleton $ SpawnCollectorGroup res resG child
 
-    -- (shellS,shellR) <- liftP newChan
-    -- let clos = $(mkStaticClosure 'runCollectActor) `closureApply` child
-    -- sendACP $ ReqSpawnGroup clos shellS res groupTy
-    -- (gid,mbox) <- liftP (receiveChan shellR)
-    -- msgs <- mapM unwrapMessage mbox
-    -- case sequence msgs of
-    --   Nothing -> error "Bad shell message"
-    --   Just  s -> return $ assembleShellGroupCollect gid s
-
+{-
 -- | Start group of collector processes
 startCollectorGroupMR
     :: (Serializable a, Serializable b)
@@ -446,16 +422,9 @@ startCollectorGroupMR
     -> DNA (Shell (MR a) (Grp b))
 startCollectorGroupMR res resG child =
     DNA $ singleton $ SpawnCollectorGroupMR res resG child
+-}
 
-    -- (shellS,shellR) <- liftP newChan
-    -- let clos = $(mkStaticClosure 'runCollectActorMR) `closureApply` child
-    -- sendACP $ ReqSpawnGroup clos shellS res groupTy
-    -- (gid,mbox) <- liftP (receiveChan shellR)
-    -- msgs <- mapM unwrapMessage mbox
-    -- case sequence msgs of
-    --   Nothing -> error "Bad shell message"
-    --   Just  s -> return $ assembleShellGroupCollectMR gid s
-
+{-
 -- | Start group of mapper processes
 startMappers
     :: (Serializable a, Serializable b)
@@ -465,11 +434,4 @@ startMappers
     -> DNA (Shell (Scatter a) (MR b))
 startMappers res resG child =
     DNA $ singleton $ SpawnMappers res resG child
-    -- (shellS,shellR) <- liftP newChan
-    -- let clos = $(mkStaticClosure 'runMapperActor) `closureApply` child
-    -- sendACP $ ReqSpawnGroup clos shellS res groupTy
-    -- (gid,mbox) <- liftP (receiveChan shellR)
-    -- msgs <- mapM unwrapMessage mbox
-    -- case sequence msgs of
-    --   Nothing -> error "Bad shell message"
-    --   Just  s -> return $ assembleShellMapper gid s
+-}

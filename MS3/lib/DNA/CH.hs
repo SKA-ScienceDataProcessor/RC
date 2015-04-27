@@ -48,3 +48,10 @@ drainChannel ch =
 drainChannel0 :: Serializable a => ReceivePort a -> a -> Process a
 drainChannel0 ch a =
     maybe (return a) (drainChannel0 ch) =<< receiveChanTimeout 0 ch
+
+drainExpect :: Serializable a => Process a
+drainExpect = drainExpect0 =<< expect
+
+drainExpect0 :: Serializable a => a -> Process a
+drainExpect0 a =
+    maybe (return a) drainExpect0 =<< expectTimeout 0

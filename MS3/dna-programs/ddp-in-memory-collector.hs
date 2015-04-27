@@ -21,7 +21,7 @@ ddpDotProduct = actor $ \size -> do
     shCol <- startCollector (N 0) $ do
         useLocal
         return $(mkStaticClosure 'ddpCollector)
-    sendParam size $ broadcast shell
+    broadcast size shell
     connect shell shCol
     res <- delay Remote shCol
     await res
@@ -32,7 +32,7 @@ main = dnaRun rtable $ do
     --
     -- > 100e4 doubles per node = 800 MB per node
     -- > 4 nodes
-    let n        = 400*1000*100
+    let n        = 4*1000*1
         expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
     -- Run it
     b <- eval ddpDotProduct (Slice 0 n)

@@ -46,21 +46,6 @@ instance MonadProcess m => MonadProcess (ReaderT r m) where
 -- Other types
 ----------------------------------------------------------------
 
--- | Command that process is ready
-data DoneTask = DoneTask
-                deriving (Show,Eq,Ord,Typeable,Generic)
-instance Binary DoneTask
-
-newtype Terminate = Terminate String
-                 deriving (Show,Eq,Ord,Typeable,Generic)
-instance Binary Terminate
-
--- | Actor execution time exceeded quota
-data TimeOut = TimeOut ActorID
-                 deriving (Show,Eq,Ord,Typeable,Generic)
-instance Binary TimeOut
-
-
 -- | Resources allocated to single process. It always have access to
 --   node it owns and possibly list of other nodes.
 data VirtualCAD = VirtualCAD
@@ -91,23 +76,6 @@ newtype Rank = Rank Int
 newtype GroupSize = GroupSize Int
              deriving (Show,Eq,Ord,Typeable,Binary)
 
--- | How process crashes should be treated in the group
-data GroupType
-    = Normal
-    | Failout
-    deriving (Show,Typeable,Generic)
-instance Binary GroupType
-
--- | ID of group of processes
-newtype GroupID = GroupID Int
-                deriving (Show,Eq,Ord,Typeable,Binary)
-
--- | Way to encode
-data ActorID = SingleActor ProcessId
-             | ActorGroup  GroupID
-             deriving (Show,Eq,Ord,Typeable,Generic)
-instance Binary ActorID
-
 -- | What part of process pool is to use
 data Res
     = N    Int                -- ^ Fixed number of nodes
@@ -121,6 +89,34 @@ data ResGroup
     | NNodes   Int   -- ^ Allocate no less than N nodes to each worker
     deriving (Show,Typeable,Generic)
 instance Binary ResGroup
+
+-- | ID of group of processes
+newtype AID = AID Int
+            deriving (Show,Eq,Ord,Typeable,Binary)
+
+-- | ID of actor-local variable
+newtype VID = VID Int
+            deriving (Show,Eq,Ord,Typeable,Binary)
+
+
+----------------------------------------------------------------
+-- Control messages
+----------------------------------------------------------------
+
+-- | Command that process is ready
+data DoneTask = DoneTask
+                deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary DoneTask
+
+-- | Terminate process
+newtype Terminate = Terminate String
+                 deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary Terminate
+
+-- | Actor execution time exceeded quota
+data TimeOut = TimeOut AID
+                 deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary TimeOut
 
 
 
@@ -146,141 +142,38 @@ data Grp a
 data Scatter a
     deriving (Typeable)
 
+{-
 -- | Map-reduce actor
 data MR a
     deriving (Typeable)
-
+-}
 
 
 ----------------------------------------------------------------
 -- Shell actors
 ----------------------------------------------------------------
 
--- | Shell actor. It's actor which hasn't been connected anywhere.
-data Shell a b = Shell
-    ActorID     -- ID of actor. Its process or group ID
-    (RecvEnd a) -- Protocol for receiving data
-    (SendEnd b) -- Protocol for sending data
-    deriving (Typeable,Generic)
-
--- Quadratic number of instances in number of type tags. Sigh
-instance (Serializable a, Serializable b) => Binary (Shell (Val     a) (Val     b))
-instance (Serializable a, Serializable b) => Binary (Shell (Val     a) (Grp     b))
-instance (Serializable a, Serializable b) => Binary (Shell (Val     a) (MR      b))
+-- | Address of receive port of an actor.
 --
-instance (Serializable a, Serializable b) => Binary (Shell (Grp     a) (Val     b))
-instance (Serializable a, Serializable b) => Binary (Shell (Grp     a) (Grp     b))
-instance (Serializable a, Serializable b) => Binary (Shell (Grp     a) (MR      b))
+--   Messages are sent via SendPort which is stored as 'Message' to
+--   erase type.
+data RecvAddr
+    = RcvSimple Message
+      -- ^ Actor/variable that receive single value
+    | RcvReduce Message (SendPort Int)
+      -- ^ Actor/variable that receive single value
+    | RcvGrp [Message]
+    deriving (Show,Typeable,Generic)
+instance Binary RecvAddr
+
+
+-- | Spawned actor.
 --
-instance (Serializable a, Serializable b) => Binary (Shell (Scatter a) (Val     b))
-instance (Serializable a, Serializable b) => Binary (Shell (Scatter a) (Grp     b))
-instance (Serializable a, Serializable b) => Binary (Shell (Scatter a) (MR      b))
---
-instance (Serializable a, Serializable b) => Binary (Shell (MR      a) (Val     b))
-instance (Serializable a, Serializable b) => Binary (Shell (MR      a) (Grp     b))
-instance (Serializable a, Serializable b) => Binary (Shell (MR      a) (MR      b))
+--   Internally it's just phantom typed wrapped over AID. All
+--   necessary data is stored in the
 
-
-
--- | Describe how actor accepts
-data RecvEnd a where
-    -- | Actor receives single value
-    RecvVal :: SendPort a
-            -> RecvEnd (Val a)
-    -- | Actor receives group of values
-    RecvGrp :: [SendPort a]
-            -> RecvEnd (Scatter a)
-    -- | Same value is broadcasted to all actors in group
-    RecvBroadcast :: RecvEnd (Scatter a)
-                  -> RecvEnd (Val a)
-    -- | Actor(s) which reduces set of values
-    RecvReduce :: [(SendPort Int,SendPort a)]
-               -> RecvEnd (Grp a)
-    -- | Actors which reduce output of mappers
-    RecvMR :: [(SendPort Int, SendPort (Maybe a))]
-           -> RecvEnd (MR a)
-    deriving (Typeable)
-
-
--- | Description of send end of actor
-data SendEnd a where
-    -- | Actor sends single value
-    SendVal :: SendPort (Dest a)
-            -> SendEnd (Val a)
-    -- | Actor sends group of values
-    SendGrp :: [SendPort (Dest a)]
-            -> SendEnd (Grp a)
-    -- | Actor sends group of streams
-    SendMR  :: [SendPort [SendPort (Maybe a)]]
-            -> SendEnd (MR a)
-    deriving (Typeable)
-
-data SomeRecvEnd where
-  SomeRecvEnd :: (Binary a, Typeable a, Typeable t) => RecvEnd (t a) -> SomeRecvEnd
-
-data SomeSendEnd where
-  SomeSendEnd :: (Binary a, Typeable a, Typeable t) => SendEnd (t a) -> SomeSendEnd
-
-instance (Typeable a, Binary a) => Binary (RecvEnd (Val a)) where
-    put (RecvVal       p) = putWord8 1 >> put p
-    put (RecvBroadcast p) = putWord8 3 >> put p
-    get = do
-        t <- getWord8
-        case t of
-          1 -> RecvVal <$> get
-          3 -> RecvBroadcast <$> get
-          _ -> fail "Bad tag"
-
-instance (Typeable a, Binary a) => Binary (RecvEnd (Scatter a)) where
-    put (RecvGrp    p  ) = putWord8 2 >> put p
-    get = do
-        t <- getWord8
-        case t of
-          2 -> RecvGrp <$> get
-          _ -> fail "Bad tag"
-
-instance (Typeable a, Binary a) => Binary (RecvEnd (Grp a)) where
-    put (RecvReduce a) = putWord8 4 >> put a
-    get = do
-        t <- getWord8
-        case t of
-          4 -> RecvReduce <$> get
-          _ -> fail "Bad tag"
-
-instance (Typeable a, Binary a) => Binary (RecvEnd (MR a)) where
-    put (RecvMR a) = putWord8 5 >> put a
-    get = do
-        t <- getWord8
-        case t of
-          5 -> RecvMR <$> get
-          _ -> fail "Bad tag"
-
-
-
-instance (Typeable a, Binary a) => Binary (SendEnd (Val a)) where
-    put (SendVal ch) = putWord8 1 >> put ch
-    get = do
-        t <- getWord8
-        case t of
-          1 -> SendVal <$> get
-          _ -> fail "Bad tag"
-
-instance (Typeable a, Binary a) => Binary (SendEnd (Grp a)) where
-    put (SendGrp ch) = putWord8 2 >> put ch
-    get = do
-        t <- getWord8
-        case t of
-          2 -> SendGrp <$> get
-          _ -> fail "Bad tag"
-
-instance (Typeable a, Binary a) => Binary (SendEnd (MR a)) where
-    put (SendMR a) = putWord8 3 >> put a
-    get = do
-        t <- getWord8
-        case t of
-          3 -> SendMR <$> get
-          _ -> fail "Bad tag"
-
+newtype Shell a b = Shell AID
+                    deriving (Typeable,Generic,Binary)
 
 -- | Destination for actor computation
 data Dest a
@@ -289,5 +182,4 @@ data Dest a
     | SendRemote [SendPort a]
       -- ^ Send result using standard primitives
     deriving (Show,Typeable,Generic)
-
 instance Serializable a => Binary (Dest a)

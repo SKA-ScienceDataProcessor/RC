@@ -49,6 +49,7 @@ library
     network-transport-tcp >= 0.4,
     optparse-applicative  >= 0.11,
     data-accessor         >= 0.2.2,
+    lens-family-th,
     operational,
     stm,
     async,
@@ -72,7 +73,6 @@ library
     DNA.CmdOpts
     DNA.DSL
     DNA.Interpreter
-    DNA.Interpreter.Connect
     DNA.Interpreter.Message
     DNA.Interpreter.Run
     DNA.Interpreter.Spawn

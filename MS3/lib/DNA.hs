@@ -27,10 +27,10 @@ module DNA (
     , startActor
     , startCollector
     , startGroup
-    , startGroupN
+    -- , startGroupN
     , startCollectorGroup
-    , startCollectorGroupMR
-    , startMappers
+    -- , startCollectorGroupMR
+    -- , startMappers
       -- * CAD & Co
     -- , CAD
     , Location(..)

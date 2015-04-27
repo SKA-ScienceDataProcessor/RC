@@ -37,7 +37,7 @@ ddpDotProduct = actor $ \size -> do
         debugFlags [CrashProbably 0.5] -- We allow actor to fail multiple times
         return $(mkStaticClosure 'ddpCollector)
     -- Connect actors
-    sendParam slice $ broadcast shell
+    broadcast slice shell
     connect shell collector
     res <- delay Local collector
     x   <- duration "collecting vectors" $ await res
@@ -51,7 +51,7 @@ ddpDotProductMaster = actor $ \size -> do
     shell <- startGroup (Frac 1) (NWorkers 3) $ do
         useLocal
         return $(mkStaticClosure 'ddpDotProduct)
-    sendParam size $ broadcast shell
+    broadcast size shell
     partials <- delayGroup shell
     x <- duration "collection partials" $ gather partials (+) 0
     return x

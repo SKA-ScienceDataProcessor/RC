@@ -28,15 +28,18 @@ import Control.Concurrent.Async
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
+import Data.Maybe
 -- import Data.Binary   (Binary)
-import Data.Typeable (Typeable)
+import Data.Typeable (Typeable,typeOf)
 -- import qualified Data.Map as Map
 -- import           Data.Map   (Map)
 import qualified Data.Set as Set
 -- import           Data.Set   (Set)
+import qualified Data.Foldable as T
 -- import Text.Printf
 -- import GHC.Generics  (Generic)
 
+import DNA.CH
 import DNA.Types
 import DNA.Lens
 import DNA.DSL                 hiding (logMessage,duration)
@@ -45,7 +48,7 @@ import DNA.Interpreter.Message
 import DNA.Interpreter.Run     hiding (__remoteTable)
 import DNA.Interpreter.Spawn
 import DNA.Interpreter.Types
-import DNA.Interpreter.Connect
+
 
 
 ----------------------------------------------------------------
@@ -75,14 +78,14 @@ interpretDNA (DNA m) =
       SpawnActor              r a -> execSpawnActor r a
       SpawnCollector          r a -> execSpawnCollector r a
       SpawnGroup            r g a -> execSpawnGroup r g a
-      SpawnGroupN         r g n a -> error "Not implemented"
-          -- execSpawnGroupN r g n a
-      SpawnCollectorGroup   r g a -> execSpawnCollectorGroup r g a
-      SpawnCollectorGroupMR r g a -> execSpawnCollectorGroupMR r g a
-      SpawnMappers          r g a -> execSpawnMappers r g a
+      -- SpawnGroupN         r g n a -> execSpawnGroupN r g n a
+      -- SpawnCollectorGroup   r g a -> execSpawnCollectorGroup r g a
+      -- SpawnCollectorGroupMR r g a -> execSpawnCollectorGroupMR r g a
+      -- SpawnMappers          r g a -> execSpawnMappers r g a
       -- Data flow building
       Connect    a b  -> execConnect a b
       SendParam  a sh -> execSendParam a sh
+      Broadcast  a sh -> execBroadcast a sh
       Delay    loc sh -> execDelay loc sh
       Await p         -> execAwait p
       DelayGroup sh   -> execDelayGroup sh
@@ -102,34 +105,44 @@ execKernel :: () => IO a -> DnaMonad a
 -- BLOCKING
 execKernel io = do
     -- FIXME: we can leave thread running! Clean up properly!
+    --
+    -- FIXME: propagate exceptions
     a <- liftIO $ async io
     handleRecieve messageHandlers [matchSTM' (waitSTM a)]
-
 
 
 -- Obtain promise from shell
 execDelay :: Serializable b
           => Location -> Shell a (Val b) -> DnaMonad (Promise b)
 -- IMMEDIATE
-execDelay _loc (Shell aid _ src) = do
-    me              <- liftP getSelfPid
-    (chSend,chRecv) <- liftP newChan
-    let recvEnd = RecvVal chSend
-    liftP $ doConnectActors src recvEnd
-    stConnDownstream . at aid .= Just (Right (SomeRecvEnd recvEnd))
-    recordConnection aid (SingleActor me) []
-    return $ Promise chRecv
-
+execDelay _loc (Shell aid) = do
+    -- Create local variable
+    (sendB,recvB) <- liftP newChan
+    let dst = RcvSimple (wrapMessage sendB)
+    var <- VID <$> uniqID
+    stVars     . at var .= Just dst
+    stActorDst . at aid .= Just (Left var)
+    -- Send destination to an actor
+    Just pids <- use $ stAid2Pid . at aid
+    liftP $ T.forM_ pids $ \p ->
+        send p dst
+    --
+    return $ Promise recvB
 
 execDelayGroup :: Serializable b => Shell a (Grp b) -> DnaMonad (Group b)
-execDelayGroup (Shell child _ src) = do
-    me            <- liftP getSelfPid
+execDelayGroup (Shell aid) = do
+    -- Create local variable
     (sendB,recvB) <- liftP newChan
     (sendN,recvN) <- liftP newChan
-    let recvEnd = RecvReduce [(sendN,sendB)]
-    liftP $ doConnectActors src recvEnd
-    stConnDownstream . at child .= Just (Right (SomeRecvEnd recvEnd))
-    recordConnection child (SingleActor me) [sendN]
+    let dst = RcvReduce (wrapMessage sendB) sendN
+    var <- VID <$> uniqID
+    stVars     . at var .= Just dst
+    stActorDst . at aid .= Just (Left var)
+    -- Send destination to an actor
+    Just pids <- use $ stAid2Pid . at aid
+    liftP $ T.forM_ pids $ \p ->
+        send p dst
+    -- 
     return $ Group recvB recvN
 
 execGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> DnaMonad b
@@ -142,85 +155,73 @@ execAwait :: Serializable a => Promise a -> DnaMonad a
 execAwait (Promise ch) =
     handleRecieve messageHandlers [matchChan' ch]
 
+
 -- Send parameter
 execSendParam :: Serializable a => a -> Shell (Val a) b -> DnaMonad ()
 -- IMMEDIATE
-execSendParam a (Shell _ recv _) = case recv of
-    RecvVal       ch  -> liftP $ sendChan ch a
-    RecvBroadcast grp -> case grp of
-        RecvGrp p -> liftP $ forM_ p $ \ch -> sendChan ch a
+execSendParam a (Shell aid) = do
+    liftIO $ print ("execSendParam",typeOf a)
+    mdst <- use $ stActorRecvAddr . at aid
+    case mdst of
+      Nothing -> error "FATAL: no receive port for an actor"
+      Just (RcvSimple dst) -> do
+          mch <- unwrapMessage dst
+          case mch of
+            Nothing -> error "FATAL: type error"
+            Just ch -> liftP $ sendChan ch a
+      Just RcvGrp{}    -> error $ "FATAL: destination type mismatch, expect single, got group"
+      Just RcvReduce{} -> error $ "FATAL: destination type mismatch, expect single, got reducer"
+
+-- Send parameter
+execBroadcast :: Serializable a => a -> Shell (Scatter a) b -> DnaMonad ()
+-- IMMEDIATE
+execBroadcast a (Shell aid) = do
+    mdst <- use $ stActorRecvAddr . at aid
+    case mdst of
+      Nothing -> error "FATAL: no receive port for an actor"
+      Just (RcvGrp dsts) -> do
+          mch <- sequence <$> mapM unwrapMessage dsts
+          case mch of
+            Nothing  -> error "FATAL: type error"
+            Just chs -> liftP $ forM_ chs $ \ch -> sendChan ch a
+      Just _ -> error "FATAL: destination type mismatch. Expect group"
+
 
 -- Connect two shells to each other
 execConnect :: (Typeable tag, Serializable b) => Shell a (tag b) -> Shell (tag b) c -> DnaMonad  ()
 -- IMMEDIATE
-execConnect (Shell childA _ sendEnd) (Shell childB recvEnd _) = do
-  liftP $ doConnectActors sendEnd recvEnd
-  stConnDownstream . at childA .= Just (Left (childB, SomeRecvEnd recvEnd))
-  stConnUpstream   . at childB .= Just (childA, SomeSendEnd sendEnd)
-  case (sendEnd,recvEnd) of
-    -- Val
-    (SendVal _chDst, RecvVal _chB) ->
-        recordConnection childA childB []
-    (SendVal _chDst, RecvBroadcast (RecvGrp _chans)) ->
-        recordConnection childA childB []
-    -- Grp
-    (SendGrp _chDst, RecvReduce chReduce) ->
-        recordConnection childA childB [chN | (chN,_) <- chReduce ]
-    -- MR
-    (SendMR _chDst, RecvMR chans) ->
-        recordConnection childA childB [chN | (chN,_) <- chans]
-    -- IMPOSSIBLE
-    --
-    -- GHC cannot understand that pattern match is exhaustive
-    _ -> error "Impossible: pattern match is not exhaustive"
-
-
-
-----------------------------------------------------------------
--- Resource and connection management
-----------------------------------------------------------------
-
--- Connect actor to another actor
-recordConnection
-    :: ActorID                  -- Source
-    -> ActorID                  -- Destincation
-    -> [SendPort Int]
-    -> DnaMonad ()
-recordConnection (SingleActor pid) dest _ = runController $
-  case dest of
-    SingleActor dst -> do
-        Just st <- use $ stChildren . at pid
-        case st of
-          Right _          -> fatal "Impossible: group instead of process"
-          Left Unconnected -> stChildren . at pid .= Just (Left (Connected [dst]))
-          Left _           -> fatal "Double connect"
-    ActorGroup gid -> do
-        Just st <- use $ stChildren . at pid
-        pids    <- getGroupPids gid
-        case st of
-          Right _          -> fatal "Impossible: group instead of process"
-          Left Unconnected -> stChildren . at pid .= Just (Left (Connected pids))
-          Left _           -> fatal "Double connect"
-recordConnection (ActorGroup gid) dest port = runController $
-  case dest of
-    SingleActor pid -> do
-        Just grp <- use $ stGroups . at gid
-        case grp of
-          GrUnconnected ty nProc ->
-              stGroups . at gid .= Just (GrConnected ty nProc port [pid])
-          GrConnected{}  -> fatal "Double connect"
-          GrFailed       -> do liftP $ send pid (Terminate "data dependency failed")
-                               dropGroup gid
-    ActorGroup dstGid -> do
-        pids <- getGroupPids dstGid
-        Just grp <- use $ stGroups . at gid
-        case grp of
-          GrUnconnected ty nProc ->
-              stGroups . at gid .= Just (GrConnected ty nProc port pids)
-          GrConnected{} -> fatal "Double connect"
-          GrFailed      -> do liftP $ forM_ pids $ \p -> send p (Terminate "data dependency failed")
-                              dropGroup gid
-
+execConnect (Shell aidSrc) (Shell aidDst) = do
+    -- Check that actor is not connected already
+    do m1 <- use $ stActorDst . at aidSrc
+       m2 <- use $ stActorSrc . at aidDst
+       case m1 of
+         Just  _ -> error "FATAL: double connect!"
+         Nothing -> return ()
+       case m2 of
+         Just  _ -> error "FATAL: double connect!"
+         Nothing -> return ()
+    -- Record connection
+    stActorDst . at aidSrc .= Just (Right aidDst)
+    stActorSrc . at aidDst .= Just (Just  aidSrc)
+    -- Check that neither actor failed and terminate other one if this is the case
+    Just stSrc <- use $ stChildren . at aidSrc
+    case stSrc of
+      Failed -> terminateActor aidDst
+      _      -> return ()
+    Just stDst <- use $ stChildren . at aidDst
+    case stDst of
+      Failed -> terminateActor aidSrc
+      _      -> return ()
+    -- Send connection
+    Just mdst <- use $ stActorRecvAddr . at aidDst
+    pids <- use $ stAid2Pid . at aidSrc
+    T.forM_ pids $ T.mapM_ $ \p ->
+        liftP $ send p mdst
+    -- Handler special case 
+    case (mdst,stSrc) of
+      (RcvReduce _ chN, Completed 0) -> liftP $ sendChan chN 0
+      (RcvReduce _ chN, Completed _) -> error "PANIC"
+      _                              -> return ()
 
 
 ----------------------------------------------------------------
