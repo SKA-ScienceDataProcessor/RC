@@ -66,7 +66,7 @@ execSpawnActor res act = do
     dst <- handleRecieve messageHandlers [matchChan' ch]
     case dst of
       RcvSimple{} -> return ()
-      _           -> error "OUCH! Val"
+      _           -> doPanic "Invalid RecvAddr in execSpawnActor"
     -- liftIO $ print dst
     stActorRecvAddr . at aid .= Just dst
     -- liftIO . print =<< use stActorRecvAddr
@@ -88,7 +88,7 @@ execSpawnCollector res act = do
     dst <- handleRecieve messageHandlers [matchChan' ch]
     case dst of
       RcvReduce{} -> return ()
-      _           -> error "OUCH! Grp"
+      _           -> doPanic "Invalid RecvAddr in execSpawnCollector"
     stActorRecvAddr . at aid .= Just dst
     -- FIXME: See above
     -- liftIO . print =<< use stActorRecvAddr
@@ -115,7 +115,7 @@ execSpawnGroup res resG act = do
     dsts    <- replicateM k $ handleRecieve messageHandlers [matchChan' ch]
     dstList <- forM dsts $ \d -> case d of
                  RcvSimple m -> return m
-                 _           -> error "PANIC"
+                 _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
     stActorRecvAddr . at aid .= Just (RcvGrp dstList)
     -- liftIO . print =<< use stActorRecvAddr
     return $ Shell aid

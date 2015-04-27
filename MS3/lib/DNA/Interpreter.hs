@@ -159,14 +159,14 @@ execSendParam a (Shell aid) = do
     liftIO $ print ("execSendParam",typeOf a)
     mdst <- use $ stActorRecvAddr . at aid
     case mdst of
-      Nothing -> error "FATAL: no receive port for an actor"
+      Nothing -> doPanic "execSendParam: No receive port for an actor"
       Just (RcvSimple dst) -> do
           mch <- unwrapMessage dst
           case mch of
-            Nothing -> error "FATAL: type error"
+            Nothing -> doPanic "execSendParam: type error"
             Just ch -> liftP $ sendChan ch a
-      Just RcvGrp{}    -> error $ "FATAL: destination type mismatch, expect single, got group"
-      Just RcvReduce{} -> error $ "FATAL: destination type mismatch, expect single, got reducer"
+      Just RcvGrp{}    -> doPanic "execSendParam: destination type mismatch, expect single, got group"
+      Just RcvReduce{} -> doPanic "execSendParam: destination type mismatch, expect single, got reducer"
 
 -- Send parameter
 execBroadcast :: Serializable a => a -> Shell (Scatter a) b -> DnaMonad ()
@@ -174,13 +174,13 @@ execBroadcast :: Serializable a => a -> Shell (Scatter a) b -> DnaMonad ()
 execBroadcast a (Shell aid) = do
     mdst <- use $ stActorRecvAddr . at aid
     case mdst of
-      Nothing -> error "FATAL: no receive port for an actor"
+      Nothing -> doPanic "execBroadcast: no receive port for an actor"
       Just (RcvGrp dsts) -> do
           mch <- sequence <$> mapM unwrapMessage dsts
           case mch of
-            Nothing  -> error "FATAL: type error"
+            Nothing  -> doPanic "execBroadcast: type error"
             Just chs -> liftP $ forM_ chs $ \ch -> sendChan ch a
-      Just _ -> error "FATAL: destination type mismatch. Expect group"
+      Just _ -> doPanic "execBroadcast: destination type mismatch. Expect group"
 
 
 -- Connect two shells to each other
@@ -191,10 +191,10 @@ execConnect (Shell aidSrc) (Shell aidDst) = do
     do m1 <- use $ stActorDst . at aidSrc
        m2 <- use $ stActorSrc . at aidDst
        case m1 of
-         Just  _ -> error "FATAL: double connect!"
+         Just  _ -> doFatal "Double connect!"
          Nothing -> return ()
        case m2 of
-         Just  _ -> error "FATAL: double connect!"
+         Just  _ -> doFatal "Double connect!"
          Nothing -> return ()
     -- Record connection
     stActorDst . at aidSrc .= Just (Right aidDst)
@@ -216,7 +216,7 @@ execConnect (Shell aidSrc) (Shell aidDst) = do
     -- Handler special case 
     case (mdst,stSrc) of
       (RcvReduce _ chN, Completed 0) -> liftP $ sendChan chN 0
-      (RcvReduce _ chN, Completed _) -> error "PANIC"
+      (RcvReduce _ chN, Completed _) -> doPanic "Unconnected actor completed execution"
       _                              -> return ()
 
 

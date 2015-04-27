@@ -218,7 +218,7 @@ sendResult a = do
         mch <- unwrapMessage msg
         case mch of
           Just ch -> sendChan ch a
-          Nothing -> error "FATAL: Type error in channel!"
+          Nothing -> doPanic "Type error in channel!"
 
 doGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> Process b
 doGatherM (Group chA chN) f x0 = do
