@@ -38,7 +38,9 @@ CUpti_SubscriberHandle subscriber = NULL;
 
 int initialised = 0;
 
-#define LOG_ALL_DRIVER_CALLS
+// Uncomment to make CUPTI log all driver calls to stderr
+// (only makes sense for debugging)
+// #define LOG_ALL_DRIVER_CALLS
 
 void cupti_metrics_init(const char *metricList)
 {
