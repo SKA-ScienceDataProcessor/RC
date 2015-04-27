@@ -157,9 +157,9 @@ execSendParam :: Serializable a => a -> Shell (Val a) b -> DnaMonad ()
 -- IMMEDIATE
 execSendParam a (Shell aid) = do
     liftIO $ print ("execSendParam",typeOf a)
-    mdst <- use $ stActorRecvAddr . at aid
+    Just mdst <- use $ stActorRecvAddr . at aid
     case mdst of
-      Nothing -> doPanic "execSendParam: No receive port for an actor"
+      Nothing -> doFatal "Connecting to terminated actor"
       Just (RcvSimple dst) -> do
           mch <- unwrapMessage dst
           case mch of
@@ -172,9 +172,9 @@ execSendParam a (Shell aid) = do
 execBroadcast :: Serializable a => a -> Shell (Scatter a) b -> DnaMonad ()
 -- IMMEDIATE
 execBroadcast a (Shell aid) = do
-    mdst <- use $ stActorRecvAddr . at aid
+    Just mdst <- use $ stActorRecvAddr . at aid
     case mdst of
-      Nothing -> doPanic "execBroadcast: no receive port for an actor"
+      Nothing -> doFatal "Connecting to terminated actor"
       Just (RcvGrp dsts) -> do
           mch <- sequence <$> mapM unwrapMessage dsts
           case mch of
@@ -210,14 +210,17 @@ execConnect (Shell aidSrc) (Shell aidDst) = do
       _      -> return ()
     -- Send connection
     Just mdst <- use $ stActorRecvAddr . at aidDst
-    pids <- use $ stAid2Pid . at aidSrc
-    T.forM_ pids $ T.mapM_ $ \p ->
-        liftP $ send p mdst
-    -- Handler special case 
-    case (mdst,stSrc) of
-      (RcvReduce _ chN, Completed 0) -> liftP $ sendChan chN 0
-      (RcvReduce _ chN, Completed _) -> doPanic "Unconnected actor completed execution"
-      _                              -> return ()
+    case mdst of
+      Nothing  -> doFatal "Connecting to terminated actor"
+      Just dst -> do
+          pids <- use $ stAid2Pid . at aidSrc
+          T.forM_ pids $ T.mapM_ $ \p ->
+              liftP $ send p dst
+          -- Handler special case 
+          case (dst,stSrc) of
+            (RcvReduce _ chN, Completed 0) -> liftP $ sendChan chN 0
+            (RcvReduce _ _  , Completed _) -> doPanic "Unconnected actor completed execution"
+            _                              -> return ()
 
 
 ----------------------------------------------------------------

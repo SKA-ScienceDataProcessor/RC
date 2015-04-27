@@ -189,7 +189,7 @@ dropPID pid aid actionDone actionGoing = do
     case Set.null pids' of
       True -> do
           stAid2Pid       . at aid .= Nothing
-          stActorRecvAddr . at aid .= Nothing
+          stActorRecvAddr . at aid .= Just Nothing
           actionDone
       False -> do
           stAid2Pid  . at aid .= Just pids'
@@ -200,7 +200,7 @@ dropActor :: AID -> Controller ()
 dropActor aid = do
     mpids <- use $ stAid2Pid . at aid
     stAid2Pid       . at aid .= Nothing
-    stActorRecvAddr . at aid .= Nothing    
+    stActorRecvAddr . at aid .= Just Nothing
     T.forM_ mpids $ T.mapM_ $ \p ->
         stPid2Aid . at p .= Nothing
 

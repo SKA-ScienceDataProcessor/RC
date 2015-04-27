@@ -67,10 +67,7 @@ execSpawnActor res act = do
     case dst of
       RcvSimple{} -> return ()
       _           -> doPanic "Invalid RecvAddr in execSpawnActor"
-    -- liftIO $ print dst
-    stActorRecvAddr . at aid .= Just dst
-    -- liftIO . print =<< use stActorRecvAddr
-    -- liftIO $ print dst
+    stActorRecvAddr . at aid .= Just (Just dst)
     return $ Shell aid
 
 
@@ -89,9 +86,8 @@ execSpawnCollector res act = do
     case dst of
       RcvReduce{} -> return ()
       _           -> doPanic "Invalid RecvAddr in execSpawnCollector"
-    stActorRecvAddr . at aid .= Just dst
+    stActorRecvAddr . at aid .= Just (Just dst)
     -- FIXME: See above
-    -- liftIO . print =<< use stActorRecvAddr
     return $ Shell aid
 
 
@@ -116,8 +112,7 @@ execSpawnGroup res resG act = do
     dstList <- forM dsts $ \d -> case d of
                  RcvSimple m -> return m
                  _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
-    stActorRecvAddr . at aid .= Just (RcvGrp dstList)
-    -- liftIO . print =<< use stActorRecvAddr
+    stActorRecvAddr . at aid .= Just (Just (RcvGrp dstList))
     return $ Shell aid
 
 {-

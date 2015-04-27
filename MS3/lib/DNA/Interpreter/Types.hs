@@ -205,8 +205,9 @@ data StateDNA = StateDNA
       -- State of connections
     , _stVars          :: !(Map VID RecvAddr)
       -- ^ Mapping for local variables
-    , _stActorRecvAddr :: !(Map AID RecvAddr)
-      -- ^ Receive address of an actor
+    , _stActorRecvAddr :: !(Map AID (Maybe RecvAddr))
+      -- ^ Receive address of an actor. When actor terminated it's set
+      --   to Nothing
 
       -- Mapping ProcessID <-> AID
     , _stPid2Aid :: !(Map ProcessId AID)
@@ -261,7 +262,8 @@ actorDestinationAddr aid = do
     case maidDst of
       Nothing             -> return Nothing
       Just (Left var)     -> use $ stVars . at var
-      Just (Right aidDst) -> use $ stActorRecvAddr . at aidDst
+      Just (Right aidDst) -> do Just m <- use $ stActorRecvAddr . at aidDst
+                                return m
 
 
 
