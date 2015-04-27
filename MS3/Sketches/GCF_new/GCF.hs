@@ -5,6 +5,7 @@
     , TypeSynonymInstances
     , DeriveGeneric
     , DeriveDataTypeable
+    , BangPatterns
   #-}
 
 module GCF (
@@ -20,21 +21,38 @@ module GCF (
   , GCFDev
   , GCFHost
   , GCFCfg(..)
+  , writeGCFHostToFile
+  , readGCFHostFromFile
   ) where
 
+import Control.Monad
+
+import Data.Int
 import Foreign.Storable
 import Foreign.Storable.Complex ()
 import Foreign.Ptr
+import Foreign.ForeignPtr
 import Foreign.Marshal.Array
+import Foreign.Marshal.Utils
 import qualified CUDAEx as CUDA
 import CUDAEx (CxDoubleDevPtr, CxDouble)
 
 import GHC.Generics (Generic)
+import GHC.Exts (Ptr(..))
 import Data.Binary
 import BinaryInstances ()
 import Data.Typeable
 
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Internal as IBS
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString.Unsafe as UBS
+import Data.Binary.Put
+import Data.Binary.Get
+
 import FFT
+
+import System.IO
 
 launchOnFF :: CUDA.Fun -> Int -> [CUDA.FunParam] -> IO ()
 launchOnFF k xdim  = CUDA.launchKernel k (8,8,xdim) (32,32,1) 0 Nothing
@@ -109,6 +127,39 @@ finalizeGCF (GCF _ _ gcfp layers) = CUDA.free layers >> CUDA.free gcfp
 finalizeGCFHost :: GCFHost -> IO ()
 finalizeGCFHost (GCF _ _ gcfp layers) =
   CUDA.freeHost (CUDA.HostPtr layers) >> CUDA.freeHost (CUDA.HostPtr gcfp)
+
+writeGCFHostToFile :: GCFHost -> FilePath -> IO ()
+writeGCFHostToFile (GCF size nol gcfp lrsp) file = do
+  fd <- openFile file WriteMode
+  print (size, nol)
+  LBS.hPut fd $ runPut $ put size >> put nol
+  let lsiz = nol * 8 * 8
+  forM_ [0..lsiz-1] $ \i -> do
+    v <- peekElemOff lrsp i
+    LBS.hPut fd $ runPut $ put $ v `minusPtr` gcfp
+  let !(Ptr addr) = gcfp
+      cdSize = sizeOf (undefined :: CxDouble)
+  BS.hPut fd =<< UBS.unsafePackAddressLen (size * cdSize) addr
+  hClose fd
+
+readGCFHostFromFile :: FilePath -> IO GCFHost
+readGCFHostFromFile file = do
+  fd <- openFile file ReadMode
+  let intSize = sizeOf (undefined :: Int)
+  cts <- LBS.hGet fd (intSize * 2)
+  let (size, nol) = flip runGet cts $ do
+         size <- get; nol <- get; return (size, nol)
+  let lsiz = nol * 8 * 8
+  print (size, nol)
+  gcf@(GCF _ _ gcfp lrsp) <- allocateGCFHost nol size
+  forM_ [0..lsiz-1] $ \i -> do
+    v <- runGet get `liftM` LBS.hGet fd intSize
+    pokeElemOff lrsp i (gcfp `plusPtr` v)
+  let cdSize = sizeOf (undefined :: CxDouble)
+  bs <- BS.hGet fd (size * cdSize)
+  let (fp, off, l) = IBS.toForeignPtr bs
+  withForeignPtr fp $ \p -> copyBytes gcfp (p `plusPtr` off) l
+  return gcf
 
 #define __k(n) foreign import ccall unsafe "&" n :: CUDA.Fun
 
