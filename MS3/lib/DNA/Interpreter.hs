@@ -118,9 +118,7 @@ execDelay :: Serializable b
 execDelay _loc (Shell aid) = do
     -- Create local variable
     (sendB,recvB) <- liftP newChan
-    let dst = RcvSimple (wrapMessage sendB)
-    var <- VID <$> uniqID
-    stVars     . at var .= Just dst
+    (var,dst) <- newVar $ RcvSimple (wrapMessage sendB)
     stActorDst . at aid .= Just (Left var)
     -- Send destination to an actor
     Just pids <- use $ stAid2Pid . at aid
@@ -134,9 +132,7 @@ execDelayGroup (Shell aid) = do
     -- Create local variable
     (sendB,recvB) <- liftP newChan
     (sendN,recvN) <- liftP newChan
-    let dst = RcvReduce (wrapMessage sendB) sendN
-    var <- VID <$> uniqID
-    stVars     . at var .= Just dst
+    (var,dst) <- newVar $ RcvReduce (wrapMessage sendB) sendN
     stActorDst . at aid .= Just (Left var)
     -- Send destination to an actor
     Just pids <- use $ stAid2Pid . at aid
@@ -227,5 +223,11 @@ execConnect (Shell aidSrc) (Shell aidDst) = do
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
+
+newVar :: RecvAddr -> DnaMonad (VID,RecvAddr)
+newVar dst = do
+    var <- VID <$> uniqID
+    stVars . at var .= Just dst
+    return (var,dst)
 
 remotable [ 'theInterpreter ]
