@@ -18,7 +18,7 @@ module Profiling.Linux.Perf.Stat
 import Profiling.Linux.Perf.Stat.Types
 import Profiling.Linux.Perf.Stat.PMU
 
-import Control.Monad          ( forM_, zipWithM, when, void )
+import Control.Monad
 
 import Data.Word
 import Data.Maybe             ( fromMaybe )
@@ -149,6 +149,8 @@ perfEventRead :: PerfStatGroup -> IO [PerfStatCount]
 perfEventRead (PerfStatGroup []) = return []
 perfEventRead group = do
 
+#ifdef USE_PERF_FORMAT_GROUP
+
   -- Calculate size of one complete sample of all counters plus timers
   let counters = length $ psCounters group
       size     = 8 * (3 + fromIntegral counters)
@@ -185,6 +187,34 @@ perfEventRead group = do
                              , psTimeEnabled = timeEnabled
                              , psTimeRunning = timeRunning
                              }
+
+#else
+
+  -- Calculate size of one sample plus timers
+  let size = 8 * 3
+  allocaBytes (fromIntegral size) $ \buf ->
+    forM (psCounters group) $ \(desc, fd) -> do
+
+      -- Read from counter file descriptor
+      size' <- throwErrnoIfMinus1 "perfEventRead" $
+        c_read fd buf size
+      when (size /= fromIntegral size') $
+        ioError $ perfEventError $ "unexpected counter reading size: " ++
+                                   show size ++ " != " ++ show size' ++ "!"
+
+      -- Read time enabled & time running
+      let vals = castPtr buf :: Ptr Word64
+      timeEnabled <- peekElemOff vals 1
+      timeRunning <- peekElemOff vals 2
+
+      -- Generate stats.
+      val <- peekElemOff vals 0
+      return $ PerfStatCount { psDesc = desc
+                             , psValue = val
+                             , psTimeEnabled = timeEnabled
+                             , psTimeRunning = timeRunning
+                             }
+#endif
 
 -- | Enable performance counters
 perfEventEnable :: PerfStatGroup -> IO ()

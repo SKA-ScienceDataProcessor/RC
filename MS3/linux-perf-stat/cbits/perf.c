@@ -30,16 +30,26 @@ static int perf_event_open_gen(struct perf_event_attr *attr,
     // Group leader: Request time values for reference (so we can
     // detect multiplexing). Also ask for the whole group to return
     // results at the same time.
+#ifdef USE_PERF_FORMAT_GROUP
     if (group_fd == -1) {
+#endif
         attr->read_format = PERF_FORMAT_TOTAL_TIME_ENABLED
                           | PERF_FORMAT_TOTAL_TIME_RUNNING
-                          | PERF_FORMAT_GROUP;
+#ifdef USE_PERF_FORMAT_GROUP
+                          | PERF_FORMAT_GROUP
+#endif
+                          ;
+#ifdef USE_PERF_FORMAT_GROUP
     }
+#endif
 
     // Exclude kernel and hypervisor, start disabled
     attr->exclude_kernel = 1;
     attr->exclude_hv = 1;
     attr->disabled = 1;
+#ifndef USE_PERF_FORMAT_GROUP
+    attr->inherit = 1;
+#endif
 
     // Create the performance counter
     return sys_perf_event_open(attr, 0, -1, group_fd, 0);
