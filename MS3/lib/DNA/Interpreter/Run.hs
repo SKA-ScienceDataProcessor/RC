@@ -70,7 +70,7 @@ runActor (Actor action) = do
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
     !b  <- runDnaParam p (action a)
-    sendToDest b
+    sendResult b
 
 
 
@@ -135,7 +135,7 @@ runCollectActor (CollectActor step start fini) = do
     s0 <- liftIO start
     s  <- doGatherM (Group chRecvParam chRecvN) step s0
     !b <- liftIO $ fini s
-    sendToDest b
+    sendResult b
 
 
 -- -- | Start execution of collector actor
@@ -200,14 +200,14 @@ runCollectActor (CollectActor step start fini) = do
 ----------------------------------------------------------------
 
 -- -- Send value to the destination
--- sendToDestChan :: (Serializable a) => ReceivePort (Dest a) -> a -> Process ()
--- sendToDestChan chDst a = do
---     dst <- drainChannel chDst
---     sendToDest dst a
+sendToDest :: (Serializable a) => Dest a -> a -> Process ()
+sendToDest dst a = case dst of
+    SendLocally ch  -> unsafeSendChan ch a
+    SendRemote  chs -> forM_ chs $ \ch -> sendChan ch a
 
 -- Send value to the destination
-sendToDest :: (Serializable a) => a -> Process ()
-sendToDest a = do
+sendResult :: (Serializable a) => a -> Process ()
+sendResult a = do
     dst <- drainExpect
     case dst of
       RcvSimple msg   -> trySend msg
