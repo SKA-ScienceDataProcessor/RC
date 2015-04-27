@@ -43,7 +43,8 @@ executable test
   build-depends:     base >=4.7 && <4.8,
                      linux-perf-stat,
                      time, vector
-  c-sources:         src/test.c
-  cc-options:        -mavx -Wall
+  c-sources:         src/test.c, src/omp.c
+  cc-options:        -mavx -Wall -O2 -fopenmp
+  ld-options:        -fopenmp
   if flag(pfm)
     cpp-options:     -DUSE_LIBPFM

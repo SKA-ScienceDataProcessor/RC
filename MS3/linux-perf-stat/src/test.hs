@@ -94,6 +94,7 @@ main = do
               , check $ sseDDPd in1d in2d
               , check $ avxDDP in1f in2f
               , check $ avxDDPd in1d in2d
+              , void $ c_omp_pi
               ]
 
   -- Warm up, and prevent full laziness
