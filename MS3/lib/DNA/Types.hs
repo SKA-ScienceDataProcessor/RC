@@ -160,9 +160,10 @@ data MR a
 data RecvAddr
     = RcvSimple Message
       -- ^ Actor/variable that receive single value
-    | RcvReduce Message (SendPort Int)
-      -- ^ Actor/variable that receive single value
+    | RcvReduce [(Message,SendPort Int)]
+      -- ^ Reduce actor or actors
     | RcvGrp [Message]
+      -- ^ Group of simple actors
     deriving (Show,Typeable,Generic)
 instance Binary RecvAddr
 

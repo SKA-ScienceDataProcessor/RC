@@ -105,7 +105,7 @@ handleProcessDone pid = do
                      mch <- actorDestinationAddr aid
                      case mch of
                        Nothing                -> panic "Unconnected actor terminated normally"
-                       Just (RcvReduce _ chN) -> liftP $ sendChan chN (nDone + 1)
+                       Just (RcvReduce chans) -> liftP $ forM_ chans $ \(_,chN) -> sendChan chN (nDone + 1)
                        Just _                 -> return ()
                 )
                 ( stChildren . at aid .= Just (Running $ RunInfo (nDone+1) nFails)
@@ -151,7 +151,7 @@ handleProcessCrash _msg pid = do
                        -- connection
                        Nothing | nDone == 0   -> return ()
                                | otherwise    -> panic "Unconnected actor terminated normally (crash)"
-                       Just (RcvReduce _ chN) -> liftP $ sendChan chN nDone
+                       Just (RcvReduce chans) -> liftP $ forM_ chans $ \(_,chN) -> sendChan chN nDone
                        Just _                 -> return ()
                 )
                 ( stChildren . at aid .= Just (Running $ RunInfo nDone nFails)

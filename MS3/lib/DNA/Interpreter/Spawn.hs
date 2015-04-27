@@ -15,7 +15,7 @@ module DNA.Interpreter.Spawn (
     , execSpawnCollector
     , execSpawnGroup
     -- , execSpawnGroupN
-    -- , execSpawnCollectorGroup
+    , execSpawnCollectorGroup
     -- , execSpawnCollectorGroupMR
     -- , execSpawnMappers
     ) where
@@ -135,7 +135,6 @@ execSpawnGroupN res resG n act = do
     return $ broadcast $ assembleShellGroup gid shells
 -}
 
-{-
 -- |
 execSpawnCollectorGroup
     :: (Serializable a, Serializable b)
@@ -144,15 +143,18 @@ execSpawnCollectorGroup
     -> Spawn (Closure (CollectActor a b))
     -> DnaMonad (Shell (Grp a) (Grp b))
 execSpawnCollectorGroup res resG act = do
-    undefined
-    -- -- Spawn actors
-    -- (k,gid) <- spawnActorGroup res resG
-    --          $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
-    -- -- Assemble group
-    -- -- FIXME: Fault tolerance
-    -- sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
-    -- return $ assembleShellGroupCollect gid sh
--}
+    -- Spawn actors
+    (k,aid,ch) <- spawnActorGroup res resG
+                $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
+    -- Assemble group
+    -- FIXME: Fault tolerance
+    dsts    <- replicateM k $ handleRecieve messageHandlers [matchChan' ch]
+    dstList <- forM dsts $ \d -> case d of
+                 RcvReduce m -> return m
+                 _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
+    stActorRecvAddr . at aid .= Just (Just (RcvReduce $ concat dstList))
+    return $ Shell aid
+
 
 {-
 -- | Start group of collector processes

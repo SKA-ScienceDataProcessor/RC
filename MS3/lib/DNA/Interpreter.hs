@@ -79,7 +79,7 @@ interpretDNA (DNA m) =
       SpawnCollector          r a -> execSpawnCollector r a
       SpawnGroup            r g a -> execSpawnGroup r g a
       -- SpawnGroupN         r g n a -> execSpawnGroupN r g n a
-      -- SpawnCollectorGroup   r g a -> execSpawnCollectorGroup r g a
+      SpawnCollectorGroup   r g a -> execSpawnCollectorGroup r g a
       -- SpawnCollectorGroupMR r g a -> execSpawnCollectorGroupMR r g a
       -- SpawnMappers          r g a -> execSpawnMappers r g a
       -- Data flow building
@@ -132,7 +132,7 @@ execDelayGroup (Shell aid) = do
     -- Create local variable
     (sendB,recvB) <- liftP newChan
     (sendN,recvN) <- liftP newChan
-    (var,dst) <- newVar $ RcvReduce (wrapMessage sendB) sendN
+    (var,dst) <- newVar $ RcvReduce [(wrapMessage sendB, sendN)]
     stActorDst . at aid .= Just (Left var)
     -- Send destination to an actor
     Just pids <- use $ stAid2Pid . at aid
@@ -218,8 +218,8 @@ execConnect (Shell aidSrc) (Shell aidDst) = do
               liftP $ send p dst
           -- Handler special case 
           case (dst,stSrc) of
-            (RcvReduce _ chN, Completed 0) -> liftP $ sendChan chN 0
-            (RcvReduce _ _  , Completed _) -> doPanic "Unconnected actor completed execution"
+            (RcvReduce chs, Completed 0) -> liftP $ forM_ chs $ \(_,chN) -> sendChan chN 0
+            (RcvReduce _  , Completed _) -> doPanic "Unconnected actor completed execution"
             _                              -> return ()
 
 

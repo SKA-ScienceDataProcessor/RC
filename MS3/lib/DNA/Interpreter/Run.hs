@@ -116,7 +116,7 @@ runCollectActor (CollectActor step start fini) = do
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
     sendChan (actorSendBack p)
-         (RcvReduce (wrapMessage chSendParam) chSendN)
+         (RcvReduce [(wrapMessage chSendParam, chSendN)])
     -- Now we want to check if process was requested to crash
     case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
       pCrash : _ -> do
@@ -210,9 +210,9 @@ sendResult :: (Serializable a) => a -> Process ()
 sendResult a = do
     dst <- drainExpect
     case dst of
-      RcvSimple msg   -> trySend msg
-      RcvReduce msg _ -> trySend msg
-      RcvGrp    msgs  -> mapM_ trySend msgs
+      RcvSimple msg  -> trySend msg
+      RcvReduce msgs -> forM_ msgs $ \(m,_) -> trySend m
+      RcvGrp    msgs -> mapM_ trySend msgs
   where
     trySend msg = do
         mch <- unwrapMessage msg

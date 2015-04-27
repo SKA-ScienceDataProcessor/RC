@@ -49,7 +49,6 @@ scatterSlice n (Slice off0 size)
 --   > Output: data
 ddpComputeVector :: Actor Slice (S.Vector Double)
 ddpComputeVector = actor $ \(Slice off n) -> do
-  error "AAAA"
   profile "compute vector" [HaskellHint (fromIntegral $ n * 8)] $ do
     return $ S.generate (fromIntegral n)
                (\i -> fromIntegral (fromIntegral i + off))
