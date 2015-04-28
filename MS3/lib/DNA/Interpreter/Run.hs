@@ -22,7 +22,7 @@
 module DNA.Interpreter.Run (
       -- * Run actors
       runActor
-    , runActorManyRanks
+    -- , runActorManyRanks
     , runCollectActor
     -- , runCollectActorMR
     -- , runMapperActor
@@ -32,7 +32,7 @@ module DNA.Interpreter.Run (
     , doGatherDna
       -- * CH
     , runActor__static
-    , runActorManyRanks__static
+    -- , runActorManyRanks__static
     , runCollectActor__static
     -- , runCollectActorMR__static
     -- , runMapperActor__static
@@ -255,7 +255,7 @@ doGatherDna ms (Group chA chN) f x0 = do
 ----------------------------------------------------------------
 
 remotable [ 'runActor
-          , 'runActorManyRanks
+          -- , 'runActorManyRanks
           , 'runCollectActor
           -- , 'runCollectActorMR
           -- , 'runMapperActor
