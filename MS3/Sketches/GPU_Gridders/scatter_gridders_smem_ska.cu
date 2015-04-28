@@ -215,9 +215,10 @@ __device__ __inline__ void addBaselinesToGrid(
   , const complexd * gcf[]
   , const double3 uvw[baselines][timesteps * channels]
   , const Double4c vis[baselines][timesteps * channels]
+  , int blOff
   ) {
-  int bl = blockIdx.x;
-  if (use_permutations) bl = permutations[blockIdx.x].bl;
+  int bl = blockIdx.x + blOff;
+  if (use_permutations) bl = permutations[bl].bl;
   int max_supp = get_supp(permutations[bl].wp);
 
   addBaselineToGrid<
@@ -271,6 +272,7 @@ __global__ void addBaselinesToGridSkaMid##suff(                                 
   , const complexd * gcf[]                                                                    \
   , const double3 uvw[BASELINES][TIMESTEPS*CHANNELS]                                          \
   , const Double4c vis[BASELINES][TIMESTEPS*CHANNELS]                                         \
+  , int blOff                                                                                 \
   ) {                                                                                         \
   addBaselinesToGrid<OVER, WPLANES, GRID_SIZE, BASELINES, TIMESTEPS, CHANNELS, ishalf, false> \
     ( scale                                                                                   \
@@ -280,6 +282,7 @@ __global__ void addBaselinesToGridSkaMid##suff(                                 
     , gcf                                                                                     \
     , uvw                                                                                     \
     , vis                                                                                     \
+    , blOff                                                                                   \
     );                                                                                        \
 }
 addBaselinesToGridSkaMid(HalfGCF, true)
@@ -295,6 +298,7 @@ __global__ void addBaselinesToGridSkaMidUsingPermutations##suff(                
   , const complexd * gcf[]                                                                   \
   , const double3 uvw[BASELINES][TIMESTEPS*CHANNELS]                                         \
   , const Double4c vis[BASELINES][TIMESTEPS*CHANNELS]                                        \
+  , int blOff                                                                                \
   ) {                                                                                        \
   addBaselinesToGrid<OVER, WPLANES, GRID_SIZE, BASELINES, TIMESTEPS, CHANNELS, ishalf, true> \
     ( scale                                                                                  \
@@ -304,6 +308,7 @@ __global__ void addBaselinesToGridSkaMidUsingPermutations##suff(                
     , gcf                                                                                    \
     , uvw                                                                                    \
     , vis                                                                                    \
+    , blOff                                                                                  \
     );                                                                                       \
 }
 addBaselinesToGridSkaMidUsingPermutations(HalfGCF, true)

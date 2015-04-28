@@ -76,15 +76,15 @@ launchAddBaselines :: TaskData -> CUDA.Fun -> AddBaselinesFun
 launchAddBaselines td f scale gridptr gcflp uvwp visp permp maxSupp blOff numOfBaselines =
   CUDA.launchKernel f (numOfBaselines, 1, 1) (nOfThreads, 1, 1) 0 Nothing params
   where
-    off = blOff * tdTimes td * tdChannels td
     nOfThreads = min 1024 (maxSupp * maxSupp)
     params = mapArgs $  scale
                      :. tdWstep td
-                     :. CUDA.advanceDevPtr permp blOff
+                     :. permp
                      :. gridptr
                      :. gcflp
-                     :. CUDA.advanceDevPtr uvwp (off * 3)
-                     :. CUDA.advanceDevPtr visp (off * 4)
+                     :. uvwp
+                     :. visp
+                     :. (fromIntegral blOff :: Int32)
                      :. Z
 
 data GridderConfig = GridderConfig {
