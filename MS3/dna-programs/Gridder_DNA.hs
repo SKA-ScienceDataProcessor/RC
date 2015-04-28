@@ -8,8 +8,6 @@ module Main where
 import Data.List
 import Text.Printf
 
-import System.IO
-
 import Control.Distributed.Process.Serializable (Serializable)
 import Control.Distributed.Static (Closure)
 
@@ -18,6 +16,7 @@ import DNA
 import OskarBinReader
 import Namespace
 import GridderActors
+import Utils
 
 -- We have only 2 gather gridder variants at the moment and the selection is determined
 --   by how we bin data -- for full or half gcf usage
@@ -64,7 +63,7 @@ locActor clo par = do
   delay Local shell
 
 rep :: String -> DNA ()
-rep s = unboundKernel "rep" [] $ liftIO $ print s >> hFlush stdout
+rep = unboundKernel "rep" [] . liftIO . printImmediate
 
 main :: IO ()
 main = do
