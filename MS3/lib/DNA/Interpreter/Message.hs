@@ -44,7 +44,7 @@ messageHandlers =
     , MatchS handleTerminate
     -- -- , MatchS handleReady
     -- -- , MatchS handleDone
-    -- , MatchS handleTimeout
+    , MatchS handleTimeout
     ]
 
 
@@ -298,21 +298,10 @@ handleDone (pid,_) =
         )
 -}
 
-{-
 -- Some process timed out
-handleTimeout :: TimeOut -> Controller ()
-handleTimeout (TimeOut aid) = case aid of
-    SingleActor pid -> do
-        m <- use $ stChildren . at pid
-        case m of
-          Just (Left  _) -> do liftP $ send pid (Terminate "Timeout")
-                               dropPID pid
-          Just (Right _) -> fatal "Group ID encountered"
-          Nothing        -> return ()
-    ActorGroup gid -> do
-        terminateGroup "Timeout" gid
-        dropGroup gid
--}
+handleTimeout :: Timeout -> Controller ()
+handleTimeout (Timeout aid) = terminateActor aid
+
 
 ----------------------------------------------------------------
 -- Extra functions for matching on messages

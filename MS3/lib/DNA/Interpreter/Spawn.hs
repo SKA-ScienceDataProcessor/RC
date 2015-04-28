@@ -57,8 +57,6 @@ execSpawnActor res act = do
     (aid,pid,ch) <- spawnSingleActor res
          $ closureApply $(mkStaticClosure 'runActor) <$> act
     -- Get actor's port for receiving data
-    --
-    -- FIXME: Respawn
     receiveShell ch aid pid $ \dst -> case dst of
       RcvSimple{} -> return ()
       _           -> doPanic "Invalid RecvAddr in execSpawnActor"
@@ -151,7 +149,6 @@ execSpawnCollectorGroupMR res resG act = do
     (k,gid) <- spawnActorGroup res resG
              $ closureApply $(mkStaticClosure 'runCollectActorMR) <$> act
     -- Assemble group
-    -- FIXME: Fault tolerance
     sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     return $ assembleShellGroupCollectMR gid sh
 
@@ -166,7 +163,6 @@ execSpawnMappers res resG act = do
     (k,gid) <- spawnActorGroup res resG
              $ closureApply $(mkStaticClosure 'runMapperActor) <$> act
     -- Assemble group
-    -- FIXME: Fault tolerance
     sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
     return $ assembleShellMapper gid sh
 -}
@@ -309,8 +305,7 @@ setTimeout flags aid = do
     T.forM_ (getTimeoutInterval flags) $ \t -> spawnLocal $ do
         link me
         liftIO $ threadDelay $ round $ t * 1e6
-        -- FIXME: Wrong message type!
-        send me aid
+        send me (Timeout aid)
 
 getTimeoutInterval :: [SpawnFlag] -> Maybe Double
 getTimeoutInterval = getLast . T.foldMap (Last . go)

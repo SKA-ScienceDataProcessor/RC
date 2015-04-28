@@ -114,9 +114,9 @@ newtype Terminate = Terminate String
 instance Binary Terminate
 
 -- | Actor execution time exceeded quota
-data TimeOut = TimeOut AID
+newtype Timeout = Timeout AID
                  deriving (Show,Eq,Ord,Typeable,Generic)
-instance Binary TimeOut
+instance Binary Timeout
 
 
 
