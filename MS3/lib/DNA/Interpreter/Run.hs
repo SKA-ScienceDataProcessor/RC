@@ -73,20 +73,20 @@ runActor (Actor action) = do
     sendResult b
 
 
-
+{-
 -- | Run actor for group of processes which allow more than 1 task per
 --   actor.
 runActorManyRanks :: Actor a b -> Process ()
 runActorManyRanks (Actor action) = do
-    undefined
-    -- -- Obtain parameters
-    -- p <- expect
-    -- -- Create channels for communication
-    -- (chSendParam,chRecvParam) <- newChan
-    -- (chSendDst,  chRecvDst  ) <- newChan
-    -- (chSendRnk,  chRecvRnk  ) <- newChan
-    -- -- Send shell process back
-    -- me <- getSelfPid
+    -- Obtain parameters
+    p <- expect
+    -- Create channels for communication
+    (chSendParam,chRecvParam) <- newChan
+    (chSendDst,  chRecvDst  ) <- newChan
+    (chSendRnk,  chRecvRnk  ) <- newChan
+    -- Send shell process back
+    sendChan (actorSendBack p)
+             (RcvSimple (wrapMessage chSendParam))
     -- let shell = ( RecvVal chSendParam
     --             , SendVal chSendDst  )
     -- send (actorParent p) (chSendRnk,shell)
@@ -104,7 +104,7 @@ runActorManyRanks (Actor action) = do
     --                 send (actorParent p) (me,DoneTask)
     --                 loop dst'
     -- loop =<< drainChannel chRecvDst
-
+-}
 
 -- | Start execution of collector actor
 runCollectActor :: CollectActor a b -> Process ()
