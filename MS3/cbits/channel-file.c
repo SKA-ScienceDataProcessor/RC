@@ -1,3 +1,6 @@
+
+#define _GNU_SOURCE 1
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -6,6 +9,7 @@
 #include <sys/uio.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #ifndef	O_DIRECT
 #warning "O_DIRECT is undefined, defining as 0."

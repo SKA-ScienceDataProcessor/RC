@@ -301,7 +301,10 @@ static void cupti_callback_launch_kernel(cupti_user_t *user, CUpti_CallbackData 
             // Simply generate it. Use user data as a cheap way to
             // prevent an infinite loop.
             if (user) {
-                cupti_callback_context_created(user, cbdata);
+                CUpti_ResourceData rdata;
+                memset(&rdata, 0, sizeof(rdata));
+                rdata.context = cbdata->context;
+                cupti_callback_context_created(user, &rdata);
                 cupti_callback_launch_kernel(NULL, cbdata);
             }
         }
