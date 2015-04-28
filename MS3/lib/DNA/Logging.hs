@@ -92,6 +92,7 @@ data LoggerOpt = LoggerOpt
 
 data LoggerState =
   LoggerState { loggerOpt :: LoggerOpt
+              , loggerMsgId :: IORef Int
               , loggerPerfCounters :: IORef (Map.Map ThreadId PerfStatGroup)
 #ifdef USE_CUDA
               , loggerCuptiEnabled :: IORef Int
@@ -116,11 +117,13 @@ initLogging opt = do
 #endif
 
   -- Set logger state
+  msgId <- newIORef 0
   perfCounters <- newIORef Map.empty
 #ifdef USE_CUDA
   cuptiEnabled <- newIORef 0
 #endif
   let state = LoggerState { loggerOpt          = opt
+                          , loggerMsgId        = msgId
                           , loggerPerfCounters = perfCounters
 #ifdef USE_CUDA
                           , loggerCuptiEnabled = cuptiEnabled
@@ -155,8 +158,31 @@ message :: MonadIO m
         -> String -- ^ Message body
         -> m ()
 message tag attrs msg = do
+    -- Make message text
     let formatAttr (attr, val) = ' ':'[':attr ++ '=': val ++ "]"
-    liftIO $ traceEventIO $ concat (tag : map formatAttr attrs) ++ ' ':msg
+        text = concat (tag : map formatAttr attrs) ++ ' ':msg
+    -- Check whether it's too long for the RTS to output in one
+    -- piece. This is rare, but we don't want to lose information.
+    let splitThreshold = 512
+    if length text < splitThreshold then traceEventIO msg
+    else do
+
+      -- Determine marker. We need this because the message chunks
+      -- might get split up.
+      msgIdVar <- loggerMsgId <$> readIORef loggerStateVar
+      msgId <- atomicModifyIORef' msgIdVar (\x -> (x+1,x))
+      let mark = "[[" ++ show msgId ++ "]]"
+
+      -- Now split message up and output it. Every message but the
+      -- last gets the continuation marker at the end, and every
+      -- message but the first is a continuation.
+      let split ""  = Nothing
+          split str = Just $ splitAt (splitThreshold - 20) str
+          pieces = unfoldr split msg
+          start = head pieces; (mid, end:_) = splitAt (length pieces-1) pieces
+      traceEventIO (start ++ mark)
+      forM_ mid $ \m -> traceEventIO (mark ++ m ++ mark)
+      traceEventIO (mark ++ end)
 
 -- | Output a custom-tag process message into the eventlog.
 taggedMessage :: MonadProcess m
