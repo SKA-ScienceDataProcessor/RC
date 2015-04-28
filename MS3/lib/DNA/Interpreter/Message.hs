@@ -136,9 +136,7 @@ handleProcessCrash _msg pid = do
               mdst <- use $ stActorDst . at aid
               T.forM_ mdst $ \dst -> case dst of
                   Left  _      -> fatal "Dependent actor died"
-                  Right aidDst -> do terminateActor aidDst
-                                     -- FIXME: collectors are not responsive at the moment
-                                     fatal "???"
+                  Right aidDst -> terminateActor aidDst
           -- We can still tolerate failures
           Running (RunInfo nDone nFails) -> do
               dropPID pid aid

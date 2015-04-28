@@ -127,14 +127,10 @@ runCollectActor (CollectActor step start fini) = do
               error "Ooops crashed"
       _ -> return ()
     -- Start execution of an actor
-    --
-    -- FIXME: I constrained CollectActor to IO only (no DNA) which
-    --        means it cannot do anything specific to DNA.
-    --
-    --        Check for proper concurrency
-    s0 <- liftIO start
-    s  <- doGatherM (Group chRecvParam chRecvN) step s0
-    !b <- liftIO $ fini s
+    !b <- runDnaParam p $ do
+           s0 <- liftIO start
+           s  <- gatherM (Group chRecvParam chRecvN) step s0
+           liftIO $ fini s
     sendResult b
 
 
