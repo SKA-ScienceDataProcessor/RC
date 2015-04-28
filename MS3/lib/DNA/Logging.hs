@@ -45,6 +45,7 @@ module DNA.Logging
     ) where
 
 import Control.Applicative
+import Control.Concurrent
 import Control.Distributed.Process (getSelfPid)
 import Control.Exception           (evaluate)
 import Control.Monad               (when,liftM)
@@ -53,6 +54,8 @@ import Control.Monad.IO.Class
 import Data.Time
 import Data.Maybe         (fromMaybe)
 import Data.IORef
+import Data.Tuple         (swap)
+import qualified Data.Map.Strict as Map
 
 import GHC.Stats
 
@@ -89,8 +92,7 @@ data LoggerOpt = LoggerOpt
 
 data LoggerState =
   LoggerState { loggerOpt :: LoggerOpt
-              , loggerPerfCounters :: PerfStatGroup
-              , loggerPerfEnabled :: IORef Int
+              , loggerPerfCounters :: IORef (Map.Map ThreadId PerfStatGroup)
 #ifdef USE_CUDA
               , loggerCuptiEnabled :: IORef Int
 #endif
@@ -108,20 +110,18 @@ loggerStateVar = unsafePerformIO $ newIORef $ error "loggerStateVar not initiali
 initLogging :: LoggerOpt -> IO ()
 initLogging opt = do
 
-  -- Initialise various profiling sub-modules
-  counters <- perfInit
+  -- Initialise profiling sub-modules
 #ifdef USE_CUDA
   cudaInit opt
 #endif
 
   -- Set logger state
-  perfEnabled <- newIORef 0
+  perfCounters <- newIORef Map.empty
 #ifdef USE_CUDA
   cuptiEnabled <- newIORef 0
 #endif
   let state = LoggerState { loggerOpt          = opt
-                          , loggerPerfCounters = counters
-                          , loggerPerfEnabled  = perfEnabled
+                          , loggerPerfCounters = perfCounters
 #ifdef USE_CUDA
                           , loggerCuptiEnabled = cuptiEnabled
 #endif
@@ -338,10 +338,6 @@ consAttrNZT n v t = ((n, show v ++ "/" ++ show t):)
 -- perf_events sampling
 ----------------------------------------------------------------
 
--- | Do perf_event initialisation
-perfInit :: IO PerfStatGroup
-perfInit = perfEventOpen $ map snd floatCounterDescs
-
 -- | The floating point counters, with associated names
 floatCounterDescs :: [(String, PerfStatDesc)]
 floatCounterDescs
@@ -360,14 +356,31 @@ floatCounterDescs
 floatCounterAttrs :: SamplePoint -> IO [Attr]
 floatCounterAttrs pt = do
 
-    -- Enable perf_events if required
-    counters <- loggerPerfCounters <$> readIORef loggerStateVar
-    case pt of
-      StartSample -> enableProfileMod loggerPerfEnabled $ perfEventEnable counters
-      EndSample   -> disableProfileMod loggerPerfEnabled $ perfEventDisable counters
+    -- Initialise perf_events. We re-initialise them for every single
+    -- krenel call for now - this is probably wasteful, as the RTS
+    -- ought to be reusing bound threads at some level. Still, I can't
+    -- think of a good solution to make sure that perf_events handles
+    -- wouldn't leak, so let's do this for now.
+    tid <- myThreadId
+    countersVar <- loggerPerfCounters <$> readIORef loggerStateVar
+    counters <- case pt of
+      StartSample -> do
+        counters <- perfEventOpen $ map snd floatCounterDescs
+        atomicModifyIORef' countersVar $ flip (,) () . Map.insert tid counters
+        return counters
+      EndSample -> do
+        Just counters <- atomicModifyIORef' countersVar $
+                         swap . Map.updateLookupWithKey (\_ _ -> Nothing) tid
+        perfEventDisable counters
+        return counters
 
     -- Get counters from perf_event
     vals <- perfEventRead counters
+    -- Start / free counters
+    case pt of
+      StartSample -> perfEventEnable counters
+      EndSample -> perfEventClose counters
+
     -- Generate attributes
     let fmtName (name, _) = "perf:" ++ name
         fmtVal stat = show (psValue stat) ++ "/" ++ show (psTimeRunning stat)
