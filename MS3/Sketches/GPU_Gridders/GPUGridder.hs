@@ -83,8 +83,8 @@ launchAddBaselines td f scale gridptr gcflp uvwp visp permp maxSupp blOff numOfB
                      :. CUDA.advanceDevPtr permp blOff
                      :. gridptr
                      :. gcflp
-                     :. CUDA.advanceDevPtr uvwp off
-                     :. CUDA.advanceDevPtr visp off
+                     :. CUDA.advanceDevPtr uvwp (off * 3)
+                     :. CUDA.advanceDevPtr visp (off * 4)
                      :. Z
 
 data GridderConfig = GridderConfig {
