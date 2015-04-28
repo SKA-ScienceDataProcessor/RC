@@ -76,7 +76,7 @@ optRomeinIter baselines _mapper launch = do
     msiz = sizeOf (undefined :: BlWMap)
     go n mapp = do
       wp <- wplane mapp
-      if wp <= n
+      if abs wp <= n
         then go n (advancePtr mapp 1)
         else return mapp
 
