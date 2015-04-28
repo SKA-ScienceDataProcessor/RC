@@ -86,63 +86,92 @@ cudaConfigHook dat flags = do
                  confHook simpleUserHooks dat (flags' nvcc)
     Nothing   -> confHook simpleUserHooks dat flags
 
--- | Finds CUDA sources to build from a package description. The
--- returned tuple is executable name, CUDA source, then extra command
--- line options.
-findCuda :: PackageDescription -> [(Maybe String, FilePath, [String])]
-findCuda package
-  = (maybe [] (findCudaBI Nothing . libBuildInfo) (library package)) ++
-    concatMap findCudaExe (executables package)
-  where findCudaExe exe
-            | buildable (buildInfo exe) = findCudaBI (Just $ exeName exe) (buildInfo exe)
-            | otherwise                 = []
-        findCudaBI name bi
-            | Just cudaSrcLine <- lookup "x-cuda-sources" (customFieldsBI bi)
-            , let parse rp = map fst . filter (all isSpace . snd) . readP_to_S rp
-                  parses = parse (parseOptCommaList parseFilePathQ) cudaSrcLine
-                  cudaSources = head parses
-                  cudaOptLine = fromMaybe "" $ lookup "x-cuda-options" (customFieldsBI bi)
-                  cudaOpts = concat $ parse (sepBy parseTokenQ' (munch1 isSpace)) cudaOptLine
-            = [ (name, cudaFile, cudaOpts) | cudaFile <- cudaSources ]
-            | otherwise
-            = []
+buildCuda :: Bool -> PackageDescription -> LocalBuildInfo -> Verbosity
+          -> IO (PackageDescription, [FilePath])
+buildCuda doBuild package lbi verbose = do
 
-buildCuda :: Bool -> PackageDescription -> LocalBuildInfo -> Flag Verbosity -> IO [FilePath]
-buildCuda doBuild package lbi verbosity = do
+  -- Find all CUDA sources in libraries & executables. Update
+  -- build information accordingly.
+  (library', lib_cubins) <- case library package of
+    Just lib -> do (bi', cubins) <- cudaBuildInfo doBuild lbi verbose
+                                                  (buildDir lbi) (libBuildInfo lib)
+                   return (Just lib { libBuildInfo = bi' }, cubins)
+    Nothing  -> return (Nothing, [])
 
-  -- Find CUDA sources
-  let cudaSources = findCuda package
-  if null cudaSources then return [] else do
+  -- Attempt to be smart about when to build CUDA sources for
+  -- executables...
+  let exesToBuild = map exeName (executables package) -- `intersect` buildArgs flags
+      shouldBuild e = buildable (buildInfo e) &&
+                      (null exesToBuild || exeName e `elem` exesToBuild)
 
-    -- Attempt to be smart about when to build CUDA sources for
-    -- executables...
-    let exesToBuild = map exeName (executables package) -- `intersect` buildArgs flags
-        shouldBuild Nothing  = True -- always build library
-        shouldBuild (Just e) = null exesToBuild || exeName e `elem` exesToBuild
+  exe_cubinss <- forM (filter shouldBuild $ executables package) $ \exe -> do
+    let dir = buildDir lbi </> exeName exe
+    (bi', cubins) <- cudaBuildInfo doBuild lbi verbose dir (buildInfo exe)
+    return (exe { buildInfo = bi' }, cubins)
+  let (executables', cubinss) = unzip exe_cubinss
 
-    -- Now compile all sources
-    let verbose = fromFlagOrDefault normal verbosity
-    (nvcc,_) <- requireProgram verbose nvccProgram (withPrograms lbi)
-    forM cudaSources $ \(name, cudaFile, cudaOpts) -> do
-        let outDir = maybe (buildDir lbi) (buildDir lbi </>) name
-            out    = outDir </> replaceExtension (takeFileName cudaFile) "cubin"
-        when doBuild $ do
-             putStrLn $ "Building CUDA source " ++ cudaFile ++ "..."
-             createDirectoryIfMissingVerbose verbose True outDir
-             runProgram verbose nvcc (cudaOpts ++ ["--cubin", cudaFile, "-o", out])
-        return out
+  -- Carry on, given our sneaky modificiations...
+  return (package { library = library'
+                  , executables = executables' },
+          lib_cubins ++ concat cubinss)
+
+cudaBuildInfo :: Bool -> LocalBuildInfo -> Verbosity -> FilePath -> BuildInfo
+              -> IO (BuildInfo, [FilePath])
+cudaBuildInfo doBuild lbi verbose buildDir bi = do
+
+  -- Get CUDA command line options
+  let parseOpt rp = map fst . filter (all isSpace . snd) . readP_to_S rp
+      cudaOptLine = fromMaybe "" $ lookup "x-cuda-options" (customFieldsBI bi)
+      cudaOpts = concat $ parseOpt (sepBy parseTokenQ' (munch1 isSpace)) cudaOptLine
+
+  -- Prepare for building
+  (nvcc,_) <- requireProgram verbose nvccProgram (withPrograms lbi)
+  let mkOutput ext = (buildDir </>) . flip replaceExtension ext . takeFileName
+  when doBuild $ createDirectoryIfMissingVerbose verbose True buildDir
+
+  -- Build CUBINs
+  cubins <- case lookup "x-cuda-sources-cubin" (customFieldsBI bi) of
+    Nothing          -> return []
+    Just cudaSrcLine -> do
+       let parses = parseOpt (parseOptCommaList parseFilePathQ) cudaSrcLine
+           cudaSources = head parses
+       when (null parses) $ die "Failed to parse x-cuda-sources-cubin field."
+
+       let outputFiles = map (mkOutput "cubin") cudaSources
+       when doBuild $ forM_ (zip cudaSources outputFiles) $ \(src, out) -> do
+           putStrLn $ "Building CUDA source " ++ src ++ "..."
+           runProgram verbose nvcc (cudaOpts ++ ["--cubin", src, "-o", out])
+       return outputFiles
+
+  -- Build CUDA object files
+  case lookup "x-cuda-sources" (customFieldsBI bi) of
+     Nothing          -> return (bi, cubins)
+     Just cudaSrcLine -> do
+       let parses = parseOpt (parseOptCommaList parseFilePathQ) cudaSrcLine
+           cudaSources = head parses
+       when (null parses) $ die "Failed to parse x-cuda-sources field."
+
+       let outputFiles = map (mkOutput "o") cudaSources
+       when doBuild $ forM_ (zip cudaSources outputFiles) $ \(src, out) -> do
+           putStrLn $ "Building CUDA source " ++ src ++ "..."
+           runProgram verbose nvcc (cudaOpts ++ ["-c", src, "-o", out])
+
+       -- Now for the hacky part: Get the linker to actually link
+       -- this. I am 99% sure that this is the wrong way.
+       return (bi { ldOptions = ldOptions bi ++ outputFiles }, cubins)
 
 cudaBuildHook :: PackageDescription -> LocalBuildInfo -> UserHooks -> BuildFlags -> IO ()
 cudaBuildHook package lbi hooks flags = do
-  void $ buildCuda True package lbi (buildVerbosity flags)
-  buildHook simpleUserHooks package lbi hooks flags
+  (package', _) <- buildCuda True package lbi (fromFlag $ buildVerbosity flags)
+  buildHook simpleUserHooks package' lbi hooks flags
 
 cudaCopyHook :: PackageDescription -> LocalBuildInfo -> UserHooks -> CopyFlags -> IO ()
 cudaCopyHook package lbi hooks flags = do
-  outs <- buildCuda False package lbi (copyVerbosity flags)
+  let verbose = fromFlag $ copyVerbosity flags
+  (package', outs) <- buildCuda False package lbi verbose
   let installDirs = absoluteInstallDirs package lbi (fromFlag (copyDest flags))
-  createDirectoryIfMissingVerbose (fromFlag $ copyVerbosity flags) True (datadir installDirs)
+  createDirectoryIfMissingVerbose verbose True (datadir installDirs)
   forM_ outs $ \file ->
       installOrdinaryFile (fromFlag $ copyVerbosity flags) file
           (datadir installDirs </> takeFileName file)
-  copyHook simpleUserHooks package lbi hooks flags
+  copyHook simpleUserHooks package' lbi hooks flags

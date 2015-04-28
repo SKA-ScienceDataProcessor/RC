@@ -38,6 +38,7 @@ module DNA.Logging
     , synchronizationPoint
     , logDuration
     , logProfile
+    , processAttributes
 
     , ProfileHint(..)
     , floatHint, ioHint, haskellHint, cudaHint
@@ -163,8 +164,8 @@ taggedMessage :: MonadProcess m
               -> String         -- ^ Message
               -> m ()
 taggedMessage tag msg = do
-    pid <- liftP getSelfPid
-    message tag [("pid", show pid)] msg
+    attrs <- processAttributes
+    message tag attrs msg
 
 -- | Put a global message into eventlog.
 eventMessage :: MonadIO m => String -> m ()
@@ -194,11 +195,11 @@ data SamplePoint = StartSample | EndSample
 measurement :: MonadIO m
                => (SamplePoint -> m [Attr])
                            -- ^ Measurements, might add extra attributes
-               -> [Attr]   -- ^ Attributes
                -> String   -- ^ Message
+               -> [Attr]   -- ^ Attributes
                -> m a      -- ^ DNA action to profile
                -> m a
-measurement sample attrs msg dna = do
+measurement sample msg attrs dna = do
     -- Get start sample
     sample0 <- sample StartSample
     message "START" (attrs ++ sample0) msg
@@ -209,35 +210,13 @@ measurement sample attrs msg dna = do
     message "END" (attrs ++ sample1) msg
     return r
 
--- | Same as @measurement@, but automatically adds process attributes
-procMeasurement :: MonadProcess m
-               => (SamplePoint -> m [Attr])
-                           -- ^ Measurements, can add extra attributes
-               -> [Attr]   -- ^ Attributes
-               -> String   -- ^ Message
-               -> m a      -- ^ DNA action to profile
-               -> m a
-procMeasurement sample attrs msg dna = do
-    pid <- liftP getSelfPid
-    measurement sample (("pid", show pid):attrs) msg dna
-
 -- | Put measurements about execution time of monadic action into
 --   eventlog. Result of action is evaluated to WHNF.
 logDuration :: MonadProcess m => String -> m a -> m a
-logDuration = procMeasurement (const $ return []) []
-               -- measurement is implicit from START/END timestamp
-
-{- PMW: unused?
-
--- | Measure time period of pure computation into eventlog.  It's
---   strict in argument. Because action is pure we put empty PID into
---   eventlog.
-timePeriodPure :: String -> a -> a
-timePeriodPure ev a = unsafeDupablePerformIO $ do
-    traceEventIO ("START [] "++ev)
-    a `seq` traceEventIO ("END [] "++ev)
-    return a
--}
+logDuration msg dna = do
+    attrs <- processAttributes
+    let sample _ = return [] -- measurement is implicit from START/END timestamp
+    measurement sample msg attrs dna
 
 ----------------------------------------------------------------
 -- Profiling
@@ -300,15 +279,21 @@ cudaHint = CUDAHint 0 0 0 0
 -- better. However, also note that more hints generally means that we
 -- are going to safe more information, so keep in mind that every hint
 -- means a certain (constant) profiling overhead.
-logProfile :: MonadProcess m
-        => String           -- ^ Message. Will be used in profile view
-                            -- to identify costs, so short and
-                            -- recognisable names are preferred.
-        -> [ProfileHint]    -- ^ Hints about the code's complexity.
-        -> m a              -- ^ The code to profile
-        -> m a
-logProfile msg hints = procMeasurement (liftIO . sample) [] msg
+logProfile :: String           -- ^ Message. Will be used in profile view
+                               -- to identify costs, so short and
+                               -- recognisable names are preferred.
+           -> [ProfileHint]    -- ^ Hints about the code's complexity.
+           -> [Attr]           -- ^ Extra attributes to add to profile messages
+           -> IO a             -- ^ The code to profile
+           -> IO a
+logProfile msg hints attrs = measurement (liftIO . sample) msg attrs
     where sample pt = concat `liftM` mapM (hintToSample pt) hints
+
+-- | Generate identification attributes
+processAttributes :: MonadProcess m => m [Attr]
+processAttributes = do
+    pid <- liftP getSelfPid
+    return [("pid", show pid)]
 
 -- | Takes a sample according to the given hint
 hintToSample :: SamplePoint -> ProfileHint -> IO [Attr]

@@ -13,6 +13,11 @@ Flag pfm
      Description:    Enable support for libpfm (allows access to more counters)
      Default:        False
 
+Flag group
+     Description:    Query counters as a group. Slightly more accurate, but
+                     doesn't work with inheriting counters.
+     Default:        False
+
 library
   exposed-modules:   Profiling.Linux.Perf.Stat
                      Profiling.Linux.Perf.Stat.Types
@@ -26,6 +31,9 @@ library
     extra-libraries: pfm
     cpp-options:     -DUSE_LIBPFM
     cc-options:      -DUSE_LIBPFM
+  if flag(group)
+    cpp-options:     -DUSE_PERF_FORMAT_GROUP
+    cc-options:      -DUSE_PERF_FORMAT_GROUP
 
 executable test
   hs-source-dirs:    src
@@ -35,7 +43,8 @@ executable test
   build-depends:     base >=4.7 && <4.8,
                      linux-perf-stat,
                      time, vector
-  c-sources:         src/test.c
-  cc-options:        -mavx -Wall
+  c-sources:         src/test.c, src/omp.c
+  cc-options:        -mavx -Wall -O2 -fopenmp
+  ld-options:        -fopenmp
   if flag(pfm)
     cpp-options:     -DUSE_LIBPFM

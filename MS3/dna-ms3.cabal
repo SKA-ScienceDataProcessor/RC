@@ -138,30 +138,6 @@ executable ddp-in-memory
     DDP
     DDP_Slice
 
-executable GCF_DNA
-  default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded -eventlog
-  Hs-source-dirs:      Sketches/GCF_new Sketches/FFT Sketches/Utils
-  main-is:             GCF_DNA.hs
-  build-depends:
-    base >=4.6,
-    mmap,
-    ghc-prim,
-    binary,
-    time >=1.4.2,
-    bytestring >= 0.10.4.0,
-    storable-complex,
-    dna-ms3
-  if flag(cuda) {
-     build-depends:    cuda >=0.6.6, cufft
-     x-cuda-sources:   Sketches/GCF_new/all.cu
-     x-cuda-options:   -gencode arch=compute_30,code=sm_30
-  } else {
-     buildable:        False
-  }
-  other-modules:
-    FFT
-
 executable Gridder_DNA
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -eventlog
@@ -185,9 +161,9 @@ executable Gridder_DNA
     distributed-process,
     dna-ms3
   if flag(cuda) {
-     build-depends:    cuda >=0.6.6, cufft
-     x-cuda-sources:   Sketches/GCF_new/all.cu Sketches/GPU_Gridders/scatter_gridders_smem_ska.cu Sketches/GPU_Gridders/gather_gridder.cu Sketches/FFT/cufftshift.cu
-     x-cuda-options:   -ISketches/CPU_Gridders -ISketches/Oskar_New_Reader -gencode arch=compute_30,code=sm_30
+     build-depends:  cuda >=0.6.6, cufft
+     x-cuda-sources: Sketches/Utils/cudaCfg.c Sketches/GCF_new/all.cu Sketches/GPU_Gridders/scatter_gridders_smem_ska.cu Sketches/GPU_Gridders/gather_gridder.cu
+     x-cuda-options: -ISketches/CPU_Gridders -ISketches/Oskar_New_Reader -gencode arch=compute_30,code=sm_30
   } else {
      buildable:        False
   }

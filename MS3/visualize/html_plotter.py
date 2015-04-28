@@ -41,7 +41,7 @@ def write_timeline_data(logs, conf) :
             delays.add(e.msg)
 
     f.write('''
-      var colorScale = d3.scale.category20().domain({});'''.format(list(delays)))
+      var colorScale = d3.scale.category20().domain({0});'''.format(list(delays)))
 
     f.write('''
       var color; var elems; var i;''')
@@ -94,7 +94,7 @@ def write_middle():
         .beginning(-1)
         .tickFormat(
            { format: d3.time.format("%M:%S"),
-             tickInterval: 5,
+             tickInterval: 30,
              tickTime: d3.time.second,
              tickSize: 5 })
         .stack()
@@ -159,8 +159,8 @@ def write_timeline_body(logs, conf) :
     f.write('''
     <h4>Program Configuration</h4>
     <table class="program-conf">
-      <tr><td class="key">Executable:</td><td class="val">{}</td></tr>
-      <tr><td class="key">Arguments:</td><td class="val">{}</td></tr>
+      <tr><td class="key">Executable:</td><td class="val">{0}</td></tr>
+      <tr><td class="key">Arguments:</td><td class="val">{1}</td></tr>
     </table>'''
             .format(args[0], ' '.join(args[1:])))
 
@@ -170,11 +170,11 @@ def write_timeline_body(logs, conf) :
         f.write('''
     <h4>SLURM Configuration</h4>
     <table class="slurm_conf">
-      <tr><td class="key">Job:</td><td>{} {}, started by {}</td></tr>
-      <tr><td class="key">Nodes:</td><td>{}: {}</td></tr>
-      <tr><td class="key">Tasks:</td><td>{} = {}</td></tr>
-      <tr><td class="key">Procs:</td><td>{}</td></tr>
-      <tr><td class="key">CPUS:</td><td>{}</td></tr>
+        <tr><td class="key">Job:</td><td>{0} {1}, started by {2}</td></tr>
+        <tr><td class="key">Nodes:</td><td>{3}: {4}</td></tr>
+        <tr><td class="key">Tasks:</td><td>{5} = {6}</td></tr>
+        <tr><td class="key">Procs:</td><td>{7}</td></tr>
+        <tr><td class="key">CPUS:</td><td>{8}</td></tr>
     </table>'''
                 .format(env.get('SLURM_JOB_NAME', '-'),
                         env.get('SLURM_JOB_UID', '-'),
@@ -260,7 +260,7 @@ def write_timeline_body(logs, conf) :
                 return '[' + format_num(self.hint) + self.unit + ']'
             return '[%.1f%%]' % (float(100) * self.val / self.hint);
         def format_rate(self):
-            if self.time == None: return ''
+            if self.time == None or self.time == 0: return ''
             if self.val == 0 or self.val == None:
                 if self.hint != None and self.hint != 0:
                     return '[' + format_num(self.hint / self.time) + self.unit + '/s]'
@@ -268,7 +268,7 @@ def write_timeline_body(logs, conf) :
             return format_num(self.val / self.time) + self.unit + '/s'
 
     for a in instances.iterkeys() :
-        print a, total_hints[a], total_tags[a]
+        print a, total_hints[a], total_tags[a], total_tags_time[a]
 
         # Get configuration for this key
         econf = conf.get(a, {})
@@ -326,6 +326,7 @@ def write_timeline_body(logs, conf) :
         mk_metric('instr', 'float (avx)', 'perf:avx-float-ops', None, us, 'OP');
         mk_metric('instr', 'double (avx)', 'perf:avx-double-ops', None, us, 'OP');
         mk_metric('instr', 'float (gpu)', 'cuda:gpu-float-ops', 'hint:gpu-float-ops', us, 'OP');
+        mk_metric('instr', 'instructions (gpu)', 'cuda:gpu-instructions', None, us, 'OP');
         mk_metric('instr', 'float (gpu add)', 'cuda:gpu-float-ops-add', None, us, 'OP');
         mk_metric('instr', 'float (gpu mul)', 'cuda:gpu-float-ops-mul', None, us, 'OP');
         mk_metric('instr', 'float (gpu fma)', 'cuda:gpu-float-ops-fma', None, us, 'OP');
@@ -333,8 +334,8 @@ def write_timeline_body(logs, conf) :
         mk_metric('instr', 'double (gpu add)', 'cuda:gpu-double-ops-add', None, us, 'OP');
         mk_metric('instr', 'double (gpu mul)', 'cuda:gpu-double-ops-mul', None, us, 'OP');
         mk_metric('instr', 'double (gpu fma)', 'cuda:gpu-double-ops-fma', None, us, 'OP');
-        mk_metric('instr', 'float (gpu?)', 'cuda:gpu-float-instrs', None, us, 'OP');
-        mk_metric('instr', 'double (gpu?)', 'cuda:gpu-double-instrs', None, us, 'OP');
+        mk_metric('instr', 'float (gpu)?', 'cuda:gpu-float-instrs', None, us, 'OP');
+        mk_metric('instr', 'double (gpu)?', 'cuda:gpu-double-instrs', None, us, 'OP');
 
 
         # Print row(s)

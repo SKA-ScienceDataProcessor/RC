@@ -26,6 +26,9 @@ foreign import ccall unsafe "avx_ddp"
 foreign import ccall unsafe "avx_ddp_d"
   c_avx_ddp_d :: Ptr CFloat -> Ptr CFloat -> CInt -> IO Double
 
+foreign import ccall unsafe "omp_pi"
+  c_omp_pi :: IO Double
+
 sseDDP :: V.Vector Float -> V.Vector Float -> Float
 sseDDP in1 in2 =
   unsafePerformIO $
@@ -94,6 +97,7 @@ main = do
               , check $ sseDDPd in1d in2d
               , check $ avxDDP in1f in2f
               , check $ avxDDPd in1d in2d
+              , void $ c_omp_pi
               ]
 
   -- Warm up, and prevent full laziness

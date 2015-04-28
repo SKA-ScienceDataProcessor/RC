@@ -30,12 +30,6 @@ import OskarBinReader
 import OskarBinReaderFFI
 import GCF
 
-#ifndef QUICK_TEST
-import Paths_dna_ms3 ( getDataFileName )
-#else
-#define getDataFileName return
-#endif
-
 data Grid = Grid {
     gridSize :: !Int
   , gridPtr  :: !CUDA.CxDoubleDevPtr
@@ -59,47 +53,51 @@ instance Binary Grid
 
 type At =
       Int                   -- Support size for launch
+   -> Int                   -- Baseline offset
    -> Int                   -- Num of baselines in launch
-   -> CUDA.DevicePtr BlWMap -- Pointer to mapping location in launch
    -> IO ()
 
 type AddBaselinesFun =
       CDouble                             -- Scale
-   -> CDouble                             -- WStep
-   -> CUDA.CxDoubleDevPtr                 -- Visibilities ptr
+   -> CUDA.CxDoubleDevPtr                 -- Grid ptr
    -> CUDA.DevicePtr CUDA.CxDoubleDevPtr  -- GCF layers ptr
    -> CUDA.DoubleDevPtr                   -- UVW ptr
-   -> CUDA.CxDoubleDevPtr                 -- Mapper ptr
+   -> CUDA.CxDoubleDevPtr                 -- Visibilities ptr
+   -> CUDA.DevicePtr BlWMap               -- Device pointer to mapping vector
    -> At
 
 type AddBaselinesIter =
       Int                   -- Num of baselines total
    -> Ptr BlWMap            -- Pointer to mapping vector
-   -> CUDA.DevicePtr BlWMap -- Device pointer to mapping vector
    -> At
    -> IO ()
 
-launchAddBaselines :: CUDA.Fun -> AddBaselinesFun
-launchAddBaselines f scale wstp gridptr gcflp uvwp visp maxSupp numOfBaselines permutations =
+launchAddBaselines :: TaskData -> CUDA.Fun -> AddBaselinesFun
+launchAddBaselines td f scale gridptr gcflp uvwp visp permp maxSupp blOff numOfBaselines =
   CUDA.launchKernel f (numOfBaselines, 1, 1) (nOfThreads, 1, 1) 0 Nothing params
   where
+    off = blOff * tdTimes td * tdChannels td
     nOfThreads = min 1024 (maxSupp * maxSupp)
-    params = mapArgs $ scale :. wstp :. permutations :. gridptr :. gcflp :. uvwp :. visp :. Z
+    params = mapArgs $  scale
+                     :. tdWstep td
+                     :. CUDA.advanceDevPtr permp blOff
+                     :. gridptr
+                     :. gcflp
+                     :. CUDA.advanceDevPtr uvwp (off * 3)
+                     :. CUDA.advanceDevPtr visp (off * 4)
+                     :. Z
 
 data GridderConfig = GridderConfig {
-    gcKernelName :: !String
+    gcKernelName :: String
+  , gcKernel :: !CUDA.Fun
   , gcGCFIsFull :: !Bool
   , gcIter :: !AddBaselinesIter
   }
 
-gridderModule :: IO CUDA.Module
-gridderModule = getDataFileName "scatter_gridders_smem_ska.cubin" >>= CUDA.loadFile
-
 -- FIXME: Add permutations option to config
 --   and *generate* name from gcfIsFull and permutation option
 runGridder :: GridderConfig -> TaskData -> GCFDev -> IO Grid
-runGridder (GridderConfig gfname gcfIsFull iter) td gcf = do
-    fun <- (`CUDA.getFun` gfname) =<< gridderModule
+runGridder (GridderConfig _ fun gcfIsFull iter) td gcf = do
     gridptr <- CUDA.mallocArray gridsize
     CUDA.memset gridptr (fromIntegral $ gridsize * cxdSize) 0
     CUDA.allocaArray uvwSize $ \uvwp ->
@@ -108,7 +106,7 @@ runGridder (GridderConfig gfname gcfIsFull iter) td gcf = do
           CUDA.pokeArray uvwSize (castPtr $ tdUVWs td) uvwp
           CUDA.pokeArray visSize (castPtr $ tdVisibilies td) visp
           CUDA.pokeArray nBaselines perms permp
-          iter nBaselines perms permp (launchAddBaselines fun scale (tdWstep td) gridptr gcfptr uvwp visp)
+          iter nBaselines perms (launchAddBaselines td fun scale gridptr gcfptr uvwp visp permp)
     return $ Grid gridsize gridptr
   where
     -- FIXME: Move this to top level and
@@ -125,22 +123,19 @@ runGridder (GridderConfig gfname gcfIsFull iter) td gcf = do
     gridsize = 4096 * 4096 * 4
     cxdSize = sizeOf (undefined :: CxDouble)
 
-normalizeAndExtractPolarization :: Int32 -> CUDA.CxDoubleDevPtr -> Grid -> IO ()
-normalizeAndExtractPolarization pol polp (Grid _ gridp) = do
-  f <- (`CUDA.getFun` "normalizeAndExtractPolarization") =<< gridderModule
-  -- 128 * 32 = 4096
-  CUDA.launchKernel f (128, 128, 1) (32, 32, 1) 0 Nothing $ mapArgs $ pol :. polp :. gridp :. Z
+foreign import ccall unsafe "&normalizeAndExtractPolarization" normalizeAndExtractPolarization_c :: CUDA.Fun
 
-gatherGridderModule :: IO CUDA.Module
-gatherGridderModule = getDataFileName "gather_gridder.cubin" >>= CUDA.loadFile
+normalizeAndExtractPolarization :: Int -> CUDA.CxDoubleDevPtr -> Grid -> IO ()
+normalizeAndExtractPolarization pol polp (Grid _ gridp) =
+  -- 128 * 32 = 4096
+  CUDA.launchKernel normalizeAndExtractPolarization_c (128, 128, 1) (32, 32, 1) 0 Nothing $ mapArgs $ polp :. gridp :. (fromIntegral pol :: Int32) :. Z
 
 type RawPtr = CUDA.DevicePtr Word8
 
 -- FIXME: Add permutations option to config
 --   and *generate* name from gcfIsFull and permutation option
 runGatherGridder :: GridderConfig -> String -> TaskData -> GCFDev -> IO Grid
-runGatherGridder (GridderConfig gfname gcfIsFull _) prefix td gcf = do
-    fun <- (`CUDA.getFun` gfname) =<< gatherGridderModule
+runGatherGridder (GridderConfig _ fun gcfIsFull _) prefix td gcf = do
     gridptr <- CUDA.mallocArray gridsize
     CUDA.memset gridptr (fromIntegral $ gridsize * cxdSize) 0
     --
@@ -160,9 +155,11 @@ runGatherGridder (GridderConfig gfname gcfIsFull _) prefix td gcf = do
               vis_data_in <- CUDA.mallocArray vis_data_size :: IO RawPtr
               CUDA.pokeArray vis_data_size (plusPtr vis_data_ptr_host vis_data_offset) vis_data_in
 
-              let len = fromIntegral vis_data_size `div` vis_size
+              let
+                len :: Int32
+                len = fromIntegral (vis_data_size `div` vis_size)
               CUDA.launchKernel fun (16,16, 1) (8,8,1) 0 Nothing
-                $ mapArgs $ up :. vp :. pre_data_in :. vis_data_in :. len :. gcfptr :. gridptr :. Z
+                $ mapArgs $ pre_data_in :. vis_data_in :. gcfptr :. gridptr :. up :. vp :. len :. Z
               --
               munmapFilePtr pre_data_ptr_host pre_data_rawsize
               munmapFilePtr vis_data_ptr_host vis_data_rawsize
@@ -179,4 +176,4 @@ runGatherGridder (GridderConfig gfname gcfIsFull _) prefix td gcf = do
     -- FIXME:
     gridsize = 4096 * 4096 * 4
     cxdSize = sizeOf (undefined :: CxDouble)
-    vis_size = 64 :: Int32
+    vis_size = 64

@@ -59,13 +59,13 @@ __device__ __inline__ static void grid_kernel_gather(
 
 #define gridKernelGather(suff, ishalf)             \
 extern "C" __global__ void gridKernelGather##suff( \
-    int BU                                         \
-  , int BV                                         \
-  , const Pregridded * uvo                         \
+    const Pregridded * uvo                         \
   , const Double4c * vis                           \
-  , int num_of_vals                                \
   , const cuDoubleComplex * gcf[]                  \
   , Double4c grid[GRID_SIZE][GRID_SIZE]            \
+  , int BU                                         \
+  , int BV                                         \
+  , int num_of_vals                                \
 ) {                                                \
   grid_kernel_gather<GRID_SIZE, BSTEP, ishalf>(    \
       BU                                           \

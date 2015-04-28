@@ -275,7 +275,7 @@ void normalizeAndExtractPolarization(
   }
 }
 
-extern "C" void normalizeAndExtractPolarization(
+extern "C" void normalizeAndExtractPolarizationCPU(
     int n
   , complexd dst[GRID_SIZE][GRID_SIZE]
   , const complexd src[GRID_SIZE][GRID_SIZE][NUM_POL]

@@ -9,6 +9,7 @@ module DNA.DSL (
     , DnaF(..)
     , Promise(..)
     , Group(..)
+    , Kern(..)
       -- ** Spawn monad
     , Spawn(..)
     , SpawnFlag(..)
@@ -29,7 +30,6 @@ module DNA.DSL (
       -- * Smart constructors
       -- ** Logging
     , logMessage
-    , profile
     , duration
     , ProfileHint(..)
       -- ** Other
@@ -37,6 +37,8 @@ module DNA.DSL (
     , rank
     , groupSize
     , kernel
+    , unboundKernel
+    , KernelMode(..)
       -- ** Actor spawning
     , eval
     , evalClosure
@@ -80,14 +82,24 @@ import DNA.Logging (ProfileHint(..))
 newtype DNA a = DNA (Program DnaF a)
                 deriving (Functor,Applicative,Monad)
 
-instance MonadIO DNA where
-    liftIO = kernel
+newtype Kern a = Kern { runKern :: IO a }
+               deriving (Functor,Applicative,Monad)
+
+data KernelMode
+    = DefaultKernel -- ^ No restrictions on kernel execution
+    | BoundKernel   -- ^ Kernel relies on being bound to a single OS thread.
+
+instance MonadIO Kern where
+    liftIO = Kern
 
 -- | GADT which describe operations supported by DNA DSL
 data DnaF a where
     -- | Execute foreign kernel
     Kernel
-      :: IO a
+      :: String
+      -> KernelMode
+      -> [ProfileHint]
+      -> Kern a
       -> DnaF a
     DnaRank :: DnaF Int
     DnaGroupSize :: DnaF Int
@@ -95,7 +107,7 @@ data DnaF a where
     AvailNodes :: DnaF Int
 
     LogMessage :: String -> DnaF ()
-    Profile    :: String -> [ProfileHint] -> DNA a -> DnaF a
+    Duration :: String -> DNA a -> DnaF a
 
     -- | Evaluate actor's closure
     EvalClosure
@@ -185,7 +197,6 @@ data DnaF a where
       -> (b -> a -> IO b)
       -> b
       -> DnaF b
-
 
 -- | Spawn monad. It's used to carry all additional parameters for
 --   process spawning
@@ -296,17 +307,17 @@ rank = DNA $ singleton DnaRank
 groupSize :: DNA Int
 groupSize = DNA $ singleton DnaGroupSize
 
-kernel :: IO a -> DNA a
-kernel = DNA . singleton . Kernel
+kernel :: String -> [ProfileHint] -> Kern a -> DNA a
+kernel msg hints = DNA . singleton . Kernel msg BoundKernel hints
+
+unboundKernel :: String -> [ProfileHint] -> Kern a -> DNA a
+unboundKernel msg hints = DNA . singleton . Kernel msg DefaultKernel hints
 
 logMessage :: String -> DNA ()
 logMessage = DNA . singleton . LogMessage
 
 duration :: String -> DNA a -> DNA a
-duration msg = profile msg []
-
-profile :: String -> [ProfileHint] -> DNA a -> DNA a
-profile msg hints dna = DNA $ singleton $ Profile msg hints dna
+duration msg = DNA . singleton . Duration msg
 
 delay :: Serializable b => Location -> Shell a (Val b) -> DNA (Promise b)
 delay loc sh = DNA $ singleton $ Delay loc sh

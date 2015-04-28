@@ -108,7 +108,7 @@ execSpawnGroupN
     -> Int
     -> Spawn (Closure (Actor a b))
     -> DnaMonad (Shell (Val a) (Grp b))
-execSpawnGroupN res resG n act = do
+execSpawnGroupN res resG _n act = do
     -- Spawn actors
     (k,gid) <- spawnActorGroup res resG
              $ closureApply $(mkStaticClosure 'runActorManyRanks) <$> act
@@ -231,8 +231,8 @@ spawnActorGroup res resG spwn = do
     forM_ ([0..] `zip` rs) $ \(rnk,cad) -> do
         (pid,_) <- liftP
                  $ spawnSupervised (nodeId $ vcadNode cad) act
-        sendActorParam pid (Rank rnk) (GroupSize k) cad chSend
-            (concat [fs | UseDebug fs <- flags])
+        _ <- sendActorParam pid (Rank rnk) (GroupSize k) cad chSend
+               (concat [fs | UseDebug fs <- flags])
         stAid2Pid       . at aid %= Just . maybe (Set.singleton pid) (Set.insert pid)
         stPid2Aid       . at pid .= Just aid
         stUsedResources . at pid .= Just cad

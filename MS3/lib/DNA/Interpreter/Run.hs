@@ -128,9 +128,9 @@ runCollectActor (CollectActor step start fini) = do
       _ -> return ()
     -- Start execution of an actor
     !b <- runDnaParam p $ do
-           s0 <- liftIO start
+           s0 <- kernel "collector init" [] (Kern start)
            s  <- gatherM (Group chRecvParam chRecvN) step s0
-           liftIO $ fini s
+           kernel "collector fini" [] (Kern (fini s))
     sendResult b
 
 

@@ -6,11 +6,12 @@ module DNA (
     , rank
     , groupSize
     , logMessage
-    , profile
     , duration
     , ProfileHint(..)
     , floatHint, ioHint, haskellHint, cudaHint
-       -- * Actors
+    , kernel
+    , unboundKernel
+      -- * Actors
     , Actor
     , actor
     , CollectActor

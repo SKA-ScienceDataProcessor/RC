@@ -5,6 +5,7 @@
     , TypeSynonymInstances
     , DeriveGeneric
     , DeriveDataTypeable
+    , BangPatterns
   #-}
 
 module GCF (
@@ -20,28 +21,38 @@ module GCF (
   , GCFDev
   , GCFHost
   , GCFCfg(..)
+  , writeGCFHostToFile
+  , readGCFHostFromFile
   ) where
+
+import Control.Monad
 
 import Data.Int
 import Foreign.Storable
 import Foreign.Storable.Complex ()
 import Foreign.Ptr
+import Foreign.ForeignPtr
 import Foreign.Marshal.Array
+import Foreign.Marshal.Utils
 import qualified CUDAEx as CUDA
 import CUDAEx (CxDoubleDevPtr, CxDouble)
 
 import GHC.Generics (Generic)
+import GHC.Exts (Ptr(..))
 import Data.Binary
 import BinaryInstances ()
 import Data.Typeable
 
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Internal as IBS
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.ByteString.Unsafe as UBS
+import Data.Binary.Put
+import Data.Binary.Get
+
 import FFT
 
-#ifndef QUICK_TEST
-import Paths_dna_ms3 ( getDataFileName )
-#else
-#define getDataFileName return
-#endif
+import System.IO
 
 launchOnFF :: CUDA.Fun -> Int -> [CUDA.FunParam] -> IO ()
 launchOnFF k xdim  = CUDA.launchKernel k (8,8,xdim) (32,32,1) 0 Nothing
@@ -50,10 +61,10 @@ type DoubleDevPtr = CUDA.DevicePtr
 
 launchReduce :: CUDA.Fun -> CxDoubleDevPtr -> DoubleDevPtr Double -> Int -> IO ()
 launchReduce f idata odata n =
-  CUDA.launchKernel f (n `div` 1024,1,1) (512,1,1) (512 * sizeOf (undefined :: Double)) Nothing
-    [CUDA.VArg idata, CUDA.VArg odata, CUDA.IArg $ fromIntegral n]
+  CUDA.launchKernel f (n `div` 1024,1,1) (512,1,1) (fromIntegral $ 512 * sizeOf (undefined :: Double)) Nothing
+    [CUDA.VArg idata, CUDA.VArg odata, CUDA.IArg n]
 
-launchNormalize :: CUDA.Fun -> DoubleDevPtr Double -> CxDoubleDevPtr -> Int32 -> IO ()
+launchNormalize :: CUDA.Fun -> DoubleDevPtr Double -> CxDoubleDevPtr -> Int -> IO ()
 launchNormalize f normp ptr len =
   CUDA.launchKernel f (128,1,1) (512,1,1) 0 Nothing
     [CUDA.VArg normp, CUDA.VArg ptr, CUDA.IArg len]
@@ -117,19 +128,52 @@ finalizeGCFHost :: GCFHost -> IO ()
 finalizeGCFHost (GCF _ _ gcfp layers) =
   CUDA.freeHost (CUDA.HostPtr layers) >> CUDA.freeHost (CUDA.HostPtr gcfp)
 
-doCuda :: Double -> [(Double, Int)] -> GCFDev -> IO ()
-doCuda t2 ws_hsupps gcf = do
-  m <- CUDA.loadFile =<< getDataFileName "all.cubin"
-  [  fftshift_kernel
-   , ifftshift_kernel
-   , reduce_512_odd
-   , r2
-   , wkernff
-   , copy_2_over
-   , transpose_over0
-   , normalize
-   , wextract1 ] <- mapM (CUDA.getFun m) kernelNames
+writeGCFHostToFile :: GCFHost -> FilePath -> IO ()
+writeGCFHostToFile (GCF size nol gcfp lrsp) file = do
+  fd <- openFile file WriteMode
+  print (size, nol)
+  LBS.hPut fd $ runPut $ put size >> put nol
+  let lsiz = nol * 8 * 8
+  forM_ [0..lsiz-1] $ \i -> do
+    v <- peekElemOff lrsp i
+    LBS.hPut fd $ runPut $ put $ v `minusPtr` gcfp
+  let !(Ptr addr) = gcfp
+      cdSize = sizeOf (undefined :: CxDouble)
+  BS.hPut fd =<< UBS.unsafePackAddressLen (size * cdSize) addr
+  hClose fd
 
+readGCFHostFromFile :: FilePath -> IO GCFHost
+readGCFHostFromFile file = do
+  fd <- openFile file ReadMode
+  let intSize = sizeOf (undefined :: Int)
+  cts <- LBS.hGet fd (intSize * 2)
+  let (size, nol) = flip runGet cts $ do
+         size <- get; nol <- get; return (size, nol)
+  let lsiz = nol * 8 * 8
+  print (size, nol)
+  gcf@(GCF _ _ gcfp lrsp) <- allocateGCFHost nol size
+  forM_ [0..lsiz-1] $ \i -> do
+    v <- runGet get `liftM` LBS.hGet fd intSize
+    pokeElemOff lrsp i (gcfp `plusPtr` v)
+  let cdSize = sizeOf (undefined :: CxDouble)
+  bs <- BS.hGet fd (size * cdSize)
+  let (fp, off, l) = IBS.toForeignPtr bs
+  withForeignPtr fp $ \p -> copyBytes gcfp (p `plusPtr` off) l
+  return gcf
+
+#define __k(n) foreign import ccall unsafe "&" n :: CUDA.Fun
+
+__k(ifftshift_kernel)
+__k(reduce_512_e2)
+__k(r2)
+__k(wkernff)
+__k(copy_2_over)
+__k(transpose_over0)
+__k(normalize)
+__k(wextract1)
+
+doCuda :: Double -> [(Double, Int)] -> GCFDev -> IO ()
+doCuda t2 ws_hsupps gcf =
   CUDA.allocaArray (256*256) $ \(ffp0 :: CxDoubleDevPtr) -> do
     launchOnFF r2 1 [CUDA.VArg ffp0, CUDA.VArg t2]
     CUDA.allocaArray (256*256) $ \(ffpc :: CxDoubleDevPtr) ->
@@ -151,7 +195,7 @@ doCuda t2 ws_hsupps gcf = do
                  let
                    normAndExtractLayers outplist layerp n
                      | n > 0 = do
-                                 launchReduce reduce_512_odd layerp normp (256*256)
+                                 launchReduce reduce_512_e2 layerp normp (256*256)
                                  CUDA.sync
                                  -- CUDA.peekArray 1 normp hnormp -- DEBUG
                                  -- peek hnormp >>= print
@@ -167,19 +211,6 @@ doCuda t2 ws_hsupps gcf = do
                  go rest olist
               go [] lptrrlist = CUDA.pokeListArray (init $ reverse lptrrlist) (gcfLayers gcf)
             in go ws_hsupps [gcfPtr gcf]
-  where
-    kernelNames =
-      [ "fftshift_kernel"
-      , "ifftshift_kernel"
-      , "reduce_512_odd"
-      , "r2"
-      , "wkernff"
-      , "copy_2_over"
-      , "transpose_over0"
-      , "normalize"
-      , "wextract1"
-      ]
-
 
 type LD = [(Double, Int)]
 
