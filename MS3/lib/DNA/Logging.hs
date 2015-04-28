@@ -35,6 +35,9 @@ module DNA.Logging
 
     , taggedMessage
     , eventMessage
+    , message
+    , warningMsg
+    , errorMsg
     , synchronizationPoint
     , logDuration
     , logProfile
@@ -48,13 +51,14 @@ import Control.Applicative
 import Control.Concurrent
 import Control.Distributed.Process (getSelfPid)
 import Control.Exception           (evaluate)
-import Control.Monad               (when,liftM)
+import Control.Monad               (when,liftM,forM_)
 import Control.Monad.IO.Class
 
 import Data.Time
 import Data.Maybe         (fromMaybe)
 import Data.IORef
 import Data.Tuple         (swap)
+import Data.List          (unfoldr)
 import qualified Data.Map.Strict as Map
 
 import GHC.Stats
@@ -67,6 +71,7 @@ import Profiling.CUDA.Metrics
 #endif
 import Profiling.Linux.Perf.Stat
 
+import System.IO
 import System.IO.Unsafe   (unsafePerformIO)
 import System.Locale      (defaultTimeLocale)
 import System.Mem         (performGC)
@@ -131,6 +136,11 @@ initLogging opt = do
                           }
   writeIORef loggerStateVar state
 
+  -- Set console output to be line-buffered. We want it for
+  -- diagnostics, no reason to buffer.
+  hSetBuffering stdout LineBuffering
+  hSetBuffering stderr LineBuffering -- Should be default
+
 -- | Helper for activating a profiling module on-demand
 enableProfileMod :: (LoggerState -> IORef Int) -> IO () -> IO ()
 enableProfileMod loggerEnabled enable = do
@@ -152,12 +162,11 @@ disableProfileMod loggerEnabled disable = do
 type Attr = (String, String)
 
 -- | Generate the specified eventlog message
-message :: MonadIO m
-        => String -- ^ Message tag
+rawMessage :: String -- ^ Message tag
         -> [Attr] -- ^ Message attributes
         -> String -- ^ Message body
-        -> m ()
-message tag attrs msg = do
+        -> IO ()
+rawMessage tag attrs msg = do
     -- Make message text
     let formatAttr (attr, val) = ' ':'[':attr ++ '=': val ++ "]"
         text = concat (tag : map formatAttr attrs) ++ ' ':msg
@@ -191,13 +200,35 @@ taggedMessage :: MonadProcess m
               -> m ()
 taggedMessage tag msg = do
     attrs <- processAttributes
-    message tag attrs msg
+    liftIO $ rawMessage tag attrs msg
 
 -- | Put a global message into eventlog.
 eventMessage :: MonadIO m => String -> m ()
-eventMessage = message "MSG" []
+eventMessage = message 0
 
 -- | Put a message at the given verbosity level
+message :: MonadIO m => Int -> String -> m ()
+message v msg = liftIO $ do
+    verbosity <- logOptVerbose . loggerOpt <$> readIORef loggerStateVar
+    when (verbosity >= v) $ do
+        hPutStrLn stdout msg
+        rawMessage "MSG" [("v", show v)] msg
+
+-- | Put a warning message. Warnings have a verbosity of 0.
+warningMsg :: MonadIO m => String -> m ()
+warningMsg msg = liftIO $ do
+    verbosity <- logOptVerbose . loggerOpt <$> readIORef loggerStateVar
+    when (verbosity >= 0) $ do
+        hPutStrLn stderr $ "WARNING: " ++ msg
+        rawMessage "WARNING" [] msg
+
+-- | Put an warning message. Errors have a verbosity of -1.
+errorMsg :: MonadIO m => String -> m ()
+errorMsg msg = liftIO $ do
+    verbosity <- logOptVerbose . loggerOpt <$> readIORef loggerStateVar
+    when (verbosity >= (-1)) $ do
+        hPutStrLn stderr $ "ERROR: " ++ msg
+        rawMessage "ERROR" [] msg
 
 -- | Synchronize timings - put into eventlog an event with current wall time.
 synchronizationPoint :: MonadIO m => String -> m ()
@@ -207,8 +238,8 @@ synchronizationPoint msg = liftIO $ do
     -- fractional part in picoseconds.
     let timeString    = formatTime defaultTimeLocale "%s.%q" utcTime
         humanReadable = formatTime defaultTimeLocale "%F %X" utcTime
-    message "SYNC" [("time", timeString)] msg
-    message "MSG" [] $ "started at " ++ humanReadable
+    rawMessage "SYNC" [("time", timeString)] msg
+    rawMessage "MSG" [] $ "started at " ++ humanReadable
 
 ----------------------------------------------------------------
 -- Profiling basics
@@ -228,12 +259,12 @@ measurement :: MonadIO m
 measurement sample msg attrs dna = do
     -- Get start sample
     sample0 <- sample StartSample
-    message "START" (attrs ++ sample0) msg
+    liftIO $ rawMessage "START" (attrs ++ sample0) msg
     -- Perform action
     r <- liftIO . evaluate =<< dna
     -- Get end sample, return
     sample1 <- sample EndSample
-    message "END" (attrs ++ sample1) msg
+    liftIO $ rawMessage "END" (attrs ++ sample1) msg
     return r
 
 -- | Put measurements about execution time of monadic action into
@@ -391,6 +422,9 @@ floatCounterAttrs pt = do
     countersVar <- loggerPerfCounters <$> readIORef loggerStateVar
     counters <- case pt of
       StartSample -> do
+        -- Check that the thread is actually bound
+        isBound <- isCurrentThreadBound
+        when (not isBound) $ warningMsg "perf_events not running in bound thread!"
         counters <- perfEventOpen $ map snd floatCounterDescs
         atomicModifyIORef' countersVar $ flip (,) () . Map.insert tid counters
         return counters
@@ -411,6 +445,7 @@ floatCounterAttrs pt = do
     let fmtName (name, _) = "perf:" ++ name
         fmtVal stat = show (psValue stat) ++ "/" ++ show (psTimeRunning stat)
     return $ zip (map fmtName floatCounterDescs) (map fmtVal vals)
+
 
 ----------------------------------------------------------------
 -- I/O data sampling

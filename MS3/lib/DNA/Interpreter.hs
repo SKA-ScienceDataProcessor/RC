@@ -67,7 +67,7 @@ interpretDNA (DNA m) =
       DnaGroupSize    -> use stGroupSize
       AvailNodes      -> Set.size <$> use stNodePool
       -- Logging
-      LogMessage msg   -> taggedMessage "MSG" msg
+      LogMessage msg   -> message 0 msg
       Duration msg dna -> logDuration msg $ interpretDNA dna
       -- Spawning of actors
       EvalClosure     a c -> do Actor f <- lift $ unClosure c
