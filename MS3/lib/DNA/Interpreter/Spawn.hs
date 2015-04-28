@@ -1,12 +1,5 @@
 {-# LANGUAGE BangPatterns               #-}
-{-# LANGUAGE DeriveDataTypeable         #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
 -- | Code for starting remote actors
 module DNA.Interpreter.Spawn (
@@ -30,6 +23,7 @@ import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
 import Data.Monoid
+import Data.Either
 import qualified Data.Foldable as T
 import qualified Data.Set as Set
 import Text.Printf
@@ -48,6 +42,9 @@ import DNA.Interpreter.Message
 -- Functions for spawning actors
 ----------------------------------------------------------------
 
+-- FIXME: One problem that should be addressed is need to restart
+--        processes when they fail. 
+
 -- | Spawn simple actor on remote node
 execSpawnActor
     :: (Serializable a, Serializable b)
@@ -57,37 +54,31 @@ execSpawnActor
 -- BLOCKING
 execSpawnActor res act = do
     -- Spawn actor
-    (aid,ch) <- spawnSingleActor res
+    (aid,pid,ch) <- spawnSingleActor res
          $ closureApply $(mkStaticClosure 'runActor) <$> act
-    -- Get back shell for the actor
+    -- Get actor's port for receiving data
     --
-    -- FIXME: We need to abort if process which should send us shell
-    --        dies. Or restart??? Or???
-    dst <- handleRecieve messageHandlers [matchChan' ch]
-    case dst of
+    -- FIXME: Respawn
+    receiveShell ch aid pid $ \dst -> case dst of
       RcvSimple{} -> return ()
       _           -> doPanic "Invalid RecvAddr in execSpawnActor"
-    stActorRecvAddr . at aid .= Just (Just dst)
     return $ Shell aid
-
 
 -- | Spawn collector actor on remote node
 execSpawnCollector
-    :: forall a b. (Serializable a, Serializable b)
+    :: (Serializable a, Serializable b)
     => Res
     -> Spawn (Closure (CollectActor a b))
     -> DnaMonad (Shell (Grp a) (Val b))
 -- BLOCKING
 execSpawnCollector res act = do
     -- Spawn actor
-    (aid,ch) <- spawnSingleActor res
+    (aid,pid,ch) <- spawnSingleActor res
          $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
-    dst <- handleRecieve messageHandlers [matchChan' ch]
-    case dst of
+    -- Receive connection
+    receiveShell ch aid pid $ \dst -> case dst of
       RcvReduce{} -> return ()
-      _           -> doPanic "Invalid RecvAddr in execSpawnCollector"
-    stActorRecvAddr . at aid .= Just (Just dst)
-    -- FIXME: See above
+      _           -> doPanic "Invalid RecvAddr in execSpawnActor"
     return $ Shell aid
 
 
@@ -101,18 +92,12 @@ execSpawnGroup
 -- BLOCKING
 execSpawnGroup res resG act = do
     -- Spawn actors
-    (k,aid,ch) <- spawnActorGroup res resG
-             $ closureApply $(mkStaticClosure 'runActor) <$> act
-    -- Assemble group
-    --
-    -- FIXME: Fault tolerance. We need to account for the fact some
-    --        processes can crash before we have chance to get shell
-    --        from them
-    dsts    <- replicateM k $ handleRecieve messageHandlers [matchChan' ch]
-    dstList <- forM dsts $ \d -> case d of
-                 RcvSimple m -> return m
-                 _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
-    stActorRecvAddr . at aid .= Just (Just (RcvGrp dstList))
+    (aid,ch) <- spawnActorGroup res resG
+              $ closureApply $(mkStaticClosure 'runActor) <$> act
+    -- Receive connection
+    receiveShellGroup ch aid RcvGrp $ \dst -> case dst of
+      RcvSimple m -> return m
+      _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
     return $ Shell aid
 
 {-
@@ -144,15 +129,12 @@ execSpawnCollectorGroup
     -> DnaMonad (Shell (Grp a) (Grp b))
 execSpawnCollectorGroup res resG act = do
     -- Spawn actors
-    (k,aid,ch) <- spawnActorGroup res resG
-                $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
-    -- Assemble group
-    -- FIXME: Fault tolerance
-    dsts    <- replicateM k $ handleRecieve messageHandlers [matchChan' ch]
-    dstList <- forM dsts $ \d -> case d of
-                 RcvReduce m -> return m
-                 _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
-    stActorRecvAddr . at aid .= Just (Just (RcvReduce $ concat dstList))
+    (aid,ch) <- spawnActorGroup res resG
+              $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
+    -- Receive connection
+    receiveShellGroup ch aid (RcvReduce . concat) $ \dst -> case dst of
+      RcvReduce m -> return m
+      _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
     return $ Shell aid
 
 
@@ -197,7 +179,7 @@ execSpawnMappers res resG act = do
 spawnSingleActor
     :: Res
     -> Spawn (Closure (Process ()))
-    -> DnaMonad (AID,ReceivePort RecvAddr)
+    -> DnaMonad (AID,ProcessId,ReceivePort RecvAddr)
 spawnSingleActor res spwn = do
     let (act,flags) = runSpawn spwn
     -- Acquire resources
@@ -223,7 +205,7 @@ spawnSingleActor res spwn = do
     -- T.forM_ mmatch $ \m ->
     --     when (UseRespawn `elem` flags) $
     --         stRestartable . at pid .= Just (m,act,wrapMessage p)
-    return (aid,chRecv)
+    return (aid,pid,chRecv)
 
 
 -- Spawn group of actors
@@ -231,7 +213,7 @@ spawnActorGroup
     :: Res                          -- Resourses allocated to group
     -> ResGroup                     -- How to split resources between actors
     -> Spawn (Closure (Process ())) -- Closure to process'
-    -> DnaMonad (Int,AID,ReceivePort RecvAddr) -- Returns size of group and group ID
+    -> DnaMonad (AID,ReceivePort RecvAddr) -- Returns size of group and group ID
 spawnActorGroup res resG spwn = do
     let (act,flags) = runSpawn spwn
     -- Acquire resources
@@ -257,8 +239,68 @@ spawnActorGroup res resG spwn = do
     -- Add timeout for actor
     liftP $ setTimeout flags aid
     --
-    return (k,aid,chRecv)
+    return (aid,chRecv)
 
+
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
+
+-- Receive either value from process or termination notification
+waitForShell
+    :: Serializable a
+    => ReceivePort a
+    -> (ProcessId -> Bool)
+    -> Process (Either ProcessMonitorNotification a)
+waitForShell ch p = receiveWait
+    [ matchChan ch                                             (return . Right)
+    , matchIf (\(ProcessMonitorNotification _ pid _) -> p pid) (return . Left)
+    ]
+
+
+-- Receive shell process for single process actor and either record
+-- failure or success in the dataflow graph
+receiveShell
+    :: ReceivePort RecvAddr
+    -> AID
+    -> ProcessId
+    -> (RecvAddr -> DnaMonad ())
+    -> DnaMonad ()
+receiveShell ch aid pid handler = do
+    -- We obtain shell or notification that process is dead
+    r <- liftP $ waitForShell ch (==pid)
+    case r of
+      Left _ -> do
+        stChildren      . at aid .= Just Failed
+        stActorRecvAddr . at aid .= Just Nothing
+        freeActorResouces aid
+        dropActor aid
+      Right dst -> do
+        stActorRecvAddr . at aid .= Just (Just dst)
+        handler dst
+
+receiveShellGroup
+    :: ReceivePort RecvAddr
+    -> AID
+    -> ([a] -> RecvAddr)
+    -> (RecvAddr -> DnaMonad a)
+    -> DnaMonad ()
+receiveShellGroup ch aid assemble handler = do
+    -- Receive shells or notifications
+    Just pids <- use $ stAid2Pid . at aid
+    dsts <- liftP $ replicateM (Set.size pids) $ waitForShell ch (`Set.member` pids)
+    -- Check that we don't have too many failures
+    Just (Running (RunInfo _ nFail)) <- use $ stChildren . at aid
+    let (fails,oks) = partitionEithers dsts
+    if (length fails > nFail)
+       then do stChildren      . at aid .= Just Failed
+               stActorRecvAddr . at aid .= Just Nothing
+               freeActorResouces aid
+               terminateActor    aid
+               dropActor aid
+       else do xs <- forM oks handler
+               stActorRecvAddr . at aid .= Just (Just (assemble xs)) 
+               
 
 -- Create process for forcing timeout when process
 setTimeout :: [SpawnFlag] -> AID -> Process ()

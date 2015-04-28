@@ -279,6 +279,32 @@ terminateActor aid = do
         liftIO $ print p
         send p (Terminate "TERMINATE")
 
+-- | Drop actor from the registry
+dropActor :: (MonadState StateDNA m) => AID -> m ()
+dropActor aid = do
+    mpids <- use $ stAid2Pid . at aid
+    stAid2Pid       . at aid .= Nothing
+    stActorRecvAddr . at aid .= Just Nothing
+    T.forM_ mpids $ T.mapM_ $ \p ->
+        stPid2Aid . at p .= Nothing
+
+-- | Put resources associated with PID to the pool
+freeResouces :: (MonadState StateDNA m) => ProcessId -> m ()
+freeResouces pid = do
+    mr <- use $ stUsedResources . at pid
+    case mr of
+      Nothing -> return ()
+      Just (VirtualCAD Local  _ ns) -> stNodePool %= (Set.fromList ns <>)
+      Just (VirtualCAD Remote n ns) -> stNodePool %= (\xs -> Set.singleton n <> Set.fromList ns <> xs)
+
+-- | Put resources associated with PID to the pool
+freeActorResouces :: (MonadState StateDNA m) => AID -> m ()
+freeActorResouces aid = do
+    mpids <- use $ stAid2Pid . at aid
+    T.forM_ mpids $ T.mapM_ freeResouces
+
+
+
 -- -- Process event where we dispatch on PID of process
 -- handlePidEvent
 --     :: ProcessId

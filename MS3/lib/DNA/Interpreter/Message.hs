@@ -165,16 +165,6 @@ withAID pid action = do
     maid <- use $ stPid2Aid . at pid
     T.forM_ maid action
 
-
--- Put resources associated with PID to the pool
-freeResouces :: ProcessId -> Controller ()
-freeResouces pid = do
-    mr <- use $ stUsedResources . at pid
-    case mr of
-      Nothing -> return ()
-      Just (VirtualCAD Local  _ ns) -> stNodePool %= (Set.fromList ns <>)
-      Just (VirtualCAD Remote n ns) -> stNodePool %= (\xs -> Set.singleton n <> Set.fromList ns <> xs)
-
 -- Remove PID from mapping
 dropPID
     :: ProcessId
@@ -194,17 +184,6 @@ dropPID pid aid actionDone actionGoing = do
       False -> do
           stAid2Pid  . at aid .= Just pids'
           actionGoing
-
--- Drop actor from the registry
-dropActor :: AID -> Controller ()
-dropActor aid = do
-    mpids <- use $ stAid2Pid . at aid
-    stAid2Pid       . at aid .= Nothing
-    stActorRecvAddr . at aid .= Just Nothing
-    T.forM_ mpids $ T.mapM_ $ \p ->
-        stPid2Aid . at p .= Nothing
-
-
 
 
 
