@@ -19,6 +19,9 @@
 --
 --  4. Send result to latest destination received
 --
+-- One particular problem is related to the need of respawning of
+-- processes. We must ensure that actor sends its result to real actor
+-- instead of just terminated actor
 module DNA.Interpreter.Run (
       -- * Run actors
       runActor
@@ -66,7 +69,9 @@ runActor (Actor action) = do
     (chSendParam,chRecvParam) <- newChan
     -- Send data destination back
     sendChan (actorSendBack p)
-             (RcvSimple (wrapMessage chSendParam))
+             ( RcvSimple (wrapMessage chSendParam)
+             , [sendPortId chSendParam]
+             )
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
     !b  <- runDnaParam p (action a)
@@ -116,7 +121,9 @@ runCollectActor (CollectActor step start fini) = do
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
     sendChan (actorSendBack p)
-         (RcvReduce [(wrapMessage chSendParam, chSendN)])
+        ( RcvReduce [(wrapMessage chSendParam, chSendN)]
+        , [ sendPortId chSendParam , sendPortId chSendN ]
+        )
     -- Now we want to check if process was requested to crash
     case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
       pCrash : _ -> do

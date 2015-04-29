@@ -153,7 +153,7 @@ data ActorParam = ActorParam
       -- ^ Nodes allocated to an actor
     , actorDebugFlags  :: [DebugFlag]
       -- ^ Extra flags for debugging
-    , actorSendBack    :: SendPort RecvAddr
+    , actorSendBack    :: SendPort (RecvAddr,[SendPortId])
     }
     deriving (Typeable,Generic)
 instance Binary ActorParam
@@ -175,6 +175,8 @@ data Env = Env
 --   to logical CH actors
 --
 --   Invariants:
+--
+--    * For every actor ID exist entry stChildren and stActorRecvAddr
 --
 --
 data StateDNA = StateDNA
@@ -203,7 +205,7 @@ data StateDNA = StateDNA
       -- State of connections
     , _stVars          :: !(Map VID RecvAddr)
       -- ^ Mapping for local variables
-    , _stActorRecvAddr :: !(Map AID (Maybe RecvAddr))
+    , _stActorRecvAddr :: !(Map AID (Maybe (RecvAddr,[SendPortId])))
       -- ^ Receive address of an actor. When actor terminated it's set
       --   to Nothing
 
@@ -211,7 +213,9 @@ data StateDNA = StateDNA
     , _stPid2Aid :: !(Map ProcessId AID)
     , _stAid2Pid :: !(Map AID (Set ProcessId))
       
+
     -- , _stActorClosure   :: !(Map AID (Closure (Process ())))
+    --   -- ^ Closure for the actor 
 
       
       --   -- Monitor resources
@@ -261,7 +265,8 @@ actorDestinationAddr aid = do
       Nothing             -> return Nothing
       Just (Left var)     -> use $ stVars . at var
       Just (Right aidDst) -> do Just m <- use $ stActorRecvAddr . at aidDst
-                                return m
+                                -- FIXME: Pattern matching??
+                                return $ fmap fst m
 
 
 

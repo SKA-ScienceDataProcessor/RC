@@ -175,7 +175,7 @@ execSpawnMappers res resG act = do
 spawnSingleActor
     :: Res
     -> Spawn (Closure (Process ()))
-    -> DnaMonad (AID,ProcessId,ReceivePort RecvAddr)
+    -> DnaMonad (AID,ProcessId,ReceivePort (RecvAddr,[SendPortId]))
 spawnSingleActor res spwn = do
     let (act,flags) = runSpawn spwn
     -- Acquire resources
@@ -209,7 +209,7 @@ spawnActorGroup
     :: Res                          -- Resourses allocated to group
     -> ResGroup                     -- How to split resources between actors
     -> Spawn (Closure (Process ())) -- Closure to process'
-    -> DnaMonad (AID,ReceivePort RecvAddr) -- Returns size of group and group ID
+    -> DnaMonad (AID,ReceivePort (RecvAddr,[SendPortId])) -- Returns size of group and group ID
 spawnActorGroup res resG spwn = do
     let (act,flags) = runSpawn spwn
     -- Acquire resources
@@ -257,7 +257,7 @@ waitForShell ch p = receiveWait
 -- Receive shell process for single process actor and either record
 -- failure or success in the dataflow graph
 receiveShell
-    :: ReceivePort RecvAddr
+    :: ReceivePort (RecvAddr,[SendPortId])
     -> AID
     -> ProcessId
     -> (RecvAddr -> DnaMonad ())
@@ -273,10 +273,10 @@ receiveShell ch aid pid handler = do
         dropActor aid
       Right dst -> do
         stActorRecvAddr . at aid .= Just (Just dst)
-        handler dst
+        handler $ fst dst
 
 receiveShellGroup
-    :: ReceivePort RecvAddr
+    :: ReceivePort (RecvAddr,[SendPortId])
     -> AID
     -> ([a] -> RecvAddr)
     -> (RecvAddr -> DnaMonad a)
@@ -294,8 +294,8 @@ receiveShellGroup ch aid assemble handler = do
                freeActorResouces aid
                terminateActor    aid
                dropActor aid
-       else do xs <- forM oks handler
-               stActorRecvAddr . at aid .= Just (Just (assemble xs)) 
+       else do xs <- forM oks (handler . fst)
+               stActorRecvAddr . at aid .= Just (Just (assemble xs, snd =<< oks))
                
 
 -- Create process for forcing timeout when process
@@ -319,7 +319,7 @@ sendActorParam
     -> Rank
     -> GroupSize
     -> VirtualCAD
-    -> SendPort RecvAddr
+    -> SendPort (RecvAddr,[SendPortId])
     -> [DebugFlag]
     -> DnaMonad ActorParam
 sendActorParam pid rnk g cad ch flags = do
