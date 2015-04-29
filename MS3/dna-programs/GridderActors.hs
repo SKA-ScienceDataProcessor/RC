@@ -194,7 +194,7 @@ marshalGCF2HostP gcfd@(GCF gcfsize nol _ _) =
 -- We have 4 variants only and all are covered by this code
 cpuGridder :: Bool -> Bool -> Bool -> String -> TaskData -> GCFHost -> DNA ()
 cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh = do
-    (gridp, polptr) <- kernel gname [floatHint {hintDoubleOps = 25}] $ liftIO $ do
+    (gridp, polptr) <- kernel gname [floatHint {hintDoubleOps = 2605823313}] $ liftIO $ do
         gridp <- alignedMallocArray (gridsize * 4) 32
         gfun scale (tdWstep td) (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
         polptr <- mallocArray gridsize
