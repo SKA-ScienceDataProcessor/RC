@@ -170,7 +170,9 @@ execSendParam a (Shell aid) = do
           mch <- unwrapMessage dst
           case mch of
             Nothing -> doPanic "execSendParam: type error"
-            Just ch -> liftP $ sendChan ch a
+            Just ch -> do
+              stActorSrc . at aid .= Just (Left (wrapMessage a))
+              liftP $ sendChan ch a
       Just (RcvGrp{},_)    -> doPanic "execSendParam: destination type mismatch, expect single, got group"
       Just (RcvReduce{},_) -> doPanic "execSendParam: destination type mismatch, expect single, got reducer"
 
@@ -185,7 +187,9 @@ execBroadcast a (Shell aid) = do
           mch <- sequence <$> mapM unwrapMessage dsts
           case mch of
             Nothing  -> doPanic "execBroadcast: type error"
-            Just chs -> liftP $ forM_ chs $ \ch -> sendChan ch a
+            Just chs -> do
+              stActorSrc . at aid .= Just (Left (wrapMessage a))
+              liftP $ forM_ chs $ \ch -> sendChan ch a
       Just _ -> doPanic "execBroadcast: destination type mismatch. Expect group"
 
 
@@ -204,7 +208,7 @@ execConnect (Shell aidSrc) (Shell aidDst) = do
          Nothing -> return ()
     -- Record connection
     stActorDst . at aidSrc .= Just (Right aidDst)
-    stActorSrc . at aidDst .= Just (Just  aidSrc)
+    stActorSrc . at aidDst .= Just (Right aidSrc)
     -- Check that neither actor failed and terminate other one if this is the case
     Just stSrc <- use $ stChildren . at aidSrc
     case stSrc of

@@ -114,6 +114,7 @@ runDnaMonad (Rank rnk) (GroupSize grp) interp nodes flags =
            , _stActorRecvAddr = Map.empty
            , _stAid2Pid       = Map.empty
            , _stPid2Aid       = Map.empty
+           , _stActorClosure  = Map.empty
            }
 
 -- | Run DNA monad using ActorParam as source of input parameters and
@@ -194,9 +195,9 @@ data StateDNA = StateDNA
       -- Append only dataflow graph
     , _stChildren      :: !(Map AID ActorState)
       -- ^ State of child actors
-    , _stActorSrc :: !(Map AID (Maybe AID))
+    , _stActorSrc :: !(Map AID (Either Message AID))
       -- ^ Source of an actor. It's either another actor or parent
-      --   actor. In latter case we store Nothing and do not retain
+      --   actor. In latter case we store encoded message.
       --   message
     , _stActorDst :: !(Map AID (Either VID AID))
       -- ^ Destination of an actor. It could be either other actor or
@@ -212,10 +213,11 @@ data StateDNA = StateDNA
       -- Mapping ProcessID <-> AID
     , _stPid2Aid :: !(Map ProcessId AID)
     , _stAid2Pid :: !(Map AID (Set ProcessId))
-      
 
-    -- , _stActorClosure   :: !(Map AID (Closure (Process ())))
-    --   -- ^ Closure for the actor 
+      -- Restarts
+    , _stActorClosure   :: !(Map AID (Closure (Process ())))
+      -- ^ Closure for the actor. All restartable actors have closure
+      -- stored.
 
       
       --   -- Monitor resources
