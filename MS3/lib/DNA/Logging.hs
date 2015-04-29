@@ -173,7 +173,7 @@ rawMessage tag attrs msg = do
     -- Check whether it's too long for the RTS to output in one
     -- piece. This is rare, but we don't want to lose information.
     let splitThreshold = 512
-    if length text < splitThreshold then traceEventIO msg
+    if length text < splitThreshold then traceEventIO text
     else do
 
       -- Determine marker. We need this because the message chunks
@@ -187,7 +187,7 @@ rawMessage tag attrs msg = do
       -- message but the first is a continuation.
       let split ""  = Nothing
           split str = Just $ splitAt (splitThreshold - 20) str
-          pieces = unfoldr split msg
+          pieces = unfoldr split text
           start = head pieces; (mid, end:_) = splitAt (length pieces-1) pieces
       traceEventIO (start ++ mark)
       forM_ mid $ \m -> traceEventIO (mark ++ m ++ mark)
