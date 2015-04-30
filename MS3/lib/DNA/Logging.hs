@@ -188,7 +188,7 @@ rawMessage tag attrs msg = do
       let split ""  = Nothing
           split str = Just $ splitAt (splitThreshold - 20) str
           pieces = unfoldr split text
-          start = head pieces; (mid, end:_) = splitAt (length pieces-1) pieces
+          start = head pieces; (mid, end:_) = splitAt (length pieces-2) (tail pieces)
       traceEventIO (start ++ mark)
       forM_ mid $ \m -> traceEventIO (mark ++ m ++ mark)
       traceEventIO (mark ++ end)

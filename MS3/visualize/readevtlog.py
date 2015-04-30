@@ -7,6 +7,7 @@ import re
 import os
 import subprocess
 import fnmatch
+import itertools
 
 ## ================================================================
 ## Basic eventlog reading
@@ -49,6 +50,41 @@ def read_log_entries(stream) :
             msg = m.group(2)
         yield LogEntry(t,tag,msg)
 
+def recompose_split_lines(stream) :
+    "Merge split lines in an event stream"
+    post_tag = re.compile("^(.*)\[\[([0-9]+)\]\]$")
+    pre_tag = re.compile("^cap [0-9]+: \[\[([0-9]+)\]\](.*)$")
+    it = iter(stream)
+    while True:
+        try: entry = it.next()
+        except StopIteration: break
+        # Has a split tag at the end?
+        m = post_tag.match(entry.msg);
+        if m is None:
+            yield entry
+            continue
+        # Search continuation(s)
+        msg = m.group(1)
+        tag = m.group(2)
+        new_delayed = []
+        while True:
+            try: entry2 = it.next();
+            except StopIteration: break
+            m = pre_tag.match(entry2.msg);
+            if not m is None: print m.group(1)
+            if m is None or m.group(1) != tag:
+                new_delayed.append(entry2)
+                continue
+            m2 = post_tag.match(m.group(2));
+            if m2 is None:
+                msg = msg + m.group(2)
+                break
+            msg = msg + m2.group(1)
+            tag = m2.group(2)
+        # Update message
+        entry.msg = msg
+        # Set delayed
+        it = itertools.chain(new_delayed, it)
 
 def stream_eventlog(fname) :
     "Read eventlog using ghc-event unility line by line"
@@ -224,6 +260,6 @@ def read_timelines(dir) :
         logd = os.path.join(dir,d)
         [nm] = fnmatch.filter(os.listdir(logd), '*.eventlog')
         nm   = os.path.join(logd,nm)
-        t = Timeline( read_log_entries(stream_eventlog(nm) ) )
+        t = Timeline(  recompose_split_lines( read_log_entries(stream_eventlog(nm) ) ) )
         res[int(d)] = t
     return res
