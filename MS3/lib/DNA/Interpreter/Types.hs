@@ -151,29 +151,29 @@ data StateDNA = StateDNA
 -- | State of child process.
 data ProcState
     = Unconnected
-      -- | Process is running but we don't know its sink yet
+      -- ^ Process is running but we don't know its sink yet
     | Connected [ProcessId]
-      -- | Process is running and we know its sink[s]
+      -- ^ Process is running and we know its sink[s]
     | Failed
-      -- | Process failed
+      -- ^ Process failed
     deriving (Show)
 
 
 -- | State of group of processes
 data GroupState
     =  GrUnconnected GroupType (Int,Int)
-      -- | Group which is not connected yet
+      -- ^ Group which is not connected yet
       -- 
       --    * Type of group
       --    * (N running processes, N completed[hack])
     | GrConnected GroupType (Int,Int) [SendPort Int] [ProcessId]
-      -- | Connected group
+      -- ^ Connected group
       --
       --    * Type of group
       --    * (N running, N completed)
       --    * Destinations
     | GrFailed
-      -- | Group which crashed
+      -- ^ Group which crashed
     deriving (Show)
 
 

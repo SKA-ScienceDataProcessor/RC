@@ -87,10 +87,10 @@ import DNA.Types
 -- these modifiers.
 data LoggerOpt = LoggerOpt
   { logOptVerbose ::  Int
-    -- | The higher, the more additional information we output about
+    -- ^ The higher, the more additional information we output about
     -- what we are doing.
   , logOptMeasure :: String
-    -- | Gather detailed statistics about the given group of
+    -- ^ Gather detailed statistics about the given group of
     -- performance metrics, at the possible expense of performance.
   }
   deriving (Show)
@@ -282,13 +282,10 @@ logDuration msg dna = do
 -- | A program annotation providing additional information about how
 -- much work we expect the program to be doing in a certain phase. The
 -- purpose of this hint is that we can set-up measurements to match
--- these numbers to the program's real performance.
---
--- Note that this is just a hint - a best effort should be made to
--- give a realistic estimate. As a rule of thumb, it is better to use
--- a more conservative estimate, as this will generally result in
--- lower performance estimates (in profiling, false positives are
--- better than false negatives).
+-- these numbers to the program's real performance.  Note that the
+-- hint must only be a best-effort estimate. As a rule of thumb, it is
+-- better to use a more conservative estimate, as this will generally
+-- result in lower performance estimates.
 data ProfileHint
     = FloatHint { hintFloatOps :: !Int -- ^ Number of single-precision operations
                 , hintDoubleOps :: !Int -- ^ Number of double-precision operations
@@ -313,19 +310,15 @@ data ProfileHint
       -- is running in FLOP mode (uses instrumentation, which will
       -- reduce overall performance!).
 
--- | Default @FloatHint@.
 floatHint :: ProfileHint
 floatHint = FloatHint 0 0
 
--- | Default @IOHint@.
 ioHint :: ProfileHint
 ioHint = IOHint 0 0
 
--- | Default @HaskellHint@.
 haskellHint :: ProfileHint
 haskellHint = HaskellHint 0
 
--- | Default @CUDAHint@.
 cudaHint :: ProfileHint
 cudaHint = CUDAHint 0 0 0 0
 

@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE CPP                        #-}
 module DNA.Types where
 
 import Control.Applicative
@@ -78,8 +79,9 @@ data NodeInfo = NodeInfo
   deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary NodeInfo
 
-data Location = Remote
-              | Local
+-- | Describes where actor should be spawned.
+data Location = Remote -- ^ Will be spawned on some other node
+              | Local  -- ^ Will be spawned on the same node
               deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary Location
 
@@ -91,10 +93,12 @@ newtype Rank = Rank Int
 newtype GroupSize = GroupSize Int
              deriving (Show,Eq,Ord,Typeable,Binary)
 
--- | How process crashes should be treated in the group
+-- | Describes how failures in a group of processes are treated.
 data GroupType
-    = Normal
-    | Failout
+    = Normal -- ^ If a single process in the group fails, it is
+             -- treated as if the whole group failed.
+    | Failout -- ^ The result of failed processes will be silently
+              -- discarded.
     deriving (Show,Typeable,Generic)
 instance Binary GroupType
 
@@ -108,17 +112,24 @@ data ActorID = SingleActor ProcessId
              deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary ActorID
 
--- | What part of process pool is to use
+-- | This describes how many nodes we want to allocate either to a
+-- single actor process or to the group of processes as whole. We can
+-- either request exactly /n/ nodes or a fraction of the total pool of
+-- free nodes.
 data Res
     = N    Int                -- ^ Fixed number of nodes
-    | Frac Double             -- ^ Fraction of nodes
+    | Frac Double             -- ^ Fraction of nodes. Should lie in /(0,1]/ range.
     deriving (Show,Typeable,Generic)
 instance Binary Res
 
--- | What part of process pool is to use
+-- | Describes how to divide allocated nodes between worker
+-- processes. 'NWorkers' means that we want to divide nodes evenly
+-- between /n/ actors. 'NNodes' means that we want allocate no less
+-- that /n/ nodes for each actors. In latter case DSL will allocate
+-- resources for as many actors as possible given constraints.
 data ResGroup
-    = NWorkers Int   -- ^ Allocate no less than N workers
-    | NNodes   Int   -- ^ Allocate no less than N nodes to each worker
+    = NWorkers Int   -- ^ Allocate no less than /n/ workers
+    | NNodes   Int   -- ^ Allocate no less than /n/ nodes to each worker
     deriving (Show,Typeable,Generic)
 instance Binary ResGroup
 
@@ -180,23 +191,28 @@ instance (Serializable a, Serializable b) => Binary (Shell (MR      a) (Val     
 instance (Serializable a, Serializable b) => Binary (Shell (MR      a) (Grp     b))
 instance (Serializable a, Serializable b) => Binary (Shell (MR      a) (MR      b))
 
-
+-- Haddock doesn't support this yet
+#ifndef __HADDOCK_VERSION__
+#define GADT_HADD(x) x
+#else
+#define GADT_HADD(x)
+#endif
 
 -- | Describe how actor accepts
 data RecvEnd a where
-    -- | Actor receives single value
+    GADT_HADD(-- | Actor receives single value)
     RecvVal :: SendPort a
             -> RecvEnd (Val a)
-    -- | Actor receives group of values
+    GADT_HADD(-- | Actor receives group of values)
     RecvGrp :: [SendPort a]
             -> RecvEnd (Scatter a)
-    -- | Same value is broadcasted to all actors in group
+    GADT_HADD(-- | Same value is broadcasted to all actors in group)
     RecvBroadcast :: RecvEnd (Scatter a)
                   -> RecvEnd (Val a)
-    -- | Actor(s) which reduces set of values
+    GADT_HADD(-- | Actor(s) which reduces set of values)
     RecvReduce :: [(SendPort Int,SendPort a)]
                -> RecvEnd (Grp a)
-    -- | Actors which reduce output of mappers
+    GADT_HADD(-- | Actors which reduce output of mappers)
     RecvMR :: [(SendPort Int, SendPort (Maybe a))]
            -> RecvEnd (MR a)
     deriving (Typeable)
@@ -204,13 +220,13 @@ data RecvEnd a where
 
 -- | Description of send end of actor
 data SendEnd a where
-    -- | Actor sends single value
+    GADT_HADD(-- | Actor sends single value)
     SendVal :: SendPort (Dest a)
             -> SendEnd (Val a)
-    -- | Actor sends group of values
+    GADT_HADD(-- | Actor sends group of values)
     SendGrp :: [SendPort (Dest a)]
             -> SendEnd (Grp a)
-    -- | Actor sends group of streams
+    GADT_HADD(-- | Actor sends group of streams)
     SendMR  :: [SendPort [SendPort (Maybe a)]]
             -> SendEnd (MR a)
     deriving (Typeable)
