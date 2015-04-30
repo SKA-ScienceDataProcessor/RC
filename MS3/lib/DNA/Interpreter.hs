@@ -130,7 +130,7 @@ execDelay _loc (Shell aid) = do
     -- Send destination to an actor
     Just pids <- use $ stAid2Pid . at aid
     liftP $ T.forM_ pids $ \p ->
-        send p dst
+        send p (dst,[]::[SendPortId])
     --
     return $ Promise recvB
 
@@ -144,7 +144,7 @@ execDelayGroup (Shell aid) = do
     -- Send destination to an actor
     Just pids <- use $ stAid2Pid . at aid
     liftP $ T.forM_ pids $ \p ->
-        send p dst
+        send p (dst,[]::[SendPortId])
     -- 
     return $ Group recvB recvN
 
@@ -225,8 +225,9 @@ execConnect (Shell aidSrc) (Shell aidDst) = do
       Just dst -> do
           pids <- use $ stAid2Pid . at aidSrc
           T.forM_ pids $ T.mapM_ $ \p ->
-              -- FIXME: very error prone
-              liftP $ send p $ fst dst
+              -- FIXME: very error prone just as other message sending
+              --        routines
+              liftP $ send p dst
           -- Handler special case 
           case (dst,stSrc) of
             ((RcvReduce chs,_), Completed 0) -> liftP $ forM_ chs $ \(_,chN) -> sendChan chN 0

@@ -118,8 +118,15 @@ newtype Timeout = Timeout AID
                  deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary Timeout
 
+-- | Actor just sent data to following destination
+data SentTo = SentTo AID ProcessId [SendPortId]
+                 deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary SentTo
 
-
+-- | Acknowledgement of data transmission
+data AckSend = AckSend
+                 deriving (Show,Eq,Ord,Typeable,Generic)
+instance Binary AckSend
 
 
 ----------------------------------------------------------------

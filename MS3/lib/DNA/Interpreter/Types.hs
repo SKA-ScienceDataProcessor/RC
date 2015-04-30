@@ -47,7 +47,7 @@ type Controller = ExceptT DnaError DnaMonad
 data DnaError
     = FatalErr String              -- ^ Fatal error
     | PanicErr String              -- ^ Internal error
-    | Except SomeException      -- ^ Uncaught ex-ception
+    | Except SomeException         -- ^ Uncaught exception
 
 data Panic = Panic String
              deriving (Show,Typeable)
@@ -88,19 +88,21 @@ runController m = do
 
 -- | Run DNA monad
 runDnaMonad
-    :: Rank
+    :: AID
+    -> Rank
     -> GroupSize
     -> Closure DnaInterpreter
     -> [NodeInfo]
     -> [DebugFlag]
     -> DnaMonad a
     -> Process a
-runDnaMonad (Rank rnk) (GroupSize grp) interp nodes flags =
+runDnaMonad aid (Rank rnk) (GroupSize grp) interp nodes flags =
     flip runReaderT env . flip evalStateT s0
   where
     env = Env { envRank        = rnk
               , envGroupSize   = grp
               , envInterpreter = interp
+              , envAID         = aid
               }
     s0 = StateDNA
            { _stCounter       = 0
@@ -122,7 +124,8 @@ runDnaMonad (Rank rnk) (GroupSize grp) interp nodes flags =
 runDnaParam :: ActorParam -> DNA a -> Process a
 runDnaParam p action = do
   interpreter <- unClosure $ actorInterpreter p
-  runDnaMonad (actorRank p)
+  runDnaMonad (actorAID p)
+              (actorRank p)
               (actorGroupSize p)
               (actorInterpreter p)
               (vcadNodePool $ actorNodes       p)
@@ -142,8 +145,8 @@ newtype DnaInterpreter = DnaInterpreter { dnaInterpreter :: forall a. DNA a -> D
 
 -- | Parameter send to actor on startup
 data ActorParam = ActorParam
-    { actorParent      :: ProcessId
-      -- ^ Parent of an actor
+    { actorParent      :: Maybe ProcessId
+      -- ^ Parent of an actor. Nothing for top level actor
     , actorInterpreter :: Closure DnaInterpreter
       -- ^ Interpreter for DNA DSL
     , actorRank        :: Rank
@@ -155,6 +158,9 @@ data ActorParam = ActorParam
     , actorDebugFlags  :: [DebugFlag]
       -- ^ Extra flags for debugging
     , actorSendBack    :: SendPort (RecvAddr,[SendPortId])
+      -- ^ Send receive address and list of port ID's back to the parent process
+    , actorAID         :: AID
+      -- ^ AID of an actor as viewed by parent
     }
     deriving (Typeable,Generic)
 instance Binary ActorParam
@@ -164,6 +170,7 @@ data Env = Env
     { envRank        :: !Int
     , envGroupSize   :: !Int
     , envInterpreter :: !(Closure DnaInterpreter)
+    , envAID         :: !AID
     }
 
 -- | State of interpreter

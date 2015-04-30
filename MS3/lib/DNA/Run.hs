@@ -301,13 +301,15 @@ executeDNA :: DNA () -> [NodeId] -> Process (Maybe SomeException)
 executeDNA dna nodes = do
     me  <- getSelfPid
     nid <- getSelfNode
+    -- FIXME: correctly treat parent-related data
     let param = ActorParam
-              { actorParent      = me -- FIXME???
+              { actorParent      = Nothing
               , actorInterpreter = $(mkStaticClosure 'theInterpreter)
               , actorRank        = Rank 0
               , actorGroupSize   = GroupSize 1
               , actorNodes       = VirtualCAD Local (NodeInfo nid) (map NodeInfo nodes)
               , actorDebugFlags  = []
+              , actorAID         = AID 0
               }
     r <- try $ runDnaParam param dna
     return $ either Just (const Nothing) r

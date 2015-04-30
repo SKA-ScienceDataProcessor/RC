@@ -47,6 +47,7 @@ import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
 import Data.Typeable (Typeable)
+import qualified Data.Foldable as T
 import System.Random
 
 import DNA.CH
@@ -75,7 +76,7 @@ runActor (Actor action) = do
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
     !b  <- runDnaParam p (action a)
-    sendResult b
+    sendResult p b
 
 
 {-
@@ -138,7 +139,7 @@ runCollectActor (CollectActor step start fini) = do
            s0 <- kernel "collector init" [] (Kern start)
            s  <- gatherM (Group chRecvParam chRecvN) step s0
            kernel "collector fini" [] (Kern (fini s))
-    sendResult b
+    sendResult p b
 
 
 -- -- | Start execution of collector actor
@@ -202,26 +203,39 @@ runCollectActor (CollectActor step start fini) = do
 -- Helpers
 ----------------------------------------------------------------
 
--- -- Send value to the destination
+-- Send value to the destination
 sendToDest :: (Serializable a) => Dest a -> a -> Process ()
 sendToDest dst a = case dst of
     SendLocally ch  -> unsafeSendChan ch a
     SendRemote  chs -> forM_ chs $ \ch -> sendChan ch a
 
--- Send value to the destination
-sendResult :: (Serializable a) => a -> Process ()
-sendResult a = do
-    dst <- drainExpect
-    case dst of
-      RcvSimple msg  -> trySend msg
-      RcvReduce msgs -> forM_ msgs $ \(m,_) -> trySend m
-      RcvGrp    msgs -> mapM_ trySend msgs
+-- Send result to the destination we 
+sendResult :: (Serializable a) => ActorParam ->a -> Process ()
+sendResult p a =
+    sendLoop =<< drainExpect
   where
+    sendLoop (dst,dstId) = do
+        -- Send data to destination
+        case dst of
+          RcvSimple msg  -> trySend msg
+          RcvReduce msgs -> forM_ msgs $ \(m,_) -> trySend m
+          RcvGrp    msgs -> mapM_ trySend msgs
+        -- Send confirmation to parent and wait for 
+        T.forM_ (actorParent p) $ \pid -> do
+            me <- getSelfPid
+            send pid (SentTo (actorAID p) me dstId)
+            receiveWait
+                [ match $ \(Terminate msg) -> error msg
+                , match $ \newDest         -> sendLoop newDest
+                , match $ \AckSend         -> return ()
+                ]
+    -- Loop over data
     trySend msg = do
         mch <- unwrapMessage msg
         case mch of
           Just ch -> sendChan ch a
           Nothing -> doPanic "Type error in channel!"
+
 
 doGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> Process b
 doGatherM (Group chA chN) f x0 = do

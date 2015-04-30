@@ -43,7 +43,7 @@ import DNA.Interpreter.Message
 ----------------------------------------------------------------
 
 -- FIXME: One problem that should be addressed is need to restart
---        processes when they fail. 
+--        processes when they fail.
 
 -- | Spawn simple actor on remote node
 execSpawnActor
@@ -194,7 +194,7 @@ spawnSingleActor res spwn = do
     liftP $ setTimeout flags aid
     -- Send auxiliary parameter
     (chSend,chRecv) <- liftP newChan
-    _ <- sendActorParam pid (Rank 0) (GroupSize 1) cad chSend
+    _ <- sendActorParam pid aid (Rank 0) (GroupSize 1) cad chSend
            (concat [fs | UseDebug fs <- flags])
     -- -- Record restart if needed
     -- -- -- -- -- -- --
@@ -227,7 +227,7 @@ spawnActorGroup res resG spwn = do
     forM_ ([0..] `zip` rs) $ \(rnk,cad) -> do
         (pid,_) <- liftP
                  $ spawnSupervised (nodeId $ vcadNode cad) act
-        _ <- sendActorParam pid (Rank rnk) (GroupSize k) cad chSend
+        _ <- sendActorParam pid aid (Rank rnk) (GroupSize k) cad chSend
                (concat [fs | UseDebug fs <- flags])
         stAid2Pid       . at aid %= Just . maybe (Set.singleton pid) (Set.insert pid)
         stPid2Aid       . at pid .= Just aid
@@ -296,7 +296,7 @@ receiveShellGroup ch aid assemble handler = do
                dropActor aid
        else do xs <- forM oks (handler . fst)
                stActorRecvAddr . at aid .= Just (Just (assemble xs, snd =<< oks))
-               
+
 
 -- Create process for forcing timeout when process
 setTimeout :: [SpawnFlag] -> AID -> Process ()
@@ -316,23 +316,25 @@ getTimeoutInterval = getLast . T.foldMap (Last . go)
 -- Send auxiliary parameters to an actor
 sendActorParam
     :: ProcessId
+    -> AID
     -> Rank
     -> GroupSize
     -> VirtualCAD
     -> SendPort (RecvAddr,[SendPortId])
     -> [DebugFlag]
     -> DnaMonad ActorParam
-sendActorParam pid rnk g cad ch flags = do
+sendActorParam pid aid rnk g cad ch flags = do
     me     <- liftP getSelfPid
     interp <- envInterpreter <$> ask
     let p = ActorParam
-            { actorParent      = me
+            { actorParent      = Just me
             , actorInterpreter = interp
             , actorRank        = rnk
             , actorGroupSize   = g
             , actorNodes       = cad
             , actorDebugFlags  = flags
             , actorSendBack    = ch
+            , actorAID         = aid
             }
     liftP $ send pid p
     return p

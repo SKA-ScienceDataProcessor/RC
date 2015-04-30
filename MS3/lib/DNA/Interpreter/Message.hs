@@ -3,6 +3,14 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE RankNTypes                 #-}
 -- | Handling of message for CH interpreter
+--
+--   Following messages must be handled by actors:
+--
+--    * Terminate - terminate immediately
+--
+--    * Timeout - child actor timed out
+--
+--    * ProcessMonitorNotification - notifications about
 module DNA.Interpreter.Message (
       -- * Message handlers
       messageHandlers
@@ -42,6 +50,7 @@ messageHandlers :: [MatchS]
 messageHandlers =
     [ MatchS handleProcessTermination
     , MatchS handleTerminate
+    , MatchS handleDataSent
     -- -- , MatchS handleReady
     -- -- , MatchS handleDone
     , MatchS handleTimeout
@@ -302,6 +311,23 @@ handleDone (pid,_) =
 handleTimeout :: Timeout -> Controller ()
 handleTimeout (Timeout aid) = terminateActor aid
 
+handleDataSent :: SentTo -> Controller ()
+handleDataSent (SentTo aid pid dstID) = do
+    Just dst <- use $ stActorDst . at aid
+    case dst of
+      Left  _      -> sendAck
+      Right aidDst -> do
+          d <- use $ stActorRecvAddr . at aidDst
+          case d of
+            Nothing -> return ()
+            -- FIXME: Is this possible???
+            Just Nothing -> doPanic "Impossible"
+            Just (Just (dst,trueId))
+              | dstID == trueId -> sendAck
+              | otherwise       -> liftP $ send pid (dst,trueId)
+   where
+     sendAck = do
+         liftP $ send pid AckSend
 
 ----------------------------------------------------------------
 -- Extra functions for matching on messages
