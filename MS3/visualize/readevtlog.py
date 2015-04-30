@@ -71,7 +71,6 @@ def recompose_split_lines(stream) :
             try: entry2 = it.next();
             except StopIteration: break
             m = pre_tag.match(entry2.msg);
-            if not m is None: print m.group(1)
             if m is None or m.group(1) != tag:
                 new_delayed.append(entry2)
                 continue
@@ -83,6 +82,7 @@ def recompose_split_lines(stream) :
             tag = m2.group(2)
         # Update message
         entry.msg = msg
+        yield entry
         # Set delayed
         it = itertools.chain(new_delayed, it)
 
