@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE CPP                        #-}
 -- | Description of DNA DSL as operational monad
 module DNA.DSL (
       -- * Base DSL
@@ -92,9 +93,16 @@ data KernelMode
 instance MonadIO Kern where
     liftIO = Kern
 
+-- Haddock doesn't support GADT constructor docs yet
+#ifndef __HADDOCK_VERSION__
+#define GADT_HADD(x) x
+#else
+#define GADT_HADD(x)
+#endif
+
 -- | GADT which describe operations supported by DNA DSL
 data DnaF a where
-    -- | Execute foreign kernel
+    GADT_HADD(-- | Execute foreign kernel)
     Kernel
       :: String
       -> KernelMode
@@ -109,13 +117,13 @@ data DnaF a where
     LogMessage :: String -> DnaF ()
     Duration :: String -> DNA a -> DnaF a
 
-    -- | Evaluate actor's closure
+    GADT_HADD(-- | Evaluate actor closure)
     EvalClosure
       :: (Typeable a, Typeable b)
       => a
       -> Closure (Actor a b)
       -> DnaF b
-    -- | Spawn single process
+    GADT_HADD(-- | Spawn single process)
     SpawnActor
       :: (Serializable a, Serializable b)
       => Res
@@ -158,13 +166,13 @@ data DnaF a where
     --   -> Spawn (Closure (Mapper a b))
     --   -> DnaF (Shell (Scatter a) (MR b))
 
-    -- | Connect running actors
+    GADT_HADD(-- | Connect running actors)
     Connect
       :: (Serializable b, Typeable tag)
       => Shell a (tag b)
       -> Shell (tag b) c
       -> DnaF ()
-    -- | Send parameter to the actor
+    GADT_HADD(-- | Send parameter to the actor)
     SendParam
       :: Serializable a
       => a
@@ -177,7 +185,7 @@ data DnaF a where
       -> Shell (Scatter a) b
       -> DnaF ()
 
-    -- | Delay actor returning single value
+    GADT_HADD(-- | Delay actor returning single value)
     Delay 
       :: Serializable b
       => Location
@@ -246,21 +254,27 @@ data Group a = Group (ReceivePort a) (ReceivePort Int)
 -- Data types for actors
 ----------------------------------------------------------------
 
--- | Actor which receive messages of type @a@ and produce result of
---   type @b@. It's phantom-typed and could only be constructed by
---   'actor' which ensures that types are indeed correct.
+-- | This is the simplest kind of actor. It receives exactly one
+-- message of type @a@ and produce a result of type @b@.
 data Actor a b where
     Actor :: (Serializable a, Serializable b) => (a -> DNA b) -> Actor a b
     deriving (Typeable)
 
--- | Smart constructor for actors. Here we receive parameters and
---   output channel for an actor
+-- | Smart constructor for 'Actor's. As the type signature shows, an
+-- `Actor` is constructed from a function that takes a parameter `a`
+-- and returns a result `b`. The `DNA` monad allows the actor to take
+-- further actions, such as spawning other actors or starting data
+-- transfers.
 actor :: (Serializable a, Serializable b)
-      => (a -> DNA b)
+      => (a -> DNA b) -- ^ data flow definition
       -> Actor a b
 actor = Actor
 
--- | Actor which collects multiple inputs from other actors
+-- | In contrast to a simple `Actor`, actors of this type can receive
+--   a group of messages. However, it will still produce just a
+--   singular message. In functional programming terms, this actor
+--   corresponds to a 'fold', which reduces an unordered set of
+--   messages into an aggregate output value.
 data CollectActor a b where
     CollectActor :: (Serializable a, Serializable b)
                  => (s -> a -> IO s)
@@ -269,17 +283,25 @@ data CollectActor a b where
                  -> CollectActor a b
     deriving (Typeable)
 
--- | Smart constructor for collector actors.
+-- | Just like a 'fold', a 'CollectorActor' is defined in terms of an
+-- internal state which gets updated for every message received. To be
+-- precise, the state first gets initialised using a start value, then
+-- gets updated successively using the stepper function. Once all
+-- results have been received, the termination function generates the
+-- overall result value of the actor.
 collectActor
     :: (Serializable a, Serializable b, Serializable s)
-    => (s -> a -> IO s)
-    -> IO s
-    -> (s -> IO b)
+    => (s -> a -> IO s) -- ^ stepper function
+    -> IO s             -- ^ start value
+    -> (s -> IO b)      -- ^ termination function
     -> CollectActor a b
 collectActor = CollectActor
 
 
--- | Mapper actor. Essentially unfoldr
+-- | Actors of this type are the counter-part to `CollectActor`: They
+--   receive a single input message, but generate a set of output
+--   messages. While 'CollectActor' corresponds to 'foldr', the
+--   'Mapper' can be understood as the equivalent of 'unfoldr'.
 data Mapper a b where
     Mapper :: (Serializable a, Serializable b, Serializable s)
            => (a -> IO s)
@@ -288,10 +310,19 @@ data Mapper a b where
            -> Mapper a b
     deriving (Typeable)
 
+-- | Just like a 'CollectActor', a 'Mapper' uses an internal state in
+-- order to produce multiple values. However, the structure is
+-- mirrored: Now the first parameter is a function that constructs the
+-- internal state from the input value. Along the same lines, the
+-- stepper function now iteratively produces an arbitrary number of
+-- outputs, updating the state every time.  The third parameter
+-- governs data distribution: Given a total number of possible
+-- destinations and an output value, it specifies the index of the
+-- destination to which it will be sent.
 mapper :: (Serializable a, Serializable b, Serializable s)
-       => (a -> IO s)
-       -> (s -> IO (Maybe (s, b)))
-       -> (Int -> b -> Int)
+       => (a -> IO s)              -- ^ initialization function
+       -> (s -> IO (Maybe (s, b))) -- ^ chunking function
+       -> (Int -> b -> Int)        -- ^ distribution function
        -> Mapper a b
 mapper = Mapper
 
@@ -301,23 +332,40 @@ mapper = Mapper
 -- Smart constructors
 ----------------------------------------------------------------
 
+-- | Obtains the rank of the current process in its group. Every
+-- process in a group of size /N/ has assigned a rank from /0/ to
+-- /N-1/. Single processes always have rank /0/.
 rank :: DNA Int
 rank = DNA $ singleton DnaRank
 
+-- | Obtains the size of the group that the current process belongs
+-- to. For single processes this is always /1/.
 groupSize :: DNA Int
 groupSize = DNA $ singleton DnaGroupSize
 
-kernel :: String -> [ProfileHint] -> Kern a -> DNA a
+-- | Executes a kernel computation. This is the only way to escape the
+-- 'DNA' monad in order to perform 'IO'. A bound thread will be
+-- allocated in order to perform the computation.
+kernel :: String        -- ^ Kernel name
+       -> [ProfileHint] -- ^ Kernel performance characteristics
+       -> Kern a        -- ^ Kernel code
+       -> DNA a
 kernel msg hints = DNA . singleton . Kernel msg BoundKernel hints
 
+-- | A variant of 'kernel' that executes the kernel in an /unbound/
+-- thread. This is generally faster, but less safe. Especially
+-- profiling can be unreliable in this mode.
 unboundKernel :: String -> [ProfileHint] -> Kern a -> DNA a
 unboundKernel msg hints = DNA . singleton . Kernel msg DefaultKernel hints
 
-logMessage :: String -> DNA ()
-logMessage = DNA . singleton . LogMessage
-
+-- | Basic profiling for 'DNA' actions.
 duration :: String -> DNA a -> DNA a
 duration msg = DNA . singleton . Duration msg
+
+-- | Outputs a message to the eventlog as well as 'stdout'. Useful for
+-- documenting progress.
+logMessage :: String -> DNA ()
+logMessage = DNA . singleton . LogMessage
 
 delay :: Serializable b => Location -> Shell a (Val b) -> DNA (Promise b)
 delay loc sh = DNA $ singleton $ Delay loc sh

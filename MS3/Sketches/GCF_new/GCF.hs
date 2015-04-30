@@ -27,7 +27,6 @@ module GCF (
 
 import Control.Monad
 
-import Data.Int
 import Foreign.Storable
 import Foreign.Storable.Complex ()
 import Foreign.Ptr
@@ -131,7 +130,6 @@ finalizeGCFHost (GCF _ _ gcfp layers) =
 writeGCFHostToFile :: GCFHost -> FilePath -> IO ()
 writeGCFHostToFile (GCF size nol gcfp lrsp) file = do
   fd <- openFile file WriteMode
-  print (size, nol)
   LBS.hPut fd $ runPut $ put size >> put nol
   let lsiz = nol * 8 * 8
   forM_ [0..lsiz-1] $ \i -> do
@@ -147,10 +145,8 @@ readGCFHostFromFile file = do
   fd <- openFile file ReadMode
   let intSize = sizeOf (undefined :: Int)
   cts <- LBS.hGet fd (intSize * 2)
-  let (size, nol) = flip runGet cts $ do
-         size <- get; nol <- get; return (size, nol)
+  let (size, nol) = flip runGet cts $ liftM2 (,) get get
   let lsiz = nol * 8 * 8
-  print (size, nol)
   gcf@(GCF _ _ gcfp lrsp) <- allocateGCFHost nol size
   forM_ [0..lsiz-1] $ \i -> do
     v <- runGet get `liftM` LBS.hGet fd intSize

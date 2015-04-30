@@ -129,6 +129,12 @@ cudaBuildInfo doBuild lbi verbose buildDir bi = do
   let mkOutput ext = (buildDir </>) . flip replaceExtension ext . takeFileName
   when doBuild $ createDirectoryIfMissingVerbose verbose True buildDir
 
+  -- Rebuild check
+  let checkRebuild src out io = do
+        srcMoreRecent <- moreRecentFile src out
+        cabalMoreRecent <- maybe (return False) (flip moreRecentFile out)  (pkgDescrFile lbi)
+        when (srcMoreRecent || cabalMoreRecent) io
+
   -- Build CUBINs
   cubins <- case lookup "x-cuda-sources-cubin" (customFieldsBI bi) of
     Nothing          -> return []
@@ -138,9 +144,10 @@ cudaBuildInfo doBuild lbi verbose buildDir bi = do
        when (null parses) $ die "Failed to parse x-cuda-sources-cubin field."
 
        let outputFiles = map (mkOutput "cubin") cudaSources
-       when doBuild $ forM_ (zip cudaSources outputFiles) $ \(src, out) -> do
-           putStrLn $ "Building CUDA source " ++ src ++ "..."
-           runProgram verbose nvcc (cudaOpts ++ ["--cubin", src, "-o", out])
+       when doBuild $ forM_ (zip cudaSources outputFiles) $ \(src, out) ->
+           checkRebuild src out $ do
+               putStrLn $ "Building CUDA source " ++ src ++ "..."
+               runProgram verbose nvcc (cudaOpts ++ ["--cubin", src, "-o", out])
        return outputFiles
 
   -- Build CUDA object files
@@ -152,9 +159,10 @@ cudaBuildInfo doBuild lbi verbose buildDir bi = do
        when (null parses) $ die "Failed to parse x-cuda-sources field."
 
        let outputFiles = map (mkOutput "o") cudaSources
-       when doBuild $ forM_ (zip cudaSources outputFiles) $ \(src, out) -> do
-           putStrLn $ "Building CUDA source " ++ src ++ "..."
-           runProgram verbose nvcc (cudaOpts ++ ["-c", src, "-o", out])
+       when doBuild $ forM_ (zip cudaSources outputFiles) $ \(src, out) -> 
+           checkRebuild src out $ do
+               putStrLn $ "Building CUDA source " ++ src ++ "..."
+               runProgram verbose nvcc (cudaOpts ++ ["-c", src, "-o", out])
 
        -- Now for the hacky part: Get the linker to actually link
        -- this. I am 99% sure that this is the wrong way.

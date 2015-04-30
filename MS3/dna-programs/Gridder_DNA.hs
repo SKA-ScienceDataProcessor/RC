@@ -72,6 +72,7 @@ main = do
     ns_loc <- mapM (createNameSpace Persistent) datasets
     ns_rem1 <- mapM (`addNameSpace` "from_1") ns_loc
     ns_rem2 <- mapM (`addNameSpace` "from_2") ns_loc
+    ns_rem3 <- mapM (`addNameSpace` "from_3") ns_loc
     ns_loc_cpus <- mapM (`addNameSpace` "from_CPU_s") ns_loc
     dnaRun rt $ do
       -- Don't fuse also
@@ -106,15 +107,18 @@ main = do
       --
       remCPUSorted <- mapM (remActor $(mkStaticClosure 'runCPUGridderOnSavedDataWithSorting)) $ zip ns_loc ns_loc_cpus
       rep "Here5"
+      --
+      remOptRomein <- mapM (remActor $(mkStaticClosure 'optRomeinFullGCFOnSavedData)) $ zip ns_loc ns_rem3
+      rep "Here6"
       -- Local actor executed sequentially
       -- await locRomein
       await locRomeinFull
-      rep "Here6"
+      rep "Here7"
       -- mapM_ ((>>= await) . sendToLocalAndDelay) (tail locs)
       mapM_ ((>>= await) . startLoc) (tail locs)
-      rep "Here7"
-      mapM_ await $ remRomeinFull ++ remRomeinUseHalf ++ remGather ++ remCPUSorted
       rep "Here8"
+      mapM_ await $ remRomeinFull ++ remRomeinUseHalf ++ remGather ++ remCPUSorted ++ remOptRomein
+      rep "Here9"
   where
     romeinRemote = $(mkStaticClosure 'runGridderOnSavedData)
     rt = GridderActors.__remoteTable

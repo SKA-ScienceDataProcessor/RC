@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE CPP                        #-}
 module DNA.Types where
 
 import Control.Applicative
@@ -63,8 +64,9 @@ data NodeInfo = NodeInfo
   deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary NodeInfo
 
-data Location = Remote
-              | Local
+-- | Describes where actor should be spawned.
+data Location = Remote -- ^ Will be spawned on some other node
+              | Local  -- ^ Will be spawned on the same node
               deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary Location
 
@@ -76,17 +78,33 @@ newtype Rank = Rank Int
 newtype GroupSize = GroupSize Int
              deriving (Show,Eq,Ord,Typeable,Binary)
 
--- | What part of process pool is to use
+-- | Describes how failures in a group of processes are treated.
+data GroupType
+    = Normal  -- ^ If a single process in the group fails, it is
+              -- treated as if the whole group failed.
+    | Failout -- ^ The result of failed processes will be silently
+              -- discarded.
+    deriving (Show,Typeable,Generic)
+instance Binary GroupType
+
+-- | This describes how many nodes we want to allocate either to a
+-- single actor process or to the group of processes as whole. We can
+-- either request exactly /n/ nodes or a fraction of the total pool of
+-- free nodes.
 data Res
     = N    Int                -- ^ Fixed number of nodes
-    | Frac Double             -- ^ Fraction of nodes
+    | Frac Double             -- ^ Fraction of nodes. Should lie in /(0,1]/ range.
     deriving (Show,Typeable,Generic)
 instance Binary Res
 
--- | What part of process pool is to use
+-- | Describes how to divide allocated nodes between worker
+-- processes. 'NWorkers' means that we want to divide nodes evenly
+-- between /n/ actors. 'NNodes' means that we want allocate no less
+-- that /n/ nodes for each actors. In latter case DSL will allocate
+-- resources for as many actors as possible given constraints.
 data ResGroup
-    = NWorkers Int   -- ^ Allocate no less than N workers
-    | NNodes   Int   -- ^ Allocate no less than N nodes to each worker
+    = NWorkers Int   -- ^ Allocate no less than /n/ workers
+    | NNodes   Int   -- ^ Allocate no less than /n/ nodes to each worker
     deriving (Show,Typeable,Generic)
 instance Binary ResGroup
 

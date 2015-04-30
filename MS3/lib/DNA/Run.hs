@@ -96,7 +96,7 @@ runSlurmWorker rtable dir common dna = do
                r <- executeDNA dna n
                terminateAllSlaves backend
                case r of
-                 Just e  -> do taggedMessage "FATAL" $ "main actor died: " ++ show e
+                 Just e  -> do errorMsg $ "main actor died: " ++ show e
                                -- FIXME: a bit klunky
                                liftIO exitFailure
                  Nothing -> return ()
@@ -287,8 +287,7 @@ runUnixWorker rtable opts common dna = do
             r <- executeDNA dna n
             terminateAllSlaves backend
             case r of
-              Just e  -> do taggedMessage "FATAL" $ "main actor died: " ++ show e
-                            liftIO $ print e
+              Just e  -> do errorMsg $ "main actor died: " ++ show e
                             liftIO exitFailure
               Nothing -> return ()
     -- Start master or slave program

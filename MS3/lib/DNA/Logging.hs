@@ -35,6 +35,9 @@ module DNA.Logging
 
     , taggedMessage
     , eventMessage
+    , message
+    , warningMsg
+    , errorMsg
     , synchronizationPoint
     , logDuration
     , logProfile
@@ -45,14 +48,18 @@ module DNA.Logging
     ) where
 
 import Control.Applicative
+import Control.Concurrent
 import Control.Distributed.Process (getSelfPid)
 import Control.Exception           (evaluate)
-import Control.Monad               (when,liftM)
+import Control.Monad               (when,liftM,forM_)
 import Control.Monad.IO.Class
 
 import Data.Time
 import Data.Maybe         (fromMaybe)
 import Data.IORef
+import Data.Tuple         (swap)
+import Data.List          (unfoldr)
+import qualified Data.Map.Strict as Map
 
 import GHC.Stats
 
@@ -64,6 +71,7 @@ import Profiling.CUDA.Metrics
 #endif
 import Profiling.Linux.Perf.Stat
 
+import System.IO
 import System.IO.Unsafe   (unsafePerformIO)
 import System.Locale      (defaultTimeLocale)
 import System.Mem         (performGC)
@@ -79,18 +87,18 @@ import DNA.Types
 -- these modifiers.
 data LoggerOpt = LoggerOpt
   { logOptVerbose ::  Int
-    -- | The higher, the more additional information we output about
+    -- ^ The higher, the more additional information we output about
     -- what we are doing.
   , logOptMeasure :: String
-    -- | Gather detailed statistics about the given group of
+    -- ^ Gather detailed statistics about the given group of
     -- performance metrics, at the possible expense of performance.
   }
   deriving (Show)
 
 data LoggerState =
   LoggerState { loggerOpt :: LoggerOpt
-              , loggerPerfCounters :: PerfStatGroup
-              , loggerPerfEnabled :: IORef Int
+              , loggerMsgId :: IORef Int
+              , loggerPerfCounters :: IORef (Map.Map ThreadId PerfStatGroup)
 #ifdef USE_CUDA
               , loggerCuptiEnabled :: IORef Int
 #endif
@@ -108,25 +116,30 @@ loggerStateVar = unsafePerformIO $ newIORef $ error "loggerStateVar not initiali
 initLogging :: LoggerOpt -> IO ()
 initLogging opt = do
 
-  -- Initialise various profiling sub-modules
-  counters <- perfInit
+  -- Initialise profiling sub-modules
 #ifdef USE_CUDA
   cudaInit opt
 #endif
 
   -- Set logger state
-  perfEnabled <- newIORef 0
+  msgId <- newIORef 0
+  perfCounters <- newIORef Map.empty
 #ifdef USE_CUDA
   cuptiEnabled <- newIORef 0
 #endif
   let state = LoggerState { loggerOpt          = opt
-                          , loggerPerfCounters = counters
-                          , loggerPerfEnabled  = perfEnabled
+                          , loggerMsgId        = msgId
+                          , loggerPerfCounters = perfCounters
 #ifdef USE_CUDA
                           , loggerCuptiEnabled = cuptiEnabled
 #endif
                           }
   writeIORef loggerStateVar state
+
+  -- Set console output to be line-buffered. We want it for
+  -- diagnostics, no reason to buffer.
+  hSetBuffering stdout LineBuffering
+  hSetBuffering stderr LineBuffering -- Should be default
 
 -- | Helper for activating a profiling module on-demand
 enableProfileMod :: (LoggerState -> IORef Int) -> IO () -> IO ()
@@ -149,14 +162,36 @@ disableProfileMod loggerEnabled disable = do
 type Attr = (String, String)
 
 -- | Generate the specified eventlog message
-message :: MonadIO m
-        => String -- ^ Message tag
+rawMessage :: String -- ^ Message tag
         -> [Attr] -- ^ Message attributes
         -> String -- ^ Message body
-        -> m ()
-message tag attrs msg = do
+        -> IO ()
+rawMessage tag attrs msg = do
+    -- Make message text
     let formatAttr (attr, val) = ' ':'[':attr ++ '=': val ++ "]"
-    liftIO $ traceEventIO $ concat (tag : map formatAttr attrs) ++ ' ':msg
+        text = concat (tag : map formatAttr attrs) ++ ' ':msg
+    -- Check whether it's too long for the RTS to output in one
+    -- piece. This is rare, but we don't want to lose information.
+    let splitThreshold = 512
+    if length text < splitThreshold then traceEventIO text
+    else do
+
+      -- Determine marker. We need this because the message chunks
+      -- might get split up.
+      msgIdVar <- loggerMsgId <$> readIORef loggerStateVar
+      msgId <- atomicModifyIORef' msgIdVar (\x -> (x+1,x))
+      let mark = "[[" ++ show msgId ++ "]]"
+
+      -- Now split message up and output it. Every message but the
+      -- last gets the continuation marker at the end, and every
+      -- message but the first is a continuation.
+      let split ""  = Nothing
+          split str = Just $ splitAt (splitThreshold - 20) str
+          pieces = unfoldr split text
+          start = head pieces; (mid, end:_) = splitAt (length pieces-2) (tail pieces)
+      traceEventIO (start ++ mark)
+      forM_ mid $ \m -> traceEventIO (mark ++ m ++ mark)
+      traceEventIO (mark ++ end)
 
 -- | Output a custom-tag process message into the eventlog.
 taggedMessage :: MonadProcess m
@@ -165,13 +200,35 @@ taggedMessage :: MonadProcess m
               -> m ()
 taggedMessage tag msg = do
     attrs <- processAttributes
-    message tag attrs msg
+    liftIO $ rawMessage tag attrs msg
 
 -- | Put a global message into eventlog.
 eventMessage :: MonadIO m => String -> m ()
-eventMessage = message "MSG" []
+eventMessage = message 0
 
 -- | Put a message at the given verbosity level
+message :: MonadIO m => Int -> String -> m ()
+message v msg = liftIO $ do
+    verbosity <- logOptVerbose . loggerOpt <$> readIORef loggerStateVar
+    when (verbosity >= v) $ do
+        hPutStrLn stdout msg
+        rawMessage "MSG" [("v", show v)] msg
+
+-- | Put a warning message. Warnings have a verbosity of 0.
+warningMsg :: MonadIO m => String -> m ()
+warningMsg msg = liftIO $ do
+    verbosity <- logOptVerbose . loggerOpt <$> readIORef loggerStateVar
+    when (verbosity >= 0) $ do
+        hPutStrLn stderr $ "WARNING: " ++ msg
+        rawMessage "WARNING" [] msg
+
+-- | Put an warning message. Errors have a verbosity of -1.
+errorMsg :: MonadIO m => String -> m ()
+errorMsg msg = liftIO $ do
+    verbosity <- logOptVerbose . loggerOpt <$> readIORef loggerStateVar
+    when (verbosity >= (-1)) $ do
+        hPutStrLn stderr $ "ERROR: " ++ msg
+        rawMessage "ERROR" [] msg
 
 -- | Synchronize timings - put into eventlog an event with current wall time.
 synchronizationPoint :: MonadIO m => String -> m ()
@@ -181,8 +238,8 @@ synchronizationPoint msg = liftIO $ do
     -- fractional part in picoseconds.
     let timeString    = formatTime defaultTimeLocale "%s.%q" utcTime
         humanReadable = formatTime defaultTimeLocale "%F %X" utcTime
-    message "SYNC" [("time", timeString)] msg
-    message "MSG" [] $ "started at " ++ humanReadable
+    rawMessage "SYNC" [("time", timeString)] msg
+    rawMessage "MSG" [] $ "started at " ++ humanReadable
 
 ----------------------------------------------------------------
 -- Profiling basics
@@ -202,12 +259,12 @@ measurement :: MonadIO m
 measurement sample msg attrs dna = do
     -- Get start sample
     sample0 <- sample StartSample
-    message "START" (attrs ++ sample0) msg
+    liftIO $ rawMessage "START" (attrs ++ sample0) msg
     -- Perform action
     r <- liftIO . evaluate =<< dna
     -- Get end sample, return
     sample1 <- sample EndSample
-    message "END" (attrs ++ sample1) msg
+    liftIO $ rawMessage "END" (attrs ++ sample1) msg
     return r
 
 -- | Put measurements about execution time of monadic action into
@@ -225,13 +282,10 @@ logDuration msg dna = do
 -- | A program annotation providing additional information about how
 -- much work we expect the program to be doing in a certain phase. The
 -- purpose of this hint is that we can set-up measurements to match
--- these numbers to the program's real performance.
---
--- Note that this is just a hint - a best effort should be made to
--- give a realistic estimate. As a rule of thumb, it is better to use
--- a more conservative estimate, as this will generally result in
--- lower performance estimates (in profiling, false positives are
--- better than false negatives).
+-- these numbers to the program's real performance.  Note that the
+-- hint must only be a best-effort estimate. As a rule of thumb, it is
+-- better to use a more conservative estimate, as this will generally
+-- result in lower performance estimates.
 data ProfileHint
     = FloatHint { hintFloatOps :: !Int -- ^ Number of single-precision operations
                 , hintDoubleOps :: !Int -- ^ Number of double-precision operations
@@ -256,19 +310,15 @@ data ProfileHint
       -- is running in FLOP mode (uses instrumentation, which will
       -- reduce overall performance!).
 
--- | Default @FloatHint@.
 floatHint :: ProfileHint
 floatHint = FloatHint 0 0
 
--- | Default @IOHint@.
 ioHint :: ProfileHint
 ioHint = IOHint 0 0
 
--- | Default @HaskellHint@.
 haskellHint :: ProfileHint
 haskellHint = HaskellHint 0
 
--- | Default @CUDAHint@.
 cudaHint :: ProfileHint
 cudaHint = CUDAHint 0 0 0 0
 
@@ -338,10 +388,6 @@ consAttrNZT n v t = ((n, show v ++ "/" ++ show t):)
 -- perf_events sampling
 ----------------------------------------------------------------
 
--- | Do perf_event initialisation
-perfInit :: IO PerfStatGroup
-perfInit = perfEventOpen $ map snd floatCounterDescs
-
 -- | The floating point counters, with associated names
 floatCounterDescs :: [(String, PerfStatDesc)]
 floatCounterDescs
@@ -360,18 +406,39 @@ floatCounterDescs
 floatCounterAttrs :: SamplePoint -> IO [Attr]
 floatCounterAttrs pt = do
 
-    -- Enable perf_events if required
-    counters <- loggerPerfCounters <$> readIORef loggerStateVar
-    case pt of
-      StartSample -> enableProfileMod loggerPerfEnabled $ perfEventEnable counters
-      EndSample   -> disableProfileMod loggerPerfEnabled $ perfEventDisable counters
+    -- Initialise perf_events. We re-initialise them for every single
+    -- krenel call for now - this is probably wasteful, as the RTS
+    -- ought to be reusing bound threads at some level. Still, I can't
+    -- think of a good solution to make sure that perf_events handles
+    -- wouldn't leak, so let's do this for now.
+    tid <- myThreadId
+    countersVar <- loggerPerfCounters <$> readIORef loggerStateVar
+    counters <- case pt of
+      StartSample -> do
+        -- Check that the thread is actually bound
+        isBound <- isCurrentThreadBound
+        when (not isBound) $ warningMsg "perf_events not running in bound thread!"
+        counters <- perfEventOpen $ map snd floatCounterDescs
+        atomicModifyIORef' countersVar $ flip (,) () . Map.insert tid counters
+        return counters
+      EndSample -> do
+        Just counters <- atomicModifyIORef' countersVar $
+                         swap . Map.updateLookupWithKey (\_ _ -> Nothing) tid
+        perfEventDisable counters
+        return counters
 
     -- Get counters from perf_event
     vals <- perfEventRead counters
+    -- Start / free counters
+    case pt of
+      StartSample -> perfEventEnable counters
+      EndSample -> perfEventClose counters
+
     -- Generate attributes
     let fmtName (name, _) = "perf:" ++ name
         fmtVal stat = show (psValue stat) ++ "/" ++ show (psTimeRunning stat)
     return $ zip (map fmtName floatCounterDescs) (map fmtVal vals)
+
 
 ----------------------------------------------------------------
 -- I/O data sampling

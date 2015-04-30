@@ -1,7 +1,6 @@
 name:                dna-ms3
 version:             0.1
 synopsis:            DSL constructions for radio astronomy imaging with a focus on data movement and optimization
--- description:         
 homepage:            https://github.com/SKA-ScienceDataProcessor/RC
 license:             Apache-2.0
 license-file:        LICENSE
@@ -11,7 +10,19 @@ maintainer:          peter.braam@peterbraam.com
 category:            Concurrency
 build-type:          Custom
 cabal-version:       >=1.16
-
+description:
+ .
+ DNA is a data flow DSL aimed at expressing data movement and initiation of
+ computational kernels for numerical calculations. We use the "actor/channel"
+ paradigm, which allows for a descriptive approach that separates definition
+ from execution strategy. Our target is data intensive high performance computing
+ applications that employ hierarchical cluster scheduling techniques. Furthermore,
+ we provide infrastructure for detailed profiling and high availability, allowing
+ recovery for certain types of failures.
+ .
+ DNA is presently implemented as an embedded monadic DSL on top of the 
+ well-established distributed programming framework "Cloud Haskell".
+ See module "DNA" for a detailed documentation and examples.
 
 Flag network-uri
    description: Get Network.URI from the network-uri package
@@ -137,6 +148,31 @@ executable ddp-in-memory
   other-modules:
     DDP
     DDP_Slice
+
+executable GCF_DNA
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+                       Sketches/GCF_new
+                       Sketches/FFT
+                       Sketches/Utils
+  main-is:             GCF_DNA.hs
+  build-depends:
+    base >=4.6,
+    ghc-prim,
+    binary,
+    bytestring >= 0.10.4.0,
+    storable-complex,
+    distributed-static,
+    distributed-process,
+    dna-ms3
+  if flag(cuda) {
+     build-depends:  cuda >=0.6.6, cufft
+     x-cuda-sources: Sketches/Utils/cudaCfg.c Sketches/GCF_new/all.cu
+     x-cuda-options: -gencode arch=compute_30,code=sm_30
+  } else {
+     buildable:        False
+  }
 
 executable Gridder_DNA
   default-language:    Haskell2010
