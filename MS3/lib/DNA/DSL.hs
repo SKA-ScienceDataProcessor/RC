@@ -2,7 +2,6 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE CPP                        #-}
 -- | Description of DNA DSL as operational monad
 module DNA.DSL (
       -- * Base DSL
@@ -93,16 +92,9 @@ data KernelMode
 instance MonadIO Kern where
     liftIO = Kern
 
--- Haddock doesn't support GADT constructor docs yet
-#ifndef __HADDOCK_VERSION__
-#define GADT_HADD(x) x
-#else
-#define GADT_HADD(x)
-#endif
-
 -- | GADT which describe operations supported by DNA DSL
 data DnaF a where
-    GADT_HADD(-- | Execute foreign kernel)
+    -- Execute foreign kernel
     Kernel
       :: String
       -> KernelMode
@@ -117,13 +109,13 @@ data DnaF a where
     LogMessage :: String -> DnaF ()
     Duration :: String -> DNA a -> DnaF a
 
-    GADT_HADD(-- | Evaluate actor closure)
+    -- Evaluate actor closure
     EvalClosure
       :: (Typeable a, Typeable b)
       => a
       -> Closure (Actor a b)
       -> DnaF b
-    GADT_HADD(-- | Spawn single process)
+    -- Spawn single process
     SpawnActor
       :: (Serializable a, Serializable b)
       => Res
@@ -166,26 +158,26 @@ data DnaF a where
     --   -> Spawn (Closure (Mapper a b))
     --   -> DnaF (Shell (Scatter a) (MR b))
 
-    GADT_HADD(-- | Connect running actors)
+    -- Connect running actors
     Connect
       :: (Serializable b, Typeable tag)
       => Shell a (tag b)
       -> Shell (tag b) c
       -> DnaF ()
-    GADT_HADD(-- | Send parameter to the actor)
+    -- Send parameter to the actor
     SendParam
       :: Serializable a
       => a
       -> Shell (Val a) b
       -> DnaF ()
-    -- | Send parameter to the actor
+    -- Send parameter to the actor
     Broadcast
       :: Serializable a
       => a
       -> Shell (Scatter a) b
       -> DnaF ()
 
-    GADT_HADD(-- | Delay actor returning single value)
+    -- Delay actor returning single value
     Delay 
       :: Serializable b
       => Location
