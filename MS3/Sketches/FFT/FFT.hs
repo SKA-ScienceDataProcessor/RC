@@ -4,6 +4,7 @@ module FFT where
 
 import Foreign.CUDA.FFT
 import CUDAEx
+import ArgMapper
 
 data Mode =
     Forward
@@ -34,7 +35,7 @@ fft2dComplexDSqInplaceCentered mbstream mode size inoutp ifftshift fftshift = do
     blocks_per_dim = (size + threads_per_dim - 1) `div` threads_per_dim
     mkshift sfun =
       launchKernel sfun (blocks_per_dim, blocks_per_dim, 1) (threads_per_dim, threads_per_dim, 1)
-        0 mbstream [VArg inoutp, IArg size]
+        0 mbstream |< inoutp :. size :. Z
 
 foreign import ccall unsafe "&" fftshift_kernel :: Fun
 

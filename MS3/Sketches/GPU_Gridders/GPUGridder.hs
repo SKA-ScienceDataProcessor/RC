@@ -74,18 +74,18 @@ type AddBaselinesIter =
 
 launchAddBaselines :: TaskData -> CUDA.Fun -> AddBaselinesFun
 launchAddBaselines td f scale gridptr gcflp uvwp visp permp maxSupp blOff numOfBaselines =
-  CUDA.launchKernel f (numOfBaselines, 1, 1) (nOfThreads, 1, 1) 0 Nothing params
+  CUDA.launchKernel f (numOfBaselines, 1, 1) (nOfThreads, 1, 1) 0 Nothing |< params
   where
     nOfThreads = min 1024 (maxSupp * maxSupp)
-    params = mapArgs $  scale
-                     :. tdWstep td
-                     :. permp
-                     :. gridptr
-                     :. gcflp
-                     :. uvwp
-                     :. visp
-                     :. (fromIntegral blOff :: Int32)
-                     :. Z
+    params = scale
+          :. tdWstep td
+          :. permp
+          :. gridptr
+          :. gcflp
+          :. uvwp
+          :. visp
+          :. (fromIntegral blOff :: Int32)
+          :. Z
 
 data GridderConfig = GridderConfig {
     gcKernelName :: String
@@ -128,7 +128,7 @@ foreign import ccall unsafe "&normalizeAndExtractPolarization" normalizeAndExtra
 normalizeAndExtractPolarization :: Int -> CUDA.CxDoubleDevPtr -> Grid -> IO ()
 normalizeAndExtractPolarization pol polp (Grid _ gridp) =
   -- 128 * 32 = 4096
-  CUDA.launchKernel normalizeAndExtractPolarization_c (128, 128, 1) (32, 32, 1) 0 Nothing $ mapArgs $ polp :. gridp :. (fromIntegral pol :: Int32) :. Z
+  CUDA.launchKernel normalizeAndExtractPolarization_c (128, 128, 1) (32, 32, 1) 0 Nothing |< polp :. gridp :. (fromIntegral pol :: Int32) :. Z
 
 type RawPtr = CUDA.DevicePtr Word8
 
@@ -159,7 +159,7 @@ runGatherGridder (GridderConfig _ fun gcfIsFull _) prefix td gcf = do
                 len :: Int32
                 len = fromIntegral (vis_data_size `div` vis_size)
               CUDA.launchKernel fun (16,16, 1) (8,8,1) 0 Nothing
-                $ mapArgs $ pre_data_in :. vis_data_in :. gcfptr :. gridptr :. up :. vp :. len :. Z
+                |< pre_data_in :. vis_data_in :. gcfptr :. gridptr :. up :. vp :. len :. Z
               --
               munmapFilePtr pre_data_ptr_host pre_data_rawsize
               munmapFilePtr vis_data_ptr_host vis_data_rawsize

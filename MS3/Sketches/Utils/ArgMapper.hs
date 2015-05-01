@@ -31,3 +31,9 @@ instance ArgMapper ts => ArgMapper (Double :. ts) where
 
 instance (Storable t, ArgMapper ts) => ArgMapper (t :. ts) where
   mapArgs (v :. vs) = (VArg v) : mapArgs vs
+
+
+infixr 0 |<
+
+(|<) :: ArgMapper a => ([FunParam] -> b) -> a -> b
+(|<) f args = f (mapArgs args)

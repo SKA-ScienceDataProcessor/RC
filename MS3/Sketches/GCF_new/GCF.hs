@@ -49,6 +49,7 @@ import qualified Data.ByteString.Unsafe as UBS
 import Data.Binary.Put
 import Data.Binary.Get
 
+import ArgMapper
 import FFT
 
 import System.IO
@@ -56,17 +57,17 @@ import System.IO
 launchOnFF :: CUDA.Fun -> Int -> [CUDA.FunParam] -> IO ()
 launchOnFF k xdim  = CUDA.launchKernel k (8,8,xdim) (32,32,1) 0 Nothing
 
-type DoubleDevPtr = CUDA.DevicePtr
+type DoubleDevPtr = CUDA.DevicePtr Double
 
-launchReduce :: CUDA.Fun -> CxDoubleDevPtr -> DoubleDevPtr Double -> Int -> IO ()
+launchReduce :: CUDA.Fun -> CxDoubleDevPtr -> DoubleDevPtr -> Int -> IO ()
 launchReduce f idata odata n =
   CUDA.launchKernel f (n `div` 1024,1,1) (512,1,1) (fromIntegral $ 512 * sizeOf (undefined :: Double)) Nothing
-    [CUDA.VArg idata, CUDA.VArg odata, CUDA.IArg n]
+    |< idata :. odata :. n :. Z
 
-launchNormalize :: CUDA.Fun -> DoubleDevPtr Double -> CxDoubleDevPtr -> Int -> IO ()
+launchNormalize :: CUDA.Fun -> DoubleDevPtr -> CxDoubleDevPtr -> Int -> IO ()
 launchNormalize f normp ptr len =
   CUDA.launchKernel f (128,1,1) (512,1,1) 0 Nothing
-    [CUDA.VArg normp, CUDA.VArg ptr, CUDA.IArg len]
+    |< normp :. ptr :. len :. Z
 
 data GCF ptrt = GCF {
     gcfSize   :: !Int
@@ -171,22 +172,22 @@ __k(wextract1)
 doCuda :: Double -> [(Double, Int)] -> GCFDev -> IO ()
 doCuda t2 ws_hsupps gcf =
   CUDA.allocaArray (256*256) $ \(ffp0 :: CxDoubleDevPtr) -> do
-    launchOnFF r2 1 [CUDA.VArg ffp0, CUDA.VArg t2]
+    launchOnFF r2 1 |< ffp0 :. t2 :. Z
     CUDA.allocaArray (256*256) $ \(ffpc :: CxDoubleDevPtr) ->
       CUDA.allocaArray (256*256*8*8) $ \(overo :: CxDoubleDevPtr) ->
         CUDA.allocaArray (256*256*8*8) $ \(overt :: CxDoubleDevPtr) ->
-          CUDA.allocaArray 1 $ \(normp :: DoubleDevPtr Double) ->
+          CUDA.allocaArray 1 $ \(normp :: DoubleDevPtr) ->
             let
               go ((w, hsupp):rest) lptrrlist = do
                  let
                    supp2 = let supp = 1 + 2 * fromIntegral hsupp in supp * supp
                  CUDA.sync
-                 launchOnFF wkernff 1 [CUDA.VArg ffpc, CUDA.VArg ffp0, CUDA.VArg w]
+                 launchOnFF wkernff 1 |< ffpc :. ffp0 :. w :. Z
                  CUDA.memset (CUDA.castDevPtr overo) (256*256*8*8 * 16) 0
                  CUDA.sync
-                 launchOnFF copy_2_over 1 [CUDA.VArg overo, CUDA.VArg ffpc]
+                 launchOnFF copy_2_over 1 |< overo :. ffpc :. Z
                  fft2dComplexDSqInplaceCentered Nothing Inverse (256*8) overo ifftshift_kernel fftshift_kernel
-                 launchOnFF transpose_over0 64 [CUDA.VArg overt, CUDA.VArg overo]
+                 launchOnFF transpose_over0 64 |< overt :. overo :. Z
                  CUDA.sync
                  let
                    normAndExtractLayers outplist layerp n
@@ -198,7 +199,7 @@ doCuda t2 ws_hsupps gcf =
                                  launchNormalize normalize normp layerp (256*256)
                                  CUDA.sync
                                  let outp = head outplist
-                                 launchOnFF wextract1 1 [CUDA.IArg (fromIntegral hsupp), CUDA.VArg outp, CUDA.VArg layerp]
+                                 launchOnFF wextract1 1 |< hsupp :. outp :. layerp :. Z
                                  CUDA.sync
                                  let nextPtr = CUDA.advanceDevPtr outp supp2
                                  normAndExtractLayers (nextPtr:outplist) (CUDA.advanceDevPtr layerp $ 256*256) (n-1)
