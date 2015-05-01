@@ -128,7 +128,12 @@ binAndPregrid namespace isForHalfGCF td = kernel "Binner" [] . liftIO $
   bin namespace isForHalfGCF td
 
 mkGatherGridderActor :: GridderConfig -> Actor (String, TaskData, GCFDev) Grid
-mkGatherGridderActor gcfg = actor (kernel (gcKernelName gcfg) [] . liftIO . gridder)
+mkGatherGridderActor gcfg =
+  actor (kernel (gcKernelName gcfg)
+           [ ioHint {hintReadBytes = 1850400000}
+           , cudaHint {hintCopyBytesDevice = 1850400000}
+           , cudaHint {hintCudaDoubleOps = 51360000000}
+           ] . liftIO . gridder)
   where gridder (namespace, td, gcf) = runGatherGridder gcfg namespace td gcf
 
 i0 :: AddBaselinesIter
