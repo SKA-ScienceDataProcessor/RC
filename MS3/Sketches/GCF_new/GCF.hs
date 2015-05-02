@@ -88,21 +88,21 @@ getLayers (GCF _ n _ l isfull) = if isfull then CUDA.advanceDevPtr l ((n `div` 2
 getLayersHost :: GCFHost -> Ptr (Ptr CxDouble)
 getLayersHost (GCF _ n _ l isfull) = if isfull then advancePtr l ((n `div` 2) * 8 * 8) else l
 
-allocateGCF :: Int -> Int -> IO GCFDev
-allocateGCF nOfLayers sizeOfGCFInComplexD = do
+allocateGCF :: Bool -> Int -> Int -> IO GCFDev
+allocateGCF isfull nOfLayers sizeOfGCFInComplexD = do
   gcfp <- CUDA.mallocArray sizeOfGCFInComplexD
   layers <- CUDA.mallocArray (nOfLayers * 8 * 8)
-  return $ GCF sizeOfGCFInComplexD nOfLayers gcfp layers True -- GAGO !!!
+  return $ GCF sizeOfGCFInComplexD nOfLayers gcfp layers isfull
 
-allocateGCFHost :: Int -> Int -> IO GCFHost
-allocateGCFHost nOfLayers sizeOfGCFInComplexD = do
+allocateGCFHost :: Bool -> Int -> Int -> IO GCFHost
+allocateGCFHost isfull nOfLayers sizeOfGCFInComplexD = do
   gcfp <- CUDA.mallocHostArray [] sizeOfGCFInComplexD
   layers <- CUDA.mallocHostArray [] (nOfLayers * 8 * 8)
-  return $ GCF sizeOfGCFInComplexD nOfLayers (CUDA.useHostPtr gcfp) (CUDA.useHostPtr layers) True -- GAGO !!!
+  return $ GCF sizeOfGCFInComplexD nOfLayers (CUDA.useHostPtr gcfp) (CUDA.useHostPtr layers) isfull
 
 marshalGCF2Host :: GCFDev -> IO GCFHost
-marshalGCF2Host (GCF size nol gcfp lrsp _) = do
-    gcfh@(GCF _ _ gcfhp lrshp _) <- allocateGCFHost nol size
+marshalGCF2Host (GCF size nol gcfp lrsp isfull) = do
+    gcfh@(GCF _ _ gcfhp lrshp _) <- allocateGCFHost isfull nol size
     CUDA.peekArrayAsync size gcfp (CUDA.HostPtr gcfhp) Nothing
     CUDA.peekArrayAsync lsiz lrsp (CUDA.HostPtr $ castPtr lrshp) Nothing
     CUDA.sync
@@ -141,14 +141,14 @@ writeGCFHostToFile (GCF size nol gcfp lrsp _) file = do
   BS.hPut fd =<< UBS.unsafePackAddressLen (size * cdSize) addr
   hClose fd
 
-readGCFHostFromFile :: FilePath -> IO GCFHost
-readGCFHostFromFile file = do
+readGCFHostFromFile :: Bool -> FilePath -> IO GCFHost
+readGCFHostFromFile isfull file = do
   fd <- openFile file ReadMode
   let intSize = sizeOf (undefined :: Int)
   cts <- LBS.hGet fd (intSize * 2)
   let (size, nol) = flip runGet cts $ liftM2 (,) get get
   let lsiz = nol * 8 * 8
-  gcf@(GCF _ _ gcfp lrsp _) <- allocateGCFHost nol size
+  gcf@(GCF _ _ gcfp lrsp _) <- allocateGCFHost isfull nol size
   forM_ [0..lsiz-1] $ \i -> do
     v <- runGet get `liftM` LBS.hGet fd intSize
     pokeElemOff lrsp i (gcfp `plusPtr` v)
@@ -233,6 +233,6 @@ prepareGCF isfull n supp0 hsupp_step wstep = (wsp, sizeOfGCFInComplexD)
 createGCF :: Bool -> Double -> (LD, Int) -> IO GCFDev
 createGCF isfull t2 (wsp, sizeOfGCFInComplexD) = do
     CUDA.sync
-    gcf <- allocateGCF (length wsp) sizeOfGCFInComplexD
+    gcf <- allocateGCF isfull (length wsp) sizeOfGCFInComplexD
     doCuda t2 wsp gcf
     return gcf {isFull = isfull}
