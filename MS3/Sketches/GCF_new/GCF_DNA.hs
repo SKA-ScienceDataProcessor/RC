@@ -25,7 +25,7 @@ cdSize = sizeOf (undefined :: Complex Double)
 runGCF :: ([(Double, Int)], Int) -> IO ()
 runGCF ws_hsupps_size = do
   CUDA.get >>= print
-  gcf <- createGCF 0.25 ws_hsupps_size
+  gcf <- createGCF True 0.25 ws_hsupps_size
   let gsize = gcfSize gcf
   ptr_host <- CUDA.mallocHostArray [] gsize
   CUDA.peekArrayAsync gsize (gcfPtr gcf) ptr_host Nothing
@@ -41,5 +41,5 @@ main = dnaRun id $ flip eval () $ actor $ \() ->
                          , hintCudaDoubleOps = flopsPerCD * snd ws_hsupps_size } ] $ do
     liftIO $ runGCF ws_hsupps_size
  where
-   ws_hsupps_size = prepareFullGCF 30 4 50.0
+   ws_hsupps_size = prepareGCF True 30 17 4 50.0
    flopsPerCD = 400 -- determined experimentally

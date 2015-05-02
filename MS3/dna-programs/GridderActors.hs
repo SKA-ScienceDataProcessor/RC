@@ -37,22 +37,21 @@ cdSize = sizeOf (undefined :: Complex Double)
 {-# INLINE cdSize #-}
 
 mkGcfCFG :: Bool -> CDouble -> GCFCfg
-mkGcfCFG isFull (CDouble wstp) = GCFCfg {
+mkGcfCFG isfull (CDouble wstp) = GCFCfg {
     gcfcSuppDiv2Step = 4
   , gcfcLayersDiv2Plus1 = 30
-  , gcfcIsFull = isFull
+  , gcfcIsFull = isfull
   , gcfcT2 = 0.2
   , gcfcWStep = wstp
   }
 
 gcfCalc :: GCFCfg -> DNA GCFDev
-gcfCalc (GCFCfg hsupp_step n isFull t2 wstp) =
+gcfCalc (GCFCfg hsupp_step n isfull t2 wstp) =
     kernel "GCF" [ cudaHint{ hintCudaDoubleOps = flopsPerCD * ws_size
-                            } ] $ liftIO $ createGCF t2 ws_hsupps_size
+                            } ] $ liftIO $ createGCF isfull t2 ws_hsupps_size
 
   where
-    prep = if isFull then prepareFullGCF else prepareHalfGCF
-    ws_hsupps_size = prep n hsupp_step wstp
+    ws_hsupps_size = prepareGCF isfull n 17 hsupp_step wstp
     ws_size = snd ws_hsupps_size
     flopsPerCD = 400 -- determined experimentally
 
@@ -182,7 +181,7 @@ runGridderOnLocalData = actor $ \(ns_out, taskdata, gridactor) ->
   runGridderWith gridactor taskdata "" ns_out
 
 marshalGCF2HostP :: GCFDev -> DNA GCFHost
-marshalGCF2HostP gcfd@(GCF gcfsize nol _ _) =
+marshalGCF2HostP gcfd@(GCF gcfsize nol _ _ _) =
     kernel "MarshalGCF2Host" [cudaHint{hintCopyBytesHost = gcfsize * cdSize + nol * 8 * 8 * pSize}]
       $ liftIO $ marshalGCF2Host gcfd
   where
@@ -197,11 +196,11 @@ marshalGCF2HostP gcfd@(GCF gcfsize nol _ _) =
 
 -- Use no GridderConfig here
 -- We have 4 variants only and all are covered by this code
-cpuGridder :: Bool -> Bool -> Bool -> String -> TaskData -> GCFHost -> DNA ()
-cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh = do
+cpuGridder :: Bool -> Bool -> String -> TaskData -> GCFHost -> DNA ()
+cpuGridder useFullGcf usePermutations ns_out td gcfh = do
     (gridp, polptr) <- kernel gname [floatHint {hintDoubleOps = 5211646626}] $ liftIO $ do
         gridp <- alignedMallocArray (gridsize * 4) 32
-        gfun scale (tdWstep td) (tdMap td) gridp gcfp (tdUVWs td) (tdVisibilies td)
+        gfun scale (tdWstep td) (tdMap td) gridp (getLayersHost gcfh) (tdUVWs td) (tdVisibilies td)
         polptr <- mallocArray gridsize
         return (gridp, polptr)
     let extract n = do
@@ -216,7 +215,6 @@ cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh = do
       free polptr
       free gridp
   where
-    gcfp = if isFullGcf then getCentreOfFullGCFHost gcfh else gcfLayers gcfh
     gridsize = 4096 * 4096
     scale = let CDouble sc = (2048 - 124 - 1) / (tdMaxx td) in sc -- 124 max hsupp
     (gfun, gname) = mk useFullGcf usePermutations
@@ -229,11 +227,11 @@ cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh = do
 
 mkGcfAndCpuGridder :: Bool -> Bool -> Bool -> String -> TaskData -> DNA ()
 mkGcfAndCpuGridder isFullGcf useFullGcf usePermutations ns_out td = do
-  gcfd <- gcfCalc $ mkGcfCFG True (tdWstep td)
+  gcfd <- gcfCalc $ mkGcfCFG isFullGcf (tdWstep td)
   gcfh <- marshalGCF2HostP gcfd
   kernel "mkGcfAndCpuGridder/mem" [] $ liftIO $
     finalizeGCF gcfd
-  cpuGridder isFullGcf useFullGcf usePermutations ns_out td gcfh
+  cpuGridder useFullGcf usePermutations ns_out td gcfh
   kernel "mkGcfAndCpuGridder/mem" [] $ liftIO $
     finalizeGCFHost gcfh
 

@@ -9,14 +9,13 @@
   #-}
 
 module GCF (
-    prepareHalfGCF
-  , prepareFullGCF
+    prepareGCF
   , createGCF
   , finalizeGCF
   , finalizeGCFHost
   , marshalGCF2Host
-  , getCentreOfFullGCF
-  , getCentreOfFullGCFHost
+  , getLayers
+  , getLayersHost
   , GCF(..)
   , GCFDev
   , GCFHost
@@ -74,6 +73,7 @@ data GCF ptrt = GCF {
   , gcfNumOfLayers :: !Int
   , gcfPtr    :: !(ptrt CxDouble)
   , gcfLayers :: !(ptrt (ptrt CxDouble))
+  , isFull :: !Bool
   } deriving (Generic, Typeable)
 
 type GCFDev = GCF CUDA.DevicePtr
@@ -82,27 +82,27 @@ type GCFHost = GCF Ptr
 instance Binary GCFDev
 instance Binary GCFHost
 
-getCentreOfFullGCF :: GCFDev -> CUDA.DevicePtr CxDoubleDevPtr
-getCentreOfFullGCF (GCF _ n _ l) = CUDA.advanceDevPtr l ((n `div` 2) * 8 * 8)
+getLayers :: GCFDev -> CUDA.DevicePtr CxDoubleDevPtr
+getLayers (GCF _ n _ l isfull) = if isfull then CUDA.advanceDevPtr l ((n `div` 2) * 8 * 8) else l
 
-getCentreOfFullGCFHost :: GCFHost -> Ptr (Ptr CxDouble)
-getCentreOfFullGCFHost (GCF _ n _ l) = advancePtr l ((n `div` 2) * 8 * 8)
+getLayersHost :: GCFHost -> Ptr (Ptr CxDouble)
+getLayersHost (GCF _ n _ l isfull) = if isfull then advancePtr l ((n `div` 2) * 8 * 8) else l
 
 allocateGCF :: Int -> Int -> IO GCFDev
 allocateGCF nOfLayers sizeOfGCFInComplexD = do
   gcfp <- CUDA.mallocArray sizeOfGCFInComplexD
   layers <- CUDA.mallocArray (nOfLayers * 8 * 8)
-  return $ GCF sizeOfGCFInComplexD nOfLayers gcfp layers
+  return $ GCF sizeOfGCFInComplexD nOfLayers gcfp layers True -- GAGO !!!
 
 allocateGCFHost :: Int -> Int -> IO GCFHost
 allocateGCFHost nOfLayers sizeOfGCFInComplexD = do
   gcfp <- CUDA.mallocHostArray [] sizeOfGCFInComplexD
   layers <- CUDA.mallocHostArray [] (nOfLayers * 8 * 8)
-  return $ GCF sizeOfGCFInComplexD nOfLayers (CUDA.useHostPtr gcfp) (CUDA.useHostPtr layers)
+  return $ GCF sizeOfGCFInComplexD nOfLayers (CUDA.useHostPtr gcfp) (CUDA.useHostPtr layers) True -- GAGO !!!
 
 marshalGCF2Host :: GCFDev -> IO GCFHost
-marshalGCF2Host (GCF size nol gcfp lrsp) = do
-    gcfh@(GCF _ _ gcfhp lrshp) <- allocateGCFHost nol size
+marshalGCF2Host (GCF size nol gcfp lrsp _) = do
+    gcfh@(GCF _ _ gcfhp lrshp _) <- allocateGCFHost nol size
     CUDA.peekArrayAsync size gcfp (CUDA.HostPtr gcfhp) Nothing
     CUDA.peekArrayAsync lsiz lrsp (CUDA.HostPtr $ castPtr lrshp) Nothing
     CUDA.sync
@@ -122,14 +122,14 @@ marshalGCF2Host (GCF size nol gcfp lrsp) = do
     lsiz = nol * 8 * 8
 
 finalizeGCF :: GCFDev -> IO ()
-finalizeGCF (GCF _ _ gcfp layers) = CUDA.free layers >> CUDA.free gcfp
+finalizeGCF (GCF _ _ gcfp layers _) = CUDA.free layers >> CUDA.free gcfp
 
 finalizeGCFHost :: GCFHost -> IO ()
-finalizeGCFHost (GCF _ _ gcfp layers) =
+finalizeGCFHost (GCF _ _ gcfp layers _) =
   CUDA.freeHost (CUDA.HostPtr layers) >> CUDA.freeHost (CUDA.HostPtr gcfp)
 
 writeGCFHostToFile :: GCFHost -> FilePath -> IO ()
-writeGCFHostToFile (GCF size nol gcfp lrsp) file = do
+writeGCFHostToFile (GCF size nol gcfp lrsp _) file = do
   fd <- openFile file WriteMode
   LBS.hPut fd $ runPut $ put size >> put nol
   let lsiz = nol * 8 * 8
@@ -148,7 +148,7 @@ readGCFHostFromFile file = do
   cts <- LBS.hGet fd (intSize * 2)
   let (size, nol) = flip runGet cts $ liftM2 (,) get get
   let lsiz = nol * 8 * 8
-  gcf@(GCF _ _ gcfp lrsp) <- allocateGCFHost nol size
+  gcf@(GCF _ _ gcfp lrsp _) <- allocateGCFHost nol size
   forM_ [0..lsiz-1] $ \i -> do
     v <- runGet get `liftM` LBS.hGet fd intSize
     pokeElemOff lrsp i (gcfp `plusPtr` v)
@@ -221,22 +221,18 @@ data GCFCfg = GCFCfg {
 
 instance Binary GCFCfg
 
-prepareGCFWith :: (LD -> LD) -> Int -> Int -> Double -> (LD, Int)
-prepareGCFWith mirror n hsupp_step wstep = (wsp, sizeOfGCFInComplexD)
+prepareGCF :: Bool -> Int -> Int -> Int -> Double -> (LD, Int)
+prepareGCF isfull n supp0 hsupp_step wstep = (wsp, sizeOfGCFInComplexD)
   where
     wsp0 = take n $ iterate (\(w, hs) -> (w + wstep, hs + hsupp_step)) (0.0, 0)
-    wsp = mirror wsp0 ++ wsp0
-    sizeOfGCFInComplexD = (sum $ map (\(_, hsupp) -> let supp = 2 * hsupp + 17 in supp * supp) wsp) * 8 * 8
+    wsp = if isfull
+            then map (\(w,h) -> (-w,h)) (reverse $ tail wsp0) ++ wsp0
+            else wsp0
+    sizeOfGCFInComplexD = (sum $ map (\(_, hsupp) -> let supp = 2 * hsupp + supp0 in supp * supp) wsp) * 8 * 8
 
-prepareHalfGCF, prepareFullGCF :: Int -> Int -> Double -> (LD, Int)
-prepareHalfGCF = prepareGCFWith (const [])
-prepareFullGCF = prepareGCFWith mirror
-  where
-    mirror wsp0 = map (\(w,h) -> (-w,h)) (reverse $ tail wsp0)
-
-createGCF :: Double -> (LD, Int) -> IO GCFDev
-createGCF t2 (wsp, sizeOfGCFInComplexD) = do
+createGCF :: Bool -> Double -> (LD, Int) -> IO GCFDev
+createGCF isfull t2 (wsp, sizeOfGCFInComplexD) = do
     CUDA.sync
     gcf <- allocateGCF (length wsp) sizeOfGCFInComplexD
     doCuda t2 wsp gcf
-    return gcf
+    return gcf {isFull = isfull}
