@@ -1,7 +1,10 @@
 {-# LANGUAGE
       TypeOperators
+    , MultiParamTypeClasses
     , FlexibleInstances
+    , FlexibleContexts
     , OverlappingInstances
+    , UndecidableInstances
   #-}
 
 module ArgMapper where
@@ -10,30 +13,21 @@ import Foreign.Storable
 
 import CUDAEx
 
-infixr 5 :.
+class FP a where
+  funp :: a -> FunParam
 
-data Z = Z
-data a :. b = a :. b
+instance FP Int where funp = IArg
+instance FP Float where funp = FArg
+instance FP Double where funp = DArg
+instance Storable a => FP a where funp = VArg
 
 class ArgMapper a where
-  mapArgs :: a -> [FunParam]
+  mapArgs :: a
+  mapArgs = mapArgs0 []
+  mapArgs0 :: [FunParam] -> a
 
-instance ArgMapper Z where mapArgs _ = []
+instance ArgMapper [FunParam] where
+  mapArgs0 acc = reverse acc
 
-instance ArgMapper ts => ArgMapper (Int :. ts) where
-  mapArgs (v :. vs) = (IArg v) : mapArgs vs
-
-instance ArgMapper ts => ArgMapper (Float :. ts) where
-  mapArgs (v :. vs) = (FArg v) : mapArgs vs
-
-instance ArgMapper ts => ArgMapper (Double :. ts) where
-  mapArgs (v :. vs) = (DArg v) : mapArgs vs
-
-instance (Storable t, ArgMapper ts) => ArgMapper (t :. ts) where
-  mapArgs (v :. vs) = (VArg v) : mapArgs vs
-
-
-infixr 0 |<
-
-(|<) :: ArgMapper a => ([FunParam] -> b) -> a -> b
-(|<) f args = f (mapArgs args)
+instance (FP a, ArgMapper r) => ArgMapper (a -> r) where
+  mapArgs0 acc v = mapArgs0 (funp v : acc)

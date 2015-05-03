@@ -53,20 +53,30 @@ import FFT
 
 import System.IO
 
+#define __k(n) foreign import ccall unsafe "&" n :: CUDA.Fun
+
+__k(reduce_512_e2)
+__k(r2)
+__k(wkernff)
+__k(copy_2_over)
+__k(transpose_over0)
+__k(normalize)
+__k(wextract1)
+
 launchOnFF :: CUDA.Fun -> Int -> [CUDA.FunParam] -> IO ()
 launchOnFF k xdim  = CUDA.launchKernel k (8,8,xdim) (32,32,1) 0 Nothing
 
 type DoubleDevPtr = CUDA.DevicePtr Double
 
-launchReduce :: CUDA.Fun -> CxDoubleDevPtr -> DoubleDevPtr -> Int -> IO ()
-launchReduce f idata odata n =
-  CUDA.launchKernel f (n `div` 1024,1,1) (512,1,1) (fromIntegral $ 512 * sizeOf (undefined :: Double)) Nothing
-    |< idata :. odata :. n :. Z
+launchReduce :: CxDoubleDevPtr -> DoubleDevPtr -> Int -> IO ()
+launchReduce idata odata n =
+  CUDA.launchKernel reduce_512_e2 (n `div` 1024,1,1) (512,1,1) (fromIntegral $ 512 * sizeOf (undefined :: Double)) Nothing
+    $ mapArgs idata odata n
 
-launchNormalize :: CUDA.Fun -> DoubleDevPtr -> CxDoubleDevPtr -> Int -> IO ()
-launchNormalize f normp ptr len =
-  CUDA.launchKernel f (128,1,1) (512,1,1) 0 Nothing
-    |< normp :. ptr :. len :. Z
+launchNormalize :: DoubleDevPtr -> CxDoubleDevPtr -> Int -> IO ()
+launchNormalize normp ptr len =
+  CUDA.launchKernel normalize (128,1,1) (512,1,1) 0 Nothing
+    $ mapArgs normp ptr len
 
 data GCF ptrt = GCF {
     gcfSize   :: !Int
@@ -158,21 +168,10 @@ readGCFHostFromFile isfull file = do
   withForeignPtr fp $ \p -> copyBytes gcfp (p `plusPtr` off) l
   return gcf
 
-#define __k(n) foreign import ccall unsafe "&" n :: CUDA.Fun
-
-__k(ifftshift_kernel)
-__k(reduce_512_e2)
-__k(r2)
-__k(wkernff)
-__k(copy_2_over)
-__k(transpose_over0)
-__k(normalize)
-__k(wextract1)
-
 doCuda :: Double -> [(Double, Int)] -> GCFDev -> IO ()
 doCuda t2 ws_hsupps gcf =
   CUDA.allocaArray (256*256) $ \(ffp0 :: CxDoubleDevPtr) -> do
-    launchOnFF r2 1 |< ffp0 :. t2 :. Z
+    launchOnFF r2 1 $ mapArgs ffp0 t2
     CUDA.allocaArray (256*256) $ \(ffpc :: CxDoubleDevPtr) ->
       CUDA.allocaArray (256*256*8*8) $ \(overo :: CxDoubleDevPtr) ->
         CUDA.allocaArray (256*256*8*8) $ \(overt :: CxDoubleDevPtr) ->
@@ -182,24 +181,24 @@ doCuda t2 ws_hsupps gcf =
                  let
                    supp2 = let supp = 1 + 2 * fromIntegral hsupp in supp * supp
                  CUDA.sync
-                 launchOnFF wkernff 1 |< ffpc :. ffp0 :. w :. Z
+                 launchOnFF wkernff 1 $ mapArgs ffpc ffp0 w
                  CUDA.memset (CUDA.castDevPtr overo) (256*256*8*8 * 16) 0
                  CUDA.sync
-                 launchOnFF copy_2_over 1 |< overo :. ffpc :. Z
-                 fft2dComplexDSqInplaceCentered Nothing Inverse (256*8) overo ifftshift_kernel fftshift_kernel
-                 launchOnFF transpose_over0 64 |< overt :. overo :. Z
+                 launchOnFF copy_2_over 1 $ mapArgs overo ffpc
+                 fft2dComplexDSqInplaceCentered Nothing Inverse (256*8) overo
+                 launchOnFF transpose_over0 64 $ mapArgs overt overo
                  CUDA.sync
                  let
                    normAndExtractLayers outplist layerp n
                      | n > 0 = do
-                                 launchReduce reduce_512_e2 layerp normp (256*256)
+                                 launchReduce layerp normp (256*256)
                                  CUDA.sync
                                  -- CUDA.peekArray 1 normp hnormp -- DEBUG
                                  -- peek hnormp >>= print
-                                 launchNormalize normalize normp layerp (256*256)
+                                 launchNormalize normp layerp (256*256)
                                  CUDA.sync
                                  let outp = head outplist
-                                 launchOnFF wextract1 1 |< hsupp :. outp :. layerp :. Z
+                                 launchOnFF wextract1 1 $ mapArgs hsupp outp layerp
                                  CUDA.sync
                                  let nextPtr = CUDA.advanceDevPtr outp supp2
                                  normAndExtractLayers (nextPtr:outplist) (CUDA.advanceDevPtr layerp $ 256*256) (n-1)

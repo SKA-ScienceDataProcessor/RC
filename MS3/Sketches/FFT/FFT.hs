@@ -24,22 +24,23 @@ fft2dComplexDSqInplace mbstream mode size inoutp = do
     signOfMode Reverse =  1
     signOfMode Inverse =  1
 
+#define __k(n) foreign import ccall unsafe "&" n :: Fun
+__k(ifftshift_kernel)
+__k(fftshift_kernel)
 
-fft2dComplexDSqInplaceCentered :: Maybe Stream -> Mode -> Int -> CxDoubleDevPtr -> Fun -> Fun -> IO ()
-fft2dComplexDSqInplaceCentered mbstream mode size inoutp ifftshift fftshift = do
-    mkshift ifftshift
+fft2dComplexDSqInplaceCentered :: Maybe Stream -> Mode -> Int -> CxDoubleDevPtr -> IO ()
+fft2dComplexDSqInplaceCentered mbstream mode size inoutp = do
+    mkshift ifftshift_kernel
     fft2dComplexDSqInplace mbstream mode size inoutp
-    mkshift fftshift
+    mkshift fftshift_kernel
   where
     threads_per_dim = min size 16
     blocks_per_dim = (size + threads_per_dim - 1) `div` threads_per_dim
     mkshift sfun =
       launchKernel sfun (blocks_per_dim, blocks_per_dim, 1) (threads_per_dim, threads_per_dim, 1)
-        0 mbstream |< inoutp :. size :. Z
-
-foreign import ccall unsafe "&" fftshift_kernel :: Fun
+        0 mbstream $ mapArgs inoutp size
 
 fftGridPolarization :: CxDoubleDevPtr -> IO ()
-fftGridPolarization polp = fft2dComplexDSqInplaceCentered Nothing Forward gridsize polp fftshift_kernel fftshift_kernel
+fftGridPolarization polp = fft2dComplexDSqInplaceCentered Nothing Forward gridsize polp
   where
     gridsize = 4096
