@@ -450,5 +450,5 @@ long long count_points(BlWMap * m, int n){
     int supp = get_supp(m[i].wp);
     res += supp * supp;
   }
-  return res * TIMESTEPS;
+  return res * TIMESTEPS * NUM_POL;
 }
