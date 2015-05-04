@@ -33,11 +33,12 @@ wstep, maxx :: Ptr Metrix -> IO CDouble
 wstep = #peek Metrix, wstep
 maxx  = #peek Metrix, maxx
 
-#fic mkFromFile :: Ptr VisData -> CString -> IO CInt 
-#fic freeBinHandler :: Ptr VisData -> IO () 
+#fic mkFromFile :: Ptr VisData -> CString -> IO CInt
+#fic freeBinHandler :: Ptr VisData -> IO ()
 
 type CxDouble = Complex Double
 
-#fic readAndReshuffle :: Ptr VisData -> Ptr CxDouble -> Ptr CDouble -> Ptr Metrix -> Ptr WMaxMin -> Ptr BlWMap -> IO CInt 
-#fic sort_on_w :: Ptr BlWMap -> CInt -> IO () 
-#fic sort_on_abs_w :: Ptr BlWMap -> CInt -> IO () 
+#fic readAndReshuffle :: Ptr VisData -> Ptr CxDouble -> Ptr CDouble -> Ptr Metrix -> Ptr WMaxMin -> Ptr BlWMap -> IO CInt
+#fic sort_on_w :: Ptr BlWMap -> CInt -> IO ()
+#fic sort_on_abs_w :: Ptr BlWMap -> CInt -> IO ()
+#fic count_points :: Ptr BlWMap ->  CInt -> IO CLLong

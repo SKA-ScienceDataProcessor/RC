@@ -87,6 +87,10 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
 void sort_on_w(BlWMap * bl_wis, int n);
 void sort_on_abs_w(BlWMap * bl_wis, int n);
 
+typedef unsigned long long ull;
+
+long long count_points(BlWMap * m, int n);
+
 #ifdef __cplusplus
 }
 #endif

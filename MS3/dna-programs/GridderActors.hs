@@ -176,9 +176,12 @@ runGridderOnSavedData = actor $ \(ns_in, ns_out, gridactor) -> do
   kernel "runGridderOnSavedData/mem" [] $ liftIO $
     finalizeTaskData taskData
 
+-- We here also report the total number of grid points processed
 runGridderOnLocalData :: Actor(String, TaskData, Closure (Actor (String, TaskData, GCFDev) Grid)) ()
-runGridderOnLocalData = actor $ \(ns_out, taskdata, gridactor) ->
+runGridderOnLocalData = actor $ \(ns_out, taskdata, gridactor) -> do
   runGridderWith gridactor taskdata "" ns_out
+  kernel "countGridPoints" [] $ liftIO $
+    (count_points (tdMap taskdata) (fromIntegral $ tdBaselines taskdata) >>= printImmediate . show)
 
 marshalGCF2HostP :: GCFDev -> DNA GCFHost
 marshalGCF2HostP gcfd@(GCF gcfsize nol _ _ _) =
