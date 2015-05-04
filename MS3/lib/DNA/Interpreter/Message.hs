@@ -2,15 +2,22 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE RankNTypes                 #-}
--- | Handling of message for CH interpreter
+-- |
+-- Handling of message for CH interpreter
 --
---   Following messages must be handled by actors:
+-- Following messages must be handled by actors:
 --
---    * Terminate - terminate immediately
+--  * Terminate - terminate immediately
 --
---    * Timeout - child actor timed out
+--  * Timeout - child actor timed out
 --
---    * ProcessMonitorNotification - notifications about
+--  * ProcessMonitorNotification - notifications about child process
+--    termination
+--
+--  * SentTo - child actor sent data to its destination and need
+--    acknowledgement that it's correct
+--
+-- 
 module DNA.Interpreter.Message (
       -- * Message handlers
       messageHandlers
@@ -94,31 +101,13 @@ handleProcessTermination (ProcessMonitorNotification _ pid reason) =
 -- Handle child process termination
 ----------------------------------------------------------------
 
--- Monitored process terminated normally. We need to update registry
--- and maybe notify other processes.
+-- Monitored process terminated normally. We don't do anything here
+-- because we mark actor as terminated after receiving 'SentTo'
+-- message. Since there's race between receiving monitor message and
+-- 'SentTo' message we have to put all logic into handler for one
+-- handler.
 handleProcessDone :: ProcessId -> Controller ()
-handleProcessDone pid = do
-    freeResouces pid
-    -- In principle its possible that process terminates normally
-    -- and we don't know about it. When one process in group crashes
-    -- we kill all other processes and forget them. But it possible
-    -- that one could terminate normally before receiving message
-    withAID pid $ \aid -> do
-        Just st <- use $ stChildren . at aid
-        case st of
-          Completed _ -> panic "Actor terminated normally twice?"
-          Failed      -> panic "Failed process terminated normally?"
-          Running (RunInfo nDone nFails) -> do
-              dropPID pid aid
-                ( do stChildren . at aid .= Just (Completed (nDone + 1))
-                     mch <- actorDestinationAddr aid
-                     case mch of
-                       Nothing                -> panic "Unconnected actor terminated normally"
-                       Just (RcvReduce chans) -> liftP $ forM_ chans $ \(_,chN) -> sendChan chN (nDone + 1)
-                       Just _                 -> return ()
-                )
-                ( stChildren . at aid .= Just (Running $ RunInfo (nDone+1) nFails)
-                )
+handleProcessDone _pid = return ()
 
 
 -- Monitored process crashed or was disconnected
@@ -162,6 +151,41 @@ handleProcessCrash _msg pid = do
                        Just _                 -> return ()
                 )
                 ( stChildren . at aid .= Just (Running $ RunInfo nDone nFails)
+                )
+
+handleDataSent :: SentTo -> Controller ()
+handleDataSent (SentTo aid pid dstID) = do
+    -- Check that data was sent to correct destination
+    Just dst <- use $ stActorDst . at aid
+    case dst of
+      Left  _      -> sendAck
+      Right aidDst -> do
+          d <- use $ stActorRecvAddr . at aidDst
+          case d of
+            Nothing      -> doPanic "Data sent to unconnected actor"
+            Just Nothing -> doPanic "Data sent to terminated actor"
+            Just (Just (trueDst,trueId))
+              | dstID == trueId -> sendAck
+              | otherwise       -> liftP $ send pid (trueDst,trueId)
+  where
+    -- Send confirmation to the actor and remove it from registry
+    sendAck = do
+        liftP $ send pid AckSend
+        freeResouces pid
+        Just st <- use $ stChildren . at aid
+        case st of
+          Completed _ -> panic "Actor terminated normally twice?"
+          Failed      -> panic "Failed process terminated normally?"
+          Running (RunInfo nDone nFails) -> do
+              dropPID pid aid
+                ( do stChildren . at aid .= Just (Completed (nDone + 1))
+                     mch <- actorDestinationAddr aid
+                     case mch of
+                       Nothing                -> panic "Unconnected actor terminated normally"
+                       Just (RcvReduce chans) -> liftP $ forM_ chans $ \(_,chN) -> sendChan chN (nDone + 1)
+                       Just _                 -> return ()
+                )
+                ( stChildren . at aid .= Just (Running $ RunInfo (nDone+1) nFails)
                 )
 
 
@@ -311,23 +335,6 @@ handleDone (pid,_) =
 handleTimeout :: Timeout -> Controller ()
 handleTimeout (Timeout aid) = terminateActor aid
 
-handleDataSent :: SentTo -> Controller ()
-handleDataSent (SentTo aid pid dstID) = do
-    Just dst <- use $ stActorDst . at aid
-    case dst of
-      Left  _      -> sendAck
-      Right aidDst -> do
-          d <- use $ stActorRecvAddr . at aidDst
-          case d of
-            Nothing -> return ()
-            -- FIXME: Is this possible???
-            Just Nothing -> doPanic "Impossible"
-            Just (Just (dst,trueId))
-              | dstID == trueId -> sendAck
-              | otherwise       -> liftP $ send pid (dst,trueId)
-   where
-     sendAck = do
-         liftP $ send pid AckSend
 
 ----------------------------------------------------------------
 -- Extra functions for matching on messages
