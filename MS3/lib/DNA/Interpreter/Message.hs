@@ -30,13 +30,11 @@ module DNA.Interpreter.Message (
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Reader
-import Control.Monad.Trans.Class
 import Control.Monad.State.Strict
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 -- import qualified Data.Map as Map
 import Data.List   (isPrefixOf)
-import Data.Monoid ((<>))
 import qualified Data.Set as Set
 import qualified Data.Foldable as T
 import Text.Printf

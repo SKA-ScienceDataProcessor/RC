@@ -1,19 +1,15 @@
+{-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE TemplateHaskell            #-}
 -- | Data types for interpretation of DNA DSL using cloud haskell
 module DNA.Interpreter.Types where
 
-import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State.Strict
-import Control.Monad.Trans.Class
 import Control.Exception
 import Control.Distributed.Process
 import Data.Monoid
@@ -27,7 +23,6 @@ import           Data.Set   (Set)
 import GHC.Generics  (Generic)
 import Lens.Family.TH
 
-import DNA.CH
 import DNA.Types
 import DNA.Lens
 import DNA.DSL

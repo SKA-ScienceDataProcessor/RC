@@ -1,19 +1,13 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE CPP                        #-}
 module DNA.Types where
 
-import Control.Applicative
 import Control.Monad.Reader
 import Control.Monad.State.Strict (StateT)
 import Control.Monad.Except
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable (Serializable)
-import Data.Binary.Get
-import Data.Binary.Put
 import Data.Binary   (Binary(..))
 import Data.Typeable (Typeable)
 import GHC.Generics  (Generic)
