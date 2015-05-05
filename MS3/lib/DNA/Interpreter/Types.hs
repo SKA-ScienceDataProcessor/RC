@@ -210,7 +210,7 @@ data StateDNA = StateDNA
       -- Append only dataflow graph
     , _stChildren      :: !(Map AID ActorState)
       -- ^ State of child actors
-    , _stActorSrc :: !(Map AID (Either Message AID))
+    , _stActorSrc :: !(Map AID (Either (RecvAddr -> Process ()) AID))
       -- ^ Source of an actor. It's either another actor or parent
       --   actor. In latter case we store encoded message.
       --   message
