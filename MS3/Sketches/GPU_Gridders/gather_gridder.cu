@@ -48,7 +48,7 @@ __device__ __inline__ static void grid_kernel_gather(
       } else {
           supportPixel = gcf[uvo[i].gcf_layer_index][__layeroff];
       }
-      #define __ADDPOL(pol) grid[gu][gv].pol = cuCfma(supportPixel, vis[i].XX, grid[gu][gv].pol);
+      #define __ADDPOL(pol) grid[gu][gv].pol = cuCfma(supportPixel, vis[i].pol, grid[gu][gv].pol);
       __ADDPOL(XX)
       __ADDPOL(XY)
       __ADDPOL(YX)
