@@ -1,12 +1,14 @@
-{-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 -- | Data types for interpretation of DNA DSL using cloud haskell
 module DNA.Interpreter.Types where
 
+import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -32,8 +34,19 @@ import DNA.DSL
 -- Monads
 ----------------------------------------------------------------
 
--- | Type synonym for monad which is used for interpretation of
-type DnaMonad = StateT StateDNA (ReaderT Env Process)
+-- | Type synonym for monad which is used for interpretation of DNA
+--   programs.
+--
+--   It have custom definition of fail which is used to raise panic
+--   level error.
+newtype DnaMonad a = DnaMonad
+    { unDnaMonad :: StateT StateDNA (ReaderT Env Process) a }
+    deriving (Functor,Applicative,MonadIO,MonadProcess,MonadState StateDNA,MonadReader Env)
+
+instance Monad DnaMonad where
+    return           = DnaMonad . return
+    DnaMonad m >>= f = DnaMonad $ m >>= fmap unDnaMonad f
+    fail             = doPanic
 
 -- | Monad for event handlers. It adds explicit error handling
 type Controller = ExceptT DnaError DnaMonad
@@ -92,7 +105,7 @@ runDnaMonad
     -> DnaMonad a
     -> Process a
 runDnaMonad aid (Rank rnk) (GroupSize grp) interp nodes flags =
-    flip runReaderT env . flip evalStateT s0
+    flip runReaderT env . flip evalStateT s0 . unDnaMonad
   where
     env = Env { envRank        = rnk
               , envGroupSize   = grp

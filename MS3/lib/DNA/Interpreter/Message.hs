@@ -351,12 +351,12 @@ handleRecieve auxMs mA
   where
     matches e s
         =  map toMatch ((fmap . fmap) Right mA)
-        ++ [ match $ \a -> Left <$> runReaderT (runStateT (runController (f a)) s) e
+        ++ [ match $ \a -> Left <$> (flip runReaderT e . flip runStateT s . unDnaMonad . runController) (f a)
            | MatchS f <- auxMs]
     loop = do
         e <- ask
         s <- get
-        r <- lift $ lift $ receiveWait $ matches e s
+        r <- liftP $ receiveWait $ matches e s
         case r of
           Right a      -> return a
           Left ((),s') -> put s' >> loop
