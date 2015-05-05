@@ -55,7 +55,7 @@ import DNA.Types
 import DNA.DSL
 import DNA.Interpreter.Types
 import DNA.Interpreter.Message
-
+import DNA.Interpreter.Testing
 
 ----------------------------------------------------------------
 -- Functions for starting actors
@@ -127,13 +127,8 @@ runCollectActor (CollectActor step start fini) = do
         )
     -- Now we want to check if process was requested to crash
     case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
-      pCrash : _ -> do
-          roll <- liftIO randomIO
-          when (roll < pCrash) $ do
-              me <- getSelfPid
-              liftIO $ print $ "CRASH! " ++ show me
-              error "Ooops crashed"
-      _ -> return ()
+      pCrash : _ -> crashMaybe pCrash
+      _          -> return ()
     -- Start execution of an actor
     !b <- runDnaParam p $ do
            s0 <- kernel "collector init" [] (Kern start)

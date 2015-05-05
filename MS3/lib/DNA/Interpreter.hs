@@ -43,6 +43,7 @@ import DNA.Logging
 import DNA.Interpreter.Message
 import DNA.Interpreter.Run     hiding (__remoteTable)
 import DNA.Interpreter.Spawn
+import DNA.Interpreter.Testing
 import DNA.Interpreter.Types
 
 
@@ -86,6 +87,8 @@ interpretDNA (DNA m) =
       Await p         -> execAwait p
       DelayGroup sh   -> execDelayGroup sh
       GatherM p f b0  -> execGatherM p f b0
+      CrashMaybe p    -> crashMaybe p
+
 
 theInterpreter :: DnaInterpreter
 theInterpreter = DnaInterpreter interpretDNA

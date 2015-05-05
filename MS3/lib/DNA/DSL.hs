@@ -197,6 +197,8 @@ data DnaF a where
       -> (b -> a -> IO b)
       -> b
       -> DnaF b
+    CrashMaybe
+      :: Double -> DnaF ()
 
 -- | Spawn monad. It's used to carry all additional parameters for
 --   process spawning
@@ -215,8 +217,8 @@ data SpawnFlag
 -- | Flags which could be passed to actors for debugging purposes
 data DebugFlag
     = CrashProbably Double
-      -- ^ Crash with given probability. Not all actors will honor
-      --   that request
+      -- ^ Crash during startup with given probability. Not all actors
+      --   will honor that request
     deriving (Show,Eq,Typeable,Generic)
 instance Binary DebugFlag
 
