@@ -220,27 +220,6 @@ data StateDNA = StateDNA
     , _stActorClosure   :: !(Map AID (Closure (Process ())))
       -- ^ Closure for the actor. All restartable actors have closure
       -- stored.
-
-      
-      --   -- Monitor resources
-    -- , _stChildren :: !(Map ProcessId (Either ProcState GroupID))
-    --   -- ^ State of monitored processes
-    -- , _stGroups   :: !(Map GroupID GroupState)
-    --   -- ^ State of groups of processes
-    -- , _stConnUpstream   :: !(Map ActorID (ActorID,SomeSendEnd))
-    --   -- ^ Upstream connection of an actor.
-    -- , _stConnDownstream :: !(Map ActorID (Either (ActorID,SomeRecvEnd) SomeRecvEnd))
-    --   -- ^ Downstream connection of an actor. Could be parent act
-    -- , _stRestartable    :: !(Map ProcessId (Match' (SomeRecvEnd,SomeSendEnd,[SendPort Int]), Closure (Process ()), Message))
-    --   -- ^ Set of processes which could be restarted
-
-{-
-      -- Many rank actors
-    , _stCountRank :: !(Map GroupID (Int,Int))
-      -- ^ Unused ranks 
-    , _stPooledProcs   :: !(Map GroupID [SendPort (Maybe Rank)])
-      -- ^ Groups for which we can send enough of ranks message
--}
     }
 
 -- | State of actor.
