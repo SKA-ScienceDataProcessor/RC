@@ -312,7 +312,7 @@ freeActorResouces aid = do
 
 
 -- Generate unique ID
-uniqID :: Monad m => StateT StateDNA m Int
+uniqID :: MonadState StateDNA m => m Int
 uniqID = do
     i <- use stCounter
     stCounter .= (i + 1)
