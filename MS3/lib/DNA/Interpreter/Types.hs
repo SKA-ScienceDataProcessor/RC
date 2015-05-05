@@ -217,10 +217,14 @@ data StateDNA = StateDNA
     , _stAid2Pid :: !(Map AID (Set ProcessId))
 
       -- Restarts
-    , _stActorClosure   :: !(Map AID (Closure (Process ())))
+    , _stActorClosure   :: !(Map AID SpawnCmd)
       -- ^ Closure for the actor. All restartable actors have closure
       -- stored.
     }
+
+-- | Command for spawning actor
+data SpawnCmd
+    = SpawnSingle (Closure (Process ())) Res [SpawnFlag]
 
 -- | State of actor.
 data ActorState
