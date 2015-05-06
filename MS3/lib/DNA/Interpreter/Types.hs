@@ -1,3 +1,4 @@
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
@@ -14,6 +15,7 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Exception
 import Control.Distributed.Process
+import Control.Distributed.Process.Serializable
 import Data.Monoid
 import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
@@ -28,6 +30,34 @@ import Lens.Family.TH
 import DNA.Types
 import DNA.Lens
 import DNA.DSL
+import DNA.CH
+
+----------------------------------------------------------------
+-- Extra functions for matching on messages
+----------------------------------------------------------------
+
+-- | Handlers for events which could be used with State monad with state s
+data MatchS = forall a. Serializable a => MatchS (a -> Controller ())
+
+-- | Wait for message from Match' and handle auxiliary messages
+handleRecieve
+    :: [MatchS]
+    -> [Match' a]
+    -> DnaMonad a
+handleRecieve auxMs mA
+    = loop
+  where
+    matches e s
+        =  map toMatch ((fmap . fmap) Right mA)
+        ++ [ match $ \a -> Left <$> (flip runReaderT e . flip runStateT s . unDnaMonad . runController) (f a)
+           | MatchS f <- auxMs]
+    loop = do
+        e <- ask
+        s <- get
+        r <- liftP $ receiveWait $ matches e s
+        case r of
+          Right a      -> return a
+          Left ((),s') -> put s' >> loop
 
 
 ----------------------------------------------------------------

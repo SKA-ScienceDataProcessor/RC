@@ -54,8 +54,8 @@ import DNA.CH
 import DNA.Types
 import DNA.DSL
 import DNA.Interpreter.Types
-import DNA.Interpreter.Message
 import DNA.Interpreter.Testing
+
 
 ----------------------------------------------------------------
 -- Functions for starting actors

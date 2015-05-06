@@ -43,6 +43,7 @@ import DNA.CH
 import DNA.Lens
 import DNA.Types
 import DNA.Interpreter.Types
+import DNA.Interpreter.Spawn
 import DNA.Logging
 
 
@@ -118,6 +119,7 @@ handleProcessCrash _msg pid = do
     withAID pid $ \aid -> do
         Just st  <- use $ stChildren     . at aid
         mRestart <- use $ stActorClosure . at aid
+        -- Now we need to choose what to do with 
         case st of
           Completed _ -> fatal "Impossible: terminated twice?"
           Failed      -> fatal "Impossible: received "
@@ -331,31 +333,3 @@ handleDone (pid,_) =
 -- Some process timed out
 handleTimeout :: Timeout -> Controller ()
 handleTimeout (Timeout aid) = terminateActor aid
-
-
-----------------------------------------------------------------
--- Extra functions for matching on messages
-----------------------------------------------------------------
-
--- | Handlers for events which could be used with State monad with state s
-data MatchS = forall a. Serializable a => MatchS (a -> Controller ())
-
--- | Wait for message from Match' and handle auxiliary messages
-handleRecieve
-    :: [MatchS]
-    -> [Match' a]
-    -> DnaMonad a
-handleRecieve auxMs mA
-    = loop
-  where
-    matches e s
-        =  map toMatch ((fmap . fmap) Right mA)
-        ++ [ match $ \a -> Left <$> (flip runReaderT e . flip runStateT s . unDnaMonad . runController) (f a)
-           | MatchS f <- auxMs]
-    loop = do
-        e <- ask
-        s <- get
-        r <- liftP $ receiveWait $ matches e s
-        case r of
-          Right a      -> return a
-          Left ((),s') -> put s' >> loop
