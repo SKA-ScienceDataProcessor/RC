@@ -22,11 +22,14 @@ __inline__ __device__ void loadIntoSharedMem (
   , const Double4c vis[timesteps * channels]
   , Pregridded uvo_shared[timesteps * channels]
   , Double4c vis_shared[timesteps * channels]
+  , int2 off_shared[timesteps * channels]
   ) {
   for (int i = threadIdx.x; i < timesteps * channels; i += blockDim.x) {
     // uvo_shared[i] is passed by reference and updated!
     pregridPoint<grid_size, over, w_planes, do_mirror>(scale, wstep, uvw[i], uvo_shared[i]);
     vis_shared[i] = vis[i];
+    off_shared[i].x = uvo_shared[i].u % max_supp;
+    off_shared[i].y = uvo_shared[i].v % max_supp;
   }
 }
 
@@ -48,6 +51,7 @@ void gridKernel_scatter_kernel_small(
   , Double4c grid[grid_size][grid_size]
   , const Pregridded uvo_shared[timesteps * channels]
   , const Double4c vis[timesteps * channels]
+  , const int2 off_shared[timesteps * channels]
   , int myU
   , int myV
   ) {
@@ -65,9 +69,9 @@ void gridKernel_scatter_kernel_small(
     int myConvU, myConvV, myGridU, myGridV, u, v;
     u = uvo_shared[i].u;
     v = uvo_shared[i].v;
-    myConvU = myU - u % max_supp;
+    myConvU = myU - off_shared[i].x;
     if (myConvU < 0) myConvU += max_supp;
-    myConvV = myV - v % max_supp;
+    myConvV = myV - off_shared[i].y;
     if (myConvV < 0) myConvV += max_supp;
     // This translates points by max_supp/2
     // returning them back to normal (they were translates by -max_supp/2 before)
@@ -127,7 +131,8 @@ void gridKernel_scatter_kernel(
   , const complexd * gcf[]
   , Double4c grid[grid_size][grid_size]
   , const Pregridded uvo_shared[timesteps * channels]
-  , const Double4c vis[timesteps * channels]
+  , const Double4c vis_shared[timesteps * channels]
+  , const int2 off_shared[timesteps * channels]
   ) {
   for (int i = threadIdx.x; i < max_supp * max_supp; i += blockDim.x) {
     int
@@ -141,7 +146,7 @@ void gridKernel_scatter_kernel(
     , timesteps
     , channels
     , is_half_gcf
-    > (max_supp, gcf, grid, uvo_shared, vis, myU, myV);
+    > (max_supp, gcf, grid, uvo_shared, vis_shared, off_shared, myU, myV);
   }
 }
 
@@ -165,6 +170,7 @@ __device__ __inline__ void addBaselineToGrid(
   ) {
   __shared__ Pregridded uvo_shared[timesteps * channels];
   __shared__ Double4c vis_shared[timesteps * channels];
+  __shared__ int2 off_shared[timesteps * channels];
   
   loadIntoSharedMem<
       over
@@ -180,6 +186,7 @@ __device__ __inline__ void addBaselineToGrid(
     , vis
     , uvo_shared
     , vis_shared
+    , off_shared
     );
   syncthreads();
   gridKernel_scatter_kernel<
@@ -193,6 +200,7 @@ __device__ __inline__ void addBaselineToGrid(
     , grid
     , uvo_shared
     , vis_shared
+    , off_shared
   );
 }
 
