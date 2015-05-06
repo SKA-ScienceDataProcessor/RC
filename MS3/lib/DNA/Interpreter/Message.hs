@@ -17,7 +17,7 @@
 --  * SentTo - child actor sent data to its destination and need
 --    acknowledgement that it's correct
 --
--- 
+--
 module DNA.Interpreter.Message (
       -- * Message handlers
       messageHandlers
@@ -87,7 +87,7 @@ handleProcessTermination (ProcessMonitorNotification _ pid reason) =
         -> doPanic e
       -- Otherwise treat it as normal crash
       _ -> handleProcessCrash (show reason) pid
-      
+
       -- FIXME: restart
       -- _          -> do
       --     m <- use $ stRestartable . at pid
@@ -111,47 +111,91 @@ handleProcessDone _pid = return ()
 
 -- Monitored process crashed or was disconnected
 handleProcessCrash :: String -> ProcessId -> Controller ()
-handleProcessCrash _msg pid = do
-    freeResouces pid
+handleProcessCrash _msg pid = withAID pid $ \aid -> do
     -- We can receive notifications from unknown processes. When we
     -- terminate actor forcefully we remove it from registry at the
     -- same time
-    withAID pid $ \aid -> do
-        Just st  <- use $ stChildren     . at aid
-        mRestart <- use $ stActorClosure . at aid
-        -- Now we need to choose what to do with 
-        case st of
-          Completed _ -> fatal "Impossible: terminated twice?"
-          Failed      -> fatal "Impossible: received "
-          -- Terminate actor forcefully
-          Running (RunInfo _ nFails) | nFails <= 0 -> do
-              -- Clean up after actor
-              terminateActor  aid
-              dropActor       aid
-              stChildren . at aid .= Just Failed
-              -- Notify dependent processes
-              mdst <- use $ stActorDst . at aid
-              T.forM_ mdst $ \dst -> case dst of
-                  Left  _      -> fatal "Dependent actor died"
-                  Right aidDst -> terminateActor aidDst
-          -- We can still tolerate failures
-          Running (RunInfo nDone nFails) -> do
-              dropPID pid aid
-                ( do stChildren . at aid .= Just (Completed nDone)
-                     mch <- actorDestinationAddr aid
-                     case mch of
-                       -- It's possible that all actors crashed but
-                       -- actor is not connected yet. But it's not
-                       -- possible to get normal termination without
-                       -- connection
-                       Nothing | nDone == 0   -> return ()
-                               | otherwise    -> panic "Unconnected actor terminated normally (crash)"
-                       Just (RcvReduce chans) -> liftP $ forM_ chans $ \(_,chN) -> sendChan chN nDone
-                       Just _                 -> return ()
-                )
-                ( stChildren . at aid .= Just (Running $ RunInfo nDone nFails)
-                )
+    Just st  <- use $ stChildren     . at aid
+    mRestart <- use $ stActorClosure . at aid
+    msrc     <- use $ stActorSrc     . at aid
+    case st of
+      Completed _ -> fatal "Completed process crashed"
+      Failed      -> fatal "Process failed process "
+      -- If actor is still running we need to decide whether to
+      -- restart or accept failure. We can restart actor iff one of
+      -- the following is true in addition to having closure
+      --
+      --  * It's not connected yet
+      --  * It's local process and we're holding var
+      --  * It receives data from live actor
+      Running runInfo@(RunInfo nDone nFails)
+        | Just restart <- mRestart
+        , Nothing      <- msrc
+          -> do Just cad <- use $ stUsedResources . at pid
+                stUsedResources . at pid .= Nothing
+                lift $ spawnSingleActor aid cad restart
+        ----------------
+        | Just restart        <- mRestart
+        , Just (Left trySend) <- msrc
+          -> do Just cad <- use $ stUsedResources . at pid
+                stUsedResources . at pid .= Nothing
+                lift $ spawnSingleActor aid cad restart
+                Just (Just (dst,_)) <- use $ stActorRecvAddr . at aid
+                liftP $ trySend dst
+        ----------------
+        | Just restart        <- mRestart
+        , Just (Right aidSrc) <- msrc
+          -> do Just stSrc <- use $ stChildren . at aidSrc
+                case stSrc of
+                  Completed{} -> handleFail aid pid runInfo
+                  Failed      -> terminateActor aid
+                  Running (RunInfo _ nFailsSrc) -> do
+                      -- FIXME: Set to 0 number of completed processes
+                      Just cad <- use $ stUsedResources . at pid
+                      stUsedResources . at pid .= Nothing
+                      lift $ spawnSingleActor aid cad restart
+                      Just (Just (dst,_)) <- use $ stActorRecvAddr . at aid
+                      sendToActor aidSrc dst
+                      stChildren . at aidSrc .= Just (Running $ RunInfo 0 nFailsSrc)
+        ----------------
+        | otherwise -> handleFail aid pid runInfo
 
+
+handleFail :: AID -> ProcessId -> RunInfo -> Controller ()
+handleFail aid pid (RunInfo nDone nFails)
+    -- Terminate process forcefully
+    | nFails <= 0 = do
+          freeResouces pid
+          -- Clean up after actor
+          terminateActor  aid
+          dropActor       aid
+          stChildren . at aid .= Just Failed
+          -- Notify dependent processes
+          mdst <- use $ stActorDst . at aid
+          T.forM_ mdst $ \dst -> case dst of
+              Left  _      -> fatal "Dependent actor died"
+              Right aidDst -> terminateActor aidDst
+    -- We can still tolerate failures
+    | otherwise = do
+          freeResouces pid
+          dropPID pid aid
+            ( do stChildren . at aid .= Just (Completed nDone)
+                 mch <- actorDestinationAddr aid
+                 case mch of
+                   -- It's possible that all actors crashed but
+                   -- actor is not connected yet. But it's not
+                   -- possible to get normal termination without
+                   -- connection
+                   Nothing | nDone == 0   -> return ()
+                           | otherwise    -> panic "Unconnected actor terminated normally (crash)"
+                   Just (RcvReduce chans) -> liftP $ forM_ chans $ \(_,chN) -> sendChan chN nDone
+                   Just _                 -> return ()
+            )
+            ( stChildren . at aid .= Just (Running $ RunInfo nDone nFails)
+            )
+
+
+-- Handle message that actor sent data to some destination
 handleDataSent :: SentTo -> Controller ()
 handleDataSent (SentTo aid pid dstID) = do
     -- Check that data was sent to correct destination
@@ -198,7 +242,7 @@ withAID pid action = do
 -- Remove PID from mapping
 dropPID
     :: ProcessId
-    -> AID   
+    -> AID
     -> Controller ()            -- ^ Call if last process from actor is done
     -> Controller ()            -- ^ Call if actor is still working
     -> Controller ()
@@ -291,7 +335,7 @@ handleProcessRestart oldPID mtch clos p0 = do
           liftP $ doConnectActorsExistentially s rr
       Right rr ->
           liftP $ doConnectActorsExistentially s rr
--}    
+-}
 
 
 

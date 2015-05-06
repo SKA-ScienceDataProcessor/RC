@@ -337,6 +337,11 @@ freeActorResouces aid = do
     T.forM_ mpids $ T.mapM_ freeResouces
 
 
+sendToActor :: (MonadState StateDNA m, MonadProcess m, Serializable a) => AID -> a -> m ()
+sendToActor aid a = do
+    pids <- use $ stAid2Pid . at aid
+    liftP $ T.forM_ pids $ T.mapM_ (\p -> send p a)
+
 -- Generate unique ID
 uniqID :: MonadState StateDNA m => m Int
 uniqID = do
