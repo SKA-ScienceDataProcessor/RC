@@ -188,6 +188,16 @@ data RecvAddr
     deriving (Show,Typeable,Generic)
 instance Binary RecvAddr
 
+data RecvAddrType
+    = RcvTySimple
+      -- ^ Actor/variable that receive single value
+    | RcvTyReduce
+      -- ^ Reduce actor or actors
+    | RcvTyGrp
+      -- ^ Group of simple actors
+    deriving (Show,Typeable,Generic)
+instance Binary RecvAddrType
+
 
 -- | Spawned actor.
 --

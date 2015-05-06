@@ -237,7 +237,7 @@ data StateDNA = StateDNA
 
 -- | Command for spawning actor
 data SpawnCmd
-    = SpawnSingle (Closure (Process ())) Res [SpawnFlag]
+    = SpawnSingle (Closure (Process ())) Res RecvAddrType [SpawnFlag]
 
 -- | State of actor.
 data ActorState

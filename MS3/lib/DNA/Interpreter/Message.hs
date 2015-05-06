@@ -111,14 +111,13 @@ handleProcessDone _pid = return ()
 -- Monitored process crashed or was disconnected
 handleProcessCrash :: String -> ProcessId -> Controller ()
 handleProcessCrash _msg pid = do
-    me <- liftP getSelfPid
-    liftIO $ print (me,_msg,pid)
     freeResouces pid
     -- We can receive notifications from unknown processes. When we
     -- terminate actor forcefully we remove it from registry at the
     -- same time
     withAID pid $ \aid -> do
-        Just st <- use $ stChildren . at aid
+        Just st  <- use $ stChildren     . at aid
+        mRestart <- use $ stActorClosure . at aid
         case st of
           Completed _ -> fatal "Impossible: terminated twice?"
           Failed      -> fatal "Impossible: received "
