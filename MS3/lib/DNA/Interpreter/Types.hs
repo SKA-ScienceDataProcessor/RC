@@ -121,12 +121,16 @@ panic :: MonadError DnaError m => String -> m a
 panic = throwError . PanicErr
 
 -- | Actually raise panic
-doPanic :: MonadIO m => String -> m a
-doPanic = liftIO . throw . PanicException
+doPanic :: MonadLog m => String -> m a
+doPanic msg = do
+    panicMsg msg
+    liftIO $ throw $ PanicException msg
 
 -- | Actually 
-doFatal :: MonadIO m => String -> m a
-doFatal = liftIO . throw . FatalException
+doFatal :: MonadLog m => String -> m a
+doFatal msg = do
+    fatalMsg msg
+    liftIO $ throw $ FatalException msg
 
     
 -- | Run controller monad. On failure will terminate process forefully
