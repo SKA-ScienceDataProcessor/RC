@@ -50,6 +50,8 @@ module DNA.Logging
 
     , Severity(..)
     , MonadLog(..)
+    , panicMsg
+    , fatalMsg
     , infoMsg
     , debugMsg
     ) where
@@ -284,9 +286,21 @@ debugMsg msg = do
     verbEvtlog <- logLevelEvtlog
     pref       <- logPrefix
     when (verbStdout >= Info) $
-        liftIO $ putStrLn $ pref ++ " DEBUG:" ++ msg
+        liftIO $ putStrLn $ "DEBUG:" ++ pref ++ ": " ++ msg
     when (verbEvtlog >= Info) $
         liftIO $ rawMessage "DEBUG" [] msg
+
+panicMsg :: MonadLog m => String -> m ()
+panicMsg msg = do
+    pref <- logPrefix
+    liftIO $ putStrLn $ "PANIC: " ++ pref ++ ": "++ msg
+    liftIO $ rawMessage "PANIC" [] msg
+
+fatalMsg :: MonadLog m => String -> m ()
+fatalMsg msg = do
+    pref <- logPrefix
+    liftIO $ putStrLn $ "FATAL: " ++ pref ++ ": " ++ msg
+    liftIO $ rawMessage "FATAL" [] msg
 
 
 -- | Synchronize timings - put into eventlog an event with current wall time.
