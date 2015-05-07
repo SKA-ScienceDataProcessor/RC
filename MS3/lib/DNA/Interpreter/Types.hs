@@ -31,6 +31,8 @@ import DNA.Types
 import DNA.Lens
 import DNA.DSL
 import DNA.CH
+import DNA.Logging
+
 
 ----------------------------------------------------------------
 -- Extra functions for matching on messages
@@ -78,6 +80,20 @@ instance Monad DnaMonad where
     DnaMonad m >>= f = DnaMonad $ m >>= fmap unDnaMonad f
     fail             = doPanic
 
+instance MonadLog DnaMonad where
+    logPrefix = liftP logPrefix
+    logLevelStdout = do
+        flags <- _stDebugFlags <$> get
+        case [ s | StdOutLevel s <- flags ] of
+          []  -> return Warning
+          s:_ -> return s
+    logLevelEvtlog = do
+        flags <- _stDebugFlags <$> get
+        case [ s | EvtlogLevel s <- flags ] of
+          []  -> return Warning
+          s:_ -> return s
+
+
 -- | Monad for event handlers. It adds explicit error handling
 type Controller = ExceptT DnaError DnaMonad
 
@@ -87,13 +103,13 @@ data DnaError
     | PanicErr String              -- ^ Internal error
     | Except SomeException         -- ^ Uncaught exception
 
-data Panic = Panic String
+data PanicException = PanicException String
              deriving (Show,Typeable)
-instance Exception Panic
+instance Exception PanicException
 
-data Fatal = Fatal String
+data FatalException = FatalException String
              deriving (Show,Typeable)
-instance Exception Fatal
+instance Exception FatalException
       
 -- | Fatal error
 fatal :: MonadError DnaError m => String -> m a
@@ -106,11 +122,11 @@ panic = throwError . PanicErr
 
 -- | Actually raise panic
 doPanic :: MonadIO m => String -> m a
-doPanic = liftIO . throw . Panic 
+doPanic = liftIO . throw . PanicException
 
 -- | Actually 
 doFatal :: MonadIO m => String -> m a
-doFatal = liftIO . throw . Fatal
+doFatal = liftIO . throw . FatalException
 
     
 -- | Run controller monad. On failure will terminate process forefully

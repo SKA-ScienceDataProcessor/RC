@@ -73,7 +73,8 @@ import Data.Typeable (Typeable)
 import GHC.Generics  (Generic)
 
 import DNA.Types
-import DNA.Logging (ProfileHint(..))
+import DNA.Logging (ProfileHint(..),Severity)
+
 
 ----------------------------------------------------------------
 -- Operations data type for DNA
@@ -219,6 +220,8 @@ data DebugFlag
     = CrashProbably Double
       -- ^ Crash during startup with given probability. Not all actors
       --   will honor that request
+    | StdOutLevel Severity
+    | EvtlogLevel Severity
     deriving (Show,Eq,Typeable,Generic)
 instance Binary DebugFlag
 
