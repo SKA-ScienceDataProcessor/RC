@@ -288,12 +288,14 @@ data StateDNA = StateDNA
 -- | Command for spawning actor
 data SpawnCmd
     = SpawnSingle (Closure (Process ())) Res RecvAddrType [SpawnFlag]
+    deriving (Show)
 
 -- | State of actor.
 data ActorState
     = Failed                    -- ^ Actor failed
     | Running RunInfo           -- ^ Actor is still running
     | Completed Int             -- ^ Actor finished execution successfully
+    deriving (Show)
 
 -- | Information about running process. We store number of completed
 --   processes and number of allowed failures. Number of still running
@@ -304,6 +306,8 @@ data RunInfo = RunInfo
     , allowedFailers :: Int
       -- ^ Number of allowed failures
     }
+    deriving (Show)
+
 
 $(makeLenses ''StateDNA)
 
@@ -328,8 +332,7 @@ actorDestinationAddr aid = do
 terminateActor :: (MonadProcess m, MonadState StateDNA m) => AID -> m ()
 terminateActor aid = do
     mpids <- use $ stAid2Pid . at aid
-    liftP $ T.forM_ mpids $ T.mapM_ $ \p -> do
-        liftIO $ print p
+    liftP $ T.forM_ mpids $ T.mapM_ $ \p ->
         send p (Terminate "TERMINATE")
 
 -- | Drop actor from the registry
