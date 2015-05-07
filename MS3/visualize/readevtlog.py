@@ -129,14 +129,18 @@ class Interval :
     def diff(self,t):
         v0,t0 = self.tagval(self.tags, t)
         v1,t1 = self.tagval(self.tags2, t)
-        if v0 == None or v1 == None:
+        if v1 == None:
             return None
+        if v0 == None:
+            v0 = 0
         return int(v1) - int(v0)
     def diff_t(self,t):
         v0,t0 = self.tagval(self.tags, t)
         v1,t1 = self.tagval(self.tags2, t)
-        if t0 == None or t1 == None:
+        if t1 == None:
             return None
+        if t0 == None:
+            t0 = 0
         return int(t1) - int(t0)
 
 class Sync :
