@@ -31,7 +31,6 @@ module DNA.Interpreter.Run (
     -- , runMapperActor
     , runDnaParam 
       -- * Helpers
-    , doGatherM
     , doGatherDna
       -- * CH
     , runActor__static
@@ -230,20 +229,6 @@ sendResult p a =
         case mch of
           Just ch -> sendChan ch a
           Nothing -> doPanic "Type error in channel!"
-
-
-doGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> Process b
-doGatherM (Group chA chN) f x0 = do
-    let loop n tot !b
-            | n >= tot && tot >= 0 = return b
-        loop n tot !b = do
-            r <- receiveWait [ matchChan chA (return . Right)
-                             , matchChan chN (return . Left)
-                             ]
-            case r of
-              Right a -> loop (n + 1) tot =<< liftIO (f b a)
-              Left  k -> loop n k b
-    loop 0 (-1) x0
 
 
 doGatherDna
