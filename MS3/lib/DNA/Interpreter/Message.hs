@@ -134,6 +134,7 @@ handleProcessCrash _msg pid = withAID pid $ \aid -> do
           -> do Just cad <- use $ stUsedResources . at pid
                 stUsedResources . at pid .= Nothing
                 lift $ spawnSingleActor aid cad restart
+                actorDestinationAddr aid >>= T.mapM_ (sendToActor aid)
         ----------------
         | Just restart        <- mRestart
         , Just (Left trySend) <- msrc
@@ -142,21 +143,30 @@ handleProcessCrash _msg pid = withAID pid $ \aid -> do
                 lift $ spawnSingleActor aid cad restart
                 Just (Just (dst,_)) <- use $ stActorRecvAddr . at aid
                 liftP $ trySend dst
+                actorDestinationAddr aid >>= T.mapM_ (sendToActor aid)
         ----------------
         | Just restart        <- mRestart
         , Just (Right aidSrc) <- msrc
           -> do Just stSrc <- use $ stChildren . at aidSrc
                 case stSrc of
                   Completed{} -> handleFail aid pid runInfo
-                  Failed      -> terminateActor aid
+                  Failed      -> killActorAndCleanUp aid pid
                   Running (RunInfo _ nFailsSrc) -> do
-                      -- FIXME: Set to 0 number of completed processes
                       Just cad <- use $ stUsedResources . at pid
                       stUsedResources . at pid .= Nothing
                       lift $ spawnSingleActor aid cad restart
-                      Just (Just (dst,_)) <- use $ stActorRecvAddr . at aid
-                      sendToActor aidSrc dst
+                      Just (Just dst) <- use $ stActorRecvAddr . at aid
                       stChildren . at aidSrc .= Just (Running $ RunInfo 0 nFailsSrc)
+                      sendToActor aidSrc dst
+                      dest <- use $ stActorDst . at aid
+                      case dest of
+                        Nothing -> return ()
+                        Just (Left _) -> return ()
+                        Just (Right aidDst) -> do
+                            mdst <- use $ stActorRecvAddr . at aidDst
+                            case mdst of
+                              Nothing -> return ()
+                              Just d  -> sendToActor aid d
         ----------------
         | otherwise -> handleFail aid pid runInfo
 
@@ -164,17 +174,7 @@ handleProcessCrash _msg pid = withAID pid $ \aid -> do
 handleFail :: AID -> ProcessId -> RunInfo -> Controller ()
 handleFail aid pid (RunInfo nDone nFails)
     -- Terminate process forcefully
-    | nFails <= 0 = do
-          freeResouces pid
-          -- Clean up after actor
-          terminateActor  aid
-          dropActor       aid
-          stChildren . at aid .= Just Failed
-          -- Notify dependent processes
-          mdst <- use $ stActorDst . at aid
-          T.forM_ mdst $ \dst -> case dst of
-              Left  _      -> fatal "Dependent actor died"
-              Right aidDst -> terminateActor aidDst
+    | nFails <= 0 = killActorAndCleanUp aid pid
     -- We can still tolerate failures
     | otherwise = do
           freeResouces pid
@@ -194,11 +194,25 @@ handleFail aid pid (RunInfo nDone nFails)
             ( stChildren . at aid .= Just (Running $ RunInfo nDone nFails)
             )
 
+killActorAndCleanUp :: AID -> ProcessId -> Controller ()
+killActorAndCleanUp aid pid = do
+    freeResouces pid
+    -- Clean up after actor
+    terminateActor  aid
+    dropActor       aid
+    stChildren . at aid .= Just Failed
+    -- Notify dependent processes
+    mdst <- use $ stActorDst . at aid
+    T.forM_ mdst $ \dst -> case dst of
+        Left  _      -> fatal "Dependent actor died"
+        Right aidDst -> terminateActor aidDst
+
 
 -- Handle message that actor sent data to some destination
 handleDataSent :: SentTo -> Controller ()
 handleDataSent (SentTo aid pid dstID) = do
     -- Check that data was sent to correct destination
+    me <- liftP getSelfPid
     Just dst <- use $ stActorDst . at aid
     case dst of
       Left  _      -> sendAck
