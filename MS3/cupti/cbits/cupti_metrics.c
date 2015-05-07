@@ -61,9 +61,13 @@ void cupti_metrics_init(const char *metricList)
     }
     if (count < MAX_METRICS) {
         int len = strlen(start);
-        metricNames[count] = malloc(len + 1);
-        strcpy(metricNames[count], start);
-        metricCount = count + 1;
+	if (len == 0)
+	    metricCount = count;
+	else {
+	    metricNames[count] = malloc(len + 1);
+	    strcpy(metricNames[count], start);
+	    metricCount = count + 1;
+	}
     } else {
         fprintf(stderr, "CUPTI warning: Too many metrics enabled. If you are sure that this is what you want, increase MAX_METRICS to make this work.");
     }

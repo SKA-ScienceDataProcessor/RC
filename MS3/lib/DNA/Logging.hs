@@ -363,7 +363,7 @@ hintToSample pt ch@CUDAHint{}
     . consHint pt "hint:memcpy-bytes-device" (hintCopyBytesDevice ch)
     . consHint pt "hint:gpu-float-ops" (hintCudaFloatOps ch)
     . consHint pt "hint:gpu-double-ops" (hintCudaDoubleOps ch)
-    <$> cudaAttrs
+    <$> cudaAttrs pt
 
 -- | Prepend an attribute if this is the start point, and it is non-zero
 consHint :: (Eq a, Num a, Show a)
@@ -502,7 +502,7 @@ cudaMetricNames opt = case logOptMeasure opt of
                   , ("cuda:gpu-double-ops-mul", "flop_count_dp_mul")
                   , ("cuda:gpu-double-ops-fma", "flop_count_dp_fma")
                   ]
-  _other -> [ ("cuda:gpu-instructions", "inst_executed") ]
+  _other -> [ ]
 
 cudaInit :: LoggerOpt -> IO ()
 cudaInit opt = do
@@ -515,12 +515,18 @@ cudaInit opt = do
 cudaAttrs :: SamplePoint -> IO [Attr]
 cudaAttrs pt = do
 
+    -- Get metrics
+    state <- readIORef loggerStateVar
+    let metricNames = map fst $ cudaMetricNames $ loggerOpt state
+
     -- Enable CUPTI if required
     case pt of
-      StartSample -> enableProfileMod loggerCuptiEnabled $
-                     cuptiEnable >> cuptiMetricsEnable
-      EndSample   -> disableProfileMod loggerCuptiEnabled $
-                     cuptiDisable >> cuptiMetricsDisable
+      StartSample -> enableProfileMod loggerCuptiEnabled $ do
+        cuptiEnable
+        when (not $ null metricNames) cuptiMetricsEnable
+      EndSample -> disableProfileMod loggerCuptiEnabled $ do
+        cuptiDisable
+        when (not $ null metricNames) cuptiMetricsDisable
 
     -- Flush, so statistics are current
     cuptiFlush
@@ -538,10 +544,8 @@ cudaAttrs pt = do
                         <*> cuptiGetMemcpyBytesTo CUptiArray
 
     -- Read metrics
-    state <- readIORef loggerStateVar
     metrics <- cuptiGetMetrics
-    let metricNames = map fst $ cudaMetricNames $ loggerOpt state
-        formatMetric m = show m ++ "/" ++ show kernelTime
+    let formatMetric m = show m ++ "/" ++ show kernelTime
         metricAttrs = zipWith (,) metricNames (map formatMetric metrics)
 
     -- Generate attributes
