@@ -45,14 +45,21 @@ module DNA.Logging
 
     , ProfileHint(..)
     , floatHint, ioHint, haskellHint, cudaHint
+
+    , Severity(..)
+    , MonadLog(..)
+    , infoMsg
+    , debugMsg
     ) where
 
 import Control.Applicative
 import Control.Concurrent
-import Control.Distributed.Process (getSelfPid)
+import Control.Distributed.Process (getSelfPid,Process)
 import Control.Exception           (evaluate)
 import Control.Monad               (when,liftM,forM_)
 import Control.Monad.IO.Class
+import Control.Monad.Except        (ExceptT)
+import Control.Monad.Trans.Class
 
 import Data.Time
 import Data.Maybe         (fromMaybe)
@@ -229,6 +236,52 @@ errorMsg msg = liftIO $ do
     when (verbosity >= (-1)) $ do
         hPutStrLn stderr $ "ERROR: " ++ msg
         rawMessage "ERROR" [] msg
+
+data Severity
+    = Panic                     -- ^ Internal invariant violation
+    | Fatal                     -- ^ Unrecoverable error
+    | Error
+    | Warning
+    | Info
+    | Debug
+    deriving (Eq,Ord,Show)
+
+class MonadIO m => MonadLog m where
+    logPrefix :: m String
+    logPrefix = return ""
+    logLevelStdout :: m Severity
+    logLevelStdout = return Warning
+    logLevelEvtlog :: m Severity
+    logLevelEvtlog = return Warning
+
+instance MonadLog IO
+instance MonadLog Process where
+    logPrefix = show <$> getSelfPid
+instance MonadLog m => MonadLog (ExceptT e m) where
+    logPrefix      = lift logPrefix
+    logLevelStdout = lift logLevelStdout
+    logLevelEvtlog = lift logLevelEvtlog
+
+infoMsg :: MonadLog m => String -> m ()
+infoMsg msg = do
+    verbStdout <- logLevelStdout
+    verbEvtlog <- logLevelEvtlog
+    pref       <- logPrefix
+    when (verbStdout >= Info) $
+        liftIO $ putStrLn $ pref ++ " INFO :" ++ msg
+    when (verbEvtlog >= Info) $
+        liftIO $ rawMessage "INFO" [] msg
+
+debugMsg :: MonadLog m => String -> m ()
+debugMsg msg = do
+    verbStdout <- logLevelStdout
+    verbEvtlog <- logLevelEvtlog
+    pref       <- logPrefix
+    when (verbStdout >= Info) $
+        liftIO $ putStrLn $ pref ++ " DEBUG:" ++ msg
+    when (verbEvtlog >= Info) $
+        liftIO $ rawMessage "DEBUG" [] msg
+
 
 -- | Synchronize timings - put into eventlog an event with current wall time.
 synchronizationPoint :: MonadIO m => String -> m ()
