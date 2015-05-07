@@ -1,4 +1,6 @@
-{-# LANGUAGE BangPatterns, CPP #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE BangPatterns, CPP  #-}
 -- | Logging.hs
 --
 -- Logging and profiling facilities. Log messages are written to GHC's
@@ -65,10 +67,13 @@ import Data.Time
 import Data.Maybe         (fromMaybe)
 import Data.IORef
 import Data.Tuple         (swap)
+import Data.Typeable      (Typeable)
 import Data.List          (unfoldr)
+import Data.Binary        (Binary)
 import qualified Data.Map.Strict as Map
 
 import GHC.Stats
+import GHC.Generics       (Generic)
 
 import Debug.Trace        (traceEventIO)
 
@@ -244,7 +249,8 @@ data Severity
     | Warning
     | Info
     | Debug
-    deriving (Eq,Ord,Show)
+    deriving (Eq,Ord,Show,Typeable,Generic)
+instance Binary Severity
 
 class MonadIO m => MonadLog m where
     logPrefix :: m String
