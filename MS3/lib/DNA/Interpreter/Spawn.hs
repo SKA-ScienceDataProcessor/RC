@@ -181,7 +181,7 @@ spawnSingleActor
     -> VirtualCAD   
     -> SpawnCmd
     -> DnaMonad ()
-spawnSingleActor aid cad (SpawnSingle actor _ addrTy flags) = do
+spawnSingleActor aid cad cmd@(SpawnSingle actor _ addrTy flags) = do
     (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) actor
     -- Set registry
     stAid2Pid       . at aid .= Just (Set.singleton pid)
@@ -194,6 +194,8 @@ spawnSingleActor aid cad (SpawnSingle actor _ addrTy flags) = do
     (chSend,chRecv) <- liftP newChan
     _ <- sendActorParam pid aid (Rank 0) (GroupSize 1) cad chSend
            (concat [fs | UseDebug fs <- flags])
+    when (UseRespawn `elem` flags) $ do
+        stActorClosure . at aid .= Just cmd
     -- Receive shell back
     receiveShell chRecv aid pid $ \dst -> case (dst,addrTy) of
         (RcvSimple{},RcvTySimple) -> return ()
@@ -269,6 +271,7 @@ receiveShell ch aid pid handler = do
         stActorRecvAddr . at aid .= Just Nothing
         freeActorResouces aid
         dropActor aid
+        -- FIXME: Does marking actor as failed interferes with respawning?
       Right dst -> do
         stActorRecvAddr . at aid .= Just (Just dst)
         handler $ fst dst
