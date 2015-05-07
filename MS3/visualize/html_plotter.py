@@ -61,11 +61,15 @@ def write_timeline_data(logs, conf) :
         tt = sorted(logs[k].time, key=pid_func)
         pid = None
         end = 0
+        done = set()
         for e in tt :
 
-            # Get configuration, check whether we're suppoed to ignore
+            # Get configuration, check whether we're supposed to ignore
             # this one.
             if conf.get(e.msg,{}).get('ignore', False) :
+                continue
+            # Already done?
+            if e.msg in done:
                 continue
 
             # Create row
@@ -73,16 +77,22 @@ def write_timeline_data(logs, conf) :
                     % ('' if pid_func(e) == pid else pid_func(e),e.msg))
             pid = pid_func(e)
 
-            # Make sure we have a certain minimum width. This is a hack.
-            end = e.t2
-            if end == None or end < e.t1+0.005:
-                end = e.t1 + 0.005
+            # Write entries
+            for e2 in tt :
+                if e.msg != e2.msg:
+                    continue
 
-            # Write entry
-            f.write('''
+                # Make sure we have a certain minimum width. This is a hack.
+                end = e2.t2
+                if end == None or end < e2.t1+0.1:
+                    end = e2.t1 + 0.1
+
+                f.write('''
                 {"starting_time": %g, "ending_time": %g, "label": "%s", "type": "%s"},'''
-                    % (1000*e.t1, 1000*end, e.msg, e.msg))
+                    % (1000*e2.t1, 1000*end, e2.msg if e2.t1 == e.t1 else '', e2.msg))
             f.write('\n            ]},')
+
+            done.add(e.msg)
 
     f.write('''
         ];''')
@@ -102,7 +112,7 @@ def write_middle():
         .colors(colorScale)
         .margin({left:150, right:150, top:0, bottom:0});
 
-      var svg = d3.select("#timeline").append("svg").attr("width", "1000")
+      var svg = d3.select("#timeline").append("svg").attr("width", "1500")
         .datum(data).call(chart);
     }
   </script>
@@ -250,11 +260,14 @@ def write_timeline_body(logs, conf) :
         <col span="2"/>
         <col span="1" class="group"/>
         <col span="1" class="group"/>
-        <col span="3"/>
+        <col span="4"/>
         <col span="1" class="group"/>
-        <col span="3"/>
+        <col span="4"/>
       </colgroup>
-      <tr><td></td><th>Instances</th><th>Time</th><th colspan=4>IO</th><th colspan=4>Instructions</th></tr>''')
+      <tr><td></td><th>Instances</th><th>Time</th><th colspan=5>IO</th><th colspan=5>Instructions</th></tr>
+      <tr><td /><td /><td />
+          <td /><td>Value</td><td>Expected</td><td>Rate</td><td>Time</td>
+          <td /><td>Value</td><td>Expected</td><td>Rate</td><td>Time</td></tr>''')
 
     def format_num(rate) :
         if rate < 1000 :
@@ -301,13 +314,18 @@ def write_timeline_body(logs, conf) :
         def format_rate(self):
             if self.time == None or self.time == 0: return ('', '')
             if self.hint != None and self.hint != 0:
-                if self.val == 0 or self.val == None or self.error() > err_threshold:
+                if self.val == 0 or self.val == None: # or self.error() > err_threshold:
                     return ('hintbased', '[' + format_num(self.hint / self.time) + self.unit + '/s]')
             if self.val == None:
                 return ('', '-')
             if self.val == 0:
                 return ('', '0')
             return ('', format_num(self.val / self.time) + self.unit + '/s')
+        def format_time(self):
+            if self.time == None: return ('', '')
+            return ('', 'x %02d:%02d.%03d' % (int(self.time / 60),
+                                              int(self.time) % 60,
+                                              int(self.time * 1000) % 1000))
 
     for a in instances.iterkeys() :
         print a, total_hints[a], total_tags[a], total_tags_time[a]
@@ -415,8 +433,8 @@ def write_timeline_body(logs, conf) :
             f.write('''
       <tr class='%s'>
           <td class='key %s'>%s</td><td>%s</td><td>%s</td>
-          <td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>
-          <td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>
+          <td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>
+          <td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>
       </tr>'''
                 % ((row_classes,
                     make_class_name(a),
@@ -430,10 +448,12 @@ def write_timeline_body(logs, conf) :
                    ioMetric.format_val() +
                    ioMetric.format_hint() +
                    ioMetric.format_rate() +
+                   ioMetric.format_time() +
                    instrMetric.format_name() +
                    instrMetric.format_val() +
                    instrMetric.format_hint() +
-                   instrMetric.format_rate()
+                   instrMetric.format_rate() +
+                   instrMetric.format_time()
                    ))
     f.write('''
     </table>
