@@ -111,7 +111,8 @@ handleProcessDone _pid = return ()
 
 -- Monitored process crashed or was disconnected
 handleProcessCrash :: String -> ProcessId -> Controller ()
-handleProcessCrash _msg pid = withAID pid $ \aid -> do
+handleProcessCrash msg pid = withAID pid $ \aid -> do
+    fatalMsg $ printf "Child %s/%s crash: %s" (show aid) (show pid) msg
     -- We can receive notifications from unknown processes. When we
     -- terminate actor forcefully we remove it from registry at the
     -- same time
@@ -150,7 +151,9 @@ handleProcessCrash _msg pid = withAID pid $ \aid -> do
           -> do Just stSrc <- use $ stChildren . at aidSrc
                 case stSrc of
                   Completed{} -> handleFail aid pid runInfo
-                  Failed      -> killActorAndCleanUp aid pid
+                  Failed      -> do
+                      fatalMsg $ printf "Source actor %s crashed already" (show aidSrc)
+                      killActorAndCleanUp aid pid
                   Running (RunInfo _ nFailsSrc) -> do
                       Just cad <- use $ stUsedResources . at pid
                       stUsedResources . at pid .= Nothing
@@ -174,7 +177,9 @@ handleProcessCrash _msg pid = withAID pid $ \aid -> do
 handleFail :: AID -> ProcessId -> RunInfo -> Controller ()
 handleFail aid pid (RunInfo nDone nFails)
     -- Terminate process forcefully
-    | nFails <= 0 = killActorAndCleanUp aid pid
+    | nFails <= 0 = do
+          doFatal $ printf "Unrecoverable child process %s %s" (show aid) (show pid)
+          killActorAndCleanUp aid pid
     -- We can still tolerate failures
     | otherwise = do
           freeResouces pid
@@ -204,7 +209,7 @@ killActorAndCleanUp aid pid = do
     -- Notify dependent processes
     mdst <- use $ stActorDst . at aid
     T.forM_ mdst $ \dst -> case dst of
-        Left  _      -> fatal "Dependent actor died"
+        Left  _      -> fatal $ "Dependent actor "++ show aid ++ " (" ++ show pid ++ ") died"
         Right aidDst -> terminateActor aidDst
 
 
@@ -231,8 +236,8 @@ handleDataSent (SentTo aid pid dstID) = do
         freeResouces pid
         Just st <- use $ stChildren . at aid
         case st of
-          Completed _ -> panic "Actor terminated normally twice?"
-          Failed      -> panic "Failed process terminated normally?"
+          Completed _ -> panic $ printf "Actor %s terminated normally twice?" (show aid)
+          Failed      -> panic $ printf "Failed actor %s terminated normally?" (show aid)
           Running (RunInfo nDone nFails) -> do
               dropPID pid aid
                 ( do stChildren . at aid .= Just (Completed (nDone + 1))
