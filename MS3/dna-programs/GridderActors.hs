@@ -214,7 +214,7 @@ cpuGridder useFullGcf usePermutations ns_out td gcfh = do
     extract 1
     extract 2
     extract 3
-    kernel gname [] $ liftIO $ do
+    kernel (gname ++ "/free") [] $ liftIO $ do
       free polptr
       free gridp
   where
