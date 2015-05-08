@@ -125,11 +125,11 @@ runCollectActor (CollectActor step start fini) = do
         , [ sendPortId chSendParam , sendPortId chSendN ]
         )
     -- Now we want to check if process was requested to crash
-    case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
-      pCrash : _ -> crashMaybe pCrash
-      _          -> return ()
     -- Start execution of an actor
     !b <- runDnaParam p $ do
+           case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
+             pCrash : _ -> crashMaybe pCrash
+             _          -> return ()
            s0 <- kernel "collector init" [] (Kern start)
            s  <- gatherM (Group chRecvParam chRecvN) step s0
            kernel "collector fini" [] (Kern (fini s))

@@ -87,7 +87,7 @@ interpretDNA (DNA m) =
       Await p         -> execAwait p
       DelayGroup sh   -> execDelayGroup sh
       GatherM p f b0  -> execGatherM p f b0
-      CrashMaybe p    -> crashMaybe p
+      CrashMaybe p    -> crashMaybeWorker p
 
 
 theInterpreter :: DnaInterpreter

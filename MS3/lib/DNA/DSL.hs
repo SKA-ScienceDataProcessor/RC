@@ -60,6 +60,8 @@ module DNA.DSL (
     -- , broadcastParamSlice
     , broadcast
     , connect
+      
+    , crashMaybe
     ) where
 
 import Control.Applicative
@@ -491,3 +493,6 @@ startMappers
 startMappers res resG child =
     DNA $ singleton $ SpawnMappers res resG child
 -}
+
+crashMaybe :: Double -> DNA ()
+crashMaybe = DNA . singleton . CrashMaybe
