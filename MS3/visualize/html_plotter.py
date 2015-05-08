@@ -61,11 +61,15 @@ def write_timeline_data(logs, conf) :
         tt = sorted(logs[k].time, key=pid_func)
         pid = None
         end = 0
+        done = set()
         for e in tt :
 
-            # Get configuration, check whether we're suppoed to ignore
+            # Get configuration, check whether we're supposed to ignore
             # this one.
             if conf.get(e.msg,{}).get('ignore', False) :
+                continue
+            # Already done?
+            if e.msg in done:
                 continue
 
             # Create row
@@ -73,16 +77,22 @@ def write_timeline_data(logs, conf) :
                     % ('' if pid_func(e) == pid else pid_func(e),e.msg))
             pid = pid_func(e)
 
-            # Make sure we have a certain minimum width. This is a hack.
-            end = e.t2
-            if end == None or end < e.t1+0.005:
-                end = e.t1 + 0.005
+            # Write entries
+            for e2 in tt :
+                if e.msg != e2.msg:
+                    continue
 
-            # Write entry
-            f.write('''
+                # Make sure we have a certain minimum width. This is a hack.
+                end = e2.t2
+                if end == None or end < e2.t1+0.1:
+                    end = e2.t1 + 0.1
+
+                f.write('''
                 {"starting_time": %g, "ending_time": %g, "label": "%s", "type": "%s"},'''
-                    % (1000*e.t1, 1000*end, e.msg, e.msg))
+                    % (1000*e2.t1, 1000*end, e2.msg if e2.t1 == e.t1 else '', e2.msg))
             f.write('\n            ]},')
+
+            done.add(e.msg)
 
     f.write('''
         ];''')
@@ -102,7 +112,7 @@ def write_middle():
         .colors(colorScale)
         .margin({left:150, right:150, top:0, bottom:0});
 
-      var svg = d3.select("#timeline").append("svg").attr("width", "1000")
+      var svg = d3.select("#timeline").append("svg").attr("width", "1500")
         .datum(data).call(chart);
     }
   </script>
@@ -137,13 +147,31 @@ def write_middle():
     table.program-conf td.val {
       font-family: monospace;
     }
+    table.statistics tr.first {
+      border-top: 1px solid black;
+    }
+    table.statistics col.group {
+      border-left: 1px solid black;
+    }
     table.statistics td {
       text-align: center;
       min-width: 80px;
     }
-
     h4 {
       box-shadow: 0 1px 0 rgba(0,0,0,0.1);
+    }
+
+    .hintbased {
+      background-color: lightgray;
+    }
+    .hintokay {
+      background-color: lightgreen;
+    }
+    .hintwarning {
+      background-color: yellow;
+    }
+    .hinterror {
+      background-color: pink;
     }
   </style>
 </head>
@@ -228,7 +256,18 @@ def write_timeline_body(logs, conf) :
     </table>
     <h4>Statistics</h4>
     <table class="statistics">
-      <tr><td></td><th>Instances</th><th>Time</th><th colspan=4>IO</th><th colspan=4>Instructions</th></tr>''')
+      <colgroup>
+        <col span="2"/>
+        <col span="1" class="group"/>
+        <col span="1" class="group"/>
+        <col span="4"/>
+        <col span="1" class="group"/>
+        <col span="4"/>
+      </colgroup>
+      <tr><td></td><th>Instances</th><th>Time</th><th colspan=5>IO</th><th colspan=5>Instructions</th></tr>
+      <tr><td /><td /><td />
+          <td /><td>Value</td><td>Expected</td><td>Rate</td><td>Time</td>
+          <td /><td>Value</td><td>Expected</td><td>Rate</td><td>Time</td></tr>''')
 
     def format_num(rate) :
         if rate < 1000 :
@@ -240,6 +279,10 @@ def write_timeline_body(logs, conf) :
         if rate < 1000000000000 :
             return '%.2f G' % (float(rate) / 1000000000)
         return '%.2f T' % (float(rate) / 1000000000000)
+
+    err_threshold = 1.5
+    warn_threshold = 1.1
+
     class Metric:
         "Performance metric"
         def __init__(self, name, val, hint, time, unit):
@@ -247,25 +290,42 @@ def write_timeline_body(logs, conf) :
             self.time = time; self.unit = unit
         def valid(self):
             return (self.val != None and self.val > 0) or self.hint != None
+        def error(self):
+            return max(float(self.val) / self.hint, float(self.hint) / self.val)
         def format_name(self):
-            if self.name == None: return '';
-            else: return self.name + ':'
+            if self.name == None: return ('', '');
+            else: return ('', self.name + ':')
         def format_val(self):
-            if self.name == None: return ''
-            if self.val == None: return '-'
-            return format_num(self.val) + self.unit
+            if self.name == None: return ('', '')
+            if self.val == None: return ('', '-')
+            return ('', format_num(self.val) + self.unit)
         def format_hint(self):
-            if self.hint == None: return '';
+            if self.hint == None: return ('', '');
             if self.val == 0 or self.val == None:
-                return '[' + format_num(self.hint) + self.unit + ']'
-            return '[%.1f%%]' % (float(100) * self.val / self.hint);
+                return ('hintbased', '[' + format_num(self.hint) + self.unit + ']')
+            # Check hint discrepancy
+            if self.error() >= err_threshold:
+                return ('hinterror', '[' + format_num(self.hint) + self.unit + ']')
+            elif self.error() >= warn_threshold:
+                style = 'hintwarning'
+            else:
+                style = 'hintokay'
+            return (style, '[%.1f%%]' % (float(100) * self.val / self.hint));
         def format_rate(self):
-            if self.time == None or self.time == 0: return ''
-            if self.val == 0 or self.val == None:
-                if self.hint != None and self.hint != 0:
-                    return '[' + format_num(self.hint / self.time) + self.unit + '/s]'
-                return '0'
-            return format_num(self.val / self.time) + self.unit + '/s'
+            if self.time == None or self.time == 0: return ('', '')
+            if self.hint != None and self.hint != 0:
+                if self.val == 0 or self.val == None: # or self.error() > err_threshold:
+                    return ('hintbased', '[' + format_num(self.hint / self.time) + self.unit + '/s]')
+            if self.val == None:
+                return ('', '-')
+            if self.val == 0:
+                return ('', '0')
+            return ('', format_num(self.val / self.time) + self.unit + '/s')
+        def format_time(self):
+            if self.time == None: return ('', '')
+            return ('', 'x %02d:%02d.%03d' % (int(self.time / 60),
+                                              int(self.time) % 60,
+                                              int(self.time * 1000) % 1000))
 
     for a in instances.iterkeys() :
         print a, total_hints[a], total_tags[a], total_tags_time[a]
@@ -274,6 +334,27 @@ def write_timeline_body(logs, conf) :
         econf = conf.get(a, {})
         if econf.get('ignore', False) :
             continue
+
+        # Derive performance values
+        sumTable = { 'perf:float-ops': { 'perf:scalar-float-ops': 1
+                                       , 'perf:sse-float-ops': 4
+                                       , 'perf:avx-float-ops': 8
+                                       }
+                   , 'perf:double-ops': { 'perf:scalar-double-ops': 1
+                                        , 'perf:sse-double-ops': 2
+                                        , 'perf:avx-double-ops': 4
+                                        }
+                   }
+        for (sumAttr, weightedVals) in sumTable.items():
+            sum = 0
+            time = None
+            for (valAttr, weight) in weightedVals.items():
+                if total_tags[a].has_key(valAttr):
+                    sum += weight * total_tags[a][valAttr]
+                    time = total_tags_time[a][valAttr]
+            if not time is None:
+                total_tags[a][sumAttr] = sum
+                total_tags_time[a][sumAttr] = time
 
         # Put reference values where we can determine them
         referenceTable = {
@@ -319,8 +400,10 @@ def write_timeline_body(logs, conf) :
         mk_metric('io', 'CUDA write', 'cuda:memcpy-bytes-device', 'hint:memcpy-bytes-device', us, 'B');
         mk_metric('instr', 'instructions', 'perf:cpu-instructions', None, us, 'OP');
         mk_metric('instr', 'x87', 'perf:x87-ops', None, us, 'OP');
-        mk_metric('instr', 'float', 'perf:scalar-float-ops', 'hint:float-ops', us, 'OP');
-        mk_metric('instr', 'double', 'perf:scalar-double-ops', 'hint:double-ops', us, 'OP');
+        mk_metric('instr', 'float', 'perf:float-ops', 'hint:float-ops', us, 'OP');
+        mk_metric('instr', 'double', 'perf:double-ops', 'hint:double-ops', us, 'OP');
+        mk_metric('instr', 'float (scalar)', 'perf:scalar-float-ops', '', us, 'OP');
+        mk_metric('instr', 'double (scalar)', 'perf:scalar-double-ops', '', us, 'OP');
         mk_metric('instr', 'float (sse)', 'perf:sse-float-ops', None, us, 'OP');
         mk_metric('instr', 'double (sse)', 'perf:sse-double-ops', None, us, 'OP');
         mk_metric('instr', 'float (avx)', 'perf:avx-float-ops', None, us, 'OP');
@@ -337,7 +420,6 @@ def write_timeline_body(logs, conf) :
         mk_metric('instr', 'float (gpu)?', 'cuda:gpu-float-instrs', None, us, 'OP');
         mk_metric('instr', 'double (gpu)?', 'cuda:gpu-double-instrs', None, us, 'OP');
 
-
         # Print row(s)
         defMetric = Metric(None, None, None, None, '')
         rows = max([1, len(metrics['io']), len(metrics['instr'])])
@@ -346,29 +428,44 @@ def write_timeline_body(logs, conf) :
             ioMetric = instrMetric = defMetric
             if i < len(metrics['io']): ioMetric = metrics['io'][i]
             if i < len(metrics['instr']): instrMetric = metrics['instr'][i]
+            row_classes = ''
+            if i == 0: row_classes += 'first'
             f.write('''
-      <tr><td class='%s key'>%s</td><td>%s</td><td>%s</td>
-          <td>%s</td><td>%s</td><td>%s</td><td>%s</td>
-          <td>%s</td><td>%s</td><td>%s</td><td>%s</td>
+      <tr class='%s'>
+          <td class='key %s'>%s</td><td>%s</td><td>%s</td>
+          <td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>
+          <td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>
       </tr>'''
-                % (make_class_name(a),
-                   a if i == 0 else '',
-                   '%d' % instances[a] if i == 0 else '',
-                   '%02d:%02d.%03d' % (int(time / 60),
-                                       int(time) % 60,
-                                       int(time * 1000) % 1000)
-                     if i == 0 else '',
-                   ioMetric.format_name(),
-                   ioMetric.format_val(),
-                   ioMetric.format_hint(),
-                   ioMetric.format_rate(),
-                   instrMetric.format_name(),
-                   instrMetric.format_val(),
-                   instrMetric.format_hint(),
-                   instrMetric.format_rate(),
+                % ((row_classes,
+                    make_class_name(a),
+                    a if i == 0 else '',
+                    '%d' % instances[a] if i == 0 else '',
+                    '%02d:%02d.%03d' % (int(time / 60),
+                                        int(time) % 60,
+                                        int(time * 1000) % 1000)
+                      if i == 0 else '') +
+                   ioMetric.format_name() +
+                   ioMetric.format_val() +
+                   ioMetric.format_hint() +
+                   ioMetric.format_rate() +
+                   ioMetric.format_time() +
+                   instrMetric.format_name() +
+                   instrMetric.format_val() +
+                   instrMetric.format_hint() +
+                   instrMetric.format_rate() +
+                   instrMetric.format_time()
                    ))
     f.write('''
-    </table>''')
+    </table>
+    <h4>Legend</h4>
+    <table>
+      <th>Colour<th></td><th>Explanation</th>
+      <tr><td class='hintokay'>Okay</td><td>Performance as predicted (+-%d%%)</td></tr>
+      <tr><td class='hintwarning'>Warning</td><td>Medium performance discrepancy (+-%d%%)</td></tr>
+      <tr><td class='hinterror'>Error</td><td>Large performance discrepancy, assuming data corrupt</td></tr>
+      <tr><td class='hintbased'>Hint-based</td><td>Hint is used for metric calculation, measurement discarded</td></tr>
+    </table>
+    ''' % (100*(warn_threshold-1), 100*(err_threshold-1)))
 
 def write_suffix():
     f.write('''

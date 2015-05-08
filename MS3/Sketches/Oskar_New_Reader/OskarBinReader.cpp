@@ -443,3 +443,12 @@ void sort_on_w(BlWMap * bl_wis, int n) {
 void sort_on_abs_w(BlWMap * bl_wis, int n) {
   sort(bl_wis, bl_wis + n, cmp_abs);
 }
+
+long long count_points(BlWMap * m, int n){
+  long long res = 0;
+  for(int i = 0; i < n; i++) {
+    int supp = get_supp(m[i].wp);
+    res += supp * supp;
+  }
+  return res * TIMESTEPS * NUM_POL;
+}

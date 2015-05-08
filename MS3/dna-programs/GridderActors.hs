@@ -176,9 +176,12 @@ runGridderOnSavedData = actor $ \(ns_in, ns_out, gridactor) -> do
   kernel "runGridderOnSavedData/mem" [] $ liftIO $
     finalizeTaskData taskData
 
+-- We here also report the total number of grid points processed
 runGridderOnLocalData :: Actor(String, TaskData, Closure (Actor (String, TaskData, GCFDev) Grid)) ()
-runGridderOnLocalData = actor $ \(ns_out, taskdata, gridactor) ->
+runGridderOnLocalData = actor $ \(ns_out, taskdata, gridactor) -> do
   runGridderWith gridactor taskdata "" ns_out
+  kernel "countGridPoints" [] $ liftIO $
+    (count_points (tdMap taskdata) (fromIntegral $ tdBaselines taskdata) >>= printImmediate . show)
 
 marshalGCF2HostP :: GCFDev -> DNA GCFHost
 marshalGCF2HostP gcfd@(GCF gcfsize nol _ _ _) =
@@ -198,7 +201,7 @@ marshalGCF2HostP gcfd@(GCF gcfsize nol _ _ _) =
 -- We have 4 variants only and all are covered by this code
 cpuGridder :: Bool -> Bool -> String -> TaskData -> GCFHost -> DNA ()
 cpuGridder useFullGcf usePermutations ns_out td gcfh = do
-    (gridp, polptr) <- kernel gname [floatHint {hintDoubleOps = 5211646626}] $ liftIO $ do
+    (gridp, polptr) <- kernel gname [floatHint {hintDoubleOps = 523519288832}] $ liftIO $ do
         gridp <- alignedMallocArray (gridsize * 4) 32
         gfun scale (tdWstep td) (tdMap td) gridp (getLayersHost gcfh) (tdUVWs td) (tdVisibilies td)
         polptr <- mallocArray gridsize
@@ -211,7 +214,7 @@ cpuGridder useFullGcf usePermutations ns_out td gcfh = do
     extract 1
     extract 2
     extract 3
-    kernel gname [] $ liftIO $ do
+    kernel (gname ++ "/free") [] $ liftIO $ do
       free polptr
       free gridp
   where

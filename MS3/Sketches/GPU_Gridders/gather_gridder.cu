@@ -27,8 +27,8 @@ __device__ __inline__ static void grid_kernel_gather(
 
   for (int i = 0; i < num_of_vals; i++){
     int du, dv, supp;
-    du = uvo[i].u - gu;
-    dv = uvo[i].v - gv;
+    du = gu - uvo[i].u;
+    dv = gv - uvo[i].v;
     supp = uvo[i].gcf_layer_supp;
     // We have input u and v translated by -supp/2!
     if (du >= 0 && dv >= 0 && du < supp && dv < supp) {
@@ -48,7 +48,7 @@ __device__ __inline__ static void grid_kernel_gather(
       } else {
           supportPixel = gcf[uvo[i].gcf_layer_index][__layeroff];
       }
-      #define __ADDPOL(pol) grid[gu][gv].pol = cuCfma(supportPixel, vis[i].XX, grid[gu][gv].pol);
+      #define __ADDPOL(pol) grid[gu][gv].pol = cuCfma(supportPixel, vis[i].pol, grid[gu][gv].pol);
       __ADDPOL(XX)
       __ADDPOL(XY)
       __ADDPOL(YX)
