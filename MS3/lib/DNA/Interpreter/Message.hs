@@ -155,21 +155,24 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
                       fatalMsg $ printf "Source actor %s crashed already" (show aidSrc)
                       killActorAndCleanUp aid pid
                   Running (RunInfo _ nFailsSrc) -> do
+                      -- Respawn
                       Just cad <- use $ stUsedResources . at pid
                       stUsedResources . at pid .= Nothing
                       lift $ spawnSingleActor aid cad restart
+                      -- Reconnect
                       Just (Just dst) <- use $ stActorRecvAddr . at aid
                       stChildren . at aidSrc .= Just (Running $ RunInfo 0 nFailsSrc)
                       sendToActor aidSrc dst
                       dest <- use $ stActorDst . at aid
                       case dest of
                         Nothing -> return ()
-                        Just (Left _) -> return ()
+                        Just (Left  var) -> do
+                            Just d <- use $ stVars . at var
+                            sendToActor aid (d,[]::[SendPortId])
                         Just (Right aidDst) -> do
                             mdst <- use $ stActorRecvAddr . at aidDst
-                            case mdst of
-                              Nothing -> return ()
-                              Just d  -> sendToActor aid d
+                            T.forM_ mdst $ \d -> sendToActor aid d
+                        _ -> return ()
         ----------------
         | otherwise -> handleFail aid pid runInfo
 
