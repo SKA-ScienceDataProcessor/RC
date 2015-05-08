@@ -185,7 +185,7 @@ spawnSingleActor aid cad cmd@(SpawnSingle actor _ addrTy flags) = do
     (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) actor
     -- Set registry
     stAid2Pid       . at aid .= Just (Set.singleton pid)
-    stPid2Aid       . at pid .= Just aid
+    stPid2Aid       . at pid .= Just (Rank 0, GroupSize 1, aid)
     stChildren      . at aid .= Just (Running (RunInfo 0 0))
     stUsedResources . at pid .= Just cad
     -- Add timeout for actor
@@ -230,7 +230,7 @@ spawnActorGroup res resG spwn = do
         _ <- sendActorParam pid aid (Rank rnk) (GroupSize k) cad chSend
                (concat [fs | UseDebug fs <- flags])
         stAid2Pid       . at aid %= Just . maybe (Set.singleton pid) (Set.insert pid)
-        stPid2Aid       . at pid .= Just aid
+        stPid2Aid       . at pid .= Just (Rank rnk, GroupSize k,aid)
         stUsedResources . at pid .= Just cad
     -- Add timeout for actor
     liftP $ setTimeout flags aid

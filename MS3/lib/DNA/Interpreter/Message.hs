@@ -172,7 +172,6 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
                         Just (Right aidDst) -> do
                             mdst <- use $ stActorRecvAddr . at aidDst
                             T.forM_ mdst $ \d -> sendToActor aid d
-                        _ -> return ()
         ----------------
         | otherwise -> handleFail aid pid runInfo
 
@@ -259,7 +258,7 @@ handleDataSent (SentTo aid pid dstID) = do
 withAID :: ProcessId -> (AID -> Controller ()) -> Controller ()
 withAID pid action = do
     maid <- use $ stPid2Aid . at pid
-    T.forM_ maid action
+    T.forM_ maid $ \(_,_,aid) -> action aid
 
 -- Remove PID from mapping
 dropPID

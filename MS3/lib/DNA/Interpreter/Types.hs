@@ -276,7 +276,7 @@ data StateDNA = StateDNA
       --   to Nothing
 
       -- Mapping ProcessID <-> AID
-    , _stPid2Aid :: !(Map ProcessId AID)
+    , _stPid2Aid :: !(Map ProcessId (Rank,GroupSize,AID))
     , _stAid2Pid :: !(Map AID (Set ProcessId))
 
       -- Restarts
