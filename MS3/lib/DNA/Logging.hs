@@ -52,6 +52,7 @@ module DNA.Logging
     , MonadLog(..)
     , panicMsg
     , fatalMsg
+    , errorMsg2
     , infoMsg
     , debugMsg
     ) where
@@ -301,6 +302,12 @@ fatalMsg msg = do
     pref <- logPrefix
     liftIO $ putStrLn $ "FATAL: " ++ pref ++ ": " ++ msg
     liftIO $ rawMessage "FATAL" [] msg
+
+errorMsg2 :: MonadLog m => String -> m ()
+errorMsg2 msg = do
+    pref <- logPrefix
+    liftIO $ putStrLn $ "ERROR: " ++ pref ++ ": " ++ msg
+    liftIO $ rawMessage "ERROR" [] msg
 
 
 -- | Synchronize timings - put into eventlog an event with current wall time.
