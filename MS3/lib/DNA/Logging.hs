@@ -1,4 +1,6 @@
-{-# LANGUAGE BangPatterns, CPP #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE BangPatterns, CPP  #-}
 -- | Logging.hs
 --
 -- Logging and profiling facilities. Log messages are written to GHC's
@@ -45,23 +47,36 @@ module DNA.Logging
 
     , ProfileHint(..)
     , floatHint, ioHint, haskellHint, cudaHint
+
+    , Severity(..)
+    , MonadLog(..)
+    , panicMsg
+    , fatalMsg
+    , errorMsg2
+    , infoMsg
+    , debugMsg
     ) where
 
 import Control.Applicative
 import Control.Concurrent
-import Control.Distributed.Process (getSelfPid)
+import Control.Distributed.Process (getSelfPid,Process)
 import Control.Exception           (evaluate)
 import Control.Monad               (when,liftM,forM_)
 import Control.Monad.IO.Class
+import Control.Monad.Except        (ExceptT)
+import Control.Monad.Trans.Class
 
 import Data.Time
 import Data.Maybe         (fromMaybe)
 import Data.IORef
 import Data.Tuple         (swap)
+import Data.Typeable      (Typeable)
 import Data.List          (unfoldr)
+import Data.Binary        (Binary)
 import qualified Data.Map.Strict as Map
 
 import GHC.Stats
+import GHC.Generics       (Generic)
 
 import Debug.Trace        (traceEventIO)
 
@@ -230,6 +245,71 @@ errorMsg msg = liftIO $ do
         hPutStrLn stderr $ "ERROR: " ++ msg
         rawMessage "ERROR" [] msg
 
+data Severity
+    = Panic                     -- ^ Internal invariant violation
+    | Fatal                     -- ^ Unrecoverable error
+    | Error
+    | Warning
+    | Info
+    | Debug
+    deriving (Eq,Ord,Show,Typeable,Generic)
+instance Binary Severity
+
+class MonadIO m => MonadLog m where
+    logPrefix :: m String
+    logPrefix = return ""
+    logLevelStdout :: m Severity
+    logLevelStdout = return Warning
+    logLevelEvtlog :: m Severity
+    logLevelEvtlog = return Warning
+
+instance MonadLog IO
+instance MonadLog Process where
+    logPrefix = show <$> getSelfPid
+instance MonadLog m => MonadLog (ExceptT e m) where
+    logPrefix      = lift logPrefix
+    logLevelStdout = lift logLevelStdout
+    logLevelEvtlog = lift logLevelEvtlog
+
+infoMsg :: MonadLog m => String -> m ()
+infoMsg msg = do
+    verbStdout <- logLevelStdout
+    verbEvtlog <- logLevelEvtlog
+    pref       <- logPrefix
+    when (verbStdout >= Info) $
+        liftIO $ putStrLn $ pref ++ " INFO :" ++ msg
+    when (verbEvtlog >= Info) $
+        liftIO $ rawMessage "INFO" [] msg
+
+debugMsg :: MonadLog m => String -> m ()
+debugMsg msg = do
+    verbStdout <- logLevelStdout
+    verbEvtlog <- logLevelEvtlog
+    pref       <- logPrefix
+    when (verbStdout >= Info) $
+        liftIO $ putStrLn $ "DEBUG:" ++ pref ++ ": " ++ msg
+    when (verbEvtlog >= Info) $
+        liftIO $ rawMessage "DEBUG" [] msg
+
+panicMsg :: MonadLog m => String -> m ()
+panicMsg msg = do
+    pref <- logPrefix
+    liftIO $ putStrLn $ "PANIC: " ++ pref ++ ": "++ msg
+    liftIO $ rawMessage "PANIC" [] msg
+
+fatalMsg :: MonadLog m => String -> m ()
+fatalMsg msg = do
+    pref <- logPrefix
+    liftIO $ putStrLn $ "FATAL: " ++ pref ++ ": " ++ msg
+    liftIO $ rawMessage "FATAL" [] msg
+
+errorMsg2 :: MonadLog m => String -> m ()
+errorMsg2 msg = do
+    pref <- logPrefix
+    liftIO $ putStrLn $ "ERROR: " ++ pref ++ ": " ++ msg
+    liftIO $ rawMessage "ERROR" [] msg
+
+
 -- | Synchronize timings - put into eventlog an event with current wall time.
 synchronizationPoint :: MonadIO m => String -> m ()
 synchronizationPoint msg = liftIO $ do
@@ -363,7 +443,7 @@ hintToSample pt ch@CUDAHint{}
     . consHint pt "hint:memcpy-bytes-device" (hintCopyBytesDevice ch)
     . consHint pt "hint:gpu-float-ops" (hintCudaFloatOps ch)
     . consHint pt "hint:gpu-double-ops" (hintCudaDoubleOps ch)
-    <$> cudaAttrs pt
+    <$> cudaAttrs
 
 -- | Prepend an attribute if this is the start point, and it is non-zero
 consHint :: (Eq a, Num a, Show a)

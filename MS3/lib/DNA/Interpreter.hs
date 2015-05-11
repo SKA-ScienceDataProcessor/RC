@@ -1,16 +1,12 @@
 {-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE ExistentialQuantification  #-}
-{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE TemplateHaskell            #-}
 -- | Module for interpreting
 module DNA.Interpreter (
       interpretDNA
-    , theInterpreter  
+    , theInterpreter
       -- * CH
     , __remoteTable
     , theInterpreter__static
@@ -47,6 +43,7 @@ import DNA.Logging
 import DNA.Interpreter.Message
 import DNA.Interpreter.Run     hiding (__remoteTable)
 import DNA.Interpreter.Spawn
+import DNA.Interpreter.Testing
 import DNA.Interpreter.Types
 
 
@@ -90,6 +87,8 @@ interpretDNA (DNA m) =
       Await p         -> execAwait p
       DelayGroup sh   -> execDelayGroup sh
       GatherM p f b0  -> execGatherM p f b0
+      CrashMaybe p    -> crashMaybeWorker p
+
 
 theInterpreter :: DnaInterpreter
 theInterpreter = DnaInterpreter interpretDNA
@@ -145,7 +144,7 @@ execDelayGroup (Shell aid) = do
     Just pids <- use $ stAid2Pid . at aid
     liftP $ T.forM_ pids $ \p ->
         send p (dst,[]::[SendPortId])
-    -- 
+    --
     return $ Group recvB recvN
 
 execGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> DnaMonad b
@@ -166,15 +165,17 @@ execSendParam a (Shell aid) = do
     Just mdst <- use $ stActorRecvAddr . at aid
     case mdst of
       Nothing -> doFatal "Connecting to terminated actor"
-      Just (RcvSimple dst,_) -> do
-          mch <- unwrapMessage dst
-          case mch of
-            Nothing -> doPanic "execSendParam: type error"
-            Just ch -> do
-              stActorSrc . at aid .= Just (Left (wrapMessage a))
-              liftP $ sendChan ch a
-      Just (RcvGrp{},_)    -> doPanic "execSendParam: destination type mismatch, expect single, got group"
-      Just (RcvReduce{},_) -> doPanic "execSendParam: destination type mismatch, expect single, got reducer"
+      Just (dst,_) -> do
+          stActorSrc . at aid .= Just (Left trySend)
+          liftP $ trySend dst
+  where
+    trySend (RcvSimple dst) = do
+        mch <- unwrapMessage dst
+        case mch of
+          Nothing -> doPanic "execSendParam: type error"
+          Just ch -> sendChan ch a
+    trySend RcvGrp{}    = doPanic "execSendParam: destination type mismatch, expect single, got group"
+    trySend RcvReduce{} = doPanic "execSendParam: destination type mismatch, expect single, got reducer"
 
 -- Send parameter
 execBroadcast :: Serializable a => a -> Shell (Scatter a) b -> DnaMonad ()
@@ -183,14 +184,16 @@ execBroadcast a (Shell aid) = do
     Just mdst <- use $ stActorRecvAddr . at aid
     case mdst of
       Nothing -> doFatal "Connecting to terminated actor"
-      Just (RcvGrp dsts,_) -> do
-          mch <- sequence <$> mapM unwrapMessage dsts
-          case mch of
-            Nothing  -> doPanic "execBroadcast: type error"
-            Just chs -> do
-              stActorSrc . at aid .= Just (Left (wrapMessage a))
-              liftP $ forM_ chs $ \ch -> sendChan ch a
-      Just _ -> doPanic "execBroadcast: destination type mismatch. Expect group"
+      Just (dst,_) -> do
+          stActorSrc . at aid .= Just (Left trySend)
+          liftP $ trySend dst
+  where
+    trySend (RcvGrp dsts) = do
+        mch <- sequence <$> mapM unwrapMessage dsts
+        case mch of
+          Nothing  -> doPanic "execBroadcast: type error"
+          Just chs -> forM_ chs $ \ch -> sendChan ch a
+    trySend _ = doPanic "execBroadcast: destination type mismatch. Expect group"
 
 
 -- Connect two shells to each other
@@ -228,7 +231,7 @@ execConnect (Shell aidSrc) (Shell aidDst) = do
               -- FIXME: very error prone just as other message sending
               --        routines
               liftP $ send p dst
-          -- Handler special case 
+          -- Handler special case
           case (dst,stSrc) of
             ((RcvReduce chs,_), Completed 0) -> liftP $ forM_ chs $ \(_,chN) -> sendChan chN 0
             ((RcvReduce _  ,_), Completed _) -> doPanic "Unconnected actor completed execution"

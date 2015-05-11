@@ -11,6 +11,8 @@ module DNA.Interpreter.Spawn (
     , execSpawnCollectorGroup
     -- , execSpawnCollectorGroupMR
     -- , execSpawnMappers
+      -- * Workers
+    , spawnSingleActor
     ) where
 
 import Control.Applicative
@@ -35,7 +37,6 @@ import DNA.DSL
 import DNA.Logging
 import DNA.Interpreter.Types
 import DNA.Interpreter.Run
-import DNA.Interpreter.Message
 
 
 ----------------------------------------------------------------
@@ -52,14 +53,12 @@ execSpawnActor
     -> Spawn (Closure (Actor a b))
     -> DnaMonad (Shell (Val a) (Val b))
 -- BLOCKING
-execSpawnActor res act = do
-    -- Spawn actor
-    (aid,pid,ch) <- spawnSingleActor res
-         $ closureApply $(mkStaticClosure 'runActor) <$> act
-    -- Get actor's port for receiving data
-    receiveShell ch aid pid $ \dst -> case dst of
-      RcvSimple{} -> return ()
-      _           -> doPanic "Invalid RecvAddr in execSpawnActor"
+execSpawnActor res actorCmd = do
+    let (act,flags) = runSpawn
+                    $ closureApply $(mkStaticClosure 'runActor) <$> actorCmd
+    aid <- AID <$> uniqID
+    cad <- acquireResources res flags
+    spawnSingleActor aid cad (SpawnSingle act res RcvTySimple flags)
     return $ Shell aid
 
 -- | Spawn collector actor on remote node
@@ -69,14 +68,12 @@ execSpawnCollector
     -> Spawn (Closure (CollectActor a b))
     -> DnaMonad (Shell (Grp a) (Val b))
 -- BLOCKING
-execSpawnCollector res act = do
-    -- Spawn actor
-    (aid,pid,ch) <- spawnSingleActor res
-         $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
-    -- Receive connection
-    receiveShell ch aid pid $ \dst -> case dst of
-      RcvReduce{} -> return ()
-      _           -> doPanic "Invalid RecvAddr in execSpawnActor"
+execSpawnCollector res actorCmd = do
+    let (act,flags) = runSpawn
+                    $ closureApply $(mkStaticClosure 'runCollectActor) <$> actorCmd
+    aid <- AID <$> uniqID
+    cad <- acquireResources res flags
+    spawnSingleActor aid cad (SpawnSingle act res RcvTyReduce flags)
     return $ Shell aid
 
 
@@ -171,23 +168,24 @@ execSpawnMappers res resG act = do
 -- Spawn helpers
 ----------------------------------------------------------------
 
+-- Acquire resources for single actor
+acquireResources :: Res -> [SpawnFlag] -> DnaMonad VirtualCAD
+acquireResources res flags = do
+    runController
+        $ makeResource (if UseLocal `elem` flags then Local else Remote)
+      =<< requestResources res
+
 -- Spawn actor which only uses single CH process.
 spawnSingleActor
-    :: Res
-    -> Spawn (Closure (Process ()))
-    -> DnaMonad (AID,ProcessId,ReceivePort (RecvAddr,[SendPortId]))
-spawnSingleActor res spwn = do
-    let (act,flags) = runSpawn spwn
-    -- Acquire resources
-    cad <- runController
-         $ makeResource (if UseLocal `elem` flags then Local else Remote)
-       =<< requestResources res
-    -- Start actor
-    aid     <- AID <$> uniqID
-    (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) act
+    :: AID
+    -> VirtualCAD   
+    -> SpawnCmd
+    -> DnaMonad ()
+spawnSingleActor aid cad cmd@(SpawnSingle actor _ addrTy flags) = do
+    (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) actor
     -- Set registry
     stAid2Pid       . at aid .= Just (Set.singleton pid)
-    stPid2Aid       . at pid .= Just aid
+    stPid2Aid       . at pid .= Just (Rank 0, GroupSize 1, aid)
     stChildren      . at aid .= Just (Running (RunInfo 0 0))
     stUsedResources . at pid .= Just cad
     -- Add timeout for actor
@@ -196,12 +194,14 @@ spawnSingleActor res spwn = do
     (chSend,chRecv) <- liftP newChan
     _ <- sendActorParam pid aid (Rank 0) (GroupSize 1) cad chSend
            (concat [fs | UseDebug fs <- flags])
-    -- -- Record restart if needed
-    -- -- -- -- -- -- --
-    -- T.forM_ mmatch $ \m ->
-    --     when (UseRespawn `elem` flags) $
-    --         stRestartable . at pid .= Just (m,act,wrapMessage p)
-    return (aid,pid,chRecv)
+    when (UseRespawn `elem` flags) $ do
+        stActorClosure . at aid .= Just cmd
+    -- Receive shell back
+    receiveShell chRecv aid pid $ \dst -> case (dst,addrTy) of
+        (RcvSimple{},RcvTySimple) -> return ()
+        (RcvReduce{},RcvTyReduce) -> return ()
+        (RcvGrp{}   ,RcvTyGrp   ) -> return ()
+        _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
 
 
 -- Spawn group of actors
@@ -230,7 +230,7 @@ spawnActorGroup res resG spwn = do
         _ <- sendActorParam pid aid (Rank rnk) (GroupSize k) cad chSend
                (concat [fs | UseDebug fs <- flags])
         stAid2Pid       . at aid %= Just . maybe (Set.singleton pid) (Set.insert pid)
-        stPid2Aid       . at pid .= Just aid
+        stPid2Aid       . at pid .= Just (Rank rnk, GroupSize k,aid)
         stUsedResources . at pid .= Just cad
     -- Add timeout for actor
     liftP $ setTimeout flags aid
@@ -271,6 +271,7 @@ receiveShell ch aid pid handler = do
         stActorRecvAddr . at aid .= Just Nothing
         freeActorResouces aid
         dropActor aid
+        -- FIXME: Does marking actor as failed interferes with respawning?
       Right dst -> do
         stActorRecvAddr . at aid .= Just (Just dst)
         handler $ fst dst

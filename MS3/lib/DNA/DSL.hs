@@ -60,6 +60,8 @@ module DNA.DSL (
     -- , broadcastParamSlice
     , broadcast
     , connect
+      
+    , crashMaybe
     ) where
 
 import Control.Applicative
@@ -73,7 +75,8 @@ import Data.Typeable (Typeable)
 import GHC.Generics  (Generic)
 
 import DNA.Types
-import DNA.Logging (ProfileHint(..))
+import DNA.Logging (ProfileHint(..),Severity)
+
 
 ----------------------------------------------------------------
 -- Operations data type for DNA
@@ -197,6 +200,8 @@ data DnaF a where
       -> (b -> a -> IO b)
       -> b
       -> DnaF b
+    CrashMaybe
+      :: Double -> DnaF ()
 
 -- | Spawn monad. It's used to carry all additional parameters for
 --   process spawning
@@ -215,8 +220,10 @@ data SpawnFlag
 -- | Flags which could be passed to actors for debugging purposes
 data DebugFlag
     = CrashProbably Double
-      -- ^ Crash with given probability. Not all actors will honor
-      --   that request
+      -- ^ Crash during startup with given probability. Not all actors
+      --   will honor that request
+    | StdOutLevel Severity
+    | EvtlogLevel Severity
     deriving (Show,Eq,Typeable,Generic)
 instance Binary DebugFlag
 
@@ -486,3 +493,6 @@ startMappers
 startMappers res resG child =
     DNA $ singleton $ SpawnMappers res resG child
 -}
+
+crashMaybe :: Double -> DNA ()
+crashMaybe = DNA . singleton . CrashMaybe

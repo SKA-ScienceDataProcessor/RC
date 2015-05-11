@@ -1,21 +1,21 @@
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 -- | Data types for interpretation of DNA DSL using cloud haskell
 module DNA.Interpreter.Types where
 
-import Control.Monad
+import Control.Applicative
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State.Strict
-import Control.Monad.Trans.Class
 import Control.Exception
 import Control.Distributed.Process
+import Control.Distributed.Process.Serializable
 import Data.Monoid
 import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
@@ -27,18 +27,72 @@ import           Data.Set   (Set)
 import GHC.Generics  (Generic)
 import Lens.Family.TH
 
-import DNA.CH
 import DNA.Types
 import DNA.Lens
 import DNA.DSL
+import DNA.CH
+import DNA.Logging
+
+
+----------------------------------------------------------------
+-- Extra functions for matching on messages
+----------------------------------------------------------------
+
+-- | Handlers for events which could be used with State monad with state s
+data MatchS = forall a. Serializable a => MatchS (a -> Controller ())
+
+-- | Wait for message from Match' and handle auxiliary messages
+handleRecieve
+    :: [MatchS]
+    -> [Match' a]
+    -> DnaMonad a
+handleRecieve auxMs mA
+    = loop
+  where
+    matches e s
+        =  map toMatch ((fmap . fmap) Right mA)
+        ++ [ match $ \a -> Left <$> (flip runReaderT e . flip runStateT s . unDnaMonad . runController) (f a)
+           | MatchS f <- auxMs]
+    loop = do
+        e <- ask
+        s <- get
+        r <- liftP $ receiveWait $ matches e s
+        case r of
+          Right a      -> return a
+          Left ((),s') -> put s' >> loop
 
 
 ----------------------------------------------------------------
 -- Monads
 ----------------------------------------------------------------
 
--- | Type synonym for monad which is used for interpretation of
-type DnaMonad = StateT StateDNA (ReaderT Env Process)
+-- | Type synonym for monad which is used for interpretation of DNA
+--   programs.
+--
+--   It have custom definition of fail which is used to raise panic
+--   level error.
+newtype DnaMonad a = DnaMonad
+    { unDnaMonad :: StateT StateDNA (ReaderT Env Process) a }
+    deriving (Functor,Applicative,MonadIO,MonadProcess,MonadState StateDNA,MonadReader Env)
+
+instance Monad DnaMonad where
+    return           = DnaMonad . return
+    DnaMonad m >>= f = DnaMonad $ m >>= fmap unDnaMonad f
+    fail             = doPanic
+
+instance MonadLog DnaMonad where
+    logPrefix = liftP logPrefix
+    logLevelStdout = do
+        flags <- _stDebugFlags <$> get
+        case [ s | StdOutLevel s <- flags ] of
+          []  -> return Warning
+          s:_ -> return s
+    logLevelEvtlog = do
+        flags <- _stDebugFlags <$> get
+        case [ s | EvtlogLevel s <- flags ] of
+          []  -> return Warning
+          s:_ -> return s
+
 
 -- | Monad for event handlers. It adds explicit error handling
 type Controller = ExceptT DnaError DnaMonad
@@ -49,13 +103,13 @@ data DnaError
     | PanicErr String              -- ^ Internal error
     | Except SomeException         -- ^ Uncaught exception
 
-data Panic = Panic String
+data PanicException = PanicException String
              deriving (Show,Typeable)
-instance Exception Panic
+instance Exception PanicException
 
-data Fatal = Fatal String
+data FatalException = FatalException String
              deriving (Show,Typeable)
-instance Exception Fatal
+instance Exception FatalException
       
 -- | Fatal error
 fatal :: MonadError DnaError m => String -> m a
@@ -67,12 +121,16 @@ panic :: MonadError DnaError m => String -> m a
 panic = throwError . PanicErr
 
 -- | Actually raise panic
-doPanic :: MonadIO m => String -> m a
-doPanic = liftIO . throw . Panic 
+doPanic :: MonadLog m => String -> m a
+doPanic msg = do
+    panicMsg msg
+    liftIO $ throw $ PanicException msg
 
 -- | Actually 
-doFatal :: MonadIO m => String -> m a
-doFatal = liftIO . throw . Fatal
+doFatal :: MonadLog m => String -> m a
+doFatal msg = do
+    fatalMsg msg
+    liftIO $ throw $ FatalException msg
 
     
 -- | Run controller monad. On failure will terminate process forefully
@@ -97,7 +155,7 @@ runDnaMonad
     -> DnaMonad a
     -> Process a
 runDnaMonad aid (Rank rnk) (GroupSize grp) interp nodes flags =
-    flip runReaderT env . flip evalStateT s0
+    flip runReaderT env . flip evalStateT s0 . unDnaMonad
   where
     env = Env { envRank        = rnk
               , envGroupSize   = grp
@@ -202,7 +260,7 @@ data StateDNA = StateDNA
       -- Append only dataflow graph
     , _stChildren      :: !(Map AID ActorState)
       -- ^ State of child actors
-    , _stActorSrc :: !(Map AID (Either Message AID))
+    , _stActorSrc :: !(Map AID (Either (RecvAddr -> Process ()) AID))
       -- ^ Source of an actor. It's either another actor or parent
       --   actor. In latter case we store encoded message.
       --   message
@@ -218,41 +276,26 @@ data StateDNA = StateDNA
       --   to Nothing
 
       -- Mapping ProcessID <-> AID
-    , _stPid2Aid :: !(Map ProcessId AID)
+    , _stPid2Aid :: !(Map ProcessId (Rank,GroupSize,AID))
     , _stAid2Pid :: !(Map AID (Set ProcessId))
 
       -- Restarts
-    , _stActorClosure   :: !(Map AID (Closure (Process ())))
+    , _stActorClosure   :: !(Map AID SpawnCmd)
       -- ^ Closure for the actor. All restartable actors have closure
       -- stored.
-
-      
-      --   -- Monitor resources
-    -- , _stChildren :: !(Map ProcessId (Either ProcState GroupID))
-    --   -- ^ State of monitored processes
-    -- , _stGroups   :: !(Map GroupID GroupState)
-    --   -- ^ State of groups of processes
-    -- , _stConnUpstream   :: !(Map ActorID (ActorID,SomeSendEnd))
-    --   -- ^ Upstream connection of an actor.
-    -- , _stConnDownstream :: !(Map ActorID (Either (ActorID,SomeRecvEnd) SomeRecvEnd))
-    --   -- ^ Downstream connection of an actor. Could be parent act
-    -- , _stRestartable    :: !(Map ProcessId (Match' (SomeRecvEnd,SomeSendEnd,[SendPort Int]), Closure (Process ()), Message))
-    --   -- ^ Set of processes which could be restarted
-
-{-
-      -- Many rank actors
-    , _stCountRank :: !(Map GroupID (Int,Int))
-      -- ^ Unused ranks 
-    , _stPooledProcs   :: !(Map GroupID [SendPort (Maybe Rank)])
-      -- ^ Groups for which we can send enough of ranks message
--}
     }
+
+-- | Command for spawning actor
+data SpawnCmd
+    = SpawnSingle (Closure (Process ())) Res RecvAddrType [SpawnFlag]
+    deriving (Show)
 
 -- | State of actor.
 data ActorState
     = Failed                    -- ^ Actor failed
     | Running RunInfo           -- ^ Actor is still running
     | Completed Int             -- ^ Actor finished execution successfully
+    deriving (Show)
 
 -- | Information about running process. We store number of completed
 --   processes and number of allowed failures. Number of still running
@@ -263,6 +306,8 @@ data RunInfo = RunInfo
     , allowedFailers :: Int
       -- ^ Number of allowed failures
     }
+    deriving (Show)
+
 
 $(makeLenses ''StateDNA)
 
@@ -287,8 +332,7 @@ actorDestinationAddr aid = do
 terminateActor :: (MonadProcess m, MonadState StateDNA m) => AID -> m ()
 terminateActor aid = do
     mpids <- use $ stAid2Pid . at aid
-    liftP $ T.forM_ mpids $ T.mapM_ $ \p -> do
-        liftIO $ print p
+    liftP $ T.forM_ mpids $ T.mapM_ $ \p ->
         send p (Terminate "TERMINATE")
 
 -- | Drop actor from the registry
@@ -316,8 +360,13 @@ freeActorResouces aid = do
     T.forM_ mpids $ T.mapM_ freeResouces
 
 
+sendToActor :: (MonadState StateDNA m, MonadProcess m, Serializable a) => AID -> a -> m ()
+sendToActor aid a = do
+    pids <- use $ stAid2Pid . at aid
+    liftP $ T.forM_ pids $ T.mapM_ (\p -> send p a)
+
 -- Generate unique ID
-uniqID :: Monad m => StateT StateDNA m Int
+uniqID :: MonadState StateDNA m => m Int
 uniqID = do
     i <- use stCounter
     stCounter .= (i + 1)

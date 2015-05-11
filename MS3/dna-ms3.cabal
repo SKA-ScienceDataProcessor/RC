@@ -87,6 +87,7 @@ library
     DNA.Interpreter.Message
     DNA.Interpreter.Run
     DNA.Interpreter.Spawn
+    DNA.Interpreter.Testing
     DNA.Interpreter.Types
     DNA.Lens
     DNA.Logging

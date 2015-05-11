@@ -31,7 +31,6 @@ module DNA.Interpreter.Run (
     -- , runMapperActor
     , runDnaParam 
       -- * Helpers
-    , doGatherM
     , doGatherDna
       -- * CH
     , runActor__static
@@ -54,7 +53,7 @@ import DNA.CH
 import DNA.Types
 import DNA.DSL
 import DNA.Interpreter.Types
-import DNA.Interpreter.Message
+import DNA.Interpreter.Testing
 
 
 ----------------------------------------------------------------
@@ -126,16 +125,11 @@ runCollectActor (CollectActor step start fini) = do
         , [ sendPortId chSendParam , sendPortId chSendN ]
         )
     -- Now we want to check if process was requested to crash
-    case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
-      pCrash : _ -> do
-          roll <- liftIO randomIO
-          when (roll < pCrash) $ do
-              me <- getSelfPid
-              liftIO $ print $ "CRASH! " ++ show me
-              error "Ooops crashed"
-      _ -> return ()
     -- Start execution of an actor
     !b <- runDnaParam p $ do
+           case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
+             pCrash : _ -> crashMaybe pCrash
+             _          -> return ()
            s0 <- kernel "collector init" [] (Kern start)
            s  <- gatherM (Group chRecvParam chRecvN) step s0
            kernel "collector fini" [] (Kern (fini s))
@@ -235,20 +229,6 @@ sendResult p a =
         case mch of
           Just ch -> sendChan ch a
           Nothing -> doPanic "Type error in channel!"
-
-
-doGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> Process b
-doGatherM (Group chA chN) f x0 = do
-    let loop n tot !b
-            | n >= tot && tot >= 0 = return b
-        loop n tot !b = do
-            r <- receiveWait [ matchChan chA (return . Right)
-                             , matchChan chN (return . Left)
-                             ]
-            case r of
-              Right a -> loop (n + 1) tot =<< liftIO (f b a)
-              Left  k -> loop n k b
-    loop 0 (-1) x0
 
 
 doGatherDna
