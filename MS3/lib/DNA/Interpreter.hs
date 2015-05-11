@@ -14,9 +14,9 @@ module DNA.Interpreter (
 
 import Control.Applicative
 import Control.Monad
-import Control.Monad.Trans.Class
+-- import Control.Monad.Trans.Class
 import Control.Monad.Reader
-import Control.Monad.Except
+-- import Control.Monad.Except
 import Control.Monad.Operational
 import Control.Concurrent.Async
 -- import Control.Concurrent.STM (STM)
@@ -24,9 +24,9 @@ import Control.Concurrent.Async
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
-import Data.Maybe
+-- import Data.Maybe
 -- import Data.Binary   (Binary)
-import Data.Typeable (Typeable,typeOf)
+import Data.Typeable (Typeable {-,typeOf-})
 -- import qualified Data.Map as Map
 -- import           Data.Map   (Map)
 import qualified Data.Set as Set

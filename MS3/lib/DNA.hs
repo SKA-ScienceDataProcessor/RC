@@ -105,7 +105,7 @@
 -- assume that a single actor instance in large group fails. Then in some case it
 -- makes sense to simply ignore the failure and discard the partial result. This
 -- is the "failout" model. To use these semantics in the DNA program, all we
--- need to do is to change the parameter to 'startGroup' from 'Normal' to 'Failout'.
+-- need to do is to specify 'failout' when spawning the actor with 'startGroup'.
 --
 -- Another important recovery technique is restarting failed processes. This
 -- obviously loses the current state of the restarted process, so any accumulated
@@ -151,51 +151,59 @@ module DNA (
     , mapper
       -- * DNA monad
     , DNA
+    , dnaRun
     , rank
     , groupSize
     , logMessage
     , duration
+      -- * Kernels
+    , Kern
     , kernel
     , unboundKernel
     , ProfileHint(..)
     , floatHint, ioHint, haskellHint, cudaHint
-      -- * Shell actors
+      -- * Spawning
+    , eval
+    , evalClosure
+    -- , startCollectorGroupMR
+    -- , startMappers
+    , Spawn
+    , startActor
+    , startCollector
+    , startGroup
+    -- ** Shell
     , Shell
     , Val
     , Grp
     , Scatter
-    , eval
-    , evalClosure
-    , startActor
-    , startCollector
-    , startGroup
-    -- , startGroupN
-    , startCollectorGroup
-    -- , startCollectorGroupMR
-    -- , startMappers
-    -- * Resources
+    -- ** Resources
     , Res(..)
     , ResGroup(..)
     , Location(..)
-    , useLocal
     , availableNodes
+    -- , startGroupN
+    , startCollectorGroup
+    , useLocal
     , respawnOnFail
     , debugFlags
     , DebugFlag(..)
-      -- * Connecting actors
+      -- * Connecting
+
+      -- | Each actor must be connected to exactly one destination and
+      -- consequently could only receive input from a single
+      -- source. Trying to connect an actor twice will result in
+      -- a runtime error.
     , sendParam
     -- , broadcastParamSlice
     , broadcast
     , connect
-      -- ** Promises
+      -- * Promises
     , Promise
     , Group
     , await
     , gather
     , delay
     , delayGroup
-      -- * Start DNA program
-    , dnaRun
       -- * Reexports
     , MonadIO(..)
     , remotable

@@ -27,19 +27,19 @@ module DNA.Interpreter.Message (
     , handleRecieve
     ) where
 
-import Control.Applicative
+-- import Control.Applicative
 import Control.Monad
 import Control.Monad.Reader
-import Control.Monad.State.Strict
+-- import Control.Monad.State.Strict
 import Control.Distributed.Process
-import Control.Distributed.Process.Serializable
+-- import Control.Distributed.Process.Serializable
 -- import qualified Data.Map as Map
 import Data.List   (isPrefixOf)
 import qualified Data.Set as Set
 import qualified Data.Foldable as T
 import Text.Printf
 
-import DNA.CH
+-- import DNA.CH
 import DNA.Lens
 import DNA.Types
 import DNA.Interpreter.Types
@@ -129,7 +129,7 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
       --  * It's not connected yet
       --  * It's local process and we're holding var
       --  * It receives data from live actor
-      Running runInfo@(RunInfo nDone nFails)
+      Running runInfo@(RunInfo _nDone _nFails)
         | Just restart <- mRestart
         , Nothing      <- msrc
           -> do Just cad <- use $ stUsedResources . at pid
@@ -188,7 +188,7 @@ handleFail :: AID -> ProcessId -> RunInfo -> Controller ()
 handleFail aid pid (RunInfo nDone nFails)
     -- Terminate process forcefully
     | nFails <= 0 = do
-          doFatal $ printf "Unrecoverable child process %s %s" (show aid) (show pid)
+          void $ doFatal $ printf "Unrecoverable child process %s %s" (show aid) (show pid)
           killActorAndCleanUp aid pid
     -- We can still tolerate failures
     | otherwise = do
@@ -227,7 +227,7 @@ killActorAndCleanUp aid pid = do
 handleDataSent :: SentTo -> Controller ()
 handleDataSent (SentTo aid pid dstID) = do
     -- Check that data was sent to correct destination
-    me <- liftP getSelfPid
+    --me <- liftP getSelfPid
     Just dst <- use $ stActorDst . at aid
     case dst of
       Left  _      -> sendAck

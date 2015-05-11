@@ -3,10 +3,10 @@ module DNA.Interpreter.Testing where
 
 import Control.Monad
 import Control.Monad.Reader
-import Control.Monad.IO.Class
-import Control.Concurrent (threadDelay)
+-- import Control.Monad.IO.Class
+-- import Control.Concurrent (threadDelay)
 import Control.Distributed.Process
-import System.Random
+-- import System.Random
 import DNA.Interpreter.Types
 import DNA.Types
 import System.IO.Unsafe

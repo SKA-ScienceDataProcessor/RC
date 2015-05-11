@@ -298,7 +298,6 @@ runUnixWorker rtable opts common dna = do
 
 executeDNA :: DNA () -> [NodeId] -> Process (Maybe SomeException)
 executeDNA dna nodes = do
-    me  <- getSelfPid
     nid <- getSelfNode
     -- FIXME: correctly treat parent-related data
     let param = ActorParam
@@ -309,6 +308,7 @@ executeDNA dna nodes = do
               , actorNodes       = VirtualCAD Local (NodeInfo nid) (map NodeInfo nodes)
               , actorDebugFlags  = []
               , actorAID         = AID 0
+              , actorSendBack    = undefined
               }
     r <- try $ runDnaParam param dna
     return $ either Just (const Nothing) r

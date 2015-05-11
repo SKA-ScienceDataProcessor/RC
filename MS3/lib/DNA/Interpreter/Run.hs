@@ -47,13 +47,13 @@ import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
 import Data.Typeable (Typeable)
 import qualified Data.Foldable as T
-import System.Random
+-- import System.Random
 
 import DNA.CH
 import DNA.Types
 import DNA.DSL
 import DNA.Interpreter.Types
-import DNA.Interpreter.Testing
+-- import DNA.Interpreter.Testing
 
 
 ----------------------------------------------------------------
@@ -197,11 +197,13 @@ runCollectActor (CollectActor step start fini) = do
 -- Helpers
 ----------------------------------------------------------------
 
+{-
 -- Send value to the destination
 sendToDest :: (Serializable a) => Dest a -> a -> Process ()
 sendToDest dst a = case dst of
     SendLocally ch  -> unsafeSendChan ch a
     SendRemote  chs -> forM_ chs $ \ch -> sendChan ch a
+-}
 
 -- Send result to the destination we 
 sendResult :: (Serializable a) => ActorParam ->a -> Process ()

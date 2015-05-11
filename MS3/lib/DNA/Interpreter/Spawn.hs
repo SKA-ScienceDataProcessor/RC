@@ -30,7 +30,7 @@ import qualified Data.Foldable as T
 import qualified Data.Set as Set
 import Text.Printf
 
-import DNA.CH
+-- import DNA.CH
 import DNA.Types
 import DNA.Lens
 import DNA.DSL
@@ -181,8 +181,8 @@ spawnSingleActor
     -> VirtualCAD   
     -> SpawnCmd
     -> DnaMonad ()
-spawnSingleActor aid cad cmd@(SpawnSingle actor _ addrTy flags) = do
-    (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) actor
+spawnSingleActor aid cad cmd@(SpawnSingle act _ addrTy flags) = do
+    (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) act
     -- Set registry
     stAid2Pid       . at aid .= Just (Set.singleton pid)
     stPid2Aid       . at pid .= Just (Rank 0, GroupSize 1, aid)

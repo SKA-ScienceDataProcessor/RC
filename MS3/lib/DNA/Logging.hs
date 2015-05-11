@@ -367,10 +367,13 @@ logDuration msg dna = do
 -- better to use a more conservative estimate, as this will generally
 -- result in lower performance estimates.
 data ProfileHint
-    = FloatHint { hintFloatOps :: !Int -- ^ Number of single-precision operations
-                , hintDoubleOps :: !Int -- ^ Number of double-precision operations
+    = FloatHint { hintFloatOps :: !Int
+                , hintDoubleOps :: !Int
                 }
-      -- ^ Estimate for how much floating point operations the code is doing
+      -- ^ Estimate for how many floating point operations the code is
+      -- executing. Profiling will use @perf_event@ in order to take
+      -- measurements. Keep in mind that this has double-counting
+      -- issues (20%-40% are not uncommon for SSE or AVX code).
     | IOHint { hintReadBytes :: !Int
              , hintWriteBytes :: !Int
              }
@@ -386,9 +389,12 @@ data ProfileHint
                }
       -- ^ CUDA statistics. The values are hints about how much data
       -- transfers we expect to be targetting the device and the host
-      -- respectively. The FLOP hints will only be checked if logging
-      -- is running in FLOP mode (uses instrumentation, which will
-      -- reduce overall performance!).
+      -- respectively.
+      --
+      -- The FLOP hints will only be checked if logging is running in
+      -- either @"float-ops"@ or @"double-ops"@ mode,
+      -- respectively. Note that this requires instrumentation, which
+      -- will reduce overall performance!
 
 floatHint :: ProfileHint
 floatHint = FloatHint 0 0
@@ -637,7 +643,7 @@ cudaAttrs pt = do
            $ metricAttrs
 
 #else
-cudaAttrs :: IO [Attr]
-cudaAttrs = return []
+cudaAttrs :: SamplePoint -> IO [Attr]
+cudaAttrs _ = return []
 #endif
 

@@ -145,26 +145,23 @@ instance Binary AckSend
 -- Type tags for shell actors
 ----------------------------------------------------------------
 
--- | Tag for single value.
---
---    * Receive: actor accept single value as parameter
---    * Send: actor produces single value as result
+-- | The actor receives/produces a single value, respectively.
 data Val a
     deriving (Typeable)
 
--- | Tag for unordered group of values.
---
---    * Receive: ???
---    * Send: actor produces set of messages in arbitrary order.
+-- | The actor receives/produces an unordered group of values.
 data Grp a
     deriving (Typeable)
 
--- | Tags for ordered set of values
+-- | Only appears as an input tag. It means that we may want to
+-- scatter values to a set of running actors.
 data Scatter a
     deriving (Typeable)
 
+
 {-
--- | Map-reduce actor
+-- | Another communication protocol for producing a set of values
+-- using the map-reduce algorithm.
 data MR a
     deriving (Typeable)
 -}
@@ -199,11 +196,18 @@ data RecvAddrType
 instance Binary RecvAddrType
 
 
--- | Spawned actor.
+-- | Handle of a running actor or group. Note that we treat actors and
+-- groups of actors uniformly here. Shell data type has two type
+-- parameters which describe what kind of data actor receives or
+-- produces. For example:
 --
---   Internally it's just phantom typed wrapped over AID. All
---   necessary data is stored in the
-
+-- > Shell (InputTag a) (OutputTag b)
+--
+-- Also both input and output types have tags which describe how many
+-- messages data type produces and how this actor could be connected
+-- with others. It means that shell receives message(s) of type a and
+-- produce message(s) of type b. We support tags 'Val', 'Grp' and
+-- 'Scatter'.
 newtype Shell a b = Shell AID
                     deriving (Typeable,Generic,Binary)
 
