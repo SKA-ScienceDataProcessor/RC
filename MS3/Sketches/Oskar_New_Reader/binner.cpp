@@ -118,7 +118,7 @@ inline int doit(const char * prefix, int num_channels, int num_points, double sc
           filesp[i].put_point(us.quot-1, vs.quot, p, *amp_curr);
           leftm = true;
         }
-        else if (us.rem > 1 - margin && us.quot < divs-1) {
+        else if (us.rem > div_size - margin && us.quot < divs-1) {
           filesp[i].put_point(us.quot+1, vs.quot, p, *amp_curr);
           rightm = true;
         }
@@ -127,7 +127,7 @@ inline int doit(const char * prefix, int num_channels, int num_points, double sc
           filesp[i].put_point(us.quot, vs.quot-1, p, *amp_curr);
           botm = true;
         }
-        else if (vs.rem > 1 - margin && vs.quot < divs-1) {
+        else if (vs.rem > div_size - margin && vs.quot < divs-1) {
           filesp[i].put_point(us.quot, vs.quot+1, p, *amp_curr);
           topm = true;
         }
