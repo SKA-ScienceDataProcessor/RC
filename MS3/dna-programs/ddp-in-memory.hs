@@ -17,11 +17,10 @@ import DDP_Slice
 ddpDotProduct :: Actor Int64 Double
 ddpDotProduct = actor $ \size -> do
     -- Chunk & send out
-    res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
     shell <- startGroup (Frac 1) (NNodes 1) $ do
         useLocal
         return $(mkStaticClosure 'ddpProductSlice)
-    sendParam (Slice 0 size) (broadcast shell)
+    broadcast (Slice 0 size) shell
     -- Collect results
     partials <- delayGroup shell
     x <- duration "collecting vectors" $ gather partials (+) 0
@@ -37,7 +36,7 @@ main =  dnaRun rtable $ do
         expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
     -- Run it
     b <- eval ddpDotProduct n
-    liftIO $ putStrLn $ concat
+    unboundKernel "output" [] $ liftIO $ putStrLn $ concat
       [ "RESULT: ", show b
       , " EXPECTED: ", show expected
       , if b == expected then " -- ok" else " -- WRONG!"
