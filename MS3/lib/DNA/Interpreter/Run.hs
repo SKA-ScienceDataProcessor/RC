@@ -207,7 +207,7 @@ sendToDest dst a = case dst of
 
 -- Send result to the destination we 
 sendResult :: (Serializable a) => ActorParam ->a -> Process ()
-sendResult p a =
+sendResult p !a =
     sendLoop =<< drainExpect
   where
     sendLoop (dst,dstId) = do
@@ -229,7 +229,7 @@ sendResult p a =
     trySend msg = do
         mch <- unwrapMessage msg
         case mch of
-          Just ch -> sendChan ch a
+          Just ch -> unsafeSendChan ch a
           Nothing -> doPanic "Type error in channel!"
 
 
