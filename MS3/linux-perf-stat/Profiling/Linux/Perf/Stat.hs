@@ -85,16 +85,19 @@ perfEventOpenSingle (PfmDesc pfmDesc) groupId =
     return ret
 #else
 perfEventOpenSingle (PfmDesc pfmDesc) groupId = do
-  config <- case pfmDesc of
-    "FP_COMP_OPS_EXE:X87"                  -> return 0x530110
-    "FP_COMP_OPS_EXE:SSE_FP_SCALAR_SINGLE" -> return 0x532010
-    "FP_COMP_OPS_EXE:SSE_SCALAR_DOUBLE"    -> return 0x538010
-    "FP_COMP_OPS_EXE:SSE_PACKED_SINGLE"    -> return 0x534010
-    "FP_COMP_OPS_EXE:SSE_FP_PACKED_DOUBLE" -> return 0x531010
-    "SIMD_FP_256:PACKED_SINGLE"            -> return 0x530111
-    "SIMD_FP_256:PACKED_DOUBLE"            -> return 0x530211
+  -- These are correct for Ivy Bridge (and similar) Intel
+  -- architectures. TODO: check that!
+  (config, config1) <- case pfmDesc of
+    "FP_COMP_OPS_EXE:X87"                        -> return (0x530110,0)
+    "FP_COMP_OPS_EXE:SSE_FP_SCALAR_SINGLE"       -> return (0x532010,0)
+    "FP_COMP_OPS_EXE:SSE_SCALAR_DOUBLE"          -> return (0x538010,0)
+    "FP_COMP_OPS_EXE:SSE_PACKED_SINGLE"          -> return (0x534010,0)
+    "FP_COMP_OPS_EXE:SSE_FP_PACKED_DOUBLE"       -> return (0x531010,0)
+    "SIMD_FP_256:PACKED_SINGLE"                  -> return (0x530111,0)
+    "SIMD_FP_256:PACKED_DOUBLE"                  -> return (0x530211,0)
+    "OFFCORE_RESPONSE_0:ANY_DATA:LLC_MISS_LOCAL" -> return (0x5301b7,0x80400091)
     _other -> ioError $ perfEventError "Need libpfm support to look up perf_event counter!"
-  let desc = PerfDesc $ PERF_TYPE_RAW config 0 0
+  let desc = PerfDesc $ PERF_TYPE_RAW config config1 0
   perfEventOpenSingle desc groupId
 #endif
 
@@ -139,9 +142,10 @@ data PerfStatCount = PerfStatCount
                                -- running. Can be substantially less
                                -- than @psTimeEnabled@ if the OS ran
                                -- out of counter resources and had to
-                               -- multiplex. However, this is still
-                               -- guaranteed to be the same on all
-                               -- counters of a group.
+                               -- multiplex. However, as counters in a
+                               -- group are scheduled togehter, this
+                               -- is still guaranteed to be virtually
+                               -- the same on all counters of a group.
     }
 
 -- | Read the current performance counter values

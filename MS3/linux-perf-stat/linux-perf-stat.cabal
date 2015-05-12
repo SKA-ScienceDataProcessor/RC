@@ -42,7 +42,8 @@ executable test
   ghc-options:       -Wall
   build-depends:     base >=4.7 && <4.8,
                      linux-perf-stat,
-                     time, vector
+                     time, vector,
+                     primitive
   c-sources:         src/test.c, src/omp.c
   cc-options:        -mavx -Wall -O2 -fopenmp
   ld-options:        -fopenmp

@@ -1,7 +1,7 @@
 
 #include <omp.h>
 
-static long num_steps = 20*1000*1000/6;
+static long num_steps = 1000000;
 double step;
 
 double omp_pi()

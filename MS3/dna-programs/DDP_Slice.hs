@@ -5,6 +5,7 @@ module DDP_Slice where
 import Control.Monad
 import qualified Data.Vector.Storable as S
 import System.Directory ( removeFile )
+import Foreign.Storable ( sizeOf )
 
 import DNA
 
@@ -40,8 +41,10 @@ ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
     va <- duration "receive compute" $ await futVA
     vb <- duration "receive read"    $ await futVB
     -- Clean up, compute sum
-    unboundKernel "compute sum" [FloatHint 0 (2 * fromIntegral n)] $ do
-      liftIO $ removeFile fname
+    let dblSize = sizeOf (undefined :: Double)
+    kernel "cleanup" [] $ liftIO $ removeFile fname
+    kernel "compute sum" [ FloatHint 0 (2 * fromIntegral n)
+                         , MemHint (dblSize * (S.length va + S.length vb)) ] $ do
       return (S.sum $ S.zipWith (*) va vb :: Double)
 
 -- | Calculate dot product of slice of vector.
@@ -79,7 +82,9 @@ ddpProductSliceFailure = actor $ \(fullSlice) -> duration "vector slice" $ do
     va <- duration "receive compute" $ await futVA
     vb <- duration "receive read"    $ await futVB
     -- Clean up, compute sum
-    unboundKernel "compute sum" [FloatHint 0 (2 * fromIntegral n)] $ do
+    let dblSize = sizeOf (undefined :: Double)
+    kernel "compute sum" [ FloatHint 0 (2 * fromIntegral n)
+                         , MemHint (dblSize * 2 * fromIntegral n) ] $ do
       liftIO $ removeFile fname
       return (S.sum $ S.zipWith (*) va vb :: Double)
 

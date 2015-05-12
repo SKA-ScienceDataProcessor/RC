@@ -46,7 +46,7 @@ module DNA.Logging
     , processAttributes
 
     , ProfileHint(..)
-    , floatHint, ioHint, haskellHint, cudaHint
+    , floatHint, memHint, ioHint, haskellHint, cudaHint
 
     , Severity(..)
     , MonadLog(..)
@@ -74,6 +74,7 @@ import Data.Typeable      (Typeable)
 import Data.List          (unfoldr)
 import Data.Binary        (Binary)
 import qualified Data.Map.Strict as Map
+import Data.Word          (Word64)
 
 import GHC.Stats
 import GHC.Generics       (Generic)
@@ -114,6 +115,7 @@ data LoggerState =
   LoggerState { loggerOpt :: LoggerOpt
               , loggerMsgId :: IORef Int
               , loggerFloatCounters :: IORef (Map.Map ThreadId PerfStatGroup)
+              , loggerCacheCounters :: IORef (Map.Map ThreadId PerfStatGroup)
 #ifdef USE_CUDA
               , loggerCuptiEnabled :: IORef Int
 #endif
@@ -139,12 +141,14 @@ initLogging opt = do
   -- Set logger state
   msgId <- newIORef 0
   floatCounters <- newIORef Map.empty
+  cacheCounters <- newIORef Map.empty
 #ifdef USE_CUDA
   cuptiEnabled <- newIORef 0
 #endif
   let state = LoggerState { loggerOpt          = opt
                           , loggerMsgId        = msgId
                           , loggerFloatCounters = floatCounters
+                          , loggerCacheCounters = cacheCounters
 #ifdef USE_CUDA
                           , loggerCuptiEnabled = cuptiEnabled
 #endif
@@ -374,6 +378,10 @@ data ProfileHint
       -- executing. Profiling will use @perf_event@ in order to take
       -- measurements. Keep in mind that this has double-counting
       -- issues (20%-40% are not uncommon for SSE or AVX code).
+    | MemHint { hintMemoryReadBytes :: !Int
+              }
+      -- ^ Estimate for the amount of data that will have to be read
+      -- from RAM over the course of the kernel calculation.
     | IOHint { hintReadBytes :: !Int
              , hintWriteBytes :: !Int
              }
@@ -398,6 +406,9 @@ data ProfileHint
 
 floatHint :: ProfileHint
 floatHint = FloatHint 0 0
+
+memHint :: ProfileHint
+memHint = MemHint 0
 
 ioHint :: ProfileHint
 ioHint = IOHint 0 0
@@ -437,6 +448,9 @@ hintToSample pt fh@FloatHint{}
     = consHint pt "hint:float-ops" (hintFloatOps fh)
     . consHint pt "hint:double-ops" (hintDoubleOps fh)
     <$> floatCounterAttrs pt
+hintToSample pt fh@MemHint{}
+    = consHint pt "hint:mem-read-bytes" (hintMemoryReadBytes fh)
+    <$> cacheCounterAttrs pt
 hintToSample pt ioh@IOHint{}
     = consHint pt "hint:read-bytes" (hintReadBytes ioh)
     . consHint pt "hint:write-bytes" (hintWriteBytes ioh)
@@ -547,6 +561,27 @@ floatCounterAttrs pt = do
     return $ filter (not . null . snd)
            $ zip (map fmtName floatCounterDescs) (map (formatPerfStat 1) vals)
 
+-- | The floating point counters, with associated names
+cacheCounterDescs :: [(String, PerfStatDesc)]
+cacheCounterDescs
+  = [ ("mem-read-bytes",    PfmDesc "OFFCORE_RESPONSE_0:ANY_DATA:LLC_MISS_LOCAL")
+    ]
+
+-- | Generate message attributes from current cache performance counter values
+cacheCounterAttrs :: SamplePoint -> IO [Attr]
+cacheCounterAttrs pt = do
+
+    -- Get counters from perf_event
+    countersVar <- loggerCacheCounters <$> readIORef loggerStateVar
+    vals <- samplePerfEvents countersVar (map snd cacheCounterDescs) pt
+
+    -- Constant enough to hard-code it, I think.
+    let cacheLine = 32
+
+    -- Generate attributes
+    let fmtName (name, _) = "perf:" ++ name
+    return $ filter (not . null . snd)
+           $ zip (map fmtName cacheCounterDescs) (map (formatPerfStat cacheLine) vals)
 
 ----------------------------------------------------------------
 -- I/O data sampling

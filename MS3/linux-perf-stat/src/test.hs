@@ -4,14 +4,18 @@
 module Main where
 
 import Control.Monad
+import Control.Monad.Primitive
 
 import Profiling.Linux.Perf.Stat
 import Data.Time.Clock
+import Data.Word
 import Text.Printf
 
 import qualified Data.Vector.Storable as V
+import qualified Data.Vector.Storable.Mutable as VM
 
 import Foreign.Ptr
+import Foreign.Storable
 import Foreign.C.Types
 
 import System.IO.Unsafe
@@ -76,7 +80,13 @@ main = do
            , PfmDesc "SIMD_FP_256:PACKED_DOUBLE"
            ]
 
-  let size = 1000 * 1000 * 10
+  group2 <- perfEventOpen
+           [ PfmDesc "OFFCORE_RESPONSE_0:ANY_DATA:LLC_MISS_LOCAL"
+           ]
+
+  let size = 1000 * 1000 * 100
+      repeats = 10
+
       in1f, in2f :: V.Vector Float
       !in1f = V.replicate size 10
       !in2f = V.generate size (\i -> 0.1 * fromIntegral i)
@@ -91,31 +101,53 @@ main = do
         when (abs (v - expected) > expected / 10) $
           putStrLn $ "Wrong result: " ++ show v ++ " != " ++ show (expected :: Double)
 
-  let tests = [ check $ V.sum $ V.zipWith (*) in1f in2f
-              , check $ V.sum $ V.zipWith (*) in1d in2d
-              , check $ sseDDP in1f in2f
-              , check $ sseDDPd in1d in2d
-              , check $ avxDDP in1f in2f
-              , check $ avxDDPd in1d in2d
-              , void $ c_omp_pi
+  -- Prepare mutable versions for transfer test
+  inf <- V.thaw in1f
+  outf <- VM.new size :: IO (VM.IOVector Float)
+
+  let ddpOps = size * 2
+      sizeV :: Storable a => V.Vector a -> Int
+      sizeV vec = V.length vec * sizeOf (V.head vec)
+
+      tests = [ (ddpOps, sizeV in1f + sizeV in2f,
+                 check $ V.sum $ V.zipWith (*) in1f in2f)
+              , (ddpOps, sizeV in1d + sizeV in2d,
+                 check $ V.sum $ V.zipWith (*) in1d in2d)
+              , (ddpOps, sizeV in1f + sizeV in2f,
+                 check $ sseDDP in1f in2f)
+              , (ddpOps, sizeV in1d + sizeV in2d,
+                 check $ sseDDPd in1d in2d)
+              , (ddpOps, sizeV in1f + sizeV in2f,
+                 check $ avxDDP in1f in2f)
+              , (ddpOps, sizeV in1d + sizeV in2d,
+                 check $ avxDDPd in1d in2d)
+              , (1000000 * 6, 0,
+                 void $ c_omp_pi)
+              , (0, sizeV in1f,
+                 VM.copy inf outf)
               ]
 
   -- Warm up, and prevent full laziness
-  replicateM_ 2 $ sequence tests
+  replicateM_ 2 $ forM_ tests $ \(_,_,t) -> t
 
   perfEventEnable group
-  forM_ tests $ \test -> do
+  forM_ tests $ \(ops, mem, test) -> do
 
     -- Run loop
-    let repeats = 10
     beginTime <- getCurrentTime
     perfEventEnable group
+    perfEventEnable group2
     begin <- perfEventRead group
+    begin2 <- perfEventRead group2
     replicateM_ repeats $ test
     end <- perfEventRead group
+    end2 <- perfEventRead group2
     perfEventDisable group
+    perfEventDisable group2
     endTime <- getCurrentTime
-    let expectedOps = size * 2 * repeats
+    let expectedOps = repeats * ops
+        expectedMem = repeats * mem
+        cacheLine = 64
 
     -- Show stats
     let (cycles:instrs:
@@ -125,23 +157,34 @@ main = do
          avx256Single:avx256Double:
          _)
              = zipWith perfEventDiff end begin
+        (mem:
+         _)
+             = zipWith perfEventDiff end2 begin2
         time = toRational $ endTime `diffUTCTime` beginTime
+
+        total :: PerfStatCount -> Word64
+        total ps = psValue ps * (1024 * psTimeEnabled ps `div` psTimeRunning ps) `div` 1024
         perTime :: PerfStatCount -> Double
         perTime ps = 1000 * fromIntegral (psValue ps) / fromIntegral (psTimeRunning ps)
+        timeStats :: PerfStatCount -> String
+        timeStats ps = printf "[%4d/%4d ms %d%%]"
+                           (psTimeRunning ps `div` 1000000)
+                           (psTimeEnabled ps `div` 1000000)
+                           (psTimeRunning ps * 100 `div` psTimeEnabled ps)
     putStrLn $ unlines $ map concat
-      [ [ printf "Time:          %10d ms" (floor (time * 1000000) :: Int) ]
-      , [ printf "Time Running:  %10d ms" (psTimeRunning cycles `div` 1000) ]
-      , [ printf "Time Enabled:  %10d ms" (psTimeEnabled cycles `div` 1000) ]
-      , [ printf "Cycles:        %10d     - %8.2f MHz"   (psValue cycles) (perTime cycles) ]
-      , [ printf "Instructions:  %10d     - %8.2f MHz"   (psValue instrs) (perTime instrs) ]
-      , [ printf "x87:           %10d OPs - %8.2f MOP/s" (psValue x87)    (perTime x87)    ]
-      , [ printf "Scalar Single: %10d OPs - %8.2f MOP/s" (psValue scalarSingle) (perTime scalarSingle) ]
-      , [ printf "Scalar Double: %10d OPs - %8.2f MOP/s" (psValue scalarDouble) (perTime scalarDouble) ]
-      , [ printf "SSE Single:    %10d OPs - %8.2f MOP/s" (4*psValue packedSingle) (4*perTime packedSingle) ]
-      , [ printf "SSE Double:    %10d OPs - %8.2f MOP/s" (2*psValue packedDouble) (2*perTime packedDouble) ]
-      , [ printf "AVX Single:    %10d OPs - %8.2f MOP/s" (8*psValue avx256Single) (8*perTime avx256Single) ]
-      , [ printf "AVX Double:    %10d OPs - %8.2f MOP/s" (4*psValue avx256Double) (4*perTime avx256Double) ]
-      , [ printf "Reference:     %10d OPs - %8.2f MOP/s" (expectedOps) (fromRational (fromIntegral expectedOps / time / 1000000) :: Float) ]
-      ]
+      [ [ printf "Time:          %11d us" (floor (time * 1000000) :: Int) ]
+      , [ printf "Cycles:        %11d     - %9.2f MHz   %20s" (total cycles) (perTime cycles) (timeStats cycles) ]
+      , [ printf "Instructions:  %11d     - %9.2f MHz   %20s" (total instrs) (perTime instrs) (timeStats instrs) ]
+      , [ printf "x87:           %11d OPs - %9.2f MOP/s %20s" (total x87)    (perTime x87)    (timeStats x87) ]
+      , [ printf "Scalar Single: %11d OPs - %9.2f MOP/s %20s" (total scalarSingle) (perTime scalarSingle) (timeStats scalarSingle) ]
+      , [ printf "Scalar Double: %11d OPs - %9.2f MOP/s %20s" (total scalarDouble) (perTime scalarDouble) (timeStats scalarDouble) ]
+      , [ printf "SSE Single:    %11d OPs - %9.2f MOP/s %20s" (4*total packedSingle) (4*perTime packedSingle) (timeStats packedSingle) ]
+      , [ printf "SSE Double:    %11d OPs - %9.2f MOP/s %20s" (2*total packedDouble) (2*perTime packedDouble) (timeStats packedDouble) ]
+      , [ printf "AVX Single:    %11d OPs - %9.2f MOP/s %20s" (8*psValue avx256Single) (8*perTime avx256Single) (timeStats avx256Single) ]
+      , [ printf "AVX Double:    %11d OPs - %9.2f MOP/s %20s" (4*psValue avx256Double) (4*perTime avx256Double) (timeStats avx256Double)]
+      , [ printf "Reference:     %11d OPs - %9.2f MOP/s" (expectedOps) (fromRational (fromIntegral expectedOps / time / 1000000) :: Float) ]
+      , [ printf "L3 Read:       %11d B   - %9.2f MB/s  %20s"  (cacheLine*total mem) (fromIntegral cacheLine*perTime mem) (timeStats mem)]
+      , [ printf "Reference:     %11d B   - %9.2f MB/s"  (expectedMem) (fromRational (fromIntegral expectedMem / time / 1000000) :: Float )]
+        ]
 
   perfEventClose group
