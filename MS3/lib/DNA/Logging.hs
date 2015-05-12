@@ -127,6 +127,7 @@ data LoggerState =
 -- certain amount of sense.
 loggerStateVar :: IORef LoggerState
 loggerStateVar = unsafePerformIO $ newIORef $ error "loggerStateVar not initialised!"
+{-# NOINLINE loggerStateVar #-}
 
 -- | Initialise logging facilities. This must be called once at
 -- program start, before the first messages are being created.
