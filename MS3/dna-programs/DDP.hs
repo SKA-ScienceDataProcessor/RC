@@ -78,7 +78,7 @@ ddpGenerateVector = actor $ \n ->
       let ramdisk = "/ramdisks"
       isCambridge <- doesDirectoryExist ramdisk
       (fname, h)  <- openBinaryTempFile
-                       (if isCambridge then ramdisk else ".")
+                       (if isCambridge then ramdisk else "/tmp")
                        "temp.dat"
       BS.hPut h $ runPut $ do
         replicateM_ (fromIntegral n) $ putFloat64le 0.1
