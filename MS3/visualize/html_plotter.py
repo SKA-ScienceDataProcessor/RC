@@ -395,34 +395,36 @@ def write_timeline_body(logs, conf) :
                                   time, unit);
             if metric.valid():
                 metrics.setdefault(cat, []).append(metric)
-        ms = 1000000
-        us = 1000000000
-        mk_metric('io', 'disk read', 'proc:read-bytes', 'hint:read-bytes', us, 'B');
-        mk_metric('io', 'disk write', 'proc:write-bytes', 'hint:write-bytes', us, 'B');
-        mk_metric('io', 'CUDA memset', 'cuda:memset-bytes', None, us, 'B');
-        mk_metric('io', 'CUDA read', 'cuda:memcpy-bytes-host', 'hint:memcpy-bytes-host', us, 'B');
-        mk_metric('io', 'CUDA write', 'cuda:memcpy-bytes-device', 'hint:memcpy-bytes-device', us, 'B');
-        mk_metric('instr', 'instructions', 'perf:cpu-instructions', None, us, 'OP');
-        mk_metric('instr', 'x87', 'perf:x87-ops', None, us, 'OP');
-        mk_metric('instr', 'float', 'perf:float-ops', 'hint:float-ops', us, 'OP');
-        mk_metric('instr', 'double', 'perf:double-ops', 'hint:double-ops', us, 'OP');
-        mk_metric('instr', 'float (scalar)', 'perf:scalar-float-ops', '', us, 'OP');
-        mk_metric('instr', 'double (scalar)', 'perf:scalar-double-ops', '', us, 'OP');
-        mk_metric('instr', 'float (sse)', 'perf:sse-float-ops', None, us, 'OP');
-        mk_metric('instr', 'double (sse)', 'perf:sse-double-ops', None, us, 'OP');
-        mk_metric('instr', 'float (avx)', 'perf:avx-float-ops', None, us, 'OP');
-        mk_metric('instr', 'double (avx)', 'perf:avx-double-ops', None, us, 'OP');
-        mk_metric('instr', 'float (gpu)', 'cuda:gpu-float-ops', 'hint:gpu-float-ops', us, 'OP');
-        mk_metric('instr', 'instructions (gpu)', 'cuda:gpu-instructions', None, us, 'OP');
-        mk_metric('instr', 'float (gpu add)', 'cuda:gpu-float-ops-add', None, us, 'OP');
-        mk_metric('instr', 'float (gpu mul)', 'cuda:gpu-float-ops-mul', None, us, 'OP');
-        mk_metric('instr', 'float (gpu fma)', 'cuda:gpu-float-ops-fma', None, us, 'OP');
-        mk_metric('instr', 'double (gpu)', 'cuda:gpu-double-ops', 'hint:gpu-double-ops', us, 'OP');
-        mk_metric('instr', 'double (gpu add)', 'cuda:gpu-double-ops-add', None, us, 'OP');
-        mk_metric('instr', 'double (gpu mul)', 'cuda:gpu-double-ops-mul', None, us, 'OP');
-        mk_metric('instr', 'double (gpu fma)', 'cuda:gpu-double-ops-fma', None, us, 'OP');
-        mk_metric('instr', 'float (gpu)?', 'cuda:gpu-float-instrs', None, us, 'OP');
-        mk_metric('instr', 'double (gpu)?', 'cuda:gpu-double-instrs', None, us, 'OP');
+        ms = 1000
+        us = 1000000
+        ns = 1000000000
+        mk_metric('io', 'disk read', 'proc:read-bytes', 'hint:read-bytes', ns, 'B');
+        mk_metric('io', 'disk write', 'proc:write-bytes', 'hint:write-bytes', ns, 'B');
+        mk_metric('io', 'CUDA memset', 'cuda:memset-bytes', None, ns, 'B');
+        mk_metric('io', 'CUDA read', 'cuda:memcpy-bytes-host', 'hint:memcpy-bytes-host', ns, 'B');
+        mk_metric('io', 'CUDA write', 'cuda:memcpy-bytes-device', 'hint:memcpy-bytes-device', ns, 'B');
+        mk_metric('io', 'RAM read', 'perf:mem-read-bytes', 'hint:mem-read-bytes', ns, 'B');
+        mk_metric('instr', 'instructions', 'perf:cpu-instructions', None, ns, 'OP');
+        mk_metric('instr', 'x87', 'perf:x87-ops', None, ns, 'OP');
+        mk_metric('instr', 'float', 'perf:float-ops', 'hint:float-ops', ns, 'OP');
+        mk_metric('instr', 'double', 'perf:double-ops', 'hint:double-ops', ns, 'OP');
+        mk_metric('instr', 'float (scalar)', 'perf:scalar-float-ops', '', ns, 'OP');
+        mk_metric('instr', 'double (scalar)', 'perf:scalar-double-ops', '', ns, 'OP');
+        mk_metric('instr', 'float (sse)', 'perf:sse-float-ops', None, ns, 'OP');
+        mk_metric('instr', 'double (sse)', 'perf:sse-double-ops', None, ns, 'OP');
+        mk_metric('instr', 'float (avx)', 'perf:avx-float-ops', None, ns, 'OP');
+        mk_metric('instr', 'double (avx)', 'perf:avx-double-ops', None, ns, 'OP');
+        mk_metric('instr', 'float (gpu)', 'cuda:gpu-float-ops', 'hint:gpu-float-ops', ns, 'OP');
+        mk_metric('instr', 'instructions (gpu)', 'cuda:gpu-instructions', None, ns, 'OP');
+        mk_metric('instr', 'float (gpu add)', 'cuda:gpu-float-ops-add', None, ns, 'OP');
+        mk_metric('instr', 'float (gpu mul)', 'cuda:gpu-float-ops-mul', None, ns, 'OP');
+        mk_metric('instr', 'float (gpu fma)', 'cuda:gpu-float-ops-fma', None, ns, 'OP');
+        mk_metric('instr', 'double (gpu)', 'cuda:gpu-double-ops', 'hint:gpu-double-ops', ns, 'OP');
+        mk_metric('instr', 'double (gpu add)', 'cuda:gpu-double-ops-add', None, ns, 'OP');
+        mk_metric('instr', 'double (gpu mul)', 'cuda:gpu-double-ops-mul', None, ns, 'OP');
+        mk_metric('instr', 'double (gpu fma)', 'cuda:gpu-double-ops-fma', None, ns, 'OP');
+        mk_metric('instr', 'float (gpu)?', 'cuda:gpu-float-instrs', None, ns, 'OP');
+        mk_metric('instr', 'double (gpu)?', 'cuda:gpu-double-instrs', None, ns, 'OP');
 
         # Print row(s)
         defMetric = Metric(None, None, None, None, '')
