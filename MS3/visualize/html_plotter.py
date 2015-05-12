@@ -61,6 +61,10 @@ def write_timeline_data(logs, conf) :
         tt = sorted(logs[k].time, key=pid_func)
         pid = None
         end = 0
+        total_time = 0
+        for e in reversed(tt) :
+            if e.t2 != None: total_time = e.t2; break
+            if e.t1 != None: total_time = e.t1; break
         done = set()
         for e in tt :
 
@@ -84,8 +88,8 @@ def write_timeline_data(logs, conf) :
 
                 # Make sure we have a certain minimum width. This is a hack.
                 end = e2.t2
-                if end == None or end < e2.t1+0.1:
-                    end = e2.t1 + 0.1
+                if end == None or end < e2.t1+total_time/1000:
+                    end = e2.t1 + total_time/1000
 
                 f.write('''
                 {"starting_time": %g, "ending_time": %g, "label": "%s", "type": "%s"},'''
