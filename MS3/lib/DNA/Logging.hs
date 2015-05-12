@@ -113,7 +113,7 @@ data LoggerOpt = LoggerOpt
 data LoggerState =
   LoggerState { loggerOpt :: LoggerOpt
               , loggerMsgId :: IORef Int
-              , loggerPerfCounters :: IORef (Map.Map ThreadId PerfStatGroup)
+              , loggerFloatCounters :: IORef (Map.Map ThreadId PerfStatGroup)
 #ifdef USE_CUDA
               , loggerCuptiEnabled :: IORef Int
 #endif
@@ -138,13 +138,13 @@ initLogging opt = do
 
   -- Set logger state
   msgId <- newIORef 0
-  perfCounters <- newIORef Map.empty
+  floatCounters <- newIORef Map.empty
 #ifdef USE_CUDA
   cuptiEnabled <- newIORef 0
 #endif
   let state = LoggerState { loggerOpt          = opt
                           , loggerMsgId        = msgId
-                          , loggerPerfCounters = perfCounters
+                          , loggerFloatCounters = floatCounters
 #ifdef USE_CUDA
                           , loggerCuptiEnabled = cuptiEnabled
 #endif
@@ -474,6 +474,52 @@ consAttrNZT n v t = ((n, show v ++ "/" ++ show t):)
 -- perf_events sampling
 ----------------------------------------------------------------
 
+-- | De/initialise perf_events. We re-initialise them for every single
+-- kernel call for now - this is probably wasteful, as the RTS
+-- ought to be reusing bound threads at some level. Still, I can't
+-- think of a good solution to make sure that perf_events handles
+-- wouldn't leak, so let's do this for now.
+samplePerfEvents :: IORef (Map.Map ThreadId PerfStatGroup) -> [PerfStatDesc]
+                 -> SamplePoint
+                 -> IO [PerfStatCount]
+samplePerfEvents countersVar countersDesc StartSample = do
+    -- Check that the thread is actually bound
+    isBound <- isCurrentThreadBound
+    when (not isBound) $ warningMsg "perf_events not running in bound thread!"
+    -- Open the counters
+    counters <- perfEventOpen countersDesc
+    -- Store them as thread-local state
+    tid <- myThreadId
+    atomicModifyIORef' countersVar $ flip (,) () . Map.insert tid counters
+    -- Read values, then enable
+    vals <- perfEventRead counters
+    perfEventEnable counters
+    return vals
+
+samplePerfEvents countersVar _            EndSample = do
+    tid <- myThreadId
+    Just counters <- atomicModifyIORef' countersVar $
+                     swap . Map.updateLookupWithKey (\_ _ -> Nothing) tid
+    -- Take end sample, close counters
+    vals <- perfEventRead counters
+    perfEventDisable counters
+    perfEventClose counters
+    return vals
+
+-- | Format perf_events counter value for output. We "normalise" the
+-- counter values if they have not been running for the full time they
+-- have been enabled. This happens due to the kernel multiplexing the
+-- counters.
+--
+-- Note that we lose some accuracy in the process, at some point it
+-- might be worthwhile to document this in the profile as well.
+formatPerfStat :: Word64 -> PerfStatCount -> String
+formatPerfStat multi (PerfStatCount _ _   _       0)       = ""
+formatPerfStat multi (PerfStatCount _ val enabled running) =
+    let f = 4096 -- overflow-save up to about 1250 hours
+        normalised = val * (enabled * f `div` running) `div` f
+    in show (multi * normalised) ++ "/" ++ show enabled
+
 -- | The floating point counters, with associated names
 floatCounterDescs :: [(String, PerfStatDesc)]
 floatCounterDescs
@@ -492,38 +538,14 @@ floatCounterDescs
 floatCounterAttrs :: SamplePoint -> IO [Attr]
 floatCounterAttrs pt = do
 
-    -- Initialise perf_events. We re-initialise them for every single
-    -- krenel call for now - this is probably wasteful, as the RTS
-    -- ought to be reusing bound threads at some level. Still, I can't
-    -- think of a good solution to make sure that perf_events handles
-    -- wouldn't leak, so let's do this for now.
-    tid <- myThreadId
-    countersVar <- loggerPerfCounters <$> readIORef loggerStateVar
-    counters <- case pt of
-      StartSample -> do
-        -- Check that the thread is actually bound
-        isBound <- isCurrentThreadBound
-        when (not isBound) $ warningMsg "perf_events not running in bound thread!"
-        counters <- perfEventOpen $ map snd floatCounterDescs
-        atomicModifyIORef' countersVar $ flip (,) () . Map.insert tid counters
-        return counters
-      EndSample -> do
-        Just counters <- atomicModifyIORef' countersVar $
-                         swap . Map.updateLookupWithKey (\_ _ -> Nothing) tid
-        perfEventDisable counters
-        return counters
-
     -- Get counters from perf_event
-    vals <- perfEventRead counters
-    -- Start / free counters
-    case pt of
-      StartSample -> perfEventEnable counters
-      EndSample -> perfEventClose counters
+    countersVar <- loggerFloatCounters <$> readIORef loggerStateVar
+    vals <- samplePerfEvents countersVar (map snd floatCounterDescs) pt
 
     -- Generate attributes
     let fmtName (name, _) = "perf:" ++ name
-        fmtVal stat = show (psValue stat) ++ "/" ++ show (psTimeRunning stat)
-    return $ zip (map fmtName floatCounterDescs) (map fmtVal vals)
+    return $ filter (not . null . snd)
+           $ zip (map fmtName floatCounterDescs) (map (formatPerfStat 1) vals)
 
 
 ----------------------------------------------------------------
