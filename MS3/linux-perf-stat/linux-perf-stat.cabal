@@ -35,7 +35,7 @@ library
     cpp-options:     -DUSE_PERF_FORMAT_GROUP
     cc-options:      -DUSE_PERF_FORMAT_GROUP
 
-executable test
+executable linux-perf-stat-test
   hs-source-dirs:    src
   main-is:           test.hs
   default-language:  Haskell2010

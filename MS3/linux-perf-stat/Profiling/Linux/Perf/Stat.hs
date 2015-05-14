@@ -95,7 +95,7 @@ perfEventOpenSingle (PfmDesc pfmDesc) groupId = do
     "FP_COMP_OPS_EXE:SSE_FP_PACKED_DOUBLE"       -> return (0x531010,0)
     "SIMD_FP_256:PACKED_SINGLE"                  -> return (0x530111,0)
     "SIMD_FP_256:PACKED_DOUBLE"                  -> return (0x530211,0)
-    "OFFCORE_RESPONSE_0:ANY_DATA:LLC_MISS_LOCAL" -> return (0x5301b7,0x80400091)
+    "OFFCORE_RESPONSE_0:ANY_DATA:LLC_MISS_LOCAL" -> return (0x5301b7,0x3f80400091)
     _other -> ioError $ perfEventError "Need libpfm support to look up perf_event counter!"
   let desc = PerfDesc $ PERF_TYPE_RAW config config1 0
   perfEventOpenSingle desc groupId

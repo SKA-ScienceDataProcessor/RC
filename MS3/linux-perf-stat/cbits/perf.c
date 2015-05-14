@@ -15,6 +15,9 @@
 #undef perf_event_open
 #endif
 
+// Uncomment to dump PFM's perf_event codes to the console
+//#define LOG_PFM_DECODE
+
 static inline int
 sys_perf_event_open(struct perf_event_attr *attr,
                     pid_t pid, int cpu, int group_fd,
@@ -106,6 +109,11 @@ int perf_event_open_pfm(const char *str,
     if (pfm_get_os_event_encoding(str, PFM_PLM0 | PFM_PLM3, PFM_OS_PERF_EVENT, &arg)
           != PFM_SUCCESS)
         return -2;
+
+#ifdef LOG_PFM_DECODE
+    printf("PFM decode %s = %lx %lx %lx %lx\n", str,
+           attr.type, attr.config, attr.config1, attr.config2);
+#endif
 
     // Generate event
     return perf_event_open_gen(&attr, group_fd);
