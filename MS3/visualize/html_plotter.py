@@ -32,13 +32,16 @@ def write_timeline_data(logs, conf) :
     "Timeline of execution, data generation"
     n = 0
 
-    # Collect all delay types
+    # Collect all delay types, figure out profile length
     delays = set()
+    total_time = 0
     for k in sorted(logs) :
         for e in logs[k].time :
             if conf.get(e.msg,{}).get('ignore', False) :
                 continue
             delays.add(e.msg)
+            if e.t2 != None: total_time = max(e.t2, total_time)
+            if e.t1 != None: total_time = max(e.t1, total_time)
 
     f.write('''
       var colorScale = d3.scale.category20().domain({0});'''.format(list(delays)))
@@ -56,15 +59,12 @@ def write_timeline_data(logs, conf) :
 
     f.write('''
       var data = [''')
+
     for k in sorted(logs) :
         def pid_func(e) : return e.tags.get('pid',e.tags2.get('pid',''))
         tt = sorted(logs[k].time, key=pid_func)
         pid = None
         end = 0
-        total_time = 0
-        for e in reversed(tt) :
-            if e.t2 != None: total_time = e.t2; break
-            if e.t1 != None: total_time = e.t1; break
         done = set()
         for e in tt :
 
@@ -101,14 +101,18 @@ def write_timeline_data(logs, conf) :
     f.write('''
         ];''')
 
+    # Figure out a good tick interval
+    tickInterval = 1
+    for i in [2,5,10,20,30,60,120]:
+        if i * 20 > total_time: break
+        tickInterval = i
 
-def write_middle():
     f.write('''
       var chart = d3.timeline()
         .beginning(-1)
         .tickFormat(
-           { format: d3.time.format("%M:%S"),
-             tickInterval: 30,
+           { format: d3.time.format("%%M:%%S"),
+             tickInterval: %d,
              tickTime: d3.time.second,
              tickSize: 5 })
         .stack()
@@ -117,7 +121,10 @@ def write_middle():
         .margin({left:150, right:150, top:0, bottom:0});
 
       var svg = d3.select("#timeline").append("svg").attr("width", "1500")
-        .datum(data).call(chart);
+        .datum(data).call(chart);''' % (tickInterval))
+
+def write_middle():
+    f.write('''
     }
   </script>
   <style type="text/css">
