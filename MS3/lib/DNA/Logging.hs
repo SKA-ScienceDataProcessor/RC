@@ -163,11 +163,11 @@ loggerMsgId = unsafePerformIO $ newIORef 0
 {-# NOINLINE loggerMsgId #-}
 
 loggerFloatCounters :: IORef (Map.Map ThreadId PerfStatGroup)
-loggerFloatCounters = unsafePerformIO $ newIORef undefined
+loggerFloatCounters = unsafePerformIO $ newIORef Map.empty
 {-# NOINLINE loggerFloatCounters #-}
 
 loggerCacheCounters :: IORef (Map.Map ThreadId PerfStatGroup)
-loggerCacheCounters = unsafePerformIO $ newIORef undefined
+loggerCacheCounters = unsafePerformIO $ newIORef Map.empty
 {-# NOINLINE loggerCacheCounters #-}
 
 #ifdef USE_CUDA
