@@ -1,7 +1,10 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE BangPatterns, CPP  #-}
--- | Logging.hs
+-- |
+-- Module    : DNA.Logging
+-- Copyright : (C) 2014-2015 Braam Research, LLC.
+-- License   : Apache-2.0
 --
 -- Logging and profiling facilities. Log messages are written to GHC's
 -- eventlog in the following format:
@@ -11,9 +14,12 @@
 -- The tag is a sequence of alphanumeric characters, usually in all
 -- caps. The tag can be:
 --
---  *  MSG: for simple log messages
---  *  FATAL: log messages reporting errors
---  *  SYNC: for synchronising time between nodes
+--  *  MSG:   for simple log messages
+--  *  PANIC: internal error. Should only be triggered by implementation bug
+--  *  FATAL: fatal error from which actor could not recover
+--  *  ERROR: ordinary error
+--  *  DEBUG: debug messages
+--  *  SYNC:  for synchronising time between nodes
 --  *  START x/END x: sample of a performance metric (for profiling)
 --
 -- Attributes can be used to add (possibly optional) extra data to the
@@ -29,39 +35,36 @@
 --
 --  * [hint:METRIC=VAL]: A performance hint by the program, such as
 --    expected number of floating point operations.
---
--- Copyright (C) 2014-2015 Braam Research, LLC.
-module DNA.Logging
-    ( LoggerOpt(..)
+module DNA.Logging (
+      -- * Options and basic API
+      MonadLog(..)
+    , LoggerOpt(..)
     , initLogging
-
+    , processAttributes
+      -- * Logging API
     , taggedMessage
     , eventMessage
     , message
-    , warningMsg
+      -- ** Error logging
+    , panicMsg
+    , fatalMsg
     , errorMsg
+    , warningMsg
+    , debugMsg
+      -- * Profiling API
     , synchronizationPoint
     , logDuration
     , logProfile
-    , processAttributes
-
+      -- * Profiling hints
     , ProfileHint(..)
     , floatHint, memHint, ioHint, haskellHint, cudaHint
-
-    , Severity(..)
-    , MonadLog(..)
-    , panicMsg
-    , fatalMsg
-    , errorMsg2
-    , infoMsg
-    , debugMsg
     ) where
 
 import Control.Applicative
 import Control.Concurrent
 import Control.Distributed.Process (getSelfPid,Process)
 import Control.Exception           (evaluate)
-import Control.Monad               (when,liftM,forM_)
+import Control.Monad               (when,unless,liftM,forM_)
 import Control.Monad.IO.Class
 import Control.Monad.Except        (ExceptT)
 import Control.Monad.Trans.Class
@@ -95,8 +98,52 @@ import System.Mem         (performGC)
 import DNA.Types
 
 ----------------------------------------------------------------
--- Modes of operation
+-- Basic logging API
 ----------------------------------------------------------------
+
+-- | Type class for monad from which we can write messages to the
+--   log. This API only covers getting current settings and doesn't
+--   describe how to change them. Note than not all monads support
+--   changing settings
+class MonadIO m => MonadLog m where
+    -- | Who created log message. It could be process ID, actor name etc.
+    logSource :: m String
+    logSource = return ""
+    -- | Verbosity of logging:
+    --
+    --    * -2 - only fatal errors logged
+    --    * -1 - error and more severe events logged
+    --    * 0  - warnings and more severe events logged
+    --    * 1  - everything is logged
+    logVerbosity :: m Int
+    logVerbosity = return 0
+    -- | Is debug print enabled? Default: disabled. 
+    logDebugPrint :: m DebugPrint
+    logDebugPrint = return NoDebugPrint
+    -- | Logger options
+    logLoggerOpt :: m LoggerOpt
+    logLoggerOpt = return $ LoggerOpt 0 ""
+    
+instance MonadLog IO
+instance MonadLog Process where
+    logSource = show <$> getSelfPid
+instance MonadLog m => MonadLog (ExceptT e m) where
+    logSource     = lift logSource
+    logVerbosity  = lift logVerbosity
+    logDebugPrint = lift logDebugPrint
+    logLoggerOpt  = lift logLoggerOpt
+
+-- | Is debug printing enabled
+data DebugPrint
+    = NoDebugPrint
+      -- ^ Debug printing disabled (default).
+    | DebugPrintEnabled
+      -- ^ Debug printing enabled but will NOT be inherited by child processes
+    | DebugPrintInherited
+      -- ^ Debug printing enabled but will be inherited by child processes
+    deriving (Show,Eq,Typeable,Generic)
+instance Binary DebugPrint
+
 
 -- | Modes of operation for the logger. Most additional attributes
 -- cost performance, therefore default state is to run without any of
@@ -111,95 +158,70 @@ data LoggerOpt = LoggerOpt
   }
   deriving (Show)
 
-data LoggerState =
-  LoggerState { loggerOpt :: LoggerOpt
-              , loggerMsgId :: IORef Int
-              , loggerFloatCounters :: IORef (Map.Map ThreadId PerfStatGroup)
-              , loggerCacheCounters :: IORef (Map.Map ThreadId PerfStatGroup)
-#ifdef USE_CUDA
-              , loggerCuptiEnabled :: IORef Int
-#endif
-              }
 
--- | Global logger state. This is a hack - it would be better if we
--- could put this somewhere into the DNA monad. On the other hand, the
--- profiling we do is a decidely global affair, so this makes a
--- certain amount of sense.
-loggerStateVar :: IORef LoggerState
-loggerStateVar = unsafePerformIO $ newIORef $ error "loggerStateVar not initialised!"
-{-# NOINLINE loggerStateVar #-}
+-- Sequence number for splitting messages when writing them to
+-- eventlog. We need global per-program supply of unique numbers.
+loggerMsgId :: IORef Int
+loggerMsgId = unsafePerformIO $ newIORef 0
+{-# NOINLINE loggerMsgId #-}
+
+loggerFloatCounters :: IORef (Map.Map ThreadId PerfStatGroup)
+loggerFloatCounters = unsafePerformIO $ newIORef undefined
+{-# NOINLINE loggerFloatCounters #-}
+
+loggerCacheCounters :: IORef (Map.Map ThreadId PerfStatGroup)
+loggerCacheCounters = unsafePerformIO $ newIORef undefined
+{-# NOINLINE loggerCacheCounters #-}
+
+#ifdef USE_CUDA
+-- Whether CUDA CUPTI is enabled
+loggerCuptiEnabled :: MVar Bool
+loggerCuptiEnabled = unsafePerformIO $ newMVar False
+{-# NOINLINE loggerCuptiEnabled #-}
+#endif
 
 -- | Initialise logging facilities. This must be called once at
 -- program start, before the first messages are being created.
 initLogging :: LoggerOpt -> IO ()
 initLogging opt = do
-
   -- Initialise profiling sub-modules
 #ifdef USE_CUDA
   cudaInit opt
 #endif
-
-  -- Set logger state
-  msgId <- newIORef 0
-  floatCounters <- newIORef Map.empty
-  cacheCounters <- newIORef Map.empty
-#ifdef USE_CUDA
-  cuptiEnabled <- newIORef 0
-#endif
-  let state = LoggerState { loggerOpt          = opt
-                          , loggerMsgId        = msgId
-                          , loggerFloatCounters = floatCounters
-                          , loggerCacheCounters = cacheCounters
-#ifdef USE_CUDA
-                          , loggerCuptiEnabled = cuptiEnabled
-#endif
-                          }
-  writeIORef loggerStateVar state
-
   -- Set console output to be line-buffered. We want it for
   -- diagnostics, no reason to buffer.
   hSetBuffering stdout LineBuffering
   hSetBuffering stderr LineBuffering -- Should be default
 
--- | Helper for activating a profiling module on-demand
-enableProfileMod :: (LoggerState -> IORef Int) -> IO () -> IO ()
-enableProfileMod loggerEnabled enable = do
-  enabledVar <- loggerEnabled <$> readIORef loggerStateVar
-  enabled <- atomicModifyIORef' enabledVar (\x -> (x+1,x))
-  when (enabled == 0) enable
 
--- | Helper for deactivating a profiling model based on demand
-disableProfileMod :: (LoggerState -> IORef Int) -> IO () -> IO ()
-disableProfileMod loggerEnabled disable = do
-  enabledVar <- loggerEnabled <$> readIORef loggerStateVar
-  enabled <- atomicModifyIORef' enabledVar (\x -> (x-1,x))
-  when (enabled == 1) disable
 
 ----------------------------------------------------------------
--- Message data types for logger
+-- Primitives for logging
 ----------------------------------------------------------------
 
 type Attr = (String, String)
 
 -- | Generate the specified eventlog message
 rawMessage :: String -- ^ Message tag
-        -> [Attr] -- ^ Message attributes
-        -> String -- ^ Message body
-        -> IO ()
-rawMessage tag attrs msg = do
+           -> [Attr] -- ^ Message attributes
+           -> String -- ^ Message body
+           -> Bool   -- ^ If True then message is written to stdout too
+           -> IO ()
+rawMessage tag attrs msg logStdout = do
     -- Make message text
     let formatAttr (attr, val) = ' ':'[':attr ++ '=': val ++ "]"
         text = concat (tag : map formatAttr attrs) ++ ' ':msg
     -- Check whether it's too long for the RTS to output in one
     -- piece. This is rare, but we don't want to lose information.
+    when logStdout $
+        putStrLn text
     let splitThreshold = 512
     if length text < splitThreshold then traceEventIO text
     else do
 
       -- Determine marker. We need this because the message chunks
       -- might get split up.
-      msgIdVar <- loggerMsgId <$> readIORef loggerStateVar
-      msgId <- atomicModifyIORef' msgIdVar (\x -> (x+1,x))
+      msgId <- atomicModifyIORef' loggerMsgId (\x -> (x+1,x))
       let mark = "[[" ++ show msgId ++ "]]"
 
       -- Now split message up and output it. Every message but the
@@ -213,106 +235,87 @@ rawMessage tag attrs msg = do
       forM_ mid $ \m -> traceEventIO (mark ++ m ++ mark)
       traceEventIO (mark ++ end)
 
+-- | Generate identification attributes it uses 'logSource' method for
+--   getting name of PID
+processAttributes :: MonadLog m => m [Attr]
+processAttributes = do
+    pid <- logSource
+    case pid of
+      "" -> return []
+      _  -> return [("pid", pid)]
+
+
+
+----------------------------------------------------------------
+-- Logging API
+----------------------------------------------------------------
+
 -- | Output a custom-tag process message into the eventlog.
-taggedMessage :: MonadProcess m
+taggedMessage :: MonadLog m
               => String         -- ^ Message tag
               -> String         -- ^ Message
               -> m ()
 taggedMessage tag msg = do
     attrs <- processAttributes
-    liftIO $ rawMessage tag attrs msg
+    liftIO $ rawMessage tag attrs msg True
 
--- | Put a global message into eventlog.
-eventMessage :: MonadIO m => String -> m ()
+-- | Put a global message into eventlog, (verbosity = 0).
+eventMessage :: MonadLog m => String -> m ()
 eventMessage = message 0
 
 -- | Put a message at the given verbosity level
-message :: MonadIO m => Int -> String -> m ()
-message v msg = liftIO $ do
-    verbosity <- logOptVerbose . loggerOpt <$> readIORef loggerStateVar
-    when (verbosity >= v) $ do
-        hPutStrLn stdout msg
-        rawMessage "MSG" [("v", show v)] msg
+message :: MonadLog m => Int -> String -> m ()
+message v msg = do
+    verbosity <- logVerbosity
+    attrs     <- processAttributes
+    when (verbosity >= v) $ liftIO $
+        rawMessage "MSG" (("v", show v) : attrs) msg True
 
--- | Put a warning message. Warnings have a verbosity of 0.
-warningMsg :: MonadIO m => String -> m ()
-warningMsg msg = liftIO $ do
-    verbosity <- logOptVerbose . loggerOpt <$> readIORef loggerStateVar
-    when (verbosity >= 0) $ do
-        hPutStrLn stderr $ "WARNING: " ++ msg
-        rawMessage "WARNING" [] msg
 
--- | Put an warning message. Errors have a verbosity of -1.
-errorMsg :: MonadIO m => String -> m ()
-errorMsg msg = liftIO $ do
-    verbosity <- logOptVerbose . loggerOpt <$> readIORef loggerStateVar
-    when (verbosity >= (-1)) $ do
-        hPutStrLn stderr $ "ERROR: " ++ msg
-        rawMessage "ERROR" [] msg
 
-data Severity
-    = Panic                     -- ^ Internal invariant violation
-    | Fatal                     -- ^ Unrecoverable error
-    | Error
-    | Warning
-    | Info
-    | Debug
-    deriving (Eq,Ord,Show,Typeable,Generic)
-instance Binary Severity
+----------------------------------------------------------------
+-- API for logging
+----------------------------------------------------------------
 
-class MonadIO m => MonadLog m where
-    logPrefix :: m String
-    logPrefix = return ""
-    logLevelStdout :: m Severity
-    logLevelStdout = return Warning
-    logLevelEvtlog :: m Severity
-    logLevelEvtlog = return Warning
-
-instance MonadLog IO
-instance MonadLog Process where
-    logPrefix = show <$> getSelfPid
-instance MonadLog m => MonadLog (ExceptT e m) where
-    logPrefix      = lift logPrefix
-    logLevelStdout = lift logLevelStdout
-    logLevelEvtlog = lift logLevelEvtlog
-
-infoMsg :: MonadLog m => String -> m ()
-infoMsg msg = do
-    verbStdout <- logLevelStdout
-    verbEvtlog <- logLevelEvtlog
-    pref       <- logPrefix
-    when (verbStdout >= Info) $
-        liftIO $ putStrLn $ pref ++ " INFO :" ++ msg
-    when (verbEvtlog >= Info) $
-        liftIO $ rawMessage "INFO" [] msg
-
-debugMsg :: MonadLog m => String -> m ()
-debugMsg msg = do
-    verbStdout <- logLevelStdout
-    verbEvtlog <- logLevelEvtlog
-    pref       <- logPrefix
-    when (verbStdout >= Info) $
-        liftIO $ putStrLn $ "DEBUG:" ++ pref ++ ": " ++ msg
-    when (verbEvtlog >= Info) $
-        liftIO $ rawMessage "DEBUG" [] msg
-
+-- | Put message into event log that panic occured.
 panicMsg :: MonadLog m => String -> m ()
 panicMsg msg = do
-    pref <- logPrefix
-    liftIO $ putStrLn $ "PANIC: " ++ pref ++ ": "++ msg
-    liftIO $ rawMessage "PANIC" [] msg
+    attrs <- processAttributes
+    liftIO $ rawMessage "PANIC" attrs msg True
 
+-- | Put message into log about fatal error
 fatalMsg :: MonadLog m => String -> m ()
 fatalMsg msg = do
-    pref <- logPrefix
-    liftIO $ putStrLn $ "FATAL: " ++ pref ++ ": " ++ msg
-    liftIO $ rawMessage "FATAL" [] msg
+    verbosity <- logVerbosity
+    when (verbosity >= -2) $ do
+        attrs <- processAttributes
+        liftIO $ rawMessage "FATAL" attrs msg True
 
-errorMsg2 :: MonadLog m => String -> m ()
-errorMsg2 msg = do
-    pref <- logPrefix
-    liftIO $ putStrLn $ "ERROR: " ++ pref ++ ": " ++ msg
-    liftIO $ rawMessage "ERROR" [] msg
+-- | Put message into log about fatal error
+errorMsg :: MonadLog m => String -> m ()
+errorMsg msg = do
+    verbosity <- logVerbosity
+    when (verbosity >= -1) $ do
+        attrs <- processAttributes
+        liftIO $ rawMessage "FATAL" attrs msg True
+
+-- | Put a warning message. Warnings have a verbosity of 0.
+warningMsg :: MonadLog m => String -> m ()
+warningMsg msg = do
+    verbosity <- logVerbosity
+    when (verbosity >= -2) $ do
+        attrs <- processAttributes
+        liftIO $ rawMessage "FATAL" attrs msg True
+    
+-- | Put a debug message
+debugMsg :: MonadLog m => String -> m ()
+debugMsg msg = do
+    debugEnabled <- logDebugPrint
+    case debugEnabled of
+      NoDebugPrint -> return ()
+      _            -> do
+          attrs <- processAttributes
+          liftIO $ rawMessage "DEBUG" attrs msg True
 
 
 -- | Synchronize timings - put into eventlog an event with current wall time.
@@ -323,8 +326,9 @@ synchronizationPoint msg = liftIO $ do
     -- fractional part in picoseconds.
     let timeString    = formatTime defaultTimeLocale "%s.%q" utcTime
         humanReadable = formatTime defaultTimeLocale "%F %X" utcTime
-    rawMessage "SYNC" [("time", timeString)] msg
-    rawMessage "MSG" [] $ "started at " ++ humanReadable
+    rawMessage "SYNC" [("time", timeString)] msg False
+    rawMessage "MSG" [] ("started at " ++ humanReadable) False
+
 
 ----------------------------------------------------------------
 -- Profiling basics
@@ -344,21 +348,22 @@ measurement :: MonadIO m
 measurement sample msg attrs dna = do
     -- Get start sample
     sample0 <- sample StartSample
-    liftIO $ rawMessage "START" (attrs ++ sample0) msg
+    liftIO $ rawMessage "START" (attrs ++ sample0) msg False
     -- Perform action
     r <- liftIO . evaluate =<< dna
     -- Get end sample, return
     sample1 <- sample EndSample
-    liftIO $ rawMessage "END" (attrs ++ sample1) msg
+    liftIO $ rawMessage "END" (attrs ++ sample1) msg False
     return r
 
 -- | Put measurements about execution time of monadic action into
 --   eventlog. Result of action is evaluated to WHNF.
-logDuration :: MonadProcess m => String -> m a -> m a
+logDuration :: MonadLog m => String -> m a -> m a
 logDuration msg dna = do
     attrs <- processAttributes
     let sample _ = return [] -- measurement is implicit from START/END timestamp
     measurement sample msg attrs dna
+
 
 ----------------------------------------------------------------
 -- Profiling
@@ -437,11 +442,7 @@ logProfile :: String           -- ^ Message. Will be used in profile view
 logProfile msg hints attrs = measurement (liftIO . sample) msg attrs
     where sample pt = concat `liftM` mapM (hintToSample pt) hints
 
--- | Generate identification attributes
-processAttributes :: MonadProcess m => m [Attr]
-processAttributes = do
-    pid <- liftP getSelfPid
-    return [("pid", show pid)]
+
 
 -- | Takes a sample according to the given hint
 hintToSample :: SamplePoint -> ProfileHint -> IO [Attr]
@@ -552,11 +553,8 @@ floatCounterDescs
 -- | Generate message attributes from current floating point counter values
 floatCounterAttrs :: SamplePoint -> IO [Attr]
 floatCounterAttrs pt = do
-
     -- Get counters from perf_event
-    countersVar <- loggerFloatCounters <$> readIORef loggerStateVar
-    vals <- samplePerfEvents countersVar (map snd floatCounterDescs) pt
-
+    vals <- samplePerfEvents loggerFloatCounters (map snd floatCounterDescs) pt
     -- Generate attributes
     let fmtName (name, _) = "perf:" ++ name
     return $ filter (not . null . snd)
@@ -571,18 +569,15 @@ cacheCounterDescs
 -- | Generate message attributes from current cache performance counter values
 cacheCounterAttrs :: SamplePoint -> IO [Attr]
 cacheCounterAttrs pt = do
-
     -- Get counters from perf_event
-    countersVar <- loggerCacheCounters <$> readIORef loggerStateVar
-    vals <- samplePerfEvents countersVar (map snd cacheCounterDescs) pt
-
+    vals <- samplePerfEvents loggerCacheCounters (map snd cacheCounterDescs) pt
     -- Constant enough to hard-code it, I think.
     let cacheLine = 32
-
     -- Generate attributes
     let fmtName (name, _) = "perf:" ++ name
     return $ filter (not . null . snd)
            $ zip (map fmtName cacheCounterDescs) (map (formatPerfStat cacheLine) vals)
+
 
 ----------------------------------------------------------------
 -- I/O data sampling
@@ -650,55 +645,53 @@ cudaMetricNames opt = case logOptMeasure opt of
 
 cudaInit :: LoggerOpt -> IO ()
 cudaInit opt = do
-
   when (logOptMeasure opt `elem` ["help", "list"]) $
     putStrLn "Supported metric groups: fp-inst, float-ops, double-ops"
-
   cuptiMetricsInit $ map snd $ cudaMetricNames opt
 
-cudaAttrs :: SamplePoint -> IO [Attr]
+cudaAttrs :: MonadLog m => SamplePoint -> m [Attr]
 cudaAttrs pt = do
-
     -- Get metrics
-    state <- readIORef loggerStateVar
-    let metricNames = map fst $ cudaMetricNames $ loggerOpt state
+    state <- logLoggerOpt
+    let metricNames = map fst $ cudaMetricNames state
 
     -- Enable CUPTI if required
     case pt of
-      StartSample -> enableProfileMod loggerCuptiEnabled $ do
-        cuptiEnable
-        when (not $ null metricNames) cuptiMetricsEnable
-      EndSample -> disableProfileMod loggerCuptiEnabled $ do
-        cuptiDisable
-        when (not $ null metricNames) cuptiMetricsDisable
-
-    -- Flush, so statistics are current
-    cuptiFlush
-
-    -- Then read stats
-    memsetTime <- cuptiGetMemsetTime
-    kernelTime <- cuptiGetKernelTime
-    overheadTime <- cuptiGetOverheadTime
-    memsetBytes <- cuptiGetMemsetBytes
-    memcpyTimeH <- cuptiGetMemcpyTimeTo CUptiHost
-    memcpyTimeD <- (+) <$> cuptiGetMemcpyTimeTo CUptiDevice
-                       <*> cuptiGetMemcpyTimeTo CUptiArray
-    memcpyBytesH <- cuptiGetMemcpyBytesTo CUptiHost
-    memcpyBytesD <- (+) <$> cuptiGetMemcpyBytesTo CUptiDevice
-                        <*> cuptiGetMemcpyBytesTo CUptiArray
-
-    -- Read metrics
-    metrics <- cuptiGetMetrics
-    let formatMetric m = show m ++ "/" ++ show kernelTime
-        metricAttrs = zipWith (,) metricNames (map formatMetric metrics)
-
-    -- Generate attributes
-    return $ consAttrNZ "cuda:kernel-time" kernelTime
-           $ consAttrNZ "cuda:overhead-time" overheadTime
-           $ consAttrNZT "cuda:memset-bytes" memsetBytes memsetTime
-           $ consAttrNZT "cuda:memcpy-bytes-host" memcpyBytesH memcpyTimeH
-           $ consAttrNZT "cuda:memcpy-bytes-device" memcpyBytesD memcpyTimeD
-           $ metricAttrs
+      StartSample -> liftIO $ modifyMVar_ loggerCuptiEnabled $ \f -> do
+          unless f $ do
+              cuptiEnable
+              when (not $ null metricNames) cuptiMetricsEnable
+          return True
+      EndSample -> liftIO $ modifyMVar_ loggerCuptiEnabled $ \f -> do
+          when f $ do
+              cuptiDisable
+              when (not $ null metricNames) cuptiMetricsDisable
+          return False
+    liftIO $ do
+        -- Flush, so statistics are current
+        cuptiFlush
+        -- Then read stats
+        memsetTime  <- cuptiGetMemsetTime
+        kernelTime  <- cuptiGetKernelTime
+        overheadTime <- cuptiGetOverheadTime
+        memsetBytes <- cuptiGetMemsetBytes
+        memcpyTimeH <- cuptiGetMemcpyTimeTo CUptiHost
+        memcpyTimeD <- (+) <$> cuptiGetMemcpyTimeTo CUptiDevice
+                           <*> cuptiGetMemcpyTimeTo CUptiArray
+        memcpyBytesH <- cuptiGetMemcpyBytesTo CUptiHost
+        memcpyBytesD <- (+) <$> cuptiGetMemcpyBytesTo CUptiDevice
+                            <*> cuptiGetMemcpyBytesTo CUptiArray
+        -- Read metrics
+        metrics <- cuptiGetMetrics
+        let formatMetric m = show m ++ "/" ++ show kernelTime
+            metricAttrs = zipWith (,) metricNames (map formatMetric metrics)
+        -- Generate attributes
+        return $ consAttrNZ "cuda:kernel-time" kernelTime
+               $ consAttrNZ "cuda:overhead-time" overheadTime
+               $ consAttrNZT "cuda:memset-bytes" memsetBytes memsetTime
+               $ consAttrNZT "cuda:memcpy-bytes-host" memcpyBytesH memcpyTimeH
+               $ consAttrNZT "cuda:memcpy-bytes-device" memcpyBytesD memcpyTimeD
+               $ metricAttrs
 
 #else
 cudaAttrs :: SamplePoint -> IO [Attr]

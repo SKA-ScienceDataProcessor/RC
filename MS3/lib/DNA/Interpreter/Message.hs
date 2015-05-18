@@ -112,7 +112,7 @@ handleProcessDone _pid = return ()
 -- Monitored process crashed or was disconnected
 handleProcessCrash :: String -> ProcessId -> Controller ()
 handleProcessCrash msg pid = withAID pid $ \aid -> do
-    errorMsg2 $ printf "Child %s/%s crash: %s" (show aid) (show pid) msg
+    errorMsg $ printf "Child %s/%s crash: %s" (show aid) (show pid) msg
     -- We can receive notifications from unknown processes. When we
     -- terminate actor forcefully we remove it from registry at the
     -- same time
@@ -137,7 +137,7 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
                 lift $ spawnSingleActor aid cad restart
                 --
                 Just pids <- use $ stAid2Pid . at aid
-                errorMsg2 $ "Restarted unconnected actor as " ++ show pids
+                errorMsg $ "Restarted unconnected actor as " ++ show pids
                 actorDestinationAddr aid >>= T.mapM_ (sendToActor aid)
         ----------------
         | Just restart        <- mRestart
@@ -147,7 +147,7 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
                 lift $ spawnSingleActor aid cad restart
                 --
                 Just pids <- use $ stAid2Pid . at aid
-                errorMsg2 $ "Restarted connected actor as " ++ show pids
+                errorMsg $ "Restarted connected actor as " ++ show pids
                 Just (Just (dst,_)) <- use $ stActorRecvAddr . at aid
                 liftP $ trySend dst
                 actorDestinationAddr aid >>= T.mapM_ (sendToActor aid)
@@ -167,7 +167,7 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
                       lift $ spawnSingleActor aid cad restart
                       -- Reconnect
                       Just pids <- use $ stAid2Pid . at aid
-                      errorMsg2 $ "Restarted connected actor as " ++ show pids
+                      errorMsg $ "Restarted connected actor as " ++ show pids
                       Just (Just dst) <- use $ stActorRecvAddr . at aid
                       stChildren . at aidSrc .= Just (Running $ RunInfo 0 nFailsSrc)
                       sendToActor aidSrc dst

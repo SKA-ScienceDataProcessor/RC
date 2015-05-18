@@ -81,17 +81,17 @@ instance Monad DnaMonad where
     fail             = doPanic
 
 instance MonadLog DnaMonad where
-    logPrefix = liftP logPrefix
-    logLevelStdout = do
-        flags <- _stDebugFlags <$> get
-        case [ s | StdOutLevel s <- flags ] of
-          []  -> return Warning
-          s:_ -> return s
-    logLevelEvtlog = do
-        flags <- _stDebugFlags <$> get
-        case [ s | EvtlogLevel s <- flags ] of
-          []  -> return Warning
-          s:_ -> return s
+    logSource = liftP logSource
+    -- logLevelStdout = do
+    --     flags <- _stDebugFlags <$> get
+    --     case [ s | StdOutLevel s <- flags ] of
+    --       []  -> return Warning
+    --       s:_ -> return s
+    -- logLevelEvtlog = do
+    --     flags <- _stDebugFlags <$> get
+    --     case [ s | EvtlogLevel s <- flags ] of
+    --       []  -> return Warning
+    --       s:_ -> return s
 
 
 -- | Monad for event handlers. It adds explicit error handling
