@@ -227,6 +227,9 @@ data DebugFlag
     = CrashProbably Double
       -- ^ Crash during startup with given probability. Not all actors
       --   will honor that request
+    | EnableDebugPrint Bool
+      -- ^ Enable debug printing. If parameter is true child actors
+      --   will have debug printing enabled too.
     deriving (Show,Eq,Typeable,Generic)
 instance Binary DebugFlag
 
