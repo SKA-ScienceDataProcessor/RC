@@ -12,6 +12,7 @@ import Control.Exception (onException,SomeException)
 import Control.Distributed.Process      hiding (onException)
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Node (initRemoteTable)
+import Data.Char
 import Network.BSD        (getHostName)
 import System.Environment (getExecutablePath,getEnv,lookupEnv)
 import System.Directory
@@ -164,7 +165,7 @@ parseNodeList = do
     -- Integer ranges
     leadingInt :: ReadP (Int,Int)
     leadingInt = do
-        sn <- munch1 $ \c -> c >= '0' && c <= '9'
+        sn <- munch1 isDigit
         n  <- case safeRead sn of
                 Just n  -> return n
                 Nothing -> empty
@@ -183,13 +184,13 @@ parseNodeList = do
         m <- int
         return $ Range len (n,m)
     -- String
-    str = munch1 $ \c -> or [ c >= 'a' && c <= 'z'
-                            , c >= 'A' && c <= 'Z'
-                            , c >= '0' && c <= '9'
+    str = munch1 $ \c -> or [ isAsciiLower c
+                            , isAsciiUpper c
+                            , isDigit c
                             , c == '-'
                             ]
     -- Integer
-    int = do s <- munch1 $ \c -> c >= '0' && c <= '9'
+    int = do s <- munch1 isDigit
              return (read s :: Int)
 
 -- Chunk of NODELIST entry
