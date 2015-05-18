@@ -80,18 +80,10 @@ instance Monad DnaMonad where
     DnaMonad m >>= f = DnaMonad $ m >>= fmap unDnaMonad f
     fail             = doPanic
 
+
 instance MonadLog DnaMonad where
-    logSource = liftP logSource
-    -- logLevelStdout = do
-    --     flags <- _stDebugFlags <$> get
-    --     case [ s | StdOutLevel s <- flags ] of
-    --       []  -> return Warning
-    --       s:_ -> return s
-    -- logLevelEvtlog = do
-    --     flags <- _stDebugFlags <$> get
-    --     case [ s | EvtlogLevel s <- flags ] of
-    --       []  -> return Warning
-    --       s:_ -> return s
+    logSource    = liftP logSource
+    logLoggerOpt = _stLogOpt <$> get
 
 
 -- | Monad for event handlers. It adds explicit error handling
@@ -152,9 +144,10 @@ runDnaMonad
     -> Closure DnaInterpreter
     -> [NodeInfo]
     -> [DebugFlag]
+    -> LoggerOpt
     -> DnaMonad a
     -> Process a
-runDnaMonad aid (Rank rnk) (GroupSize grp) interp nodes flags =
+runDnaMonad aid (Rank rnk) (GroupSize grp) interp nodes flags logopt =
     flip runReaderT env . flip evalStateT s0 . unDnaMonad
   where
     env = Env { envRank        = rnk
@@ -165,6 +158,7 @@ runDnaMonad aid (Rank rnk) (GroupSize grp) interp nodes flags =
     s0 = StateDNA
            { _stCounter       = 0
            , _stDebugFlags    = flags
+           , _stLogOpt        = logopt
            , _stNodePool      = Set.fromList nodes
            , _stUsedResources = Map.empty
            , _stChildren      = Map.empty
@@ -188,6 +182,7 @@ runDnaParam p action = do
               (actorInterpreter p)
               (vcadNodePool $ actorNodes       p)
               (actorDebugFlags  p)
+              (actorLogOpt p)
     $ dnaInterpreter interpreter action
 
 -- | Evaluator for DNA monad. We have to pass closure with function
@@ -219,6 +214,7 @@ data ActorParam = ActorParam
       -- ^ Send receive address and list of port ID's back to the parent process
     , actorAID         :: AID
       -- ^ AID of an actor as viewed by parent
+    , actorLogOpt      :: LoggerOpt
     }
     deriving (Typeable,Generic)
 instance Binary ActorParam
@@ -249,6 +245,7 @@ data StateDNA = StateDNA
     { _stCounter     :: !Int
       -- Counter for generation of unique IDs
     , _stDebugFlags  :: [DebugFlag]
+    , _stLogOpt      :: LoggerOpt
 
       -- Resources
     , _stNodePool      :: !(Set NodeInfo)

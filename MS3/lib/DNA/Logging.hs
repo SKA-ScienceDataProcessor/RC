@@ -1,6 +1,6 @@
+{-# LANGUAGE CPP                #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE BangPatterns, CPP  #-}
 -- |
 -- Module    : DNA.Logging
 -- Copyright : (C) 2014-2015 Braam Research, LLC.
@@ -39,6 +39,7 @@ module DNA.Logging (
       -- * Options and basic API
       MonadLog(..)
     , LoggerOpt(..)
+    , DebugPrint(..)
     , initLogging
     , processAttributes
       -- * Logging API
@@ -95,7 +96,7 @@ import System.IO.Unsafe   (unsafePerformIO)
 import System.Locale      (defaultTimeLocale)
 import System.Mem         (performGC)
 
-import DNA.Types
+
 
 ----------------------------------------------------------------
 -- Basic logging API
@@ -109,28 +110,22 @@ class MonadIO m => MonadLog m where
     -- | Who created log message. It could be process ID, actor name etc.
     logSource :: m String
     logSource = return ""
-    -- | Verbosity of logging:
+    -- | Logger options
+    --
+    --   Verbosity of logging:
     --
     --    * -2 - only fatal errors logged
     --    * -1 - error and more severe events logged
     --    * 0  - warnings and more severe events logged
     --    * 1  - everything is logged
-    logVerbosity :: m Int
-    logVerbosity = return 0
-    -- | Is debug print enabled? Default: disabled. 
-    logDebugPrint :: m DebugPrint
-    logDebugPrint = return NoDebugPrint
-    -- | Logger options
     logLoggerOpt :: m LoggerOpt
-    logLoggerOpt = return $ LoggerOpt 0 ""
+    logLoggerOpt = return $ LoggerOpt 0 NoDebugPrint ""
     
 instance MonadLog IO
 instance MonadLog Process where
     logSource = show <$> getSelfPid
 instance MonadLog m => MonadLog (ExceptT e m) where
     logSource     = lift logSource
-    logVerbosity  = lift logVerbosity
-    logDebugPrint = lift logDebugPrint
     logLoggerOpt  = lift logLoggerOpt
 
 -- | Is debug printing enabled
@@ -152,12 +147,14 @@ data LoggerOpt = LoggerOpt
   { logOptVerbose ::  Int
     -- ^ The higher, the more additional information we output about
     -- what we are doing.
+  , logOptDebugPrint :: DebugPrint
+    -- ^ Whether debug printing is enabled
   , logOptMeasure :: String
     -- ^ Gather detailed statistics about the given group of
     -- performance metrics, at the possible expense of performance.
   }
-  deriving (Show)
-
+  deriving (Show,Typeable,Generic)
+instance Binary LoggerOpt
 
 -- Sequence number for splitting messages when writing them to
 -- eventlog. We need global per-program supply of unique numbers.
@@ -266,7 +263,7 @@ eventMessage = message 0
 -- | Put a message at the given verbosity level
 message :: MonadLog m => Int -> String -> m ()
 message v msg = do
-    verbosity <- logVerbosity
+    verbosity <- logOptVerbose `liftM` logLoggerOpt
     attrs     <- processAttributes
     when (verbosity >= v) $ liftIO $
         rawMessage "MSG" (("v", show v) : attrs) msg True
@@ -286,7 +283,7 @@ panicMsg msg = do
 -- | Put message into log about fatal error
 fatalMsg :: MonadLog m => String -> m ()
 fatalMsg msg = do
-    verbosity <- logVerbosity
+    verbosity <- logOptVerbose `liftM` logLoggerOpt
     when (verbosity >= -2) $ do
         attrs <- processAttributes
         liftIO $ rawMessage "FATAL" attrs msg True
@@ -294,7 +291,7 @@ fatalMsg msg = do
 -- | Put message into log about fatal error
 errorMsg :: MonadLog m => String -> m ()
 errorMsg msg = do
-    verbosity <- logVerbosity
+    verbosity <- logOptVerbose `liftM` logLoggerOpt
     when (verbosity >= -1) $ do
         attrs <- processAttributes
         liftIO $ rawMessage "FATAL" attrs msg True
@@ -302,7 +299,7 @@ errorMsg msg = do
 -- | Put a warning message. Warnings have a verbosity of 0.
 warningMsg :: MonadLog m => String -> m ()
 warningMsg msg = do
-    verbosity <- logVerbosity
+    verbosity <- logOptVerbose `liftM` logLoggerOpt
     when (verbosity >= -2) $ do
         attrs <- processAttributes
         liftIO $ rawMessage "FATAL" attrs msg True
@@ -310,7 +307,7 @@ warningMsg msg = do
 -- | Put a debug message
 debugMsg :: MonadLog m => String -> m ()
 debugMsg msg = do
-    debugEnabled <- logDebugPrint
+    debugEnabled <- logOptDebugPrint `liftM` logLoggerOpt
     case debugEnabled of
       NoDebugPrint -> return ()
       _            -> do

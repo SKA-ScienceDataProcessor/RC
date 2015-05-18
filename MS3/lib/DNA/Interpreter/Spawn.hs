@@ -327,6 +327,10 @@ sendActorParam
 sendActorParam pid aid rnk g cad ch flags = do
     me     <- liftP getSelfPid
     interp <- envInterpreter <$> ask
+    logopt <- use stLogOpt
+    let logopt' = case logOptDebugPrint logopt of
+                    DebugPrintEnabled -> logopt { logOptDebugPrint = NoDebugPrint }
+                    _                 -> logopt
     let p = ActorParam
             { actorParent      = Just me
             , actorInterpreter = interp
@@ -336,6 +340,7 @@ sendActorParam pid aid rnk g cad ch flags = do
             , actorDebugFlags  = flags
             , actorSendBack    = ch
             , actorAID         = aid
+            , actorLogOpt      = logopt'
             }
     liftP $ send pid p
     return p

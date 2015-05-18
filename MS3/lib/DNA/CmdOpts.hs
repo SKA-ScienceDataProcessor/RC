@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveFunctor #-}
 -- |CmdLine.hs
 --
 -- Command-line options parsing, using optparser-applicative.
@@ -76,7 +75,7 @@ dnaParseOptions = do
     wrapParser p = info (helper <*> p)
         (  fullDesc
         <> progDesc "Start DNA program"
-        <> header ("DNA Cloud Haskell implementation")
+        <> header "DNA Cloud Haskell implementation"
         )
     --
     optUnix       = Unix <$> optNProcs
@@ -89,8 +88,8 @@ dnaParseOptions = do
         )
     optSlurm  = pure Slurm
     optSlurmWorker = SlurmWorker <$> optWDir
-    optCommon = CommonOpt <$> optBasePort <*> optLogger
-    optLogger = LoggerOpt <$> optVerbosity <*> optMeasure
+    optCommon = CommonOpt <$> optBasePort  <*> optLogger
+    optLogger = LoggerOpt <$> optVerbosity <*> pure NoDebugPrint <*> optMeasure
     -- Parsers for
     optWDir = option str
             ( metavar "DIR"
