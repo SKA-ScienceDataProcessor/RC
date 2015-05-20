@@ -104,8 +104,9 @@ def write_timeline_data(logs, conf) :
     # Figure out a good tick interval
     tickInterval = 1
     for i in [2,5,10,20,30,60,120]:
-        if i * 20 > total_time: break
+        if i * 10 > total_time: break
         tickInterval = i
+    print "tickInterval= ", tickInterval
 
     f.write('''
       var chart = d3.timeline()
@@ -118,7 +119,7 @@ def write_timeline_data(logs, conf) :
         .stack()
         .colorProperty('type')
         .colors(colorScale)
-        .margin({left:150, right:150, top:0, bottom:0});
+        .margin({left:300, right:0, top:0, bottom:0});
 
       var svg = d3.select("#timeline").append("svg").attr("width", "1500")
         .datum(data).call(chart);''' % (tickInterval))
@@ -138,9 +139,13 @@ def write_middle():
       font-family: sans-serif;
       font-size: 10px;
     }
-    .timeline-label {
+    #timeline text {
       font-family: sans-serif;
       font-size: 12px;
+      text-anchor: end;
+    }
+    #timeline .timeline-label {
+      text-anchor: start;
     }
 
     table, th, td {
@@ -358,14 +363,17 @@ def write_timeline_body(logs, conf) :
                    }
         for (sumAttr, weightedVals) in sumTable.items():
             sum = 0
-            time = None
+            time_sum = 0
+            weight_sum = 0
             for (valAttr, weight) in weightedVals.items():
                 if total_tags[a].has_key(valAttr):
                     sum += weight * total_tags[a][valAttr]
-                    time = total_tags_time[a][valAttr]
-            if not time is None:
+                    time_sum += weight * total_tags_time[a][valAttr]
+                    print total_tags_time[a][valAttr]
+                    weight_sum += weight
+            if time_sum > 0:
                 total_tags[a][sumAttr] = sum
-                total_tags_time[a][sumAttr] = time
+                total_tags_time[a][sumAttr] = time_sum / weight_sum
 
         # Put reference values where we can determine them
         referenceTable = {

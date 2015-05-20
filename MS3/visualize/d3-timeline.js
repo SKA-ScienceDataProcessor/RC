@@ -283,7 +283,7 @@
       }
 
       function getXTextPos(d, i) {
-        return margin.left + (d.starting_time - beginning) * scaleFactor + 5;
+        return margin.left + (d.starting_time - beginning) * scaleFactor - 5;
       }
 
       function setHeight() {
