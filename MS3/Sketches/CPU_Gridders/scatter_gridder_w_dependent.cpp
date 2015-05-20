@@ -101,7 +101,7 @@ void gridKernel_scatter(
       if (use_permutations) bl = permutations[bl0].bl;
       else bl = bl0;
       int max_supp_here = get_supp(permutations[bl].wp);
-      // for (int sv = 0; sv < max_supp_here; sv++) { // Moved from 2-levels below according to Romein
+      for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
             Pregridded p;
             cvt<grid_size, over, w_planes, is_half_gcf, Inp>::pre(scale, wstep, uvw[bl][i], p);
@@ -115,10 +115,6 @@ void gridKernel_scatter(
           // vis0 = _mm256_loadu_pd((const double *) &vis[bl][i].XX);
           // vis1 = _mm256_loadu_pd((const double *) &vis[bl][i].YX);
 #endif
-
-          for (int su = 0; su < max_supp_here; su++) {
-          // NOTE: Romein writes about moving this to the very outer scope
-          // (2 levels up) to make things more cache-friendly.
           for (int sv = 0; sv < max_supp_here; sv++) {
             // Don't forget our u v are already translated by -max_supp_here/2
             int gsu, gsv;
