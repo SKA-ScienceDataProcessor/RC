@@ -12,11 +12,15 @@ import Control.Distributed.Process.Serializable (Serializable)
 import Control.Distributed.Static (Closure)
 
 import DNA
+import DNA.Logging
 
 import OskarBinReader
 import Namespace
 import GridderActors
 import Utils
+
+rep :: String -> DNA ()
+rep = logMessage
 
 -- We have only 2 gather gridder variants at the moment and the selection is determined
 --   by how we bin data -- for full or half gcf usage
@@ -61,9 +65,6 @@ locActor clo par = do
   shell <- startActor (N 0) (useLocal >> return clo)
   sendParam par shell
   delay Local shell
-
-rep :: String -> DNA ()
-rep = unboundKernel "rep" [] . liftIO . printImmediate
 
 main :: IO ()
 main = do
