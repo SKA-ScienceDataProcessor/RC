@@ -169,8 +169,8 @@ runGridderWith gridactor taskData ns_in ns_out = do
         CUDA.mallocArray gridsize
     let
       extract n = do
-        kernel "ExtractPolarizaton" [] . liftIO $ normalizeAndExtractPolarization n polptr grid
-        kernel "FftPolarizaton" [] . liftIO $ fftGridPolarization polptr
+        kernel "ExtractPolarization" [] . liftIO $ normalizeAndExtractPolarization n polptr grid
+        kernel "FftPolarization" [] . liftIO $ fftGridPolarization polptr
         hostpol <- gpuToHost gridsize polptr
         hostToDisk gridsize (CUDA.useHostPtr hostpol) (ns_out </> 'p': show n)
         kernel "runGridderWith/mem" [] $ liftIO $ CUDA.freeHost hostpol
@@ -227,8 +227,8 @@ cpuGridder useFullGcf usePermutations ns_out td gcfh = do
         polptr <- mallocArray gridsize
         return (gridp, polptr)
     let extract n = do
-          kernel "ExtractPolarizatonCPU" [] . liftIO $ CPU.normalizeAndExtractPolarizationCPU n polptr gridp
-          kernel "FftPolarizatonCPU" [] . liftIO $ CPU.fft_inplace_even polptr
+          kernel "ExtractPolarizationCPU" [] . liftIO $ CPU.normalizeAndExtractPolarizationCPU n polptr gridp
+          kernel "FftPolarizationCPU" [] . liftIO $ CPU.fft_inplace_even polptr
           hostToDisk gridsize polptr (ns_out </> 'p': show n)
     extract 0
     extract 1
