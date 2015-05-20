@@ -186,6 +186,7 @@ executable Gridder_DNA
   main-is:             Gridder_DNA.hs
   build-depends:
     base >=4.6,
+    unix,
     mmap,
     ghc-prim,
     binary,

@@ -5,7 +5,19 @@
     , DeriveDataTypeable
   #-}
 
-module OskarBinReader where
+module OskarBinReader
+  ( TaskData(..)
+  , SortType(..)
+  , tdVisibilitiesSize
+  , tdUVWSize
+  , finalizeTaskData
+  , mkSortedClone
+  , finalizeSortedClone
+  , readOskarData
+  , writeTaskData
+  , readTaskData
+  , readTaskDataHeader
+  ) where
 
 import OskarBinReaderFFI
 import Foreign
@@ -14,6 +26,7 @@ import Foreign.Storable.Complex ()
 import Text.Printf
 import System.IO
 import System.FilePath
+import Control.Applicative ( (<$>) )
 
 import GHC.Generics (Generic)
 import Data.Binary
@@ -29,12 +42,19 @@ data TaskData = TaskData {
   , tdPoints    :: !Int
   , tdMaxx      :: !CDouble
   , tdWstep     :: !CDouble
+  , tdComplexity :: !Int
   , tdVisibilies :: !(Ptr CxDouble)
   , tdUVWs :: !(Ptr CDouble)
   , tdMap  :: !(Ptr BlWMap)
 } deriving (Generic, Typeable)
 
 instance Binary TaskData
+
+tdVisibilitiesSize :: TaskData -> Int
+tdVisibilitiesSize td = tdPoints td * 8 * sizeOf (undefined :: CDouble)
+
+tdUVWSize :: TaskData -> Int
+tdUVWSize td = tdPoints td * 3 * sizeOf (undefined :: CDouble)
 
 finalizeTaskData :: TaskData -> IO ()
 finalizeTaskData td = do
@@ -86,13 +106,14 @@ readOskarData fname = withCString fname doRead
           freeBinHandler vptr
           wstp <- wstep mptr
           mxx <- maxx mptr
-          return $ TaskData nb (fi ntms) (fi nchs) n mxx wstp visptr uvwptr mapptr
+          pcount <- fromIntegral <$> count_points mapptr (fromIntegral nb)
+          return $ TaskData nb (fi ntms) (fi nchs) n mxx wstp pcount visptr uvwptr mapptr
 
 
 -- Our Binary instance is unrelated to deep serializing.
 -- Here is deep from/to disk marchalling.
 writeTaskData :: String -> TaskData -> IO ()
-writeTaskData namespace (TaskData nb nt nc np mxx wstp visptr uvwptr mapptr) =
+writeTaskData namespace (TaskData nb nt nc np mxx wstp _ visptr uvwptr mapptr) =
   allocaArray 4 $ \ip ->
     allocaArray 2 $ \cdp -> do
       let
@@ -116,8 +137,14 @@ writeTaskData namespace (TaskData nb nt nc np mxx wstp visptr uvwptr mapptr) =
   where
     cdb_siz = sizeOf (undefined :: CDouble)
 
+readTaskDataHeader :: String -> IO TaskData
+readTaskDataHeader = readTaskDataGen True
+
 readTaskData :: String -> IO TaskData
-readTaskData namespace =
+readTaskData = readTaskDataGen False
+
+readTaskDataGen :: Bool -> String -> IO TaskData
+readTaskDataGen headerOnly namespace =
   allocaArray 4 $ \ip ->
     allocaArray 2 $ \cdp ->
       withBinaryFile (namespace </> "taskdata.dat") ReadMode $ \handle -> do
@@ -135,12 +162,19 @@ readTaskData namespace =
         np   <- peeki 3
         mxx  <- peekc 0
         wstp <- peekc 1
-        visptr <- alignedMallocArray (np * 4) 32
-        uvwptr <- mallocArray (np * 3)
-        mapptr <- mallocArray nb
-        hget visptr (np * 8 * cdb_siz)
-        hget uvwptr (np * 3 * cdb_siz)
-        hget mapptr (nb * sizeOf (undefined :: BlWMap))
-        return (TaskData nb nt nc np mxx wstp visptr uvwptr mapptr)
+        let header = TaskData nb nt nc np mxx wstp 0 nullPtr nullPtr nullPtr
+        if headerOnly then return header else do
+          visptr <- alignedMallocArray (np * 4) 32
+          uvwptr <- mallocArray (np * 3)
+          mapptr <- mallocArray nb
+          hget visptr (tdVisibilitiesSize header)
+          hget uvwptr (tdUVWSize header)
+          hget mapptr (nb * sizeOf (undefined :: BlWMap))
+          pcount <- fromIntegral <$> count_points mapptr (fromIntegral nb)
+          return header { tdComplexity = pcount
+                        , tdVisibilies = visptr
+                        , tdUVWs = uvwptr
+                        , tdMap = mapptr
+                        }
   where
     cdb_siz = sizeOf (undefined :: CDouble)

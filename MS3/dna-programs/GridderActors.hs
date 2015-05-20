@@ -14,6 +14,7 @@ import qualified Data.ByteString        as BS
 import Data.Complex
 import Foreign.Storable.Complex ()
 import System.FilePath
+import System.Posix
 
 import Control.Distributed.Static (Closure)
 
@@ -30,7 +31,12 @@ import qualified CPUGridder as CPU
 import DNA
 
 binReader :: String -> DNA TaskData
-binReader = unboundKernel "OskarBinaryReader" [ioHint{hintReadBytes = 565536297}] . liftIO . readOskarData
+binReader namespace = do
+    fileStatus <- unboundKernel "OskarBinaryReader" [] $ liftIO $
+      getFileStatus namespace
+    let hints = [ioHint{hintReadBytes = fromIntegral $ fileSize fileStatus}]
+    unboundKernel "OskarBinaryReader" hints $ liftIO $
+      readOskarData namespace
 
 cdSize :: Int
 cdSize = sizeOf (undefined :: Complex Double)
@@ -81,12 +87,13 @@ optRomeinIter baselines _mapper launch = do
 
 -- TODO: factor out host-to-GPU marshalling actor?
 mkGPUGridderActor :: GridderConfig -> Actor (String, TaskData, GCFDev) Grid
-mkGPUGridderActor gcfg = actor $
-    kernel (gcKernelName gcfg)
-      [ cudaHint{ hintCopyBytesDevice = 565762648
-                , hintCudaDoubleOps = 322380900646
-                }] . liftIO . gridder
-  where gridder (_, td, gcf) = runGridder gcfg td gcf
+mkGPUGridderActor gcfg = actor $ \(_, td, gcf) -> do
+    let chint = cudaHint{ hintCopyBytesDevice = tdVisibilitiesSize td +
+                                                tdUVWSize td
+                        , hintCudaDoubleOps = 8 * tdComplexity td
+                        }
+    kernel (gcKernelName gcfg) [chint] $ liftIO $
+      runGridder gcfg td gcf
 
 #define str(x) "x"
 #define __mkWith(mk, k,f,i) mk (GridderConfig str(k) k f i)
@@ -117,10 +124,18 @@ hostToDisk size hostptr fname = kernel "Host2Disk" [ioHint{hintWriteBytes = size
     BS.unsafePackCStringLen (castPtr hostptr, size * cdSize) >>= BS.writeFile fname
 
 writeTaskDataP :: String -> TaskData -> DNA ()
-writeTaskDataP = (kernel "WriteTaskData" [ioHint{hintWriteBytes = 565762696}] .) . (liftIO .) . writeTaskData
+writeTaskDataP namespace td = do
+    let iohint = ioHint {hintWriteBytes = tdVisibilitiesSize td +
+                                          tdUVWSize td}
+    kernel "WriteTaskData" [iohint] $ liftIO $ writeTaskData namespace td
 
 readTaskDataP :: String -> DNA TaskData
-readTaskDataP = kernel "ReadTaskData" [ioHint{hintReadBytes = 565762696}] . liftIO . readTaskData
+readTaskDataP namespace = do
+    header <- kernel "ReadTaskData" [] $ liftIO $ readTaskDataHeader namespace
+    let iohint = ioHint {hintWriteBytes = tdVisibilitiesSize header +
+                                          tdUVWSize header}
+    kernel "ReadTaskData" [iohint] $ liftIO $
+        readTaskData namespace
 
 binAndPregrid :: String -> Bool -> TaskData -> DNA ()
 binAndPregrid namespace isForHalfGCF td = kernel "Binner" [] . liftIO $
@@ -201,7 +216,12 @@ marshalGCF2HostP gcfd@(GCF gcfsize nol _ _ _) =
 -- We have 4 variants only and all are covered by this code
 cpuGridder :: Bool -> Bool -> String -> TaskData -> GCFHost -> DNA ()
 cpuGridder useFullGcf usePermutations ns_out td gcfh = do
-    (gridp, polptr) <- kernel gname [floatHint {hintDoubleOps = 523519288832}] $ liftIO $ do
+    let points = tdComplexity td
+        fhint = floatHint {hintDoubleOps = 8 * points}
+        mhint = memHint {hintMemoryReadBytes = 20 * points `div` tdTimes td}
+                -- All timesteps will update roughly the same memory
+                -- region, and will therefore hit the cache for the most part.
+    (gridp, polptr) <- kernel gname [fhint, mhint] $ liftIO $ do
         gridp <- alignedMallocArray (gridsize * 4) 32
         gfun scale (tdWstep td) (tdMap td) gridp (getLayersHost gcfh) (tdUVWs td) (tdVisibilies td)
         polptr <- mallocArray gridsize

@@ -161,7 +161,7 @@ module DNA (
     , kernel
     , unboundKernel
     , ProfileHint(..)
-    , floatHint, ioHint, haskellHint, cudaHint
+    , floatHint, memHint, ioHint, haskellHint, cudaHint
       -- * Spawning
     , eval
     , evalClosure
