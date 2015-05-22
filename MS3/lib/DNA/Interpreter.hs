@@ -131,6 +131,7 @@ execDelay _loc (Shell aid) = do
     liftP $ T.forM_ pids $ \p ->
         send p (dst,[]::[SendPortId])
     --
+    logConnect (Just aid) Nothing
     return $ Promise recvB
 
 execDelayGroup :: Serializable b => Shell a (Grp b) -> DnaMonad (Group b)
@@ -145,6 +146,7 @@ execDelayGroup (Shell aid) = do
     liftP $ T.forM_ pids $ \p ->
         send p (dst,[]::[SendPortId])
     --
+    logConnect (Just aid) Nothing
     return $ Group recvB recvN
 
 execGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> DnaMonad b
@@ -168,6 +170,7 @@ execSendParam a (Shell aid) = do
       Just (dst,_) -> do
           stActorSrc . at aid .= Just (Left trySend)
           liftP $ trySend dst
+          logConnect Nothing (Just aid)
   where
     trySend (RcvSimple dst) = do
         mch <- unwrapMessage dst
@@ -187,6 +190,7 @@ execBroadcast a (Shell aid) = do
       Just (dst,_) -> do
           stActorSrc . at aid .= Just (Left trySend)
           liftP $ trySend dst
+          logConnect Nothing (Just aid)
   where
     trySend (RcvGrp dsts) = do
         mch <- sequence <$> mapM unwrapMessage dsts
@@ -236,6 +240,7 @@ execConnect (Shell aidSrc) (Shell aidDst) = do
             ((RcvReduce chs,_), Completed 0) -> liftP $ forM_ chs $ \(_,chN) -> sendChan chN 0
             ((RcvReduce _  ,_), Completed _) -> doPanic "Unconnected actor completed execution"
             _                                -> return ()
+    logConnect (Just aidSrc) (Just aidDst)
 
 
 ----------------------------------------------------------------

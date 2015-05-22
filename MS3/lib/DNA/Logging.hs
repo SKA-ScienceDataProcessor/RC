@@ -46,6 +46,9 @@ module DNA.Logging (
     , taggedMessage
     , eventMessage
     , message
+      -- ** Actor operations
+    , logSpawn
+    , logConnect
       -- ** Error logging
     , panicMsg
     , fatalMsg
@@ -63,7 +66,7 @@ module DNA.Logging (
 
 import Control.Applicative
 import Control.Concurrent
-import Control.Distributed.Process (getSelfPid,Process)
+import Control.Distributed.Process (getSelfPid,Process,ProcessId)
 import Control.Exception           (evaluate)
 import Control.Monad               (when,unless,liftM,forM_)
 import Control.Monad.IO.Class
@@ -96,6 +99,7 @@ import System.IO.Unsafe   (unsafePerformIO)
 import System.Locale      (defaultTimeLocale)
 import System.Mem         (performGC)
 
+import DNA.Types          (AID)
 
 
 ----------------------------------------------------------------
@@ -268,7 +272,20 @@ message v msg = do
     when (verbosity >= v) $ liftIO $
         rawMessage "MSG" (("v", show v) : attrs) msg True
 
+-- | Log fact that actor with given PID was spawned
+logSpawn :: MonadLog m => ProcessId -> AID -> m ()
+logSpawn pid aid = do
+    attrs <- processAttributes
+    liftIO $ rawMessage "SPAWN" attrs (show pid ++ " " ++ show aid) False
 
+-- | Log that connection between actor was established. N.B. It means
+--   that actor now knows where to send data.
+logConnect :: MonadLog m => Maybe AID -> Maybe AID -> m ()
+logConnect aidSrc aidDst = do
+    attrs <- processAttributes
+    liftIO $ rawMessage "CONNECT" attrs (render aidSrc ++ " -> " ++ render aidDst) False
+  where
+    render = maybe "-" show
 
 ----------------------------------------------------------------
 -- API for logging

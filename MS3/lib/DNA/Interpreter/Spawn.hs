@@ -202,7 +202,7 @@ spawnSingleActor aid cad cmd@(SpawnSingle act _ addrTy flags) = do
         (RcvReduce{},RcvTyReduce) -> return ()
         (RcvGrp{}   ,RcvTyGrp   ) -> return ()
         _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
-
+    logSpawn pid aid
 
 -- Spawn group of actors
 spawnActorGroup
@@ -232,6 +232,7 @@ spawnActorGroup res resG spwn = do
         stAid2Pid       . at aid %= Just . maybe (Set.singleton pid) (Set.insert pid)
         stPid2Aid       . at pid .= Just (Rank rnk, GroupSize k,aid)
         stUsedResources . at pid .= Just cad
+        logSpawn pid aid
     -- Add timeout for actor
     liftP $ setTimeout flags aid
     --
