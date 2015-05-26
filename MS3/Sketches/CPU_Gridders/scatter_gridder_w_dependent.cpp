@@ -94,6 +94,7 @@ void gridKernel_scatter(
 #pragma omp parallel
   {
     auto grid = grids[omp_get_thread_num()];
+    memset(grid, 0, sizeof(grid));
 
 #pragma omp for schedule(dynamic)
     for(int bl0 = 0; bl0 < baselines; bl0++) {
@@ -205,10 +206,9 @@ void gridKernel_scatter_full(
 #pragma omp single
   nthreads = omp_get_num_threads();
 
-  // Also nullify incoming grid.
+  // Nullify incoming grid, allocate thread-local grids
   memset(grid, 0, sizeof(GT));
   GT * tmpgrids = alignedMallocArray<GT>(nthreads, 32);
-  memset(tmpgrids, 0, nthreads * sizeof(GT));
   gridKernel_scatter<
       over
     , w_planes
