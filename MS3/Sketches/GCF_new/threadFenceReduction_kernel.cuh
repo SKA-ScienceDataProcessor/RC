@@ -21,11 +21,15 @@
 #ifndef _REDUCE_KERNEL_H_
 #define _REDUCE_KERNEL_H_
 
-#include <device_functions.h>
+#ifdef __clang__
+#include "cuda.h"
+#endif
+
 #include <cuComplex.h>
 
+
 /*
-    Parallel sum reduction using shared memory
+    Parallel reduction using shared memory
     - takes log(n) steps for n input elements
     - uses n/2 threads
     - only works for power-of-2 arrays
@@ -37,72 +41,82 @@
     See the CUDA SDK "reduction" sample for more information.
 */
 
-template <unsigned int blockSize>
+template <
+    unsigned int blockSize
+  , typename typ
+  , class task
+  >
 __device__ __inline__ void
-reduceBlock(volatile double *sdata, double mySum, const unsigned int tid)
+reduceBlockGen(volatile typ *sdata, typ myAcc, const unsigned int tid)
 {
-    sdata[tid] = mySum;
+    sdata[tid] = myAcc;
     __syncthreads();
 
     // do reduction in shared mem
     if (blockSize >= 512)
     {
-        if (tid < 256) sdata[tid] = mySum = mySum + sdata[tid + 256];
+        if (tid < 256) sdata[tid] = myAcc = task::reduce(myAcc, sdata[tid + 256]);
         __syncthreads();
     }
 
     if (blockSize >= 256)
     {
-        if (tid < 128) sdata[tid] = mySum = mySum + sdata[tid + 128];
+        if (tid < 128) sdata[tid] = myAcc = task::reduce(myAcc, sdata[tid + 128]);
         __syncthreads();
     }
 
     if (blockSize >= 128)
     {
-        if (tid <  64) sdata[tid] = mySum = mySum + sdata[tid +  64];
+        if (tid <  64) sdata[tid] = myAcc = task::reduce(myAcc, sdata[tid +  64]);
         __syncthreads();
     }
 
     if (tid < 32)
     {
-        sdata[tid] = mySum = mySum + sdata[tid + 32];
-        sdata[tid] = mySum = mySum + sdata[tid + 16];
-        sdata[tid] = mySum = mySum + sdata[tid +  8];
-        sdata[tid] = mySum = mySum + sdata[tid +  4];
-        sdata[tid] = mySum = mySum + sdata[tid +  2];
-        sdata[tid] = mySum = mySum + sdata[tid +  1];
+        sdata[tid] = myAcc = task::reduce(myAcc, sdata[tid + 32]);
+        sdata[tid] = myAcc = task::reduce(myAcc, sdata[tid + 16]);
+        sdata[tid] = myAcc = task::reduce(myAcc, sdata[tid +  8]);
+        sdata[tid] = myAcc = task::reduce(myAcc, sdata[tid +  4]);
+        sdata[tid] = myAcc = task::reduce(myAcc, sdata[tid +  2]);
+        sdata[tid] = myAcc = task::reduce(myAcc, sdata[tid +  1]);
     }
 }
 
-template <unsigned int blockSize, bool nIsPow2>
+template <
+    unsigned int blockSize
+  , bool nIsPow2
+  , typename typ
+  , typename styp
+  , class task
+  >
 __device__ __inline__ void
-reduceBlocks(const cuDoubleComplex *g_idata, double *g_odata, unsigned int n)
+reduceBlocksGen(const styp *g_idata, typ *g_odata, unsigned int n)
 {
-    extern __shared__ double sdata[];
+    extern __shared__ typ sdata[];
 
     // perform first level of reduction,
     // reading from global memory, writing to shared memory
     unsigned int tid = threadIdx.x;
     unsigned int i = blockIdx.x*(blockSize*2) + threadIdx.x;
     unsigned int gridSize = blockSize*2*gridDim.x;
-    double mySum = 0;
+    typ myAcc = task::init();
 
     // we reduce multiple elements per thread.  The number is determined by the
     // number of active thread blocks (via gridDim).  More blocks will result
     // in a larger gridSize and therefore fewer elements per thread
     while (i < n)
     {
-        mySum += g_idata[i].x;
+        myAcc = task::reduce(myAcc, task::f(g_idata[i]));
 
         // ensure we don't read out of bounds -- this is optimized away for powerOf2 sized arrays
         if (nIsPow2 || i + blockSize < n)
-            mySum += g_idata[i+blockSize].x;
+            myAcc = task::reduce(myAcc, task::f(g_idata[i+blockSize]));
 
         i += gridSize;
     }
 
     // do reduction in shared mem
-    reduceBlock<blockSize>(sdata, mySum, tid);
+    reduceBlockGen<blockSize, typ, task>(sdata, myAcc, tid);
 
     // write result for this block to global mem
     if (tid == 0) g_odata[blockIdx.x] = sdata[0];
@@ -126,16 +140,22 @@ __device__ unsigned int retirementCount = 0;
 //
 // For more details on the reduction algorithm (notably the multi-pass approach), see
 // the "reduction" sample in the CUDA SDK.
-template <unsigned int blockSize, bool nIsPow2>
+template <
+    unsigned int blockSize
+  , bool nIsPow2
+  , typename typ
+  , typename styp
+  , class task
+  >
 __device__  __inline__
-void reduceSinglePass_dev(const cuDoubleComplex *g_idata, double *g_odata, unsigned int n)
+void reduceSinglePass_devGen(const styp *g_idata, typ *g_odata, unsigned int n)
 {
 
     //
     // PHASE 1: Process all inputs assigned to this block
     //
 
-    reduceBlocks<blockSize, nIsPow2>(g_idata, g_odata, n);
+    reduceBlocksGen<blockSize, nIsPow2, typ, styp, task>(g_idata, g_odata, n);
 
     //
     // PHASE 2: Last block finished will process all partial sums
@@ -145,7 +165,7 @@ void reduceSinglePass_dev(const cuDoubleComplex *g_idata, double *g_odata, unsig
     {
         const unsigned int tid = threadIdx.x;
         __shared__ bool amLast;
-        extern double __shared__ smem[];
+        extern typ __shared__ smem[];
 
         // wait until all outstanding memory instructions in this thread are finished
         __threadfence();
@@ -164,15 +184,15 @@ void reduceSinglePass_dev(const cuDoubleComplex *g_idata, double *g_odata, unsig
         if (amLast)
         {
             int i = tid;
-            double mySum = 0;
+            typ myAcc = task::init();
 
             while (i < gridDim.x)
             {
-                mySum += g_odata[i];
+                myAcc = task::reduce(myAcc, g_odata[i]);
                 i += blockSize;
             }
 
-            reduceBlock<blockSize>(smem, mySum, tid);
+            reduceBlockGen<blockSize, typ, task>(smem, myAcc, tid);
 
             if (tid==0)
             {
@@ -183,6 +203,20 @@ void reduceSinglePass_dev(const cuDoubleComplex *g_idata, double *g_odata, unsig
             }
         }
     }
+}
+
+#define TASKCFG static __inline__ __device__
+
+struct doubleSum {
+  TASKCFG double init() {return 0.0;}
+  TASKCFG double reduce(double x, double acc){return x + acc;}
+  TASKCFG double f(cuDoubleComplex c){return c.x;}
+};
+
+template <unsigned int blockSize, bool nIsPow2>
+__device__ __inline__
+void reduceSinglePass_dev(const cuDoubleComplex *g_idata, double *g_odata, unsigned int n){
+  reduceSinglePass_devGen<blockSize, nIsPow2, double, cuDoubleComplex, doubleSum>(g_idata, g_odata, n);
 }
 
 #endif // #ifndef _REDUCE_KERNEL_H_
