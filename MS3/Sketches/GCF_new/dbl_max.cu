@@ -1,8 +1,10 @@
 #include "threadFenceReduction_kernel.cuh"
 
+#include <math_functions.h>
+
 struct doubleMax {
   TASKCFG double init() {return 0.0;}
-  TASKCFG double reduce(double x, double acc){return x > acc ? x : acc;}
+  TASKCFG double reduce(double x, double acc){return max(x,acc);}
   TASKCFG double f(double c){return fabs(c);}
 };
 
