@@ -207,16 +207,4 @@ void reduceSinglePass_devGen(const styp *g_idata, typ *g_odata, unsigned int n)
 
 #define TASKCFG static __inline__ __device__
 
-struct doubleSum {
-  TASKCFG double init() {return 0.0;}
-  TASKCFG double reduce(double x, double acc){return x + acc;}
-  TASKCFG double f(cuDoubleComplex c){return c.x;}
-};
-
-template <unsigned int blockSize, bool nIsPow2>
-__device__ __inline__
-void reduceSinglePass_dev(const cuDoubleComplex *g_idata, double *g_odata, unsigned int n){
-  reduceSinglePass_devGen<blockSize, nIsPow2, double, cuDoubleComplex, doubleSum>(g_idata, g_odata, n);
-}
-
 #endif // #ifndef _REDUCE_KERNEL_H_
