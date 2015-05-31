@@ -175,7 +175,7 @@ doCuda t2 ws_hsupps gcf =
     CUDA.allocaArray (256*256) $ \(ffpc :: CxDoubleDevPtr) ->
       CUDA.allocaArray (256*256*8*8) $ \(overo :: CxDoubleDevPtr) ->
         CUDA.allocaArray (256*256*8*8) $ \(overt :: CxDoubleDevPtr) ->
-          CUDA.allocaArray 1 $ \(normp :: DoubleDevPtr) ->
+          CUDA.allocaArray 64 {- 256*256/1024 -} $ \(normp :: DoubleDevPtr) ->
             let
               go ((w, hsupp):rest) lptrrlist = do
                  let
