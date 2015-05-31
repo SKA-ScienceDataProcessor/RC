@@ -7,7 +7,7 @@
 struct doubleSum {
   TASKCFG double init() {return 0.0;}
   TASKCFG double reduce(double x, double acc){return x + acc;}
-  TASKCFG double f(cuDoubleComplex c){return c.x;}
+  TASKCFG double f(unsigned int, cuDoubleComplex c){return c.x;}
 };
 
 template <unsigned int blockSize, bool nIsPow2>
