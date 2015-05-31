@@ -5,7 +5,7 @@
 struct doubleMax {
   TASKCFG double init() {return 0.0;}
   TASKCFG double reduce(double x, double acc){return max(x,acc);}
-  TASKCFG double f(double c){return fabs(c);}
+  TASKCFG double f(unsigned int i, double c){return fabs(c);}
 };
 
 extern "C" __global__ void max_512_e2(const double *g_idata, double *g_odata, unsigned int n) {

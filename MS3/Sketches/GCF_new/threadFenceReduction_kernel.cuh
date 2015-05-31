@@ -106,11 +106,11 @@ reduceBlocksGen(const styp *g_idata, typ *g_odata, unsigned int n)
     // in a larger gridSize and therefore fewer elements per thread
     while (i < n)
     {
-        myAcc = task::reduce(myAcc, task::f(g_idata[i]));
+        myAcc = task::reduce(myAcc, task::f(i, g_idata[i]));
 
         // ensure we don't read out of bounds -- this is optimized away for powerOf2 sized arrays
         if (nIsPow2 || i + blockSize < n)
-            myAcc = task::reduce(myAcc, task::f(g_idata[i+blockSize]));
+            myAcc = task::reduce(myAcc, task::f(i+blockSize, g_idata[i+blockSize]));
 
         i += gridSize;
     }
