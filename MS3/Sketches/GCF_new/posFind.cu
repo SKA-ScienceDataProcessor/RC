@@ -20,6 +20,5 @@ struct posFinder {
 };
 
 extern "C" __global__ void findPeak_512_e2(const double *g_idata, place *g_odata, unsigned int n) {
-  retirementCount = 0;
   reduceSinglePass_devGen<512, true, place, double, posFinder>(g_idata, g_odata, n);
 }

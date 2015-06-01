@@ -29,6 +29,7 @@ import Control.Monad
 import Foreign.Storable
 import Foreign.Storable.Complex ()
 import Foreign.Ptr
+import Foreign.C
 import Foreign.ForeignPtr
 import Foreign.Marshal.Array
 import Foreign.Marshal.Utils
@@ -68,8 +69,13 @@ launchOnFF k xdim  = CUDA.launchKernel k (8,8,xdim) (32,32,1) 0 Nothing
 
 type DoubleDevPtr = CUDA.DevicePtr Double
 
+foreign import ccall unsafe resetRetirementCount :: IO CInt
+
 launchReduce :: CxDoubleDevPtr -> DoubleDevPtr -> Int -> IO ()
-launchReduce idata odata n =
+launchReduce idata odata n = do
+  r <- resetRetirementCount
+  CUDA.nothingIfOk $ toEnum $ fromIntegral r
+  CUDA.sync
   CUDA.launchKernel reduce_512_e2 (n `div` 1024,1,1) (512,1,1) (fromIntegral $ 512 * sizeOf (undefined :: Double)) Nothing
     $ mapArgs idata odata n
 
