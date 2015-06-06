@@ -240,6 +240,7 @@ extern "C"                                                          \
 void gridKernelCPU##hgcfSuff##permSuff(                             \
     double scale                                                    \
   , double wstep                                                    \
+  , int baselines                                                   \
   , const BlWMap permutations[/* baselines */]                      \
   , Double4c grid[GRID_SIZE][GRID_SIZE]                             \
   , const complexd * gcf[]                                          \
@@ -247,7 +248,7 @@ void gridKernelCPU##hgcfSuff##permSuff(                             \
   , const Double4c vis[/* baselines */][TIMESTEPS*CHANNELS]         \
   ){                                                                \
   gridKernel_scatter_full<OVER, WPLANES, isHgcf, isPerm, GRID_SIZE> \
-    (scale, wstep, BASELINES, permutations, grid, gcf, uvw, vis);   \
+    (scale, wstep, baselines, permutations, grid, gcf, uvw, vis);   \
 }
 
 gridKernelCPU(HalfGCF, true, Perm, true)

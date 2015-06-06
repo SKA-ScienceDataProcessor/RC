@@ -215,15 +215,14 @@ marshalGCF2HostP gcfd@(GCF gcfsize nol _ _ _) =
 -- Use no GridderConfig here
 -- We have 4 variants only and all are covered by this code
 cpuGridder :: Bool -> Bool -> String -> TaskData -> GCFHost -> DNA ()
-cpuGridder useFullGcf usePermutations ns_out td gcfh = do
-    let points = tdComplexity td
-        fhint = floatHint {hintDoubleOps = 8 * points}
-        mhint = memHint {hintMemoryReadBytes = 20 * points `div` tdTimes td}
+cpuGridder useFullGcf usePermutations ns_out (TaskData bls times _ _ mxx wstp points viss uvws perms) gcfh = do
+    let fhint = floatHint {hintDoubleOps = 8 * points}
+        mhint = memHint {hintMemoryReadBytes = 20 * points `div` times}
                 -- All timesteps will update roughly the same memory
                 -- region, and will therefore hit the cache for the most part.
     (gridp, polptr) <- kernel gname [fhint, mhint] $ liftIO $ do
         gridp <- alignedMallocArray (gridsize * 4) 32
-        gfun scale (tdWstep td) (tdMap td) gridp (getLayersHost gcfh) (tdUVWs td) (tdVisibilies td)
+        gfun scale wstp (fromIntegral bls) perms gridp (getLayersHost gcfh) uvws viss
         polptr <- mallocArray gridsize
         return (gridp, polptr)
     let extract n = do
@@ -239,7 +238,7 @@ cpuGridder useFullGcf usePermutations ns_out td gcfh = do
       free gridp
   where
     gridsize = 4096 * 4096
-    scale = let CDouble sc = (2048 - 124 - 1) / (tdMaxx td) in sc -- 124 max hsupp
+    scale = let CDouble sc = (2048 - 124 - 1) / mxx in sc -- 124 max hsupp
     (gfun, gname) = mk useFullGcf usePermutations
     --
     mk True  False = __MKP(gridKernelCPUFullGCF)
