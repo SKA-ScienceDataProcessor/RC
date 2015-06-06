@@ -94,7 +94,7 @@ void gridKernel_scatter(
 #pragma omp parallel
   {
     auto grid = grids[omp_get_thread_num()];
-    memset(grid, 0, sizeof(grid));
+    memset(grid, 0, sizeof(*grid));
 
 #pragma omp for schedule(dynamic)
     for(int bl0 = 0; bl0 < baselines; bl0++) {
