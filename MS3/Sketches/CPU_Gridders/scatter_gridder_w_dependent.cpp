@@ -73,7 +73,6 @@ template <
   , bool is_half_gcf
   , bool use_permutations
 
-  , int baselines
   , int grid_size
   , int ts_ch
   , typename Inp
@@ -82,14 +81,15 @@ template <
 void gridKernel_scatter(
     double scale
   , double wstep
-  , const BlWMap permutations[baselines]
+  , int baselines
+  , const BlWMap permutations[/* baselines */]
   , Double4c grids[][grid_size][grid_size]
     // We have a [w_planes][over][over]-shaped array of pointers to
     // variable-sized gcf layers, but we precompute (in pregrid)
     // exact index into this array, thus we use plain pointer here
   , const complexd * gcf[]
-  , const Inp uvw[baselines][ts_ch]
-  , const Double4c vis[baselines][ts_ch]
+  , const Inp uvw[/* baselines */][ts_ch]
+  , const Double4c vis[/* baselines */][ts_ch]
   ) {
 #pragma omp parallel
   {
@@ -179,7 +179,6 @@ template <
   , bool is_half_gcf
   , bool use_permutations
 
-  , int baselines
   , int grid_size
   , int ts_ch
   , typename Inp
@@ -188,14 +187,15 @@ template <
 void gridKernel_scatter_full(
     double scale
   , double wstep
-  , const BlWMap permutations[baselines]
+  , int baselines
+  , const BlWMap permutations[/* baselines */]
   , Double4c grid[grid_size][grid_size]
     // We have a [w_planes][over][over]-shaped array of pointers to
     // variable-sized gcf layers, but we precompute (in pregrid)
     // exact index into this array, thus we use plain pointer here
   , const complexd * gcf[]
-  , const Inp uvw[baselines][ts_ch]
-  , const Double4c vis[baselines][ts_ch]
+  , const Inp uvw[/* baselines */][ts_ch]
+  , const Double4c vis[/* baselines */][ts_ch]
   ) {
   typedef Double4c GT[grid_size][grid_size];
 
@@ -215,11 +215,10 @@ void gridKernel_scatter_full(
     , is_half_gcf
     , use_permutations
 
-    , baselines
     , grid_size
     , ts_ch
     , Inp
-    >(scale, wstep, permutations, tmpgrids, gcf, uvw, vis);
+    >(scale, wstep, baselines, permutations, tmpgrids, gcf, uvw, vis);
   addGrids<grid_size>(grid, tmpgrids, nthreads);
   free(tmpgrids);
 #else
@@ -229,27 +228,26 @@ void gridKernel_scatter_full(
     , is_half_gcf
     , use_permutations
 
-    , baselines
     , grid_size
     , ts_ch
     , Inp
-    >(scale, wstep, permutations, reinterpret_cast<GT*>(&grid), gcf, uvw, vis);
+    >(scale, wstep, baselines, permutations, reinterpret_cast<GT*>(&grid), gcf, uvw, vis);
 #endif
 }
 
-#define gridKernelCPU(hgcfSuff, isHgcf, permSuff, isPerm)                      \
-extern "C"                                                                     \
-void gridKernelCPU##hgcfSuff##permSuff(                                        \
-    double scale                                                               \
-  , double wstep                                                               \
-  , const BlWMap permutations[BASELINES]                                       \
-  , Double4c grid[GRID_SIZE][GRID_SIZE]                                        \
-  , const complexd * gcf[]                                                     \
-  , const Double3 uvw[BASELINES][TIMESTEPS*CHANNELS]                           \
-  , const Double4c vis[BASELINES][TIMESTEPS*CHANNELS]                          \
-  ){                                                                           \
-  gridKernel_scatter_full<OVER, WPLANES, isHgcf, isPerm, BASELINES, GRID_SIZE> \
-    (scale, wstep, permutations, grid, gcf, uvw, vis);                         \
+#define gridKernelCPU(hgcfSuff, isHgcf, permSuff, isPerm)           \
+extern "C"                                                          \
+void gridKernelCPU##hgcfSuff##permSuff(                             \
+    double scale                                                    \
+  , double wstep                                                    \
+  , const BlWMap permutations[/* baselines */]                      \
+  , Double4c grid[GRID_SIZE][GRID_SIZE]                             \
+  , const complexd * gcf[]                                          \
+  , const Double3 uvw[/* baselines */][TIMESTEPS*CHANNELS]          \
+  , const Double4c vis[/* baselines */][TIMESTEPS*CHANNELS]         \
+  ){                                                                \
+  gridKernel_scatter_full<OVER, WPLANES, isHgcf, isPerm, GRID_SIZE> \
+    (scale, wstep, BASELINES, permutations, grid, gcf, uvw, vis);   \
 }
 
 gridKernelCPU(HalfGCF, true, Perm, true)

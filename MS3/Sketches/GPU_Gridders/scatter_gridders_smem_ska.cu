@@ -209,7 +209,6 @@ template <
   , int w_planes
   , int grid_size
 
-  , int baselines
   , int timesteps
   , int channels
   , bool is_half_gcf
@@ -218,11 +217,11 @@ template <
 __device__ __inline__ void addBaselinesToGrid(
     double scale
   , double wstep
-  , const BlWMap permutations[baselines]
+  , const BlWMap permutations[/* baselines */]
   , Double4c grid[grid_size][grid_size]
   , const complexd * gcf[]
-  , const double3 uvw[baselines][timesteps * channels]
-  , const Double4c vis[baselines][timesteps * channels]
+  , const double3 uvw[/* baselines */][timesteps * channels]
+  , const Double4c vis[/* baselines */][timesteps * channels]
   , int blOff
   ) {
   int bl = blockIdx.x + blOff;
@@ -270,54 +269,54 @@ __global__ void addBaselineToGrid##suff(                                   \
 addBaselineToGrid(HalfGCF, true)
 addBaselineToGrid(FullGCF, false)
 
-#define addBaselinesToGridSkaMid(suff, ishalf)                                                \
-extern "C"                                                                                    \
-__global__ void addBaselinesToGridSkaMid##suff(                                               \
-    double scale                                                                              \
-  , double wstep                                                                              \
-  , const BlWMap permutations[BASELINES]                                                      \
-  , Double4c grid[GRID_SIZE][GRID_SIZE]                                                       \
-  , const complexd * gcf[]                                                                    \
-  , const double3 uvw[BASELINES][TIMESTEPS*CHANNELS]                                          \
-  , const Double4c vis[BASELINES][TIMESTEPS*CHANNELS]                                         \
-  , int blOff                                                                                 \
-  ) {                                                                                         \
-  addBaselinesToGrid<OVER, WPLANES, GRID_SIZE, BASELINES, TIMESTEPS, CHANNELS, ishalf, false> \
-    ( scale                                                                                   \
-    , wstep                                                                                   \
-    , permutations                                                                            \
-    , grid                                                                                    \
-    , gcf                                                                                     \
-    , uvw                                                                                     \
-    , vis                                                                                     \
-    , blOff                                                                                   \
-    );                                                                                        \
+#define addBaselinesToGridSkaMid(suff, ishalf)                                     \
+extern "C"                                                                         \
+__global__ void addBaselinesToGridSkaMid##suff(                                    \
+    double scale                                                                   \
+  , double wstep                                                                   \
+  , const BlWMap permutations[/* baselines */]                                     \
+  , Double4c grid[GRID_SIZE][GRID_SIZE]                                            \
+  , const complexd * gcf[]                                                         \
+  , const double3 uvw[/* baselines */][TIMESTEPS*CHANNELS]                         \
+  , const Double4c vis[/* baselines */][TIMESTEPS*CHANNELS]                        \
+  , int blOff                                                                      \
+  ) {                                                                              \
+  addBaselinesToGrid<OVER, WPLANES, GRID_SIZE, TIMESTEPS, CHANNELS, ishalf, false> \
+    ( scale                                                                        \
+    , wstep                                                                        \
+    , permutations                                                                 \
+    , grid                                                                         \
+    , gcf                                                                          \
+    , uvw                                                                          \
+    , vis                                                                          \
+    , blOff                                                                        \
+    );                                                                             \
 }
 addBaselinesToGridSkaMid(HalfGCF, true)
 addBaselinesToGridSkaMid(FullGCF, false)
 
-#define addBaselinesToGridSkaMidUsingPermutations(suff, ishalf)                              \
-extern "C"                                                                                   \
-__global__ void addBaselinesToGridSkaMidUsingPermutations##suff(                             \
-    double scale                                                                             \
-  , double wstep                                                                             \
-  , const BlWMap permutations[BASELINES]                                                     \
-  , Double4c grid[GRID_SIZE][GRID_SIZE]                                                      \
-  , const complexd * gcf[]                                                                   \
-  , const double3 uvw[BASELINES][TIMESTEPS*CHANNELS]                                         \
-  , const Double4c vis[BASELINES][TIMESTEPS*CHANNELS]                                        \
-  , int blOff                                                                                \
-  ) {                                                                                        \
-  addBaselinesToGrid<OVER, WPLANES, GRID_SIZE, BASELINES, TIMESTEPS, CHANNELS, ishalf, true> \
-    ( scale                                                                                  \
-    , wstep                                                                                  \
-    , permutations                                                                           \
-    , grid                                                                                   \
-    , gcf                                                                                    \
-    , uvw                                                                                    \
-    , vis                                                                                    \
-    , blOff                                                                                  \
-    );                                                                                       \
+#define addBaselinesToGridSkaMidUsingPermutations(suff, ishalf)                   \
+extern "C"                                                                        \
+__global__ void addBaselinesToGridSkaMidUsingPermutations##suff(                  \
+    double scale                                                                  \
+  , double wstep                                                                  \
+  , const BlWMap permutations[/* baselines */]                                    \
+  , Double4c grid[GRID_SIZE][GRID_SIZE]                                           \
+  , const complexd * gcf[]                                                        \
+  , const double3 uvw[/* baselines */][TIMESTEPS*CHANNELS]                        \
+  , const Double4c vis[/* baselines */][TIMESTEPS*CHANNELS]                       \
+  , int blOff                                                                     \
+  ) {                                                                             \
+  addBaselinesToGrid<OVER, WPLANES, GRID_SIZE, TIMESTEPS, CHANNELS, ishalf, true> \
+    ( scale                                                                       \
+    , wstep                                                                       \
+    , permutations                                                                \
+    , grid                                                                        \
+    , gcf                                                                         \
+    , uvw                                                                         \
+    , vis                                                                         \
+    , blOff                                                                       \
+    );                                                                            \
 }
 addBaselinesToGridSkaMidUsingPermutations(HalfGCF, true)
 addBaselinesToGridSkaMidUsingPermutations(FullGCF, false)
