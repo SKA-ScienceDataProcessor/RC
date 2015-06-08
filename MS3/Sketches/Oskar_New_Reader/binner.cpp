@@ -73,7 +73,6 @@ private:
 template <
     int grid_size
   , int over
-  , int w_planes
   , int divs
   , bool do_mirror
   >
@@ -94,7 +93,7 @@ inline int doit(const char * prefix, int num_channels, int num_points, double sc
   while(amp_curr < amps_end){
     for(int i = 0; i < num_channels; i++){
       Pregridded p;
-      pregridPoint<grid_size, over, w_planes, do_mirror>(scale, wstep, *uvw_curr, p); // p is passed as reference and updated!
+      pregridPoint<grid_size, over, do_mirror>(scale, wstep, *uvw_curr, p); // p is passed as reference and updated!
       div_t us, vs;
       // NOTE: we have u and v translated by -p.gcf_layer_supp/2
       // in pregridPoint, thus we temporarily put them back.
@@ -164,9 +163,9 @@ inline int doit(const char * prefix, int num_channels, int num_points, double sc
 
 extern "C" {
 int bin(const char * prefix, int num_channels, int num_points, double scale, double wstep, Double4c* amps, Double3 * uvws) {
-  return doit<GRID_SIZE, OVER, WPLANES, DIVIDERS, false>(prefix, num_channels, num_points, scale, wstep, amps, uvws);
+  return doit<GRID_SIZE, OVER, DIVIDERS, false>(prefix, num_channels, num_points, scale, wstep, amps, uvws);
 }
 int binm(const char * prefix, int num_channels, int num_points, double scale, double wstep, Double4c* amps, Double3 * uvws) {
-  return doit<GRID_SIZE, OVER, WPLANES, DIVIDERS, true>(prefix, num_channels, num_points, scale, wstep, amps, uvws);
+  return doit<GRID_SIZE, OVER, DIVIDERS, true>(prefix, num_channels, num_points, scale, wstep, amps, uvws);
 }
 }

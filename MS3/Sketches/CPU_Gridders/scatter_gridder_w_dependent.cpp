@@ -42,7 +42,6 @@ void addGrids(
 template <
     int grid_size
   , int over
-  , int w_planes
   , bool do_mirror
   , typename Inp
   > struct cvt {};
@@ -50,26 +49,23 @@ template <
 template <
     int grid_size
   , int over
-  , int w_planes
   , bool do_mirror
-  > struct cvt<grid_size, over, w_planes, do_mirror, Pregridded> {
+  > struct cvt<grid_size, over, do_mirror, Pregridded> {
   static void pre(double, double, Pregridded inp, Pregridded & outpr) {outpr = inp;}
 };
 
 template <
     int grid_size
   , int over
-  , int w_planes
   , bool do_mirror
-  > struct cvt<grid_size, over, w_planes, do_mirror, Double3> {
+  > struct cvt<grid_size, over, do_mirror, Double3> {
   static void pre(double scale, double wstep, Double3 inp, Pregridded & outpr) {
-    pregridPoint<grid_size, over, w_planes, do_mirror>(scale, wstep, inp, outpr);
+    pregridPoint<grid_size, over, do_mirror>(scale, wstep, inp, outpr);
   }
 };
 
 template <
     int over
-  , int w_planes
   , bool is_half_gcf
   , bool use_permutations
 
@@ -105,7 +101,7 @@ void gridKernel_scatter(
       for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
             Pregridded p;
-            cvt<grid_size, over, w_planes, is_half_gcf, Inp>::pre(scale, wstep, uvw[bl][i], p);
+            cvt<grid_size, over, is_half_gcf, Inp>::pre(scale, wstep, uvw[bl][i], p);
 
 #ifdef __AVX__
           // We port Romein CPU code to doubles here (for MS2 we didn't)
@@ -175,7 +171,6 @@ void gridKernel_scatter(
 
 template <
     int over
-  , int w_planes
   , bool is_half_gcf
   , bool use_permutations
 
@@ -211,7 +206,6 @@ void gridKernel_scatter_full(
   GT * tmpgrids = alignedMallocArray<GT>(nthreads, 32);
   gridKernel_scatter<
       over
-    , w_planes
     , is_half_gcf
     , use_permutations
 
@@ -224,7 +218,6 @@ void gridKernel_scatter_full(
 #else
   gridKernel_scatter<
       over
-    , w_planes
     , is_half_gcf
     , use_permutations
 
@@ -235,20 +228,20 @@ void gridKernel_scatter_full(
 #endif
 }
 
-#define gridKernelCPU(hgcfSuff, isHgcf, permSuff, isPerm)           \
-extern "C"                                                          \
-void gridKernelCPU##hgcfSuff##permSuff(                             \
-    double scale                                                    \
-  , double wstep                                                    \
-  , int baselines                                                   \
-  , const BlWMap permutations[/* baselines */]                      \
-  , Double4c grid[GRID_SIZE][GRID_SIZE]                             \
-  , const complexd * gcf[]                                          \
-  , const Double3 uvw[/* baselines */][TIMESTEPS*CHANNELS]          \
-  , const Double4c vis[/* baselines */][TIMESTEPS*CHANNELS]         \
-  ){                                                                \
-  gridKernel_scatter_full<OVER, WPLANES, isHgcf, isPerm, GRID_SIZE> \
-    (scale, wstep, baselines, permutations, grid, gcf, uvw, vis);   \
+#define gridKernelCPU(hgcfSuff, isHgcf, permSuff, isPerm)         \
+extern "C"                                                        \
+void gridKernelCPU##hgcfSuff##permSuff(                           \
+    double scale                                                  \
+  , double wstep                                                  \
+  , int baselines                                                 \
+  , const BlWMap permutations[/* baselines */]                    \
+  , Double4c grid[GRID_SIZE][GRID_SIZE]                           \
+  , const complexd * gcf[]                                        \
+  , const Double3 uvw[/* baselines */][TIMESTEPS*CHANNELS]        \
+  , const Double4c vis[/* baselines */][TIMESTEPS*CHANNELS]       \
+  ){                                                              \
+  gridKernel_scatter_full<OVER, isHgcf, isPerm, GRID_SIZE>        \
+    (scale, wstep, baselines, permutations, grid, gcf, uvw, vis); \
 }
 
 gridKernelCPU(HalfGCF, true, Perm, true)

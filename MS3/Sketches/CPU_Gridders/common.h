@@ -53,7 +53,6 @@ __inline static
 template <
     int grid_size
   , int over
-  , int w_planes
   , bool do_mirror
   >
 #ifndef __CUDACC__
