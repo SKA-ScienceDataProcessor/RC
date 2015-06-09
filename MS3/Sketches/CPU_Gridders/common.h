@@ -8,12 +8,24 @@
 #ifdef __CUDACC__
   #include <cuComplex.h>
   typedef cuDoubleComplex complexd;
-#elif defined __cplusplus
-  #include <complex>
-  typedef std::complex<double> complexd;
+  #include <math_constants.h>
+  #define __PI CUDART_PI
+  #define __NATIVE __device__ __inline__ static
 #else
-  #include <complex.h>
-  typedef double complex complexd;
+  #define cuCmul(a,b) ((a)*(b))
+  #define _USE_MATH_DEFINES
+  #include <math.h>
+  #define __PI M_PI
+  #ifdef __cplusplus
+    #include <complex>
+    typedef std::complex<double> complexd;
+    #define make_cuDoubleComplex(r,i) (complexd(r,i))
+  #else
+    #include <complex.h>
+    typedef double complex complexd;
+    #define make_cuDoubleComplex(r,i) ((r)+I*(i))
+  #endif
+  #define __NATIVE __inline static
 #endif
 
 struct Double4c
@@ -39,15 +51,16 @@ struct Pregridded
   short gcf_layer_supp;
 };
 
-#ifdef __CUDACC__
-__host__ __device__ __inline__ static
-#else
-__inline static
-#endif
-  int get_supp(int w) {
+__NATIVE int get_supp(int w) {
     if (w < 0) w = -w;
     return w * 8 + 17;
   }
+
+__NATIVE complexd rotw(complexd v, double w){
+  double s, c;
+  sincos(2.0 * __PI * w, &s, &c);
+  return cuCmul(v, make_cuDoubleComplex(c, s));
+}
 
 #if defined __cplusplus || defined __CUDACC__
 template <
@@ -64,7 +77,7 @@ inline
 #define u x
 #define v y
 #define w z
-__inline__ __host__ __device__
+__inline__ __device__
 #endif
 static void pregridPoint(double scale, double wstep, Double3 uvw, Pregridded & res){
     uvw.u *= scale;
