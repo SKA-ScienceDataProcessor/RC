@@ -25,14 +25,11 @@
    FIXME: types: buffer size is a ssize_t, not int
 */
 
-void read_data(double *buf, long n, long o, char *p)
+void read_data(double *buf, long n_bytes, long offset, char *p)
 {
     int fd;
     fd = open(p, O_RDONLY);
     assert(fd > 0);
-
-    const size_t n_bytes = n * sizeof(double);
-    const size_t offset  = o * sizeof(double);
     ssize_t n_read;
     n_read = pread(fd, buf, n_bytes, offset);
     assert( n_read == n_bytes );

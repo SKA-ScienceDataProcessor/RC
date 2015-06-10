@@ -197,6 +197,8 @@ module DNA (
     -- , broadcastParamSlice
     , broadcast
     , connect
+    , FileChan
+    , createFileChan
       -- * Promises
     , Promise
     , Group

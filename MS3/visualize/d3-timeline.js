@@ -28,7 +28,10 @@
         timeIsRelative = false,
         itemHeight = 20,
         itemMargin = 5,
+        showTimeAxis = true,
         showTodayLine = false,
+        timeAxisTick = false,
+        timeAxisTickFormat = {stroke: "stroke-dasharray", spacing: "4 10"},
         showTodayFormat = {marginTop: 25, marginBottom: 0, width: 1, color: colorCycle},
         showBorderLine = false,
         showBorderFormat = {marginTop: 25, marginBottom: 0, width: 1, color: colorCycle}
@@ -112,18 +115,32 @@
         .ticks(tickFormat.numTicks || tickFormat.tickTime, tickFormat.tickInterval)
         .tickSize(tickFormat.tickSize);
 
-      g.append("g")
-        .attr("class", "axis")
-        .attr("transform", "translate(" + 0 +","+(margin.top + (itemHeight + itemMargin) * maxStack)+")")
-        .call(xAxis);
+      if (showTimeAxis) {
+        g.append("g")
+          .attr("class", "axis")
+          .attr("transform", "translate(" + 0 +","+(margin.top + (itemHeight + itemMargin) * maxStack)+")")
+          .call(xAxis);
+      }
 
+      if (timeAxisTick) {
+        g.append("g")
+          .attr("class", "axis")
+          .attr("transform", "translate(" + 0 +","+
+            (margin.top + (itemHeight + itemMargin) * maxStack)+")")
+          .attr(timeAxisTickFormat.stroke, timeAxisTickFormat.spacing)
+          .call(xAxis.tickFormat("").tickSize(-(margin.top + (itemHeight + itemMargin) * (maxStack - 1) + 3),0,0));
+      }
+      
       // draw the chart
       g.each(function(d, i) {
         d.forEach( function(datum, index){
           var data = datum.times;
           var hasLabel = (typeof(datum.label) != "undefined");
-          var hasId = (typeof(datum.id) != "undefined");
 
+          // issue warning about using id per data set. Ids should be individual to data elements
+          if (typeof(datum.id) != "undefined") {
+            console.warn("d3Timeline Warning: Ids per dataset is deprecated in favor of a 'class' key. Ids are now per data element.");
+          }
 
           if (backgroundColor) {
             var greenbarYAxis = ((itemHeight + itemMargin) * yAxisMapping[index]);
@@ -139,20 +156,30 @@
           }
 
           g.selectAll("svg").data(data).enter()
-            .append(display)
+            .append(function(d, i) {
+                return document.createElementNS(d3.ns.prefix.svg, "display" in d? d.display:display);
+            })
             .attr("x", getXPos)
             .attr("y", getStackPosition)
             .attr("width", function (d, i) {
               return (d.ending_time - d.starting_time) * scaleFactor;
             })
-            .attr("cy", getStackPosition)
+            .attr("cy", function(d, i) {
+                return getStackPosition(d, i) + itemHeight/2;
+            })
             .attr("cx", getXPos)
             .attr("r", itemHeight / 2)
             .attr("height", itemHeight)
             .style("fill", function(d, i){
+              var dColorPropName;
               if (d.color) return d.color;
               if( colorPropertyName ){
-                return colorCycle( datum[colorPropertyName] );
+                dColorPropName = d[colorPropertyName];
+                if ( dColorPropName ) {
+                  return colorCycle( dColorPropName );
+                } else {
+                  return colorCycle( datum[colorPropertyName] );
+                }
               }
               return colorCycle(index);
             })
@@ -168,12 +195,16 @@
             .on("click", function (d, i) {
               click(d, index, datum);
             })
-            .attr("id", function (d, i) {
-              if (hasId){
-                return "timelineItem_"+datum.id;
-              }else{
-                return "timelineItem_"+index;
+            .attr("class", function (d, i) {
+              return datum.class ? "timelineSeries_"+datum.class : "timelineSeries_"+index;
+            })
+            .attr("id", function(d, i) {
+              // use deprecated id field
+              if (datum.id && !d.id) {
+                return 'timelineItem_'+datum.id;
               }
+              
+              return d.id ? d.id : "timelineItem_"+index+"_"+i;
             })
           ;
 
@@ -250,7 +281,7 @@
       }
 
       if (rotateTicks) {
-        g.selectAll("text")
+        g.selectAll(".tick text")
           .attr("transform", function(d) {
             return "rotate(" + rotateTicks + ")translate("
               + (this.getBBox().width / 2 + 10) + "," // TODO: change this 10
@@ -489,6 +520,22 @@
       backgroundColor = color;
       return timeline;
     };
+
+    timeline.showTimeAxis = function () {
+      showTimeAxis = !showTimeAxis;
+      return timeline;
+    };
+
+    timeline.showTimeAxisTick = function () {
+      timeAxisTick = !timeAxisTick;
+      return timeline;
+    };
+
+    timeline.showTimeAxisTickFormat = function(format) {
+      if (!arguments.length) return timeAxisTickFormat;
+      timeAxisTickFormat = format;
+      return timeline;
+    }
 
     return timeline;
   };
