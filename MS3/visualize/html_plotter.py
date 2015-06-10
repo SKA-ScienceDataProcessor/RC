@@ -20,7 +20,7 @@ def write_prefix():
   <script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
   <script src="d3-timeline.js"></script>
   <script type="text/javascript">
-    window.onload = function() {
+    function plot() {
     ''')
 
 def make_class_name(name) :
@@ -116,17 +116,20 @@ def write_timeline_data(logs, conf) :
              tickInterval: %d,
              tickTime: d3.time.second,
              tickSize: 5 })
-        .stack()
+        .stack().showTimeAxisTick()
         .colorProperty('type')
         .colors(colorScale)
-        .margin({left:300, right:0, top:0, bottom:0});
+        .margin({left:300, right:20, top:0, bottom:0});
 
-      var svg = d3.select("#timeline").append("svg").attr("width", "1500")
+      d3.selectAll("#timeline svg").remove();
+      var svg = d3.select("#timeline").append("svg").attr("width", window.innerWidth-30)
         .datum(data).call(chart);''' % (tickInterval))
 
 def write_middle():
     f.write('''
     }
+    window.onload = plot;
+    window.onresize = plot;
   </script>
   <style type="text/css">
     .axis path,
