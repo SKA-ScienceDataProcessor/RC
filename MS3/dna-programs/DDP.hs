@@ -14,10 +14,9 @@ import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
 import GHC.Generics  (Generic)
 
-import System.IO        ( openBinaryTempFile, hClose )
-import System.Directory ( doesDirectoryExist)
+import System.IO        ( IOMode(..) )
 
-import DNA.Channel.File (readData {-,readDataMMap-})
+import DNA.Channel.File (withFileChan, readFileChan, mmapFileChan)
 import DNA
 
 ----------------------------------------------------------------
@@ -57,33 +56,27 @@ ddpComputeVector = actor $ \(Slice off n) ->
 --
 --    * Input:  (file name and slice to read from vector)
 --    * Output: data
-ddpReadVector :: Actor (String, Slice) (S.Vector Double)
-ddpReadVector = actor $ \(fname, Slice off n) ->
+ddpReadVector :: Actor (FileChan (S.Vector Double), Slice) (S.Vector Double)
+ddpReadVector = actor $ \(chan, Slice off n) ->
   unboundKernel "read vector" [IOHint (fromIntegral $ n * 8) 0] $ do
     -- FIXME: mmaping of vector is not implemented
-    liftIO $ readData n off fname
-    -- liftIO $ readDataMMap n off fname "FIXME"
+    liftIO $ readFileChan n off chan "data"
+      --readData n off fname
+      -- liftIO $ readDataMMap n off fname "FIXME"
 
 -- | Fill the file with an example vector of the given size
 --
 --    * Input:  size of vector to generate
 --    * Output: name of generated file
-ddpGenerateVector :: Actor Int64 String
-ddpGenerateVector = actor $ \n ->
+ddpGenerateVector :: Location -> Actor Int64 (FileChan (S.Vector Double))
+ddpGenerateVector loc = actor $ \n -> do
+  out <- createFileChan loc "vec"
   unboundKernel "generate vector" [IOHint 0 (fromIntegral $ n * 8),
                                    HaskellHint (fromIntegral $ n * 8)] $
-    liftIO $ do
-      -- On Cambridge cluster we we write to the /ramdisk directory
-      -- Otherwise we write to local directory
-      let ramdisk = "/ramdisks"
-      isCambridge <- doesDirectoryExist ramdisk
-      (fname, h)  <- openBinaryTempFile
-                       (if isCambridge then ramdisk else "/tmp")
-                       "temp.dat"
+    liftIO $ withFileChan out "data" WriteMode $ \h ->
       BS.hPut h $ runPut $ do
         replicateM_ (fromIntegral n) $ putFloat64le 0.1
-      hClose h
-      return fname
+  return out
 
 ddpCollector :: CollectActor Double Double
 ddpCollector = collectActor

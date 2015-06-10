@@ -94,7 +94,7 @@ runSlurmWorker rtable dir common dna = do
     case rank of
       0 -> startMaster backend $ \n -> do
                synchronizationPoint "CH"
-               r <- executeDNA (dnaLogger common) dna n
+               r <- executeDNA (dnaLogger common) dir dna n
                terminateAllSlaves backend
                case r of
                  Just e  -> do errorMsg $ "main actor died: " ++ show e
@@ -285,7 +285,7 @@ runUnixWorker rtable opts common dna = do
     let reapChildren = mapM_ killChild pids
         start = startMaster backend $ \n -> do
             synchronizationPoint "CH"
-            r <- executeDNA (dnaLogger common) dna n
+            r <- executeDNA (dnaLogger common) (dnaUnixWDir opts) dna n
             terminateAllSlaves backend
             case r of
               Just e  -> do errorMsg $ "main actor died: " ++ show e
@@ -297,8 +297,8 @@ runUnixWorker rtable opts common dna = do
       _ -> startSlave backend
 
 
-executeDNA :: LoggerOpt -> DNA () -> [NodeId] -> Process (Maybe SomeException)
-executeDNA logopt dna nodes = do
+executeDNA :: LoggerOpt -> FilePath -> DNA () -> [NodeId] -> Process (Maybe SomeException)
+executeDNA logopt workDir dna nodes = do
     nid <- getSelfNode
     -- FIXME: correctly treat parent-related data
     let param = ActorParam
@@ -311,6 +311,7 @@ executeDNA logopt dna nodes = do
               , actorAID         = AID 0
               , actorSendBack    = undefined
               , actorLogOpt      = logopt
+              , actorWorkDir     = workDir
               }
     r <- try $ runDnaParam param dna
     return $ either Just (const Nothing) r

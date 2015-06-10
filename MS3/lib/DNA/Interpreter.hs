@@ -38,14 +38,14 @@ import qualified Data.Foldable as T
 import DNA.CH
 import DNA.Types
 import DNA.Lens
-import DNA.DSL                 hiding (logMessage,duration)
+import DNA.Channel.File
+import DNA.DSL                 hiding (logMessage,duration,createFileChan)
 import DNA.Logging
 import DNA.Interpreter.Message
 import DNA.Interpreter.Run     hiding (__remoteTable)
 import DNA.Interpreter.Spawn
 import DNA.Interpreter.Testing
 import DNA.Interpreter.Types
-
 
 
 ----------------------------------------------------------------
@@ -88,7 +88,7 @@ interpretDNA (DNA m) =
       DelayGroup sh   -> execDelayGroup sh
       GatherM p f b0  -> execGatherM p f b0
       CrashMaybe p    -> crashMaybeWorker p
-
+      CreateFileChan l n -> createFileChan l n
 
 theInterpreter :: DnaInterpreter
 theInterpreter = DnaInterpreter interpretDNA
@@ -242,6 +242,13 @@ execConnect (Shell aidSrc) (Shell aidDst) = do
             _                                -> return ()
     logConnect (Just aidSrc) (Just aidDst)
 
+createFileChan :: Location -> String -> DnaMonad (FileChan a)
+createFileChan loc name = do
+    workDir <- envWorkDir <$> ask
+    m_chan <- liftIO $ createFileChanImp workDir loc name
+    case m_chan of
+      Nothing -> doPanic $ "Failed to create file channel " ++ name ++ "!"
+      Just chan -> return chan
 
 ----------------------------------------------------------------
 -- Helpers

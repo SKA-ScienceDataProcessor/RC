@@ -8,13 +8,14 @@ import System.Directory ( removeFile )
 import Foreign.Storable ( sizeOf )
 
 import DNA
+import DNA.Channel.File
 
 import DDP
 
--- | Calculate dot product of slice of vector. 
+-- | Calculate dot product of slice of vector.
 --
 --  * Input:  slice of vectors which we want to use
---  * Output: dot product of slice 
+--  * Output: dot product of slice
 ddpProductSlice :: Actor Slice Double
 ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
     -- Calculate offsets
@@ -23,7 +24,7 @@ ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
     -- FIXME: Bad!
     let slice@(Slice _ n) = scatterSlice (fromIntegral nProc) fullSlice !! rnk
     -- First we need to generate files on tmpfs
-    fname <- duration "generate" $ eval ddpGenerateVector n
+    vecChan <- duration "generate" $ eval (ddpGenerateVector Local) n
     -- Start local processes
     shellVA <- startActor (N 0) $ do
         useLocal
@@ -32,8 +33,8 @@ ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
         useLocal
         return $(mkStaticClosure 'ddpReadVector   )
     -- Connect actors
-    sendParam slice              shellVA
-    sendParam (fname, Slice 0 n) shellVB
+    sendParam slice                shellVA
+    sendParam (vecChan, Slice 0 n) shellVB
     --
     futVA <- delay Local shellVA
     futVB <- delay Local shellVB
@@ -42,7 +43,7 @@ ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
     vb <- duration "receive read"    $ await futVB
     -- Clean up, compute sum
     let dblSize = sizeOf (undefined :: Double)
-    kernel "cleanup" [] $ liftIO $ removeFile fname
+    kernel "cleanup" [] $ liftIO $ deleteFileChan vecChan
     kernel "compute sum" [ FloatHint 0 (2 * fromIntegral n)
                          , MemHint (dblSize * (S.length va + S.length vb)) ] $ do
       return (S.sum $ S.zipWith (*) va vb :: Double)
@@ -62,7 +63,7 @@ ddpProductSliceFailure = actor $ \(fullSlice) -> duration "vector slice" $ do
     -- FIXME: Bad!
     let slice@(Slice _ n) = scatterSlice (fromIntegral nProc) fullSlice !! rnk
     -- First we need to generate files on tmpfs
-    fname <- duration "generate" $ eval ddpGenerateVector n
+    vecChan <- duration "generate" $ eval (ddpGenerateVector Local) n
     -- Start local processes
     shellVA <- startActor (N 0) $ do
         useLocal
@@ -71,8 +72,8 @@ ddpProductSliceFailure = actor $ \(fullSlice) -> duration "vector slice" $ do
         useLocal
         return $(mkStaticClosure 'ddpReadVector   )
     -- Connect actors
-    sendParam slice              shellVA
-    sendParam (fname, Slice 0 n) shellVB
+    sendParam slice                shellVA
+    sendParam (vecChan, Slice 0 n) shellVB
     --
     futVA <- delay Local shellVA
     futVB <- delay Local shellVB
@@ -85,7 +86,7 @@ ddpProductSliceFailure = actor $ \(fullSlice) -> duration "vector slice" $ do
     let dblSize = sizeOf (undefined :: Double)
     kernel "compute sum" [ FloatHint 0 (2 * fromIntegral n)
                          , MemHint (dblSize * 2 * fromIntegral n) ] $ do
-      liftIO $ removeFile fname
+      liftIO $ deleteFileChan vecChan
       return (S.sum $ S.zipWith (*) va vb :: Double)
 
 

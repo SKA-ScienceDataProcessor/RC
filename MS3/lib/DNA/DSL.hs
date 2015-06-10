@@ -61,6 +61,8 @@ module DNA.DSL (
     , connect
 
     , crashMaybe
+    , FileChan
+    , createFileChan
     ) where
 
 import Control.Applicative
@@ -75,7 +77,7 @@ import GHC.Generics  (Generic)
 
 import DNA.Types
 import DNA.Logging (ProfileHint(..))
-
+import DNA.Channel.File (FileChan)
 
 ----------------------------------------------------------------
 -- Operations data type for DNA
@@ -208,6 +210,12 @@ data DnaF a where
       -> DnaF b
     CrashMaybe
       :: Double -> DnaF ()
+
+    -- Create a new file channel
+    CreateFileChan
+      :: Location
+      -> String
+      -> DnaF (FileChan b)
 
 -- | Monad for spawning new actor processes
 newtype Spawn a = Spawn (Writer [SpawnFlag] a)
@@ -531,3 +539,7 @@ startMappers res resG child =
 
 crashMaybe :: Double -> DNA ()
 crashMaybe = DNA . singleton . CrashMaybe
+
+-- | Allocates a new file channel for sharing data between actors.
+createFileChan :: Location -> String -> DNA (FileChan a)
+createFileChan loc name = DNA $ singleton $ CreateFileChan loc name

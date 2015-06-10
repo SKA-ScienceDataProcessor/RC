@@ -145,15 +145,17 @@ runDnaMonad
     -> [NodeInfo]
     -> [DebugFlag]
     -> LoggerOpt
+    -> FilePath
     -> DnaMonad a
     -> Process a
-runDnaMonad aid (Rank rnk) (GroupSize grp) interp nodes flags logopt =
+runDnaMonad aid (Rank rnk) (GroupSize grp) interp nodes flags logopt workDir =
     flip runReaderT env . flip evalStateT s0 . unDnaMonad
   where
     env = Env { envRank        = rnk
               , envGroupSize   = grp
               , envInterpreter = interp
               , envAID         = aid
+              , envWorkDir     = workDir
               }
     s0 = StateDNA
            { _stCounter       = 0
@@ -183,6 +185,7 @@ runDnaParam p action = do
               (vcadNodePool $ actorNodes       p)
               (actorDebugFlags  p)
               (actorLogOpt p)
+              (actorWorkDir p)
     $ dnaInterpreter interpreter action
 
 -- | Evaluator for DNA monad. We have to pass closure with function
@@ -215,6 +218,9 @@ data ActorParam = ActorParam
     , actorAID         :: AID
       -- ^ AID of an actor as viewed by parent
     , actorLogOpt      :: LoggerOpt
+      -- ^ Logging preferences
+    , actorWorkDir     :: FilePath
+      -- ^ Actor working directory
     }
     deriving (Typeable,Generic)
 instance Binary ActorParam
@@ -225,6 +231,7 @@ data Env = Env
     , envGroupSize   :: !Int
     , envInterpreter :: !(Closure DnaInterpreter)
     , envAID         :: !AID
+    , envWorkDir     :: !FilePath
     }
 
 -- | State of interpreter
