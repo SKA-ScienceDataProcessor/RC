@@ -23,6 +23,11 @@
 
 #ifdef __clang__
 #include "cuda.h"
+#include "cuda_builtin_vars.h"
+extern __host__ cudaError_t cudaMemcpyToSymbol(const void *symbol, const void *src, size_t count, size_t offset, enum cudaMemcpyKind kind);
+#define __SYM(a) (&(a))
+#else
+#define __SYM(a) a
 #endif
 
 #include <cuComplex.h>
@@ -129,7 +134,7 @@ extern "C"
 __host__ cudaError_t resetRetirementCount()
 {
   unsigned int retCnt = 0;
-  return cudaMemcpyToSymbol(retirementCount, &retCnt, sizeof(unsigned int), 0, cudaMemcpyHostToDevice);
+  return cudaMemcpyToSymbol(__SYM(retirementCount), &retCnt, sizeof(unsigned int), 0, cudaMemcpyHostToDevice);
 }
 
 // This reduction kernel reduces an arbitrary size array in a single kernel invocation
