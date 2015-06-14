@@ -4,6 +4,7 @@ struct place {
       this->val = p.val;
       return const_cast<place&>(*this);
   }
+  __host__ __device__ place () {;}
   __host__ __device__ place (unsigned p, double v) : pos(p), val(v){;}
   __host__ __device__ place (const place & p) : pos(p.pos), val(p.val){;}
   __host__ __device__ place (const volatile place & p) : pos(p.pos), val(p.val){;}
