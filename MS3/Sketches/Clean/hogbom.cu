@@ -2,48 +2,27 @@
 #include "posFind.cuh"
 #include <cstdlib>
 
-static place found_place_res;
-static place found_place_psf;
-
 #define __NBLOCKS(n,d) ((n)+(d)-1)/(d)
 
+#define __CHECK if (err != cudaSuccess) return err;
+
 inline
-__host__ cudaError_t findPeaks(
-    const double * res_p
-  , const double * psf_p
+__host__ cudaError_t findPeak(
+    const double * data_p
+  , place * work_peak_p
+  , place * peak_p
   , unsigned int n
   ) {
   cudaError_t err;
-  place * peakp;
-  unsigned int nbl = __NBLOCKS(n, 1024);
-  int shmemsiz = 512 * sizeof(place);
-
-  err = cudaMalloc((void **) &peakp, nbl * sizeof(place));
-  if (err != cudaSuccess) return err;
-
-#define __CHECK if (err != cudaSuccess) goto fin;
-  err = resetRetirementCount();
-  __CHECK
-  findPeak_512_e2<<<nbl, 512, shmemsiz>>>(res_p, peakp, n);
-  err = cudaGetLastError();
-  __CHECK
-  err = cudaMemcpy(&found_place_res, peakp, sizeof(place), cudaMemcpyDeviceToHost);
-  __CHECK
-  err = cudaDeviceSynchronize();
-  __CHECK
 
   err = resetRetirementCount();
   __CHECK
-  findPeak_512_e2<<<nbl, 512, shmemsiz>>>(psf_p, peakp, n);
+  findPeak_512_e2<<<__NBLOCKS(n, 1024), 512, 512 * sizeof(place)>>>(data_p, work_peak_p, n);
   err = cudaGetLastError();
   __CHECK
-  err = cudaMemcpy(&found_place_psf, peakp, sizeof(place), cudaMemcpyDeviceToHost);
+  err = cudaMemcpy(peak_p, work_peak_p, sizeof(place), cudaMemcpyDeviceToHost);
   __CHECK
-  err = cudaDeviceSynchronize();
-
-  fin:;
-  cudaFree(peakp);
-  return err;
+  return cudaDeviceSynchronize();
 }
 
 static
@@ -66,19 +45,22 @@ __global__ void subtract_psf_kernel(
 
 #define __BLOCK_DIM 16
 
+typedef long long int lli;
+
 inline
 __host__
 static void subtractPSF(
           double * res_p
   , const double * psf_p
+  , const lli peak_res_pos
+  , const lli peak_psf_pos
   , const int linsize
-  , const double gain
+  , const double peak_x_gain
   ) {
-  typedef long long int lli;
-  const lli diff = (lli)found_place_psf.pos - (lli)found_place_res.pos;
+  const lli diff = peak_psf_pos - peak_res_pos;
   lldiv_t
-      resxy = div(found_place_res.pos, (lli)linsize)
-    , psfxy = div(found_place_psf.pos, (lli)linsize)
+      resxy = div(peak_res_pos, (lli)linsize)
+    , psfxy = div(peak_psf_pos, (lli)linsize)
     ;
   const int
       stopx = linsize - abs (psfxy.rem - resxy.rem)
@@ -91,9 +73,9 @@ static void subtractPSF(
   dim3 threadsPerBlock(__BLOCK_DIM, __BLOCK_DIM);
 
   if (diff >= 0)
-    subtract_psf_kernel<<<numBlocks, threadsPerBlock>>>(res_p, psf_p + diff, stopx, stopy, diff, linsize, found_place_res.val * gain);
+    subtract_psf_kernel<<<numBlocks, threadsPerBlock>>>(res_p, psf_p + diff, stopx, stopy, diff, linsize, peak_x_gain);
   else
-    subtract_psf_kernel<<<numBlocks, threadsPerBlock>>>(res_p - diff, psf_p, stopx, stopy, diff, linsize, found_place_res.val * gain);
+    subtract_psf_kernel<<<numBlocks, threadsPerBlock>>>(res_p - diff, psf_p, stopx, stopy, diff, linsize, peak_x_gain);
 }
 
 // All pointers are device pointers
@@ -108,18 +90,36 @@ cudaError_t deconvolve(
   , const double threshold
   ) {
   cudaError_t err;
+  place * peakp;
+  place
+      found_place_psf
+    , found_place_res
+    ;
+  const int totsize = linsize * linsize;
+
+  // working space to find peaks
+  err = cudaMalloc((void **) &peakp, __NBLOCKS(totsize, 1024) * sizeof(place));
+  __CHECK
+
+#undef __CHECK
+#define __CHECK if (err != cudaSuccess) goto fin;
+
+  err = findPeak(psf_p, peakp, &found_place_psf, totsize);
+  __CHECK
 
   for (unsigned int i = 0; i < niters; ++i) {
-    err = findPeaks(res_p, psf_p, linsize * linsize);
-    if (err != cudaSuccess) return err;
+    err = findPeak(res_p, peakp, &found_place_res, totsize);
+    __CHECK
 
     if (abs(found_place_res.val) < threshold) break;
 
-    subtractPSF(res_p, psf_p, linsize, gain);
+    subtractPSF(res_p, psf_p, found_place_res.pos, found_place_psf.pos, linsize, found_place_res.val * gain);
     mod_p[found_place_res.pos] += found_place_res.val * gain;
     // Wait for the PSF subtraction to finish
     err = cudaDeviceSynchronize();
   }
 
+  fin:;
+  cudaFree(peakp);
   return err;
 }
