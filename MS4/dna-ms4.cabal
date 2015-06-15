@@ -1,4 +1,4 @@
-name:                dna-ms3
+name:                dna-ms4
 version:             0.1
 synopsis:            DSL constructions for radio astronomy imaging with a focus on data movement and optimization
 homepage:            https://github.com/SKA-ScienceDataProcessor/RC
@@ -6,7 +6,7 @@ license:             Apache-2.0
 license-file:        LICENSE
 author:              Peter Braam
 maintainer:          peter.braam@peterbraam.com
--- copyright:           
+-- copyright:
 category:            Concurrency
 build-type:          Custom
 cabal-version:       >=1.16
@@ -20,7 +20,7 @@ description:
  we provide infrastructure for detailed profiling and high availability, allowing
  recovery for certain types of failures.
  .
- DNA is presently implemented as an embedded monadic DSL on top of the 
+ DNA is presently implemented as an embedded monadic DSL on top of the
  well-established distributed programming framework "Cloud Haskell".
  See module "DNA" for a detailed documentation and examples.
 
@@ -35,7 +35,7 @@ Flag cuda
 ----------------------------------------------------------------
 library
   default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded
+  ghc-options:         -O2 -Wall
   Hs-source-dirs:      lib
   build-depends:
     base         >=4.6,
@@ -43,7 +43,7 @@ library
     time,
     old-locale,
     random,
-    bytestring   >= 0.10, 
+    bytestring   >= 0.10,
     binary,
     process      >= 1.2,
     directory,
@@ -97,3 +97,18 @@ library
   c-sources:
     cbits/channel-file.c
 
+----------------------------------------------------------------
+executable imaging-dataflow
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             imaging.hs
+  build-depends:
+    base >=4.6,
+    dna-ms4,
+    binary,
+    bytestring,
+    data-binary-ieee754,
+    vector >= 0.10,
+    directory
+  other-modules:
