@@ -307,7 +307,7 @@ data ActorState
 data RunInfo = RunInfo
     { nCompleted     :: Int
       -- ^ Number of CH processes that complete execution 
-    , allowedFailers :: Int
+    , allowedFailures :: Int
       -- ^ Number of allowed failures
     }
     deriving (Show)
