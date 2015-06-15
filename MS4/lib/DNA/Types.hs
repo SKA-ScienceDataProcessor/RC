@@ -159,14 +159,6 @@ data Scatter a
     deriving (Typeable)
 
 
-{-
--- | Another communication protocol for producing a set of values
--- using the map-reduce algorithm.
-data MR a
-    deriving (Typeable)
--}
-
-
 ----------------------------------------------------------------
 -- Shell actors
 ----------------------------------------------------------------

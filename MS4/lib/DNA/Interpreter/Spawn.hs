@@ -9,8 +9,6 @@ module DNA.Interpreter.Spawn (
     , execSpawnGroup
     -- , execSpawnGroupN
     , execSpawnCollectorGroup
-    -- , execSpawnCollectorGroupMR
-    -- , execSpawnMappers
       -- * Workers
     , spawnSingleActor
     ) where
@@ -132,37 +130,6 @@ execSpawnCollectorGroup res resG act = do
       _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
     return $ Shell aid
 
-
-{-
--- | Start group of collector processes
-execSpawnCollectorGroupMR
-    :: (Serializable a, Serializable b)
-    => Res
-    -> ResGroup
-    -> Spawn (Closure (CollectActor a b))
-    -> DnaMonad (Shell (MR a) (Grp b))
-execSpawnCollectorGroupMR res resG act = do
-    -- Spawn actors
-    (k,gid) <- spawnActorGroup res resG
-             $ closureApply $(mkStaticClosure 'runCollectActorMR) <$> act
-    -- Assemble group
-    sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
-    return $ assembleShellGroupCollectMR gid sh
-
-execSpawnMappers
-    :: (Serializable a, Serializable b)
-    => Res
-    -> ResGroup
-    -> Spawn (Closure (Mapper a b))
-    -> DnaMonad (Shell (Scatter a) (MR b))
-execSpawnMappers res resG act = do
-    -- Spawn actors
-    (k,gid) <- spawnActorGroup res resG
-             $ closureApply $(mkStaticClosure 'runMapperActor) <$> act
-    -- Assemble group
-    sh <- replicateM k $ handleRecieve messageHandlers [matchMsg']
-    return $ assembleShellMapper gid sh
--}
 
 ----------------------------------------------------------------
 -- Spawn helpers

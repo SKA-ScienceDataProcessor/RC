@@ -48,8 +48,6 @@ module DNA.DSL (
     , startGroup
     -- , startGroupN
     , startCollectorGroup
-    -- , startCollectorGroupMR
-    -- , startMappers
       -- ** Dataflow building
     , delay
     , await
@@ -156,18 +154,6 @@ data DnaF a where
       -> ResGroup   
       -> Spawn (Closure (CollectActor a b))
       -> DnaF (Shell (Grp a) (Grp b))
-    -- SpawnCollectorGroupMR
-    --   :: (Serializable a, Serializable b)
-    --   => Res
-    --   -> ResGroup
-    --   -> Spawn (Closure (CollectActor a b))
-    --   -> DnaF (Shell (MR a) (Grp b))
-    -- SpawnMappers
-    --   :: (Serializable a, Serializable b)
-    --   => Res
-    --   -> ResGroup
-    --   -> Spawn (Closure (Mapper a b))
-    --   -> DnaF (Shell (Scatter a) (MR b))
 
     -- Connect running actors
     Connect
@@ -438,10 +424,6 @@ connect :: (Serializable b, Typeable tag)
         => Shell a (tag b) -> Shell (tag b) c -> DNA ()
 connect a b = DNA $ singleton $ Connect a b
 
--- -- | Broadcast same parameter to all actors in group
--- broadcast :: Shell (Scatter a) b -> Shell (Val a) b
--- broadcast = undefined -- (Shell a) = (Shell __ __ _ _ _ _ _  r s) = Shell a (RecvBroadcast r) s
-
 -- | Returns the number of nodes that are available for spawning
 -- remote processes on.
 availableNodes :: DNA Int
@@ -512,30 +494,6 @@ startCollectorGroup
     -> DNA (Shell (Grp a) (Grp b))
 startCollectorGroup res resG child =
     DNA $ singleton $ SpawnCollectorGroup res resG child
-
-{-
--- | Start group of collector processes
-startCollectorGroupMR
-    :: (Serializable a, Serializable b)
-    => Res
-    -> ResGroup
-    -> Spawn (Closure (CollectActor a b))
-    -> DNA (Shell (MR a) (Grp b))
-startCollectorGroupMR res resG child =
-    DNA $ singleton $ SpawnCollectorGroupMR res resG child
--}
-
-{-
--- | Start group of mapper processes
-startMappers
-    :: (Serializable a, Serializable b)
-    => Res
-    -> ResGroup
-    -> Spawn (Closure (Mapper a b))
-    -> DNA (Shell (Scatter a) (MR b))
-startMappers res resG child =
-    DNA $ singleton $ SpawnMappers res resG child
--}
 
 crashMaybe :: Double -> DNA ()
 crashMaybe = DNA . singleton . CrashMaybe

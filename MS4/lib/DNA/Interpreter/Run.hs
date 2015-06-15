@@ -27,8 +27,6 @@ module DNA.Interpreter.Run (
       runActor
     -- , runActorManyRanks
     , runCollectActor
-    -- , runCollectActorMR
-    -- , runMapperActor
     , runDnaParam 
       -- * Helpers
     , doGatherDna
@@ -36,8 +34,6 @@ module DNA.Interpreter.Run (
     , runActor__static
     -- , runActorManyRanks__static
     , runCollectActor__static
-    -- , runCollectActorMR__static
-    -- , runMapperActor__static
     , __remoteTable
     ) where
 
@@ -136,62 +132,6 @@ runCollectActor (CollectActor step start fini) = do
     sendResult p b
 
 
--- -- | Start execution of collector actor
--- runCollectActorMR :: CollectActor a b -> Process ()
--- runCollectActorMR (CollectActor step start fini) = do
---     undefined
---     -- -- Obtain parameters
---     -- p <- expect
---     -- -- Create channels for communication
---     -- (chSendParam,chRecvParam) <- newChan
---     -- (chSendDst,  chRecvDst  ) <- newChan
---     -- (chSendN,    chRecvN    ) <- newChan
---     -- -- Send shell process description back
---     -- send (actorParent p)
---     --   ( (RecvMR    [(chSendN,chSendParam)])
---     --   , (SendVal    chSendDst))
---     -- let loop n tot !b
---     --       | n >= tot && tot >= 0 = return b
---     --       | otherwise = do
---     --           r <- liftP $ receiveWait [ matchChan chRecvParam (return . Right)
---     --                                    , matchChan chRecvN     (return . Left)
---     --                                    ]
---     --           case r of
---     --             Right (Just a) -> loop n tot =<< liftIO (step b a)
---     --             Right Nothing  -> loop (n+1) tot b
---     --             Left  k        -> loop n k b
---     -- s <- loop 0 (-1) =<< liftIO start
---     -- b <- liftIO $ fini s
---     -- sendToDestChan chRecvDst b
-
-
--- runMapperActor :: Mapper a b -> Process ()
--- runMapperActor (Mapper start step shuffle) = do
---     undefined
---     -- -- Obtain parameters
---     -- p <- expect
---     -- -- Create channels for communication
---     -- (chSendParam,chRecvParam) <- newChan
---     -- (chSendDst,  chRecvDst  ) <- newChan
---     -- -- Send shell process description back
---     -- send (actorParent p)
---     --     ( RecvVal chSendParam
---     --     , SendMR [chSendDst])
---     -- -- Get initial parameters for unfolding
---     -- a   <- receiveChan chRecvParam
---     -- s0  <- liftIO $ start a
---     -- -- Unfold loop
---     -- let loop s dst = do
---     --         dst' <- drainChannel0 chRecvDst dst
---     --         let n = length dst'
---     --         ms <- liftIO $ step s
---     --         case ms of
---     --           Nothing     -> return dst'
---     --           Just (s',b) -> do let i = shuffle n b
---     --                             sendChan (dst' !! i) (Just b)
---     --                             loop s' dst'
---     -- dst <- loop s0 =<< drainChannel chRecvDst
---     -- forM_ dst $ \ch -> sendChan ch Nothing
 
 ----------------------------------------------------------------
 -- Helpers
@@ -260,6 +200,4 @@ doGatherDna ms (Group chA chN) f x0 = do
 remotable [ 'runActor
           -- , 'runActorManyRanks
           , 'runCollectActor
-          -- , 'runCollectActorMR
-          -- , 'runMapperActor
           ]
