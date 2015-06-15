@@ -25,6 +25,8 @@ module DNA.DSL (
     , actor
     , CollectActor(..)
     , collectActor
+    , TreeCollector(..)
+    , treeCollector
     , Mapper(..)
     , mapper
       -- * Smart constructors
@@ -56,6 +58,7 @@ module DNA.DSL (
     , gatherM
     , sendParam
     , broadcast
+    , distributeWork
     , connect
 
     , crashMaybe
@@ -151,9 +154,15 @@ data DnaF a where
     SpawnCollectorGroup
       :: (Serializable a, Serializable b)
       => Res
-      -> ResGroup   
+      -> ResGroup
       -> Spawn (Closure (CollectActor a b))
       -> DnaF (Shell (Grp a) (Grp b))
+    SpawnCollectorTree
+      :: (Serializable a)
+      => Res
+      -> ResGroup
+      -> Spawn (Closure (TreeCollector a))
+      -> DnaF (Shell (Grp a) (Val a))
 
     -- Connect running actors
     Connect
@@ -173,9 +182,16 @@ data DnaF a where
       => a
       -> Shell (Scatter a) b
       -> DnaF ()
+    -- Distribute work between set of workers
+    DistributeWork
+      :: Serializable b
+      => a
+      -> (Int -> a -> [b])
+      -> Shell (Scatter b) c
+      -> DnaF ()
 
     -- Delay actor returning single value
-    Delay 
+    Delay
       :: Serializable b
       => Location
       -> Shell a (Val b)
@@ -304,6 +320,15 @@ collectActor
     -> CollectActor a b
 collectActor = CollectActor
 
+-- | Collector which could collect data in tree-like fashion
+data TreeCollector a where
+    TreeCollector :: (Serializable a)
+                  => (a -> a -> IO a)
+                  -> TreeCollector a
+
+-- | Smart constructor for tree collector.
+treeCollector :: Serializable a => (a -> a -> IO a) -> TreeCollector a
+treeCollector = TreeCollector
 
 -- | Actors of this type are the counter-part to `CollectActor`: They
 --   receive a single input message, but generate a set of output
@@ -390,7 +415,7 @@ delayGroup = DNA . singleton . DelayGroup
 
 -- | Obtains results from a group of actors by folding over the
 -- results.
-gather 
+gather
     :: Serializable a
     => Group a
     -> (b -> a -> b)
@@ -416,6 +441,17 @@ sendParam a sh = DNA $ singleton $ SendParam a sh
 -- how the data is meant to get split up.
 broadcast :: Serializable a => a -> Shell (Scatter a) b -> DNA ()
 broadcast a sh = DNA $ singleton $ Broadcast a sh
+
+-- | Distribute work between group of actors.
+distributeWork
+    :: Serializable b
+    => a -- ^ Parameter we want to send
+    -> (Int -> a -> [b])
+    -- ^ Function which distribute work between actors. First
+    -- parameter is length of list to produce
+    -> Shell (Scatter b) c
+    -> DNA ()
+distributeWork a f sh = DNA $ singleton $ DistributeWork a f sh
 
 -- | Only function for connecting the output of one actor to the input of
 -- another one. Only actors with matching input and output types can
@@ -489,7 +525,7 @@ startGroup res resG child =
 startCollectorGroup
     :: (Serializable a, Serializable b)
     => Res
-    -> ResGroup   
+    -> ResGroup
     -> Spawn (Closure (CollectActor a b))
     -> DNA (Shell (Grp a) (Grp b))
 startCollectorGroup res resG child =

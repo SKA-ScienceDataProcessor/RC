@@ -81,6 +81,7 @@ interpretDNA (DNA m) =
       Connect    a b  -> execConnect a b
       SendParam  a sh -> execSendParam a sh
       Broadcast  a sh -> execBroadcast a sh
+      DistributeWork a f sh -> execDistributeWork a f sh
       Delay    loc sh -> execDelay loc sh
       Await p         -> execAwait p
       DelayGroup sh   -> execDelayGroup sh
@@ -196,6 +197,31 @@ execBroadcast a (Shell aid) = do
           Nothing  -> doPanic "execBroadcast: type error"
           Just chs -> forM_ chs $ \ch -> sendChan ch a
     trySend _ = doPanic "execBroadcast: destination type mismatch. Expect group"
+
+execDistributeWork
+    :: Serializable b
+    => a -> (Int -> a -> [b]) -> Shell (Scatter b) c -> DnaMonad ()
+-- IMMEDIATE
+execDistributeWork a f (Shell aid) = do
+    Just mdst <- use $ stActorRecvAddr . at aid
+    case mdst of
+      Nothing -> doFatal "Connecting to terminated actor"
+      Just (dst,_) -> do
+          stActorSrc . at aid .= Just (Left trySend)
+          liftP $ trySend dst
+          logConnect Nothing (Just aid)
+  where
+    trySend (RcvGrp dsts) = do
+        let n  = length dsts
+            bs = f n a
+        when (length bs /= n) $
+            doFatal "Bad work distribution function"
+        mch <- sequence <$> mapM unwrapMessage dsts
+        case mch of
+          Nothing  -> doPanic "execBroadcast: type error"
+          Just chs -> forM_ (zip chs bs) $ uncurry sendChan
+    trySend _ = doPanic "execBroadcast: destination type mismatch. Expect group"
+
 
 
 -- Connect two shells to each other
