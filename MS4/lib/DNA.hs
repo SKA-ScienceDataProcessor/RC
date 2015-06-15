@@ -147,6 +147,8 @@ module DNA (
     , actor
     , CollectActor
     , collectActor
+    , TreeCollector
+    , treeCollector
       -- * DNA monad
     , DNA
     , dnaRun
@@ -181,6 +183,7 @@ module DNA (
     , availableNodes
     -- , startGroupN
     , startCollectorGroup
+    , startCollectorTree
     , useLocal
     , respawnOnFail
     , debugFlags
@@ -192,8 +195,8 @@ module DNA (
       -- source. Trying to connect an actor twice will result in
       -- a runtime error.
     , sendParam
-    -- , broadcastParamSlice
     , broadcast
+    , distributeWork
     , connect
     , FileChan
     , createFileChan

@@ -48,6 +48,7 @@ module DNA.DSL (
     , startGroup
     -- , startGroupN
     , startCollectorGroup
+    , startCollectorTree
       -- ** Dataflow building
     , delay
     , await
@@ -500,6 +501,16 @@ startCollectorGroup
     -> DNA (Shell (Grp a) (Grp b))
 startCollectorGroup res resG child =
     DNA $ singleton $ SpawnCollectorGroup res resG child
+
+-- | Start a group of collector actor processes
+startCollectorTree
+    :: (Serializable a)
+    => Res
+    -> ResGroup
+    -> Spawn (Closure (TreeCollector a))
+    -> DNA (Shell (Grp a) (Val a))
+startCollectorTree res resG child =
+    DNA $ singleton $ SpawnCollectorTree res resG child
 
 crashMaybe :: Double -> DNA ()
 crashMaybe = DNA . singleton . CrashMaybe
