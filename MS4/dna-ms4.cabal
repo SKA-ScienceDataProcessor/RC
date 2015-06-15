@@ -105,6 +105,7 @@ executable imaging-dataflow
   main-is:             imaging.hs
   build-depends:
     base >=4.6,
+    distributed-process,
     dna-ms4,
     binary,
     bytestring,
