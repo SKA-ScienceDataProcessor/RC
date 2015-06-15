@@ -77,6 +77,7 @@ interpretDNA (DNA m) =
       SpawnGroup            r g a -> execSpawnGroup r g a
       -- SpawnGroupN         r g n a -> execSpawnGroupN r g n a
       SpawnCollectorGroup   r g a -> execSpawnCollectorGroup r g a
+      SpawnCollectorTree    r g a -> execSpawnCollectorTree r g a
       -- Data flow building
       Connect    a b  -> execConnect a b
       SendParam  a sh -> execSendParam a sh

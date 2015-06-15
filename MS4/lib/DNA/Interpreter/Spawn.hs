@@ -9,6 +9,7 @@ module DNA.Interpreter.Spawn (
     , execSpawnGroup
     -- , execSpawnGroupN
     , execSpawnCollectorGroup
+    , execSpawnCollectorTree
       -- * Workers
     , spawnSingleActor
     ) where
@@ -130,6 +131,18 @@ execSpawnCollectorGroup res resG act = do
       _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
     return $ Shell aid
 
+-- |
+execSpawnCollectorTree
+    :: (Serializable a)
+    => Res
+    -> ResGroup
+    -> Spawn (Closure (TreeCollector a))
+    -> DnaMonad (Shell (Grp a) (Val a))
+execSpawnCollectorTree res resG act = do
+    -- FIXME: not implemented. We need to understand how to allocate
+    --        resources for actor tree
+    undefined
+
 
 ----------------------------------------------------------------
 -- Spawn helpers
@@ -145,7 +158,7 @@ acquireResources res flags = do
 -- Spawn actor which only uses single CH process.
 spawnSingleActor
     :: AID
-    -> VirtualCAD   
+    -> VirtualCAD
     -> SpawnCmd
     -> DnaMonad ()
 spawnSingleActor aid cad cmd@(SpawnSingle act _ addrTy flags) = do
