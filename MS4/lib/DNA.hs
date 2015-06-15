@@ -147,8 +147,6 @@ module DNA (
     , actor
     , CollectActor
     , collectActor
-    , Mapper
-    , mapper
       -- * DNA monad
     , DNA
     , dnaRun

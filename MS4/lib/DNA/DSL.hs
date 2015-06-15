@@ -27,8 +27,6 @@ module DNA.DSL (
     , collectActor
     , TreeCollector(..)
     , treeCollector
-    , Mapper(..)
-    , mapper
       -- * Smart constructors
       -- ** Logging
     , logMessage
@@ -329,34 +327,6 @@ data TreeCollector a where
 -- | Smart constructor for tree collector.
 treeCollector :: Serializable a => (a -> a -> IO a) -> TreeCollector a
 treeCollector = TreeCollector
-
--- | Actors of this type are the counter-part to `CollectActor`: They
---   receive a single input message, but generate a set of output
---   messages. While 'CollectActor' corresponds to 'foldr', the
---   'Mapper' can be understood as the equivalent of 'unfoldr'.
-data Mapper a b where
-    Mapper :: (Serializable a, Serializable b, Serializable s)
-           => (a -> IO s)
-           -> (s -> IO (Maybe (s,b)))
-           -> (Int -> b -> Int)
-           -> Mapper a b
-    deriving (Typeable)
-
--- | Just like a 'CollectActor', a 'Mapper' uses an internal state in
--- order to produce multiple values. However, the structure is
--- mirrored: Now the first parameter is a function that constructs the
--- internal state from the input value. Along the same lines, the
--- stepper function now iteratively produces an arbitrary number of
--- outputs, updating the state every time.  The third parameter
--- governs data distribution: Given a total number of possible
--- destinations and an output value, it specifies the index of the
--- destination to which it will be sent.
-mapper :: (Serializable a, Serializable b, Serializable s)
-       => (a -> IO s)              -- ^ initialization function
-       -> (s -> IO (Maybe (s, b))) -- ^ chunking function
-       -> (Int -> b -> Int)        -- ^ distribution function
-       -> Mapper a b
-mapper = Mapper
 
 
 
