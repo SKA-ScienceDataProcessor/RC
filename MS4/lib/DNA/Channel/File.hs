@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable, DeriveGeneric, BangPatterns,
-             ScopedTypeVariables, RankNTypes, StandaloneDeriving #-}
+             ScopedTypeVariables #-}
 
 module DNA.Channel.File (
           FileChan
