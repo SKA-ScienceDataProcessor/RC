@@ -188,7 +188,7 @@ void psfiKernel_scatter_kernel_small(
       grid_point_u = myGridU;
       grid_point_v = myGridV;
     }
-    sum += supportPixel;
+    sum = cuCadd(supportPixel, sum);
   }
   atomicAdd(&psfi[grid_point_u][grid_point_v], sum);
 }
