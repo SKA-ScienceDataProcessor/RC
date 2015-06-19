@@ -23,6 +23,12 @@ __device__  __inline__ double atomicAdd(double* address, double val)
 #endif
 }
 
+__device__ __inline__ void atomicAdd(complexd *ptr, complexd sum)
+{
+  atomicAdd(&ptr->x, sum.x);
+  atomicAdd(&ptr->y, sum.y);
+}
+
 __device__ __inline__ void atomicAdd(Double4c *ptr, complexd sumXX, complexd sumXY, complexd sumYX, complexd sumYY)
 {
   atomicAdd(&ptr->XX.x, sumXX.x);
