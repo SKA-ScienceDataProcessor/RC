@@ -124,7 +124,6 @@ void gridKernel_scatter_kernel_small(
   atomicAdd(&grid[grid_point_u][grid_point_v], sumXX, sumXY, sumYX, sumYY);
 }
 
-////////////////////////////////////
 template <
     int grid_size
 
@@ -192,7 +191,6 @@ void psfiKernel_scatter_kernel_small(
   }
   atomicAdd(&psfi[grid_point_u][grid_point_v], sum);
 }
-////////////////////////////////////
 
 template <
     int grid_size
