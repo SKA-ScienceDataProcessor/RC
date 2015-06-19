@@ -329,10 +329,6 @@ __device__ __inline__ void addBaselineToPsfi(
   , const double3 uvw[timesteps * channels]
   , const Double4c vis[timesteps * channels]
   ) {
-  // FIXME: should share shared memory with grid computation
-  // Also that perhaps was a bug (we had each instantiation
-  // had it's own shared memory copy).
-  // FIXME: investigate this futher!
   __shared__ Pregridded uvo_shared[timesteps * channels];
   __shared__ int2 off_shared[timesteps * channels];
   
