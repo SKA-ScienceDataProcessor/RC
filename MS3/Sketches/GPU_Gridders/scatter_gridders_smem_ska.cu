@@ -325,7 +325,6 @@ __device__ __inline__ void addBaselineToPsfi(
   , complexd psfi[grid_size][grid_size]
   , const complexd * gcf[]
   , const double3 uvw[timesteps * channels]
-  , const Double4c vis[timesteps * channels]
   ) {
   __shared__ Pregridded uvo_shared[timesteps * channels];
   __shared__ int2 off_shared[timesteps * channels];
@@ -408,6 +407,7 @@ template <
 __device__ __inline__ void addBaselinesToPsfi(
     double scale
   , double wstep
+  , const BlWMap permutations[/* baselines */]
   , complexd psfi[grid_size][grid_size]
   , const complexd * gcf[]
   , const double3 uvw[/* baselines */][timesteps * channels]
@@ -507,6 +507,54 @@ __global__ void addBaselinesToGridSkaMidUsingPermutations##suff(         \
 }
 addBaselinesToGridSkaMidUsingPermutations(HalfGCF, true)
 addBaselinesToGridSkaMidUsingPermutations(FullGCF, false)
+
+#define addBaselinesToPsfiSkaMid(suff, ishalf)                            \
+extern "C"                                                                \
+__global__ void addBaselinesToPsfiSkaMid##suff(                           \
+    double scale                                                          \
+  , double wstep                                                          \
+  , const BlWMap permutations[/* baselines */]                            \
+  , complexd psfi[GRID_SIZE][GRID_SIZE]                                   \
+  , const complexd * gcf[]                                                \
+  , const double3 uvw[/* baselines */][TIMESTEPS*CHANNELS]                \
+  , int blOff                                                             \
+  ) {                                                                     \
+  addBaselinesToPsfi<OVER, GRID_SIZE, TIMESTEPS, CHANNELS, ishalf, false> \
+    ( scale                                                               \
+    , wstep                                                               \
+    , permutations                                                        \
+    , psfi                                                                \
+    , gcf                                                                 \
+    , uvw                                                                 \
+    , blOff                                                               \
+    );                                                                    \
+}
+addBaselinesToPsfiSkaMid(HalfGCF, true)
+addBaselinesToPsfiSkaMid(FullGCF, false)
+
+#define addBaselinesToPsfiSkaMidUsingPermutations(suff, ishalf)          \
+extern "C"                                                               \
+__global__ void addBaselinesToPsfiSkaMidUsingPermutations##suff(         \
+    double scale                                                         \
+  , double wstep                                                         \
+  , const BlWMap permutations[/* baselines */]                           \
+  , complexd psfi[GRID_SIZE][GRID_SIZE]                                  \
+  , const complexd * gcf[]                                               \
+  , const double3 uvw[/* baselines */][TIMESTEPS*CHANNELS]               \
+  , int blOff                                                            \
+  ) {                                                                    \
+  addBaselinesToPsfi<OVER, GRID_SIZE, TIMESTEPS, CHANNELS, ishalf, true> \
+    ( scale                                                              \
+    , wstep                                                              \
+    , permutations                                                       \
+    , psfi                                                               \
+    , gcf                                                                \
+    , uvw                                                                \
+    , blOff                                                              \
+    );                                                                   \
+}
+addBaselinesToPsfiSkaMidUsingPermutations(HalfGCF, true)
+addBaselinesToPsfiSkaMidUsingPermutations(FullGCF, false)
 
 #include "../GCF_new/scale_complex_by_dbl.cuh"
 
