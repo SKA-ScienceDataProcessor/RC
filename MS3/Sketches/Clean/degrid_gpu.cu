@@ -127,13 +127,18 @@ template <int max_gcf_size> struct degridPadder {
   }
 };
 
+// FIXME:
+//  - add permutations vector to GPU kernels
+//  - add another grid dimension for baselines
+//  - assuming we sorted premutations vector,
+//     make only 2 kernel launches -- one for small
+//     gcf layer sizes, and the second -- for big ones
 // All pointers are *device* pointers,
 //   all buffer are already allocated on device,
 //   necessary data are marshalled.
 template <
     int max_gcf_dim
   , int over
-  , bool use_permutations
   >
 void degridGPU(
     double wstep
@@ -150,7 +155,8 @@ void degridGPU(
   , int img_dim
   ) {
   for(int bl = 0; bl < baselines; bl++) {
-    if (use_permutations) bl = permutations[bl].bl;
+    // Always use (sorted) permutations vector
+    bl = permutations[bl].bl;
     int gcf_dim = get_supp(permutations[bl].wp);
     // No mirrored GCF yet
     if (gcf_dim <= 16) {
@@ -175,7 +181,7 @@ void degridGPU(
 
 // Test instantiation
 template <>
-void degridGPU<512, 8, true>(
+void degridGPU<512, 8>(
     double wstep
   , const BlWMap permutations[/* baselines */]
   , complexd* out_vis
