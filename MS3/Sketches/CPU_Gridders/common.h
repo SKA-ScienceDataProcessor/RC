@@ -51,7 +51,7 @@ struct Pregridded
   short gcf_layer_supp;
 };
 
-__NATIVE int get_supp(int w) {
+__host__ __NATIVE int get_supp(int w) {
     if (w < 0) w = -w;
     return w * 8 + 17;
   }
