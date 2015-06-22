@@ -141,8 +141,7 @@ template <
   , int over
   >
 void degridGPU(
-    double wstep
-  , const BlWMap permutations[/* baselines */]
+    const BlWMap permutations[/* baselines */]
   , complexd* out_vis
   // Padded, points to the beginning
   // of physical data
@@ -181,8 +180,7 @@ void degridGPU(
 
 // Test instantiation
 extern "C" void testtest(
-    double wstep
-  , const BlWMap permutations[/* baselines */]
+    const BlWMap permutations[/* baselines */]
   , complexd* out_vis
   // Padded, points to the beginning
   // of physical data
@@ -194,5 +192,5 @@ extern "C" void testtest(
   , int timesteps_x_channels
   , int img_dim
 ){
-  degridGPU<512, 8>(wstep, permutations, out_vis, uvw, gcf, img, baselines, timesteps_x_channels, img_dim);
+  degridGPU<512, 8>(permutations, out_vis, uvw, gcf, img, baselines, timesteps_x_channels, img_dim);
 }
