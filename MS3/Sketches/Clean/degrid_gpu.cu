@@ -55,7 +55,7 @@ degrid_kernel(complexd* out, const double3* in, size_t npts, const complexd* img
       complexd tmp;
       tmp.x = sum_r;
       tmp.y = sum_i;
-      if (1 /* threadIdx.x == 0 */) {
+      if (threadIdx.x == 0) {
          out[n+q] = tmp;
       }
    }
@@ -109,7 +109,7 @@ degrid_kernel_small_gcf(complexd* out, const double3* in, size_t npts, const com
       complexd tmp;
       tmp.x = sum_r;
       tmp.y = sum_i;
-      if (1  /* threadIdx.x == 0 */) {
+      if (threadIdx.x == 0) {
          out[n+q] = tmp;
       }
    }
