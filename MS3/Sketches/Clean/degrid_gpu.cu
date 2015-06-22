@@ -11,8 +11,8 @@ template <int over>
 __global__ void
 //__launch_bounds__(256, 6)
 // double2 is for 'in'
-degrid_kernel(complexd* out, double3* in, size_t npts, complexd* img, 
-                              size_t img_dim, complexd* gcf, int gcf_dim) {
+degrid_kernel(complexd* out, const double3* in, size_t npts, const complexd* img, 
+                              size_t img_dim, const complexd* gcf, int gcf_dim) {
    
    //TODO remove hard-coded 32
    for (int n = 32*blockIdx.x; n<npts; n+= 32*gridDim.x) {
@@ -55,7 +55,7 @@ degrid_kernel(complexd* out, double3* in, size_t npts, complexd* img,
       complexd tmp;
       tmp.x = sum_r;
       tmp.y = sum_i;
-      if (threadIdx.x == 0) {
+      if (1 /* threadIdx.x == 0 */) {
          out[n+q] = tmp;
       }
    }
@@ -65,8 +65,8 @@ degrid_kernel(complexd* out, double3* in, size_t npts, complexd* img,
 template <int over>
 __global__ void
 //__launch_bounds__(256, 6)
-degrid_kernel_small_gcf(complexd* out, double3* in, size_t npts, complexd* img, 
-                              size_t img_dim, complexd* gcf, int gcf_dim) {
+degrid_kernel_small_gcf(complexd* out, const double3* in, size_t npts, const complexd* img, 
+                              size_t img_dim, const complexd* gcf, int gcf_dim) {
    
    //TODO remove hard-coded 32
    for (int n = 32*blockIdx.x; n<npts; n+= 32*gridDim.x) {
@@ -109,7 +109,7 @@ degrid_kernel_small_gcf(complexd* out, double3* in, size_t npts, complexd* img,
       complexd tmp;
       tmp.x = sum_r;
       tmp.y = sum_i;
-      if (threadIdx.x == 0) {
+      if (1  /* threadIdx.x == 0 */) {
          out[n+q] = tmp;
       }
    }
@@ -148,7 +148,7 @@ void degridGPU(
   // of physical data
   , const double3 * uvw
   // centered in 0 w-plane
-  , complexd * gcf[]
+  , const complexd * gcf[]
   , const complexd * img
   , int baselines
   , int timesteps_x_channels
@@ -162,7 +162,7 @@ void degridGPU(
     if (gcf_dim <= 16) {
        degrid_kernel_small_gcf<over>
          <<<timesteps_x_channels/32,dim3(32,32)>>>(
-             out
+             out_vis
            , uvw+bl*timesteps_x_channels, timesteps_x_channels
            , img+degridPadder<max_gcf_dim>::bare_offset(img_dim), img_dim
            , gcf[permutations[bl].wp], gcf_dim
@@ -170,7 +170,7 @@ void degridGPU(
     } else {
        degrid_kernel<over>
          <<<timesteps_x_channels/32,dim3(32,8)>>>(
-             out
+             out_vis
            , uvw+bl*timesteps_x_channels, timesteps_x_channels
            , img+degridPadder<max_gcf_dim>::bare_offset(img_dim), img_dim
            , gcf[permutations[bl].wp], gcf_dim
@@ -180,8 +180,7 @@ void degridGPU(
 }
 
 // Test instantiation
-template <>
-void degridGPU<512, 8>(
+extern "C" void testtest(
     double wstep
   , const BlWMap permutations[/* baselines */]
   , complexd* out_vis
@@ -189,9 +188,11 @@ void degridGPU<512, 8>(
   // of physical data
   , const double3 * uvw
   // centered in 0 w-plane
-  , complexd * gcf[]
+  , const complexd * gcf[]
   , const complexd * img
   , int baselines
   , int timesteps_x_channels
   , int img_dim
-  );
+){
+  degridGPU<512, 8>(wstep, permutations, out_vis, uvw, gcf, img, baselines, timesteps_x_channels, img_dim);
+}
