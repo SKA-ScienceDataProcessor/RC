@@ -154,7 +154,7 @@ void degridGPU(
   , size_t img_dim
   , int blOff
   ) {
-  // Temporarily use the second grid dimension as baseline dimension
+  // Temporarily use the second treadblock-grid dimension as baseline dimension
   int bl = permutations[blockIdx.y + blOff].bl;
   int gcf_dim = get_supp(permutations[bl].wp);
   degridder<over, isBig>::degrid_kernel(
