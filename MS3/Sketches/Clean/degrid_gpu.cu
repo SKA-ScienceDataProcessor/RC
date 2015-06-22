@@ -7,11 +7,14 @@
 #include "metrix.h"
 #include "OskarBinReader.h"
 
-template <int over>
-__global__ void
+template <int over, bool isbig> struct degridder {};
+
+template <int over> struct degridder<over, true>{
+
+static __device__ __inline__
 //__launch_bounds__(256, 6)
-// double2 is for 'in'
-degrid_kernel(complexd* out, const double3* in, size_t npts, const complexd* img, 
+// double2 is enough for 'in'
+void degrid_kernel(complexd* out, const double3* in, size_t npts, const complexd* img, 
                               size_t img_dim, const complexd* gcf, int gcf_dim) {
    
    //TODO remove hard-coded 32
@@ -62,10 +65,13 @@ degrid_kernel(complexd* out, const double3* in, size_t npts, const complexd* img
    }
 }
 
-template <int over>
-__global__ void
+};
+
+template <int over> struct degridder<over, false>{
+
+static __device__ __inline__
 //__launch_bounds__(256, 6)
-degrid_kernel_small_gcf(complexd* out, const double3* in, size_t npts, const complexd* img, 
+void degrid_kernel(complexd* out, const double3* in, size_t npts, const complexd* img, 
                               size_t img_dim, const complexd* gcf, int gcf_dim) {
    
    //TODO remove hard-coded 32
@@ -116,6 +122,8 @@ degrid_kernel_small_gcf(complexd* out, const double3* in, size_t npts, const com
    }
 }
 
+};
+
 #define __PADAPI static __inline__ __host__ __device__
 
 template <int max_gcf_size> struct degridPadder {
@@ -127,15 +135,42 @@ template <int max_gcf_size> struct degridPadder {
   }
 };
 
-// FIXME:
-//  - add permutations vector to GPU kernels
-//  - add another grid dimension for baselines
-//  - assuming we sorted premutations vector,
-//     make only 2 kernel launches -- one for small
-//     gcf layer sizes, and the second -- for big ones
-// All pointers are *device* pointers,
-//   all buffer are already allocated on device,
-//   necessary data are marshalled.
+template <
+    int max_gcf_dim
+  , int over
+  , bool isBig
+  >
+__global__
+void degridGPU(
+    const BlWMap permutations[/* baselines */]
+  , complexd * out_vis
+  // Padded, points to the beginning
+  // of physical data
+  , const double3 * uvw
+  // centered in 0 w-plane
+  , const complexd * gcf[]
+  , const complexd * img
+  , size_t timesteps_x_channels
+  , size_t img_dim
+  , int blOff
+  ) {
+  // Temporarily use the second grid dimension as baseline dimension
+  int bl = permutations[blockIdx.y + blOff].bl;
+  int gcf_dim = get_supp(permutations[bl].wp);
+  degridder<over, isBig>::degrid_kernel(
+             out_vis + bl*timesteps_x_channels
+           , uvw + bl*timesteps_x_channels
+           , timesteps_x_channels
+           , img+degridPadder<max_gcf_dim>::bare_offset(img_dim)
+           , img_dim
+           , gcf[permutations[bl].wp]
+           , gcf_dim
+           );
+}
+
+
+// We assume permutations vector
+// is sorted against abs(w_plane_index) compare function
 template <
     int max_gcf_dim
   , int over
@@ -153,33 +188,19 @@ void degridGPU(
   , int timesteps_x_channels
   , int img_dim
   ) {
-  for(int bl = 0; bl < baselines; bl++) {
-    // Always use (sorted) permutations vector
-    bl = permutations[bl].bl;
-    int gcf_dim = get_supp(permutations[bl].wp);
-    // No mirrored GCF yet
-    if (gcf_dim <= 16) {
-       degrid_kernel_small_gcf<over>
-         <<<timesteps_x_channels/32,dim3(32,32)>>>(
-             out_vis
-           , uvw+bl*timesteps_x_channels, timesteps_x_channels
-           , img+degridPadder<max_gcf_dim>::bare_offset(img_dim), img_dim
-           , gcf[permutations[bl].wp], gcf_dim
-           );
-    } else {
-       degrid_kernel<over>
-         <<<timesteps_x_channels/32,dim3(32,8)>>>(
-             out_vis
-           , uvw+bl*timesteps_x_channels, timesteps_x_channels
-           , img+degridPadder<max_gcf_dim>::bare_offset(img_dim), img_dim
-           , gcf[permutations[bl].wp], gcf_dim
-          );
-    }
+  int bl;
+  for(bl = 0; bl < baselines; bl++) {
+    if(get_supp(permutations[bl].wp) > 16) break;
+  }
+  dim3 griddims_small = dim3(timesteps_x_channels/32, bl);
+  degridGPU<max_gcf_dim, over, false><<<griddims_small, dim3(32,32)>>>(permutations, out_vis, uvw, gcf, img, timesteps_x_channels, img_dim, 0);
+  if (bl != baselines - 1) {
+    dim3 griddims_big = dim3(timesteps_x_channels/32, baselines - bl);
+    degridGPU<max_gcf_dim, over, true><<<griddims_big, dim3(32,8)>>>(permutations, out_vis, uvw, gcf, img, timesteps_x_channels, img_dim, bl);
   }
 }
 
-// Test instantiation
-extern "C" void testtest(
+extern "C" void test(
     const BlWMap permutations[/* baselines */]
   , complexd* out_vis
   // Padded, points to the beginning
@@ -191,6 +212,7 @@ extern "C" void testtest(
   , int baselines
   , int timesteps_x_channels
   , int img_dim
-){
-  degridGPU<512, 8>(permutations, out_vis, uvw, gcf, img, baselines, timesteps_x_channels, img_dim);
+  )
+{
+  degridGPU<256, 8>(permutations, out_vis, uvw, gcf, img, baselines, timesteps_x_channels, img_dim);
 }
