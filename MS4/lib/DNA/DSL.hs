@@ -63,6 +63,8 @@ module DNA.DSL (
     , crashMaybe
     , FileChan
     , createFileChan
+
+    , waitForResoures
     ) where
 
 import Control.Applicative
@@ -211,6 +213,9 @@ data DnaF a where
       -> DnaF b
     CrashMaybe
       :: Double -> DnaF ()
+
+    -- Wait for release of resources by an actor
+    WaitForResources :: AID -> DnaF ()
 
     -- Create a new file channel
     CreateFileChan
@@ -518,3 +523,6 @@ crashMaybe = DNA . singleton . CrashMaybe
 -- | Allocates a new file channel for sharing data between actors.
 createFileChan :: Location -> String -> DNA (FileChan a)
 createFileChan loc name = DNA $ singleton $ CreateFileChan loc name
+
+waitForResoures :: Shell a b -> DNA ()
+waitForResoures (Shell aid) = DNA $ singleton $ WaitForResources aid

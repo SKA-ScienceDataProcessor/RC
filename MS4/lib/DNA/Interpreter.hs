@@ -14,26 +14,19 @@ module DNA.Interpreter (
 
 import Control.Applicative
 import Control.Monad
--- import Control.Monad.Trans.Class
 import Control.Monad.Reader
--- import Control.Monad.Except
 import Control.Monad.Operational
 import Control.Concurrent.Async
--- import Control.Concurrent.STM (STM)
--- import Control.Distributed.Static  (closureApply)
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
--- import Data.Maybe
+import Data.Maybe
 -- import Data.Binary   (Binary)
 import Data.Typeable (Typeable {-,typeOf-})
--- import qualified Data.Map as Map
--- import           Data.Map   (Map)
+import qualified Data.Map as Map
 import qualified Data.Set as Set
--- import           Data.Set   (Set)
 import qualified Data.Foldable as T
--- import Text.Printf
--- import GHC.Generics  (Generic)
+
 
 import DNA.CH
 import DNA.Types
@@ -89,6 +82,7 @@ interpretDNA (DNA m) =
       GatherM p f b0  -> execGatherM p f b0
       CrashMaybe p    -> crashMaybeWorker p
       CreateFileChan l n -> createFileChan l n
+      WaitForResources aid -> execWaitForResources aid
 
 theInterpreter :: DnaInterpreter
 theInterpreter = DnaInterpreter interpretDNA
@@ -274,6 +268,16 @@ createFileChan loc name = do
     case m_chan of
       Nothing -> doPanic $ "Failed to create file channel " ++ name ++ "!"
       Just chan -> return chan
+
+
+execWaitForResources :: AID -> DnaMonad ()
+execWaitForResources aid = do
+    Just pids <- use $ stAllAid2Pid    . at aid
+    pool      <- forM (T.toList pids) $ \p -> use $ stUsedResources . at p
+    case catMaybes pool of
+      [] -> return ()
+      _  -> do blockForMessage messageHandlers
+               execWaitForResources aid
 
 ----------------------------------------------------------------
 -- Helpers

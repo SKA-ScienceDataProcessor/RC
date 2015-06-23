@@ -61,6 +61,21 @@ handleRecieve auxMs mA
           Right a      -> return a
           Left ((),s') -> put s' >> loop
 
+-- | Wait for message
+blockForMessage :: [MatchS] -> DnaMonad ()
+blockForMessage auxMs = do
+    e  <- ask
+    s  <- get
+    s' <- liftP $ receiveWait $ matches e s
+    put s'
+  where
+    matches e s
+        = [ match $ \a -> (flip runReaderT e . flip execStateT s . unDnaMonad . runController) (f a)
+          | MatchS f <- auxMs
+          ]
+
+
+
 
 ----------------------------------------------------------------
 -- Monads
@@ -169,6 +184,7 @@ runDnaMonad aid (Rank rnk) (GroupSize grp) interp nodes flags logopt workDir =
            , _stVars          = Map.empty
            , _stActorRecvAddr = Map.empty
            , _stAid2Pid       = Map.empty
+           , _stAllAid2Pid    = Map.empty
            , _stPid2Aid       = Map.empty
            , _stActorClosure  = Map.empty
            }
@@ -280,8 +296,10 @@ data StateDNA = StateDNA
       --   to Nothing
 
       -- Mapping ProcessID <-> AID
-    , _stPid2Aid :: !(Map ProcessId (Rank,GroupSize,AID))
-    , _stAid2Pid :: !(Map AID (Set ProcessId))
+    , _stPid2Aid    :: !(Map ProcessId (Rank,GroupSize,AID))
+    , _stAid2Pid    :: !(Map AID (Set ProcessId))
+    , _stAllAid2Pid :: !(Map AID (Set ProcessId))
+      -- ^ All PIDs ever associated with given AID
 
       -- Restarts
     , _stActorClosure   :: !(Map AID SpawnCmd)
