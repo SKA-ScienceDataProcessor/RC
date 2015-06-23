@@ -1,0 +1,51 @@
+
+name:                linux-perf-stat
+version:             0.1.0.0
+license:             Apache-2.0
+license-file:        ../../LICENSE
+author:              Peter Wortmann
+maintainer:          Peter.Wortmann@braamresearch.com
+category:            Development
+build-type:          Simple
+cabal-version:       >=1.10
+
+Flag pfm
+     Description:    Enable support for libpfm (allows access to more counters)
+     Default:        False
+
+Flag group
+     Description:    Query counters as a group. Slightly more accurate, but
+                     doesn't work with inheriting counters.
+     Default:        False
+
+library
+  exposed-modules:   Profiling.Linux.Perf.Stat
+                     Profiling.Linux.Perf.Stat.Types
+  other-modules:     Profiling.Linux.Perf.Stat.PMU
+  build-depends:     base >=4.7 && <4.8,
+                     filepath >= 1.3 && <1.4
+  default-language:  Haskell2010
+  ghc-options:       -Wall
+  c-sources:         cbits/perf.c
+  if flag(pfm)
+    extra-libraries: pfm
+    cpp-options:     -DUSE_LIBPFM
+    cc-options:      -DUSE_LIBPFM
+  if flag(group)
+    cpp-options:     -DUSE_PERF_FORMAT_GROUP
+    cc-options:      -DUSE_PERF_FORMAT_GROUP
+
+executable linux-perf-stat-test
+  hs-source-dirs:    src
+  main-is:           test.hs
+  default-language:  Haskell2010
+  ghc-options:       -Wall
+  build-depends:     base >=4.7 && <4.8,
+                     linux-perf-stat,
+                     time, vector,
+                     primitive
+  c-sources:         src/test.c, src/omp.c
+  cc-options:        -mavx -Wall -O2 -fopenmp
+  ld-options:        -fopenmp
+  if flag(pfm)
+    cpp-options:     -DUSE_LIBPFM
