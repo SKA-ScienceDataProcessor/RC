@@ -8,6 +8,7 @@ module DNA.Channel.File (
         , withFileChan
         , readFileChan
         , mmapFileChan
+        , transferFileChan
         ) where
 
 import Control.Monad
@@ -110,3 +111,11 @@ mmapFileChan n o ch p nodeId =
         nPtr <- new (fromIntegral n :: CLong)
         fptr <- newForeignPtrEnv c_munmap_data nPtr ptr
         return $ S.unsafeFromForeignPtr0 (castForeignPtr fptr) (fromIntegral n)
+
+-- | Transfer files between file channels
+transferFileChan :: FileChan a -- ^ Source file channel
+                 -> FileChan b -- ^ Destination file channel
+                 -> String -- ^ Name of the file to transfer
+                 -> IO ()
+transferFileChan from to p =
+  copyFile (fhPath from </> p) (fhPath to </> p)
