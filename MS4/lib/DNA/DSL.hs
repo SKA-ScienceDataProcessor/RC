@@ -524,5 +524,7 @@ crashMaybe = DNA . singleton . CrashMaybe
 createFileChan :: Location -> String -> DNA (FileChan a)
 createFileChan loc name = DNA $ singleton $ CreateFileChan loc name
 
+-- | Barrier that ensures that all resources associated with the given
+-- shell have been returned and can be re-allocated.
 waitForResoures :: Shell a b -> DNA ()
 waitForResoures (Shell aid) = DNA $ singleton $ WaitForResources aid

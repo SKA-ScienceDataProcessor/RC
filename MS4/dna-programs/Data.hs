@@ -34,6 +34,8 @@ import DNA.Channel.File
 
 import Vector
 
+
+
 -- | Grid parameters. This defines how big our grid is going to be,
 -- and how it is going to be stored.
 data GridPar = GridPar
@@ -136,6 +138,8 @@ data GCFSet = GCFSet
   { gcfsPar :: GCFPar  -- ^ GCF parameterisiation
   , gcfs :: [GCF]      -- ^ The contained GCFs. Sorted ascending by @w@ value.
   }
+  deriving (Show,Typeable,Generic)
+instance Binary GCFSet
 
 -- | A grid convolution function, used for gridding visibilities
 -- to the @UVGrid@. It is valid in a given range of @w@-values.
@@ -147,5 +151,6 @@ data GCF = GCF
   , gcfData :: Vector (Complex Double)
                         -- ^ Convolution matrix data
   }
-
+  deriving (Show,Typeable,Generic)
+instance Binary GCF
 

@@ -244,6 +244,7 @@ mainActor cfg = actor $ \dataSets -> do
     weightedDataSets <- gather grp (flip (:)) []
 
     -- Now start worker actors
+    waitForResoures estimateWorkers
     workers <- startGroup (Frac 1) (NNodes 1) $ do
         useLocal
         return (closure (workerActor cfg))

@@ -181,6 +181,7 @@ module DNA (
     , ResGroup(..)
     , Location(..)
     , availableNodes
+    , waitForResoures
     -- , startGroupN
     , startCollectorGroup
     , startCollectorTree
