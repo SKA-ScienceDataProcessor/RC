@@ -53,12 +53,23 @@ newtype Config = Config
   , cfgCleanThreshold :: Double -- ^ Residual threshold at which we should stop cleanining
   }
   deriving (Show,Binary,Typeable)
+
+
 scheduleFreqCh
-    :: [(FreqCh,Double)]
-    -> Int
-    -> [(FreqCh,Int)]
-    -> [(FreqCh,Int)]
-scheduleFreqCh = undefined
+    :: Int                      -- ^ Number of nodes to use
+    -> [(FreqCh,Int)]           -- ^ List of pairs (freq. ch., N of iterations)
+    -> DNA [(FreqCh,Int)]
+scheduleFreqCh nNodes input = do
+    -- Get full execution time for each channel
+    times <- forM input $ \(freqCh, n) -> do
+        t <- getExecutionTimeForFreqCh freqCh
+        return (t * n)
+    -- 
+    let nodes = balancer nNodes times
+        split tot bins = zipWith (+) (replicate bins base) (replicate rest 1 ++ repeat 0)
+          where (base,rest) = tot `divMod` bins
+    return $ zip nodes input >>= (\(bins,(freqCh, n)) -> (,) freqCh <$> split n bins)
+
 
 
 
