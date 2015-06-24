@@ -1,7 +1,11 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
 
 module Vector where
 
+import Data.Binary   (Binary(..))
+import Data.Typeable (Typeable)
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
 import Foreign.Marshal.Utils
@@ -11,12 +15,20 @@ import Foreign.CUDA.Runtime as CUDA
 
 import Foreign.Storable
 
+import GHC.Generics (Generic)
+
+
 -- | Vector type. Depending on the requirements of the kernel that
 -- uses it, it might have a different underlying pointer type.
 data Vector a
   = CVector !Int (Ptr a)
   | HostVector !Int (HostPtr a)
   | DeviceVector !Int (DevicePtr a)
+  deriving (Show, Typeable, Generic)
+-- FIXME: No sane binary  instance but we need to pass this data type around
+instance Binary (Vector a) where
+    get = undefined
+    put = undefined
 
 -- | Allocate a C vector using @malloc@ that is large enough for the
 -- given number of elements.

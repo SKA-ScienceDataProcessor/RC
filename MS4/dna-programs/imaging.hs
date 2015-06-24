@@ -4,6 +4,8 @@
 -- | High level dataflow for imaging program
 module Main where
 
+import Control.Applicative
+import Control.Monad
 import Control.Distributed.Process (Closure)
 
 import DNA
@@ -23,21 +25,24 @@ import Vector
 ----------------------------------------------------------------
 
 data OskarData
+data FreqCh
+
 
 -- | A data set, consisting of an Oskar file name and the frequency
 -- channel & polarisation we are interested in.
-newtype DataSet = DataSet
+data DataSet = DataSet
   { dsData :: FileChan OskarData -- ^ Oskar data to read
   , dsChannel :: Int   -- ^ Frequency channel to process
   , dsPolar :: Polar   -- ^ Polarisation to process
   , dsRepeats :: Int   -- ^ Number of times we should process this
                        -- data set to simulate a larger workload
   }
-  deriving (Show,Binary,Typeable)
+  deriving (Show,Generic,Typeable)
+instance Binary DataSet
 
 -- | Main run configuration. This contains all parameters we need for
 -- runnin the imaging pipeline.
-newtype Config = Config
+data Config = Config
   { cfgDataSets :: [DataSet] -- ^ Data sets to process
   , cfgGridPar :: GridPar    -- ^ Grid parameters to use. Must be compatible with used kernels!
   , cfgGCFPar :: GCFPar      -- ^ GCF parameters to use.
@@ -52,8 +57,11 @@ newtype Config = Config
   , cfgCleanGain :: Double   -- ^ Cleaning strength (?)
   , cfgCleanThreshold :: Double -- ^ Residual threshold at which we should stop cleanining
   }
-  deriving (Show,Binary,Typeable)
+  deriving (Show,Generic,Typeable)
+instance Binary Config
 
+getExecutionTimeForFreqCh :: a
+getExecutionTimeForFreqCh = undefined
 
 scheduleFreqCh
     :: Int                      -- ^ Number of nodes to use
@@ -63,7 +71,7 @@ scheduleFreqCh nNodes input = do
     -- Get full execution time for each channel
     times <- forM input $ \(freqCh, n) -> do
         t <- getExecutionTimeForFreqCh freqCh
-        return (t * n)
+        return (t * fromIntegral n)
     -- 
     let nodes = balancer nNodes times
         split tot bins = zipWith (+) (replicate bins base) (replicate rest 1 ++ repeat 0)
@@ -72,7 +80,7 @@ scheduleFreqCh nNodes input = do
 
 
 
-
+{-
 ----------------------------------------------------------------
 -- Actors
 ----------------------------------------------------------------
@@ -237,6 +245,8 @@ mainActor cfg = actor $ \input -> do
         return (closure imageCollector)
     connect workers collector
     await =<< delay Remote collector
+
+-}
 
 main :: IO ()
 main = do

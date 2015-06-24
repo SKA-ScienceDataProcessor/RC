@@ -28,23 +28,17 @@ import System.Directory
 import System.FilePath
 import System.IO
 import System.Posix.Temp
+import GHC.Generics (Generic)
 
 import DNA.Types ( Location(..) )
 
+
 data FileChan a = FileChan
-  { fhPath :: FilePath
+  { fhPath     :: FilePath
   , fhLocation :: Location
   }
-  deriving (Typeable)
-
-instance Binary (FileChan a) where
-  put ch = do
-    put (fhPath ch)
-    put (fhLocation ch)
-  get = do
-    path <- get
-    loc <- get
-    return $ FileChan path loc
+  deriving (Typeable,Generic,Show)
+instance Binary (FileChan a) 
 
 -- | Creates a file handle fit to be shared with another actor with
 -- the given locality.

@@ -1,4 +1,5 @@
-
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Data
   ( -- * Grid
     GridPar(..)
@@ -24,11 +25,16 @@ module Data
   , UVW(..), Polar(..)
   ) where
 
+import Data.Complex
+import Data.Binary   (Binary)
+import Data.Typeable (Typeable)
+import GHC.Generics  (Generic)
+
 import DNA.Channel.File
 
-import Data.Complex
-
 import Vector
+
+
 
 -- | Grid parameters. This defines how big our grid is going to be,
 -- and how it is going to be stored.
@@ -39,12 +45,16 @@ data GridPar = GridPar
                        -- be larger than width if data is meant to be
                        -- padded.
   }
+  deriving (Show,Typeable,Generic)
+instance Binary GridPar
 
 -- | Parameters going into GCF generation
 data GCFPar = GCFPar
   { gcfpStepW :: !Double -- ^ Size of the @w@ bins
   , gcfpMaxSize :: !Int  -- ^ Maximum size for the GCF (?)
   }
+  deriving (Show,Typeable,Generic)
+instance Binary GCFPar
 
 -- | The @UVGrid@ contains gridded complex-valued visibilities in the frequency
 -- domain. Conceptually, it is hermitian in nature - so @G(u,v) =
@@ -54,6 +64,8 @@ data UVGrid = UVGrid
   { uvgPar :: GridPar
   , uvgData :: Vector (Complex Double)
   }
+  deriving (Show,Typeable,Generic)
+instance Binary UVGrid
 
 -- | Images correspond to real-valued sky brightness data. They can be transformed
 -- to and from the @UVGrid@ using a fourier transformation.
@@ -61,6 +73,9 @@ data Image = Image
   { imgPar :: GridPar
   , imgData :: Vector Double
   }
+  deriving (Show,Typeable,Generic)
+instance Binary Image
+
 
 -- | Create an image filled with the given value, allocated as a
 -- simple C buffer.
@@ -91,9 +106,13 @@ data Vis = Vis
                                -- this to traverse visibilities in an
                                -- optimised fashion.
   }
+  deriving (Show,Typeable,Generic)
+instance Binary Vis
 
 -- | Visibility polarisation
 data Polar = XX | YY | XY | YX
+           deriving (Show,Typeable,Generic)
+instance Binary Polar
 
 -- | Visibility position in the uvw coordinate system
 data UVW = UVW
@@ -101,6 +120,8 @@ data UVW = UVW
   , v :: !Double
   , w :: !Double
   }
+  deriving (Show,Typeable,Generic)
+instance Binary UVW
 
 -- | Generate a duplicate of the visibilities, setting all of them to
 -- the given value. Useful for determining the response to 
