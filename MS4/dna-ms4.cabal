@@ -99,7 +99,6 @@ library
 
 ----------------------------------------------------------------
 executable imaging-dataflow
-  buildable:      False
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -eventlog
   Hs-source-dirs:      dna-programs
@@ -112,5 +111,9 @@ executable imaging-dataflow
     bytestring,
     data-binary-ieee754,
     vector >= 0.10,
-    directory
+    directory,
+    time
+  if flag(cuda)
+    build-depends: cuda, cufft
+    cpp-options:   -DUSE_CUDA
   other-modules:

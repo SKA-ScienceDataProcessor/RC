@@ -544,7 +544,7 @@ samplePerfEvents countersVar _            EndSample = do
 -- Note that we lose some accuracy in the process, at some point it
 -- might be worthwhile to document this in the profile as well.
 formatPerfStat :: Word64 -> PerfStatCount -> String
-formatPerfStat multi (PerfStatCount _ _   _       0)       = ""
+formatPerfStat _     (PerfStatCount _ _   _       0)       = ""
 formatPerfStat multi (PerfStatCount _ val enabled running) =
     let f = 4096 -- overflow-save up to about 1250 hours
         normalised = val * (enabled * f `div` running) `div` f

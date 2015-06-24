@@ -5,13 +5,15 @@
 module Main where
 
 import Control.Distributed.Process (Closure)
+import Control.Monad   (void, when)
 
 import DNA
 import DNA.Channel.File
 
-import Data.Binary   (Binary)
-import Data.Typeable (Typeable)
-import GHC.Generics  (Generic)
+import Data.Binary     (Binary)
+import Data.Time.Clock
+import Data.Typeable   (Typeable)
+import GHC.Generics    (Generic)
 
 import Data
 import Kernel
@@ -26,18 +28,19 @@ data OskarData
 
 -- | A data set, consisting of an Oskar file name and the frequency
 -- channel & polarisation we are interested in.
-newtype DataSet = DataSet
+data DataSet = DataSet
   { dsData :: FileChan OskarData -- ^ Oskar data to read
   , dsChannel :: Int   -- ^ Frequency channel to process
   , dsPolar :: Polar   -- ^ Polarisation to process
   , dsRepeats :: Int   -- ^ Number of times we should process this
                        -- data set to simulate a larger workload
   }
-  deriving (Show,Binary,Typeable)
+  deriving (Generic,Typeable)
+instance Binary DataSet
 
 -- | Main run configuration. This contains all parameters we need for
 -- runnin the imaging pipeline.
-newtype Config = Config
+data Config = Config
   { cfgDataSets :: [DataSet] -- ^ Data sets to process
   , cfgGridPar :: GridPar    -- ^ Grid parameters to use. Must be compatible with used kernels!
   , cfgGCFPar :: GCFPar      -- ^ GCF parameters to use.
@@ -52,15 +55,8 @@ newtype Config = Config
   , cfgCleanGain :: Double   -- ^ Cleaning strength (?)
   , cfgCleanThreshold :: Double -- ^ Residual threshold at which we should stop cleanining
   }
-  deriving (Show,Binary,Typeable)
-scheduleFreqCh
-    :: [(FreqCh,Double)]
-    -> Int
-    -> [(FreqCh,Int)]
-    -> [(FreqCh,Int)]
-scheduleFreqCh = undefined
-
-
+  deriving (Generic,Typeable)
+instance Binary Config
 
 ----------------------------------------------------------------
 -- Actors
@@ -92,7 +88,7 @@ gridderActor gpar gcfpar gridk dftk = actor $ \(vis,gcfSet) -> do
       gridkGrid gridk vis gcfSet grid
 
     -- Transform uv-grid into an (possibly dirty) image
-    kernel "ifft" $ liftIO $ do
+    kernel "ifft" [] $ liftIO $ do
       dftIKernel dftk grid
 
 -- | Compound degridding actor.
@@ -101,19 +97,19 @@ degridderActor :: GridKernel -> DFTKernel
 degridderActor gridk dftk = actor $ \(model,vis,gcfSet) -> do
 
     -- Transform image into a uv-grid
-    grid <- kernel "fft" $ liftIO $ do
+    grid <- kernel "fft" [] $ liftIO $ do
       dftKernel dftk model
 
     -- Degrid to obtain new visibilitities for the positions in "vis"
     kernel "degrid" [] $ liftIO $ do
-      gridkDegrid gridk vis gcfSet grid vis
+      gridkDegrid gridk grid gcfSet vis
 
 imagingActor :: Config -> Actor DataSet Image
 imagingActor cfg = actor $ \dataSet -> do
 
     -- Copy data set locally
     oskarChan <- createFileChan Local "oskar"
-    (gcfk, gridk, dftk, cleank, vis0, psfVis, gcfSet) <- unboundKernel "setup" [] $ liftIO $ do
+    (gridk, dftk, cleank, vis0, psfVis, gcfSet) <- unboundKernel "setup" [] $ liftIO $ do
       transferFileChan (dsData dataSet) oskarChan "data"
 
       -- Initialise our kernels
@@ -139,7 +135,7 @@ imagingActor cfg = actor $ \dataSet -> do
       gcfSet' <- gridkPrepareGCF gridk gcfSet
 
       -- Calculate PSF using the positions from Oskar data
-      return (gcfk, gridk, dftk, cleank,
+      return (gridk, dftk, cleank,
               vis', psfVis', gcfSet')
 
     -- Calculate PSF
@@ -166,7 +162,7 @@ imagingActor cfg = actor $ \dataSet -> do
            -- De-grid the model
            mvis <- eval degridAct (model,vis,gcfSet)
            -- Loop
-           vis' <- subtractVis vis mvis
+           vis' <- kernel "subtract" [] $ liftIO $ subtractVis vis mvis
            majorLoop (i+1) vis'
 
     -- Run above loop. The residual of the last iteration is the
@@ -187,7 +183,7 @@ workerActor :: Config -> Actor DataSet (FileChan Image)
 workerActor cfg = actor $ \dataSet -> do
 
     -- Initialise image sum
-    img0 <- constImage 0
+    img0 <- kernel "init image" [] $ liftIO $ constImage (cfgGridPar cfg) 0
     let loop i img | i >= dsRepeats dataSet  = return img
                    | otherwise = do
            -- Generate image, sum up
@@ -200,22 +196,68 @@ workerActor cfg = actor $ \dataSet -> do
 
     -- Allocate file channel for output
     outChan <- createFileChan Remote "image"
-    writeImage img outChan "data"
+    kernel "write image" [] $ liftIO $ writeImage img outChan "data"
     return outChan
 
 -- | Actor which collects images in tree-like fashion
-imageCollector :: TreeCollector Image
+imageCollector :: TreeCollector (FileChan Image)
 imageCollector = undefined
 
-mainActor :: Config -> Actor [DataSet] Image
-mainActor cfg = actor $ \input -> do
-    -- Start worker actors
+-- | A measure for the complexity of processing a data set.
+type Weight = Rational
+
+-- | Actor to estimate the cost of doing a single repeat on the given
+-- data set using our configuration. This basically means running the
+-- whole imaging pipeline once, measuring the performance it takes.
+--
+-- TODO: Warmup? Determine mean derivation?
+estimateActor :: Config -> Actor DataSet (DataSet, Weight)
+estimateActor cfg = actor $ \dataSet -> do
+
+    -- Generate image, measuring time
+    start <- unboundKernel "estimate start" [] $ liftIO getCurrentTime
+    void $ eval (imagingActor cfg) dataSet
+    end <- unboundKernel "estimate end" [] $ liftIO getCurrentTime
+
+    -- Return time taken
+    return (dataSet, toRational $ end `diffUTCTime` start)
+
+-- | The main program actor. Schedules the given data sets
+-- appropriately to the available nodes.
+mainActor :: Config -> Actor [DataSet] (FileChan Image)
+mainActor cfg = actor $ \dataSets -> do
+
+    -- Check that we actually have enough nodes. The local node counts.
+    let setCount = length dataSets
+    avail <- availableNodes
+    when (setCount > avail + 1) $
+        fail $ "Not enough nodes: Require " ++ show setCount ++ " to run these data sets!"
+
+    -- Allocate estimation nodes
+    estimateWorkers <- startGroup (N setCount) (NNodes 1) $ do
+        useLocal
+        return (closure (estimateActor cfg))
+    distributeWork dataSets (const id) estimateWorkers
+
+    -- Run estimation, collect weighted data sets
+    grp <- delayGroup estimateWorkers
+    weightedDataSets <- gather grp (flip (:)) []
+
+    -- Now start worker actors
     workers <- startGroup (Frac 1) (NNodes 1) $ do
         useLocal
-        return (closure workerActor)
-    -- Obtain estimates using some secret technique
-    estimates <- undefined "Not implemented and unsure how to store it"
-    distributeWork input (scheduleFreqCh estimates) workers
+        return (closure (workerActor cfg))
+
+    -- Schedule work
+    let schedule = balancer avail (map (fromRational . snd) weightedDataSets)
+        splitData low high dataSet =
+            let atRatio r = floor $ r * fromIntegral (dsRepeats dataSet)
+            in dataSet { dsRepeats = atRatio high - atRatio low }
+    distributeWork
+        (map fst weightedDataSets)
+        (const $ distributer splitData schedule)
+        workers
+
     -- Spawn tree collector
     --
     -- This is attempt to encapsulate tree-like reduction in single

@@ -23,7 +23,7 @@ import Control.Distributed.Process.Closure
 import Data.Maybe
 -- import Data.Binary   (Binary)
 import Data.Typeable (Typeable {-,typeOf-})
-import qualified Data.Map as Map
+--import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Foldable as T
 
