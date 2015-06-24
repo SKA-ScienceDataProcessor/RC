@@ -4,9 +4,13 @@ module Data
   ( -- * Grid
     GridPar(..)
   , UVGrid(..)
+  , gridHalfHeight
+  , gridHalfSize
+  , gridFullSize
 
     -- * Image
   , Image(..)
+  , imageSize
   , constImage
   , addImage
   , writeImage
@@ -23,17 +27,18 @@ module Data
 
     -- * Common
   , UVW(..), Polar(..)
+  , CleanPar(..)
   ) where
 
 import Data.Complex
 import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
 import GHC.Generics  (Generic)
+import Foreign.Storable.Complex ( )
 
 import DNA.Channel.File
 
 import Vector
-
 
 
 -- | Grid parameters. This defines how big our grid is going to be,
@@ -47,6 +52,22 @@ data GridPar = GridPar
   }
   deriving (Show,Typeable,Generic)
 instance Binary GridPar
+
+-- | Minimum number of rows we need to allocate for the grid in order
+-- to run a complex-to-real FFT. This is generally less than the full
+-- height.
+gridHalfHeight :: GridPar -> Int
+gridHalfHeight gp = (gridHeight gp `div` 2) + 1
+
+-- | Minimum size required to allocate a full FFT-able grid, in
+-- elements ("Complex Double")
+gridHalfSize :: GridPar -> Int
+gridHalfSize gp = gridHalfHeight gp * gridPitch gp
+
+-- | Size of the grid in elements ("Complex Double") if we want to
+-- allocate it in full
+gridFullSize :: GridPar -> Int
+gridFullSize gp = gridHeight gp * gridPitch gp
 
 -- | Parameters going into GCF generation
 data GCFPar = GCFPar
@@ -76,6 +97,10 @@ data Image = Image
   deriving (Show,Typeable,Generic)
 instance Binary Image
 
+-- | Returns the number of elements ("Double") required to store the image. Note
+-- that for consistency we honor the pitch requirements of the grid.
+imageSize :: GridPar -> Int
+imageSize gp = gridHeight gp * gridPitch gp
 
 -- | Create an image filled with the given value, allocated as a
 -- simple C buffer.
@@ -116,9 +141,9 @@ instance Binary Polar
 
 -- | Visibility position in the uvw coordinate system
 data UVW = UVW
-  { u :: !Double
-  , v :: !Double
-  , w :: !Double
+  { uvwU :: !Double
+  , uvwV :: !Double
+  , uvwW :: !Double
   }
   deriving (Show,Typeable,Generic)
 instance Binary UVW
@@ -145,8 +170,8 @@ instance Binary GCFSet
 -- to the @UVGrid@. It is valid in a given range of @w@-values.
 -- The size will also depend significantly on the @w@ value.
 data GCF = GCF
-  { gcfMinW :: !Double    -- ^ Low @w@ value it was generated for
-  , gcfMaxW :: !Double    -- ^ High @w@ value is was generated for
+  { gcfMinW :: !Double  -- ^ Low @w@ value it was generated for
+  , gcfMaxW :: !Double  -- ^ High @w@ value is was generated for
   , gcfSize :: !Int     -- ^ Width and height of the convolution function in pixels
   , gcfData :: Vector (Complex Double)
                         -- ^ Convolution matrix data
@@ -154,3 +179,11 @@ data GCF = GCF
   deriving (Show,Typeable,Generic)
 instance Binary GCF
 
+-- | Cleaning parameterisiation
+data CleanPar = CleanPar
+  { cleanIter :: !Int    -- ^ Maximum number of iterations for the minor loop
+  , cleanGain :: !Double -- ^ Model gain per source removed
+  , cleanThreshold :: !Double -- ^ Threshold at which we should stop cleaning
+  }
+  deriving (Show,Typeable,Generic)
+instance Binary CleanPar

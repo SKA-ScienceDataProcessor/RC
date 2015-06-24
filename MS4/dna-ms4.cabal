@@ -112,7 +112,8 @@ executable imaging-dataflow
     data-binary-ieee754,
     vector >= 0.10,
     directory,
-    time
+    time,
+    storable-complex
   if flag(cuda)
     build-depends: cuda, cufft
     cpp-options:   -DUSE_CUDA

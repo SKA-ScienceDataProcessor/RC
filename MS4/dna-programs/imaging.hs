@@ -50,10 +50,8 @@ data Config = Config
   , cfgDFTKernel :: String   -- ^ The fourier transformation kernel to use
   , cfgCleanKernel :: String -- ^ The cleaning kernel to use
 
-  , cfgMinorLoops :: Int     -- ^ Maximum number of minor loop iterations
   , cfgMajorLoops :: Int     -- ^ Maximum number of major loop iterations
-  , cfgCleanGain :: Double   -- ^ Cleaning strength (?)
-  , cfgCleanThreshold :: Double -- ^ Residual threshold at which we should stop cleanining
+  , cfgCleanPar :: CleanPar  -- ^ Parameters to the cleaning kernel
   }
   deriving (Generic,Typeable)
 instance Binary Config
@@ -151,8 +149,7 @@ imagingActor cfg = actor $ \dataSet -> do
 
          -- Clean the image
          (residual, model) <- kernel "clean" [] $ liftIO $
-           cleanKernel cleank (cfgMinorLoops cfg) (cfgCleanGain cfg) (cfgCleanThreshold cfg)
-                       dirtyImage psf
+           cleanKernel cleank (cfgCleanPar cfg) dirtyImage psf
 
          -- Done with the loop?
          if i >= cfgMajorLoops cfg then return residual else do

@@ -2,6 +2,7 @@
 module Kernel where
 
 import Data
+import qualified Kernel.Dummy as Dummy
 
 -- | Gridding kernels deal with adding or extracting visibilities
 -- to/from an "UVGrid"
@@ -15,24 +16,18 @@ data GridKernel = GridKernel
     -- again, involve memory transfer.
   , gridkCreateGrid :: GridPar -> GCFPar -> IO UVGrid
     -- ^ Produce a new UV grid suitable for gridding
-  , gridkGrid :: Vis  -- ^ Visibilities to grid. Note that with big @GCF@,
-                      -- the visibilities might be substantially outside of
-                      -- the tile's @uv@ range.
-              -> GCFSet -- ^ The GCF set to use. We guarantee that it
-                        -- covers the @w@-range of the visibilities.
-              -> UVGrid -- ^ Grid to add visibilities to. Expected to
-                        -- be consumed in the process, so it is okay
-                        -- (and expected) to return the same updated grid.
-              -> IO UVGrid
-    -- ^ Grid the visibilities to the tile using the convolution function.
-  , gridkDegrid :: UVGrid
-                -> GCFSet
-                -> Vis    -- ^ Positions to degrid at (disregarding any contained data).
-                -> IO Vis
-    -- ^ Extract visibilities from the grid using the convolution function.
-    -- We guarantee that the visibilities are in a @w@-plane appropriate
-    -- for the @GCF@. However, visibilities might generally lie outside
-    -- the @uv@ range of the tile.
+  , gridkGrid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
+    -- ^ Grid the visibilities to the "UVGrid" using the given set of
+    -- grid convolution functions.
+    --
+    -- We guarantee that the "GCFSet" covers the @w@-range of the
+    -- visibilities. The "UVGrid" is expected to be consumed in the
+    -- process, so it is okay (and expected) to return the same grid
+    -- with updated data.
+  , gridkDegrid :: UVGrid -> GCFSet -> Vis -> IO Vis
+    -- ^ Extract visibilities from the grid using the set of grid
+    -- convolution functions. The output visibilities are guaranteed
+    -- to have the same positions as the input visibilities.
   }
 
 -- | Fourier transformation kernels. These allow us to obtain "Image"
@@ -50,12 +45,12 @@ data DFTKernel = DFTKernel
 
 -- | Grid convolution generator kernel.
 data GCFKernel = GCFKernel
-  { -- | Produces all GCFs we will need for gridding data in the
-    -- indicated @w@-range.
+  { -- | Produces all "GCF"s we will need for gridding data in the
+    -- @w@-range indicated by the two "Double" values.
     gcfKernel :: GridPar
-              -> GCFPar -- ^ Parameters to GCF generation, such as @w@ step
-              -> Double -- ^ Minimum @w@ value to generate GCF for
-              -> Double -- ^ Maximum @w@ value to generate GCF for
+              -> GCFPar
+              -> Double
+              -> Double
               -> IO GCFSet
   }
 
@@ -63,19 +58,18 @@ data GCFKernel = GCFKernel
 -- CLEAN algorithm.
 data CleanKernel = CleanKernel
   { -- | Runs Hogbom's algorithm. The returned values are the residual
-    -- and the model image.
-    cleanKernel :: Int    -- ^ Maximum number of iterations in the minor loop
-                -> Double -- ^ Gain (?)
-                -> Double -- ^ Threshold for residual sum to exit clean early
-                -> Image  -- ^ The dirty image to clean
-                -> Image  -- ^ The point spread function (PSF)
-                -> IO (Image, Image)
+    -- and the model image. The parameters are the cleaning
+    -- parameters, the image to clean as well as a suitable point
+    -- spread function (PSF).
+    cleanKernel :: CleanPar -> Image -> Image -> IO (Image, Image)
   }
 
 -- | The supported gridding kernels
 gridKernels :: [(String, IO GridKernel)]
 gridKernels =
-  [ ("gpu", do
+  [ ("dummy", return $ GridKernel Dummy.prepareVis Dummy.prepareGCF Dummy.createGrid
+                                  Dummy.grid Dummy.degrid)
+  , ("gpu", do
         -- ...
         let prepareVis = undefined -- transfer to GPU, possibly sort
             prepareGCF = undefined -- transfer to GPU
@@ -97,15 +91,18 @@ gridKernels =
 
 -- The supported discrete fourier transformation kernels
 dftKernels :: [(String, IO DFTKernel)]
-dftKernels = undefined
+dftKernels =
+  [ ("dummy", return $ DFTKernel Dummy.dft Dummy.dfti) ]
 
 -- The supported discrete fourier transformation kernels
 gcfKernels :: [(String, IO GCFKernel)]
-gcfKernels = undefined
+gcfKernels =
+  [ ("dummy", return $ GCFKernel Dummy.gcf) ]
 
 -- The supported discrete fourier transformation kernels
 cleanKernels :: [(String, IO CleanKernel)]
-cleanKernels = undefined
+cleanKernels =
+  [ ("dummy", return $ CleanKernel Dummy.clean) ]
 
 initKernel :: [(String, IO a)] -> String -> IO a
 initKernel kernels name = case lookup name kernels of
