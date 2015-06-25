@@ -38,44 +38,8 @@ import Foreign.Storable.Complex ( )
 
 import DNA.Channel.File
 
+import Config
 import Vector
-
-
--- | Grid parameters. This defines how big our grid is going to be,
--- and how it is going to be stored.
-data GridPar = GridPar
-  { gridWidth :: !Int  -- ^ Width of the grid in pixels
-  , gridHeight :: !Int -- ^ Neight of the grid in pixels
-  , gridPitch :: !Int  -- ^ Distance between rows in grid storage. Can
-                       -- be larger than width if data is meant to be
-                       -- padded.
-  }
-  deriving (Show,Typeable,Generic)
-instance Binary GridPar
-
--- | Minimum number of rows we need to allocate for the grid in order
--- to run a complex-to-real FFT. This is generally less than the full
--- height.
-gridHalfHeight :: GridPar -> Int
-gridHalfHeight gp = (gridHeight gp `div` 2) + 1
-
--- | Minimum size required to allocate a full FFT-able grid, in
--- elements ("Complex Double")
-gridHalfSize :: GridPar -> Int
-gridHalfSize gp = gridHalfHeight gp * gridPitch gp
-
--- | Size of the grid in elements ("Complex Double") if we want to
--- allocate it in full
-gridFullSize :: GridPar -> Int
-gridFullSize gp = gridHeight gp * gridPitch gp
-
--- | Parameters going into GCF generation
-data GCFPar = GCFPar
-  { gcfpStepW :: !Double -- ^ Size of the @w@ bins
-  , gcfpMaxSize :: !Int  -- ^ Maximum size for the GCF (?)
-  }
-  deriving (Show,Typeable,Generic)
-instance Binary GCFPar
 
 -- | The @UVGrid@ contains gridded complex-valued visibilities in the frequency
 -- domain. Conceptually, it is hermitian in nature - so @G(u,v) =
@@ -134,11 +98,6 @@ data Vis = Vis
   deriving (Show,Typeable,Generic)
 instance Binary Vis
 
--- | Visibility polarisation
-data Polar = XX | YY | XY | YX
-           deriving (Show,Typeable,Generic)
-instance Binary Polar
-
 -- | Visibility position in the uvw coordinate system
 data UVW = UVW
   { uvwU :: !Double
@@ -178,12 +137,3 @@ data GCF = GCF
   }
   deriving (Show,Typeable,Generic)
 instance Binary GCF
-
--- | Cleaning parameterisiation
-data CleanPar = CleanPar
-  { cleanIter :: !Int    -- ^ Maximum number of iterations for the minor loop
-  , cleanGain :: !Double -- ^ Model gain per source removed
-  , cleanThreshold :: !Double -- ^ Threshold at which we should stop cleaning
-  }
-  deriving (Show,Typeable,Generic)
-instance Binary CleanPar

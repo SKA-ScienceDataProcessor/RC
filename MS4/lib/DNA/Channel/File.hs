@@ -9,13 +9,15 @@ module DNA.Channel.File (
         , readFileChan
         , mmapFileChan
         , transferFileChan
+        , importToFileChan
+        , exportFromFileChan
         ) where
 
 import Control.Monad
 
-import Data.Vector.Binary ()
 import Data.Binary
 import Data.Typeable
+import Data.Vector.Binary ()
 
 import qualified Data.Vector.Storable as S
 import qualified Data.Vector.Storable.Mutable as MS
@@ -28,6 +30,8 @@ import System.Directory
 import System.FilePath
 import System.IO
 import System.Posix.Temp
+import System.Posix.Files
+
 import GHC.Generics (Generic)
 
 import DNA.Types ( Location(..) )
@@ -113,3 +117,18 @@ transferFileChan :: FileChan a -- ^ Source file channel
                  -> IO ()
 transferFileChan from to p =
   copyFile (fhPath from </> p) (fhPath to </> p)
+
+-- | Import an existing physical file into the file channel. This is a
+-- cheap operation, but expects the file to not change for the
+-- program's runtime.
+importToFileChan :: FileChan a -> String -> FilePath -> IO ()
+importToFileChan ch p file =
+    createSymbolicLink file (fhPath ch </> p)
+
+-- | Export a file from a file channel
+exportFromFileChan :: FileChan a -- ^ Source file channel
+               -> String -- ^ Name of the file to transfer
+               -> FilePath -- ^ Destination file name
+               -> IO ()
+exportFromFileChan ch p to =
+  copyFile (fhPath ch </> p) to

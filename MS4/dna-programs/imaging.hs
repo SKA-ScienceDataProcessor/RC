@@ -5,56 +5,21 @@
 module Main where
 
 import Control.Distributed.Process (Closure)
-import Control.Monad   (void, when)
+import Control.Monad
 
 import DNA
 import DNA.Channel.File
 
-import Data.Binary     (Binary)
+import Data.Aeson
+import qualified Data.ByteString.Lazy as LBS
+import Data.Maybe      (fromMaybe)
 import Data.Time.Clock
-import Data.Typeable   (Typeable)
-import GHC.Generics    (Generic)
 
+import Config
 import Data
 import Kernel
 import Scheduling
 import Vector
-
-----------------------------------------------------------------
--- Data types
-----------------------------------------------------------------
-
-data OskarData
-
--- | A data set, consisting of an Oskar file name and the frequency
--- channel & polarisation we are interested in.
-data DataSet = DataSet
-  { dsData :: FileChan OskarData -- ^ Oskar data to read
-  , dsChannel :: Int   -- ^ Frequency channel to process
-  , dsPolar :: Polar   -- ^ Polarisation to process
-  , dsRepeats :: Int   -- ^ Number of times we should process this
-                       -- data set to simulate a larger workload
-  }
-  deriving (Generic,Typeable)
-instance Binary DataSet
-
--- | Main run configuration. This contains all parameters we need for
--- runnin the imaging pipeline.
-data Config = Config
-  { cfgDataSets :: [DataSet] -- ^ Data sets to process
-  , cfgGridPar :: GridPar    -- ^ Grid parameters to use. Must be compatible with used kernels!
-  , cfgGCFPar :: GCFPar      -- ^ GCF parameters to use.
-
-  , cfgGCFKernel :: String   -- ^ The GCF kernel to use
-  , cfgGridKernel :: String  -- ^ The gridding kernel to use
-  , cfgDFTKernel :: String   -- ^ The fourier transformation kernel to use
-  , cfgCleanKernel :: String -- ^ The cleaning kernel to use
-
-  , cfgMajorLoops :: Int     -- ^ Maximum number of major loop iterations
-  , cfgCleanPar :: CleanPar  -- ^ Parameters to the cleaning kernel
-  }
-  deriving (Generic,Typeable)
-instance Binary Config
 
 ----------------------------------------------------------------
 -- Actors
@@ -166,8 +131,13 @@ imagingActor cfg = actor $ \dataSet -> do
     -- result of this actor
     res <- majorLoop 1 vis0
 
-    -- Cleanup? Eventually kernels will probably want to do something
-    -- here...
+    -- Free GCFs
+    kernel "clean cleanup" [] $ liftIO $ do
+        forM_ (gcfs gcfSet) $ \gcf ->
+            freeVector (gcfData gcf)
+
+    -- More Cleanup? Eventually kernels will probably want to do
+    -- something here...
 
     return res
 
@@ -268,5 +238,38 @@ mainActor cfg = actor $ \dataSets -> do
     await =<< delay Remote collector
 
 main :: IO ()
-main = do
-  return ()
+main = dnaRun id $ do
+
+    -- We expect configuration in our working directory
+    (datafiles, Just config) <- unboundKernel "configure" [] $ liftIO $ do
+        datafiles <- fmap decode $ LBS.readFile "data.cfg" :: IO (Maybe [(String, Int)])
+        config <- fmap decode $ LBS.readFile "imaging.cfg" :: IO (Maybe Config)
+        return (datafiles, config)
+
+    -- Create Oskar file channels
+    dataSets <- fmap concat $ forM (fromMaybe [] datafiles) $ \(file, repeats) -> do
+        chan <- createFileChan Remote "oskar"
+
+        -- Import file, and determine the used frequency channels and
+        -- polarisations
+        (polars, freqs) <- unboundKernel "import oskar" [] $ liftIO $ do
+            importToFileChan chan "data" file
+            -- TODO: No idea whether this makes sense
+            let readOskarHeader :: FileChan OskarData -> String -> IO ([Polar], [Int])
+                readOskarHeader = undefined
+            readOskarHeader chan "data"
+
+        -- Interpret every combination as a data set
+        return [ DataSet { dsData    = chan
+                         , dsChannel = freq
+                         , dsPolar   = polar
+                         , dsRepeats = repeats
+                         }
+               | freq <- freqs, polar <- polars ]
+
+    -- Execute main actor
+    chan <- eval (mainActor config) dataSets
+
+    -- Copy result image to working directory
+    unboundKernel "export image" [] $ liftIO $
+        exportFromFileChan chan "data" "output.img"

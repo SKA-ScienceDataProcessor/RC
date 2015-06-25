@@ -113,7 +113,8 @@ executable imaging-dataflow
     vector >= 0.10,
     directory,
     time,
-    storable-complex
+    storable-complex,
+    aeson
   if flag(cuda)
     build-depends: cuda, cufft
     cpp-options:   -DUSE_CUDA
