@@ -50,6 +50,8 @@ import Vector
 -- upper half of it.
 data UVGrid = UVGrid
   { uvgPar  :: GridPar
+  , uvgPadding :: !Int  -- ^ Amount of padding before actual data
+                        -- starts in "uvgData" (in "Complex Double" elements).
   , uvgData :: Vector (Complex Double)
   }
   deriving (Show,Typeable,Generic)
@@ -58,7 +60,11 @@ instance Binary UVGrid
 -- | Images correspond to real-valued sky brightness data. They can be transformed
 -- to and from the @UVGrid@ using a fourier transformation.
 data Image = Image
-  { imgPar :: GridPar
+  { imgPar :: GridPar   -- ^ Image data parameters. We use the same
+                        -- format as the "UVGrid" here, except with
+                        -- "Double" as our element type.
+  , imgPadding :: !Int  -- ^ Amount of padding before actual data
+                        -- starts in "imgData" (in "Double" element).
   , imgData :: Vector Double
   }
   deriving (Show,Typeable,Generic)
