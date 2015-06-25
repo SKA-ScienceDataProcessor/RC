@@ -30,6 +30,16 @@ instance Binary (Vector a) where
     get = undefined
     put = undefined
 
+-- | A vector carrying no data, pointing nowhere
+nullVector :: Vector a
+nullVector = CVector 0 nullPtr
+
+-- | Cast a vector to a different element type. Moderately evil.
+castVector :: Vector a -> Vector b
+castVector (CVector n p) = CVector n $ castPtr p
+castVector (HostVector n p) = HostVector n $ HostPtr $ castPtr $ useHostPtr p
+castVector (DeviceVector n p) = DeviceVector n $ DevicePtr $ castPtr $ useDevicePtr p
+
 -- | Allocate a C vector using @malloc@ that is large enough for the
 -- given number of elements.
 allocCVector :: forall a. Storable a => Int -> IO (Vector a)

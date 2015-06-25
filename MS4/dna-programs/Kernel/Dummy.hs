@@ -65,7 +65,7 @@ gcf _gp gcfp wlow whigh = do
         v <- allocCVector (gcfpMaxSize gcfp * gcfpMaxSize gcfp)
         return $ GCF wmin wmax (gcfpMaxSize gcfp) v
 
-    return $ GCFSet gcfp gs
+    return $ GCFSet gcfp gs nullVector
 
 -- GCF kernel definition
 

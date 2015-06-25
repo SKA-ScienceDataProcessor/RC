@@ -147,6 +147,7 @@ sortBaselines f v = v { visBaselines = sortBy f (visBaselines v) }
 data GCFSet = GCFSet
   { gcfsPar :: GCFPar  -- ^ GCF parameterisiation
   , gcfs :: [GCF]      -- ^ The contained GCFs. Sorted ascending by @w@ value.
+  , gcfTable :: Vector () -- ^ GCF lookup table. Used by the gridding algorithm to speed up access.
   }
   deriving (Show,Typeable,Generic)
 instance Binary GCFSet
