@@ -48,7 +48,7 @@ instance Binary WMaxMin
 instance Storable WMaxMin where
   sizeOf _ = #size WMaxMin
   alignment _ = alignment (undefined :: Double)
-  peek p = WMaxMin <$> (#peek Metrix, maxw) p <*> (#peek Metrix, minw) p
+  peek p = WMaxMin <$> (#peek WMaxMin, maxw) p <*> (#peek WMaxMin, minw) p
   poke p (WMaxMin a b) = (#poke WMaxMin, maxw) p a >> (#poke WMaxMin, minw) p b
 
 #opaq VisData

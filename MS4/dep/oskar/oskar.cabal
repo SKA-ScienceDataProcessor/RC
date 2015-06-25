@@ -22,7 +22,7 @@ library
                        oskar_binary/src/oskar_crc.c
                        oskar_binary/src/oskar_endian.c
   cc-options:          --std=c++0x -O2 -Wall -DNDEBUG
-  include-dirs:        oskar_binary
+  include-dirs:        ., oskar_binary
   extra-libraries:     stdc++
   ghc-options:         -Wall
 
