@@ -2,12 +2,23 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
 
-module Vector where
+module Vector
+  ( Vector(..)
+  , nullVector
+  , castVector
+  , offsetVector
+  -- * Memory Management
+  , allocCVector, allocHostVector, allocDeviceVector
+  , freeVector
+  -- * Conversion
+  , toCVector, toHostVector, toDeviceVector
+  ) where
 
 import Data.Binary   (Binary(..))
 import Data.Typeable (Typeable)
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
+import Foreign.Marshal.Array (advancePtr)
 import Foreign.Marshal.Utils
 
 import Foreign.CUDA.Ptr as C
@@ -40,6 +51,13 @@ castVector (CVector n p) = CVector n $ castPtr p
 castVector (HostVector n p) = HostVector n $ HostPtr $ castPtr $ useHostPtr p
 castVector (DeviceVector n p) = DeviceVector n $ DevicePtr $ castPtr $ useDevicePtr p
 
+-- | Make an at-offset vector. Note that this vector will only remain
+-- valid as long as the original vector data isn't free.
+offsetVector :: Storable a => Vector a -> Int -> Vector a
+offsetVector (CVector _ p) off = CVector 0 $ p `advancePtr` off
+offsetVector (HostVector _ p) off = HostVector 0 $ p `advanceHostPtr` off
+offsetVector (DeviceVector _ p) off = DeviceVector 0 $ p `advanceDevPtr` off
+
 -- | Allocate a C vector using @malloc@ that is large enough for the
 -- given number of elements.
 allocCVector :: forall a. Storable a => Int -> IO (Vector a)
@@ -57,9 +75,15 @@ allocDeviceVector n = fmap (DeviceVector n) $ CUDA.mallocArray n
 
 -- | Free data associated with the vector. It is generally required to
 -- call this manually, or the data will remain valid!
+--
+-- This function will do nothing for vectors obtained using
+-- @nullVector@ or @offsetVector@.
 freeVector :: Vector a -> IO ()
-freeVector (CVector _ ptr)      = Foreign.Marshal.Alloc.free ptr
+freeVector (CVector 0 _)        = return ()
+freeVector (CVector n ptr)      = Foreign.Marshal.Alloc.free ptr
+freeVector (HostVector 0 _)     = return ()
 freeVector (HostVector _ ptr)   = freeHost ptr
+freeVector (DeviceVector 0 _)   = return ()
 freeVector (DeviceVector _ ptr) = CUDA.free ptr
 
 -- | Convert the given vector into a C vector. The passed vector is
