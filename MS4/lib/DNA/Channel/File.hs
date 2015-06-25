@@ -5,6 +5,7 @@ module DNA.Channel.File (
           FileChan
         , createFileChanImp
         , deleteFileChan
+        , getFileChan
         , withFileChan
         , readFileChan
         , mmapFileChan
@@ -68,6 +69,10 @@ createFileChanImp workDir loc name = do
 deleteFileChan :: FileChan a -> IO ()
 deleteFileChan ch = removeDirectoryRecursive (fhPath ch)
 
+-- | Gets file name of a file contained in the file channel
+getFileChan :: FileChan a -> String -> FilePath
+getFileChan ch p = fhPath ch </> p
+
 -- | Open a file in the file channel
 withFileChan :: FileChan a -> String -> IOMode -> (Handle -> IO b) -> IO b
 withFileChan ch name io = withFile (fhPath ch </> name) io
@@ -122,8 +127,9 @@ transferFileChan from to p =
 -- cheap operation, but expects the file to not change for the
 -- program's runtime.
 importToFileChan :: FileChan a -> String -> FilePath -> IO ()
-importToFileChan ch p file =
-    createSymbolicLink file (fhPath ch </> p)
+importToFileChan ch p file = do
+    file' <- canonicalizePath file
+    createSymbolicLink file' (fhPath ch </> p)
 
 -- | Export a file from a file channel
 exportFromFileChan :: FileChan a -- ^ Source file channel

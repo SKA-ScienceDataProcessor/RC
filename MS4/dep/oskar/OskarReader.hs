@@ -58,8 +58,9 @@ tdUVWSize td = tdPoints td * 3 * sizeOf (undefined :: CDouble)
 
 finalizeTaskData :: TaskData -> IO ()
 finalizeTaskData td = do
-  free $ tdUVWs td
+  free $ tdBlMaxMin td
   free $ tdVisibilies td
+  free $ tdUVWs td
 
 readOskarData :: FilePath -> IO TaskData
 readOskarData fname = withCString fname doRead

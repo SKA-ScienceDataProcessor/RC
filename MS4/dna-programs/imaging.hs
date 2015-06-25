@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
 -- | High level dataflow for imaging program
 module Main where
 
@@ -18,19 +19,9 @@ import Data.Time.Clock
 import Config
 import Data
 import Kernel
+import Oskar
 import Scheduling
 import Vector
-
-----------------------------------------------------------------
--- Actors
-----------------------------------------------------------------
-
--- Magic function which only used here to avoid problems with TH It
--- pretends to create closure out of functions and allows to type
--- check code but not run it.
-closure :: a -> Closure a
-closure = undefined
-
 
 ----------------------------------------------------------------
 -- Imaging dataflow
@@ -146,8 +137,8 @@ imagingActor cfg = actor $ \dataSet -> do
 ----------------------------------------------------------------
 
 -- | Actor which generate N clean images for given frequency channel
-workerActor :: Config -> Actor DataSet (FileChan Image)
-workerActor cfg = actor $ \dataSet -> do
+workerActor :: Actor (Config, DataSet) (FileChan Image)
+workerActor = actor $ \(cfg, dataSet) -> do
 
     -- Initialise image sum
     img0 <- kernel "init image" [] $ liftIO $ constImage (cfgGridPar cfg) 0
@@ -178,8 +169,8 @@ type Weight = Rational
 -- whole imaging pipeline once, measuring the performance it takes.
 --
 -- TODO: Warmup? Determine mean derivation?
-estimateActor :: Config -> Actor DataSet (DataSet, Weight)
-estimateActor cfg = actor $ \dataSet -> do
+estimateActor :: Actor (Config, DataSet) (DataSet, Weight)
+estimateActor = actor $ \(cfg, dataSet) -> do
 
     -- Generate image, measuring time
     start <- unboundKernel "estimate start" [] $ liftIO getCurrentTime
@@ -189,22 +180,28 @@ estimateActor cfg = actor $ \dataSet -> do
     -- Return time taken
     return (dataSet, toRational $ end `diffUTCTime` start)
 
+remotable
+  [ 'workerActor
+  --, 'imageCollector -- doesn't work yet?
+  , 'estimateActor
+  ]
+
 -- | The main program actor. Schedules the given data sets
 -- appropriately to the available nodes.
-mainActor :: Config -> Actor [DataSet] (FileChan Image)
-mainActor cfg = actor $ \dataSets -> do
+mainActor :: Actor (Config, [DataSet]) (FileChan Image)
+mainActor = actor $ \(cfg, dataSets) -> do
 
     -- Check that we actually have enough nodes. The local node counts.
     let setCount = length dataSets
     avail <- availableNodes
     when (setCount > avail + 1) $
-        fail $ "Not enough nodes: Require " ++ show setCount ++ " to run these data sets!"
+        fail $ "Not enough nodes: Require " ++ show setCount ++ " to run data sets!"
 
     -- Allocate estimation nodes
-    estimateWorkers <- startGroup (N setCount) (NNodes 1) $ do
+    estimateWorkers <- startGroup (N (setCount-1)) (NNodes 1) $ do
         useLocal
-        return (closure (estimateActor cfg))
-    distributeWork dataSets (const id) estimateWorkers
+        return $(mkStaticClosure 'estimateActor)
+    distributeWork dataSets (const (map ((,) cfg))) estimateWorkers
 
     -- Run estimation, collect weighted data sets
     grp <- delayGroup estimateWorkers
@@ -214,7 +211,7 @@ mainActor cfg = actor $ \dataSets -> do
     waitForResoures estimateWorkers
     workers <- startGroup (Frac 1) (NNodes 1) $ do
         useLocal
-        return (closure (workerActor cfg))
+        return $(mkStaticClosure 'workerActor)
 
     -- Schedule work
     let schedule = balancer avail (map (fromRational . snd) weightedDataSets)
@@ -223,7 +220,7 @@ mainActor cfg = actor $ \dataSets -> do
             in dataSet { dsRepeats = atRatio high - atRatio low }
     distributeWork
         (map fst weightedDataSets)
-        (const $ distributer splitData schedule)
+        (const $ map ((,) cfg) . distributer splitData schedule)
         workers
 
     -- Spawn tree collector
@@ -233,7 +230,7 @@ mainActor cfg = actor $ \dataSets -> do
     -- spawning actors in tree.
     collector <- startCollectorTree undefined undefined $ do
         useLocal
-        return (closure imageCollector)
+        return undefined -- $(mkStaticClosure 'treeCollector) -- see above
     connect workers collector
     await =<< delay Remote collector
 
@@ -254,9 +251,6 @@ main = dnaRun id $ do
         -- polarisations
         (polars, freqs) <- unboundKernel "import oskar" [] $ liftIO $ do
             importToFileChan chan "data" file
-            -- TODO: No idea whether this makes sense
-            let readOskarHeader :: FileChan OskarData -> String -> IO ([Polar], [Int])
-                readOskarHeader = undefined
             readOskarHeader chan "data"
 
         -- Interpret every combination as a data set
@@ -268,7 +262,7 @@ main = dnaRun id $ do
                | freq <- freqs, polar <- polars ]
 
     -- Execute main actor
-    chan <- eval (mainActor config) dataSets
+    chan <- eval mainActor (config, dataSets)
 
     -- Copy result image to working directory
     unboundKernel "export image" [] $ liftIO $
