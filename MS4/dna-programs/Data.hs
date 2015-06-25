@@ -17,8 +17,10 @@ module Data
 
     -- * Visibilities
   , Vis(..)
+  , VisBaseline(..)
   , constVis
   , subtractVis
+  , sortBaselines
 
     -- * GCF
   , GCFPar(..)
@@ -32,6 +34,7 @@ module Data
 
 import Data.Complex
 import Data.Binary   (Binary)
+import Data.List     (sortBy)
 import Data.Typeable (Typeable)
 import GHC.Generics  (Generic)
 import Foreign.Storable.Complex ( )
@@ -46,7 +49,7 @@ import Vector
 -- conj(G(-u,-v))@. This means that we are actually interested in the
 -- upper half of it.
 data UVGrid = UVGrid
-  { uvgPar :: GridPar
+  { uvgPar  :: GridPar
   , uvgData :: Vector (Complex Double)
   }
   deriving (Show,Typeable,Generic)
@@ -87,9 +90,11 @@ writeImage = undefined
 -- visibilities will be rotated according to a target position in the
 -- centre of the observed field.
 data Vis = Vis
-  { visPositions :: Vector UVW -- ^ Visibility positions in the (u,v,w) plane
-  , visMinW      :: Double     -- ^ Minimum seen @w@ value
-  , visMaxW      :: Double     -- ^ Maximum seen @w@ value
+  { visMinW      :: !Double       -- ^ Minimum seen @w@ value
+  , visMaxW      :: !Double       -- ^ Maximum seen @w@ value
+  , visTimesteps :: !Int          -- ^ Number of timesteps (=visibilities) per baseline
+  , visBaselines :: [VisBaseline] -- ^ Possibily sorted map of visibility data to baselines
+  , visPositions :: Vector UVW    -- ^ Visibility positions in the (u,v,w) plane
   , visData      :: Vector (Complex Double) -- ^ Visibility data
   , visBinData   :: Vector ()  -- ^ Binning data. Kernels might use
                                -- this to traverse visibilities in an
@@ -97,6 +102,16 @@ data Vis = Vis
   }
   deriving (Show,Typeable,Generic)
 instance Binary Vis
+
+-- | Visibilities are a list of correlator outputs from a dataset
+-- concerning the same frequency band and polarisation.
+data VisBaseline = VisBaseline
+  { vblOffset    :: !Int     -- ^ Offset into the "visPositions" / "visData" vector
+  , vblMinW      :: !Double  -- ^ Minimum @w@ value for this baseline
+  , vblMaxW      :: !Double  -- ^ Maximum @w@ value for this baseline
+  }
+  deriving (Show,Typeable,Generic)
+instance Binary VisBaseline
 
 -- | Visibility position in the uvw coordinate system
 data UVW = UVW
@@ -116,6 +131,11 @@ constVis = undefined
 -- the same positions.
 subtractVis :: Vis -> Vis -> IO Vis
 subtractVis = undefined
+
+-- | Sort baselines according to the given sorting functions
+-- (e.g. `comparing vblMinW`)
+sortBaselines :: (VisBaseline -> VisBaseline -> Ordering) -> Vis -> Vis
+sortBaselines f v = v { visBaselines = sortBy f (visBaselines v) }
 
 -- | A set of GCFs.
 data GCFSet = GCFSet
