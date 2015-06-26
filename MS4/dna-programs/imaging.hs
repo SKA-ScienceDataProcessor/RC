@@ -1,7 +1,8 @@
+{-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell            #-}
 -- | High level dataflow for imaging program
 module Main where
 
@@ -236,11 +237,10 @@ mainActor = actor $ \(cfg, dataSets) -> do
 
 main :: IO ()
 main = dnaRun id $ do
-
     -- We expect configuration in our working directory
     (datafiles, Just config) <- unboundKernel "configure" [] $ liftIO $ do
-        datafiles <- fmap decode $ LBS.readFile "data.cfg" :: IO (Maybe [(String, Int)])
-        config <- fmap decode $ LBS.readFile "imaging.cfg" :: IO (Maybe Config)
+        !datafiles <- fmap decode $ LBS.readFile "data.cfg" :: IO (Maybe [(String, Int)])
+        !config    <- fmap decode $ LBS.readFile "imaging.cfg" :: IO (Maybe Config)
         return (datafiles, config)
 
     -- Create Oskar file channels
