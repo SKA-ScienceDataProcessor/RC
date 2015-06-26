@@ -25,7 +25,7 @@ void addGrids(
   )
 {
 #pragma omp parallel for
-  for (int i = 0; i < grid_size*grid_size*sizeof(Double4c)/(256/8); i++) {
+  for (unsigned int i = 0; i < grid_size*grid_size*sizeof(Double4c)/(256/8); i++) {
     __m256d sum = as256pc(srcs[0])[i];
     // __m256d sum = _mm256_loadu_pd(reinterpret_cast<const double*>(as256pc(srcs[0])+i));
 
