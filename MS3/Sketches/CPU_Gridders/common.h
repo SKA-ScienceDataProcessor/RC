@@ -10,6 +10,7 @@
   typedef cuDoubleComplex complexd;
   #include <math_constants.h>
   #define __PI CUDART_PI
+  #define __HOST __host__
   #define __NATIVE0 __device__ __inline__
   #define __NATIVE __device__ __inline__ static
 #else
@@ -26,6 +27,7 @@
     typedef double complex complexd;
     #define make_cuDoubleComplex(r,i) ((r)+I*(i))
   #endif
+  #define __HOST
   #define __NATIVE0 __inline
   #define __NATIVE __inline static
 #endif
@@ -68,7 +70,7 @@ struct Pregridded
   short gcf_layer_supp;
 };
 
-__host__ __NATIVE int get_supp(int w) {
+__HOST __NATIVE int get_supp(int w) {
     if (w < 0) w = -w;
     return w * 8 + 17;
   }
