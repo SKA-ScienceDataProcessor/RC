@@ -236,7 +236,7 @@ mainActor = actor $ \(cfg, dataSets) -> do
     await =<< delay Remote collector
 
 main :: IO ()
-main = dnaRun id $ do
+main = dnaRun rtable $ do
     -- We expect configuration in our working directory
     (datafiles, Just config) <- unboundKernel "configure" [] $ liftIO $ do
         !datafiles <- fmap decode $ LBS.readFile "data.cfg" :: IO (Maybe [(String, Int)])
@@ -267,3 +267,5 @@ main = dnaRun id $ do
     -- Copy result image to working directory
     unboundKernel "export image" [] $ liftIO $
         exportFromFileChan chan "data" "output.img"
+  where
+    rtable = __remoteTable
