@@ -62,7 +62,8 @@ instance FromJSON CleanPar where
 -- | A data set, consisting of an Oskar file name and the frequency
 -- channel & polarisation we are interested in.
 data DataSet = DataSet
-  { dsData :: FileChan OskarData -- ^ Oskar data to read
+  { dsName :: String   -- ^ Name to use to refer to this data set
+  , dsData :: FileChan OskarData -- ^ Oskar data to read
   , dsChannel :: Int   -- ^ Frequency channel to process
   , dsPolar :: Polar   -- ^ Polarisation to process
   , dsRepeats :: Int   -- ^ Number of times we should process this
@@ -105,14 +106,21 @@ gridFullSize gp = gridHeight gp * gridPitch gp
 
 -- | Parameters going into GCF generation
 data GCFPar = GCFPar
-  { gcfpStepW :: !Double -- ^ Size of the @w@ bins
+  { gcfOver :: !Int      -- ^ Amount of oversampling. Note that
+                         -- kernels might only work with one
+                         -- oversampling value!
+  , gcfpStepW :: !Double -- ^ Size of the @w@ bins
+  , gcfpGrowth :: !Double  -- ^ Size of the GCF depending on targeted
+                           -- @w@ value (exact formula TBD).
+  , gcfpMinSize :: !Int  -- ^ Minimum size for the GCF
   , gcfpMaxSize :: !Int  -- ^ Maximum size for the GCF (?)
   }
   deriving (Show,Typeable,Generic)
 instance Binary GCFPar
 instance FromJSON GCFPar where
   parseJSON (Object v)
-    = GCFPar <$> v .: "stepw" <*> v .: "maxsize"
+    = GCFPar <$> v .: "over" <*> v .: "stepw" <*> v .: "growth"
+             <*> v .: "minsize" <*> v .: "maxsize"
   parseJSON _ = mzero
 
 -- | Visibility polarisation
