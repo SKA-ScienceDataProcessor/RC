@@ -108,7 +108,10 @@ execKernel msg mode hints kern = do
     a <- case mode of
            DefaultKernel -> liftIO $ async code
            BoundKernel   -> liftIO $ asyncBound code
-    handleRecieve messageHandlers [matchSTM' (waitSTM a)]
+    r <- handleRecieve messageHandlers [matchSTM' (waitCatchSTM a)]
+    case r of
+      Left  e -> doFatal (show e)
+      Right x -> return x
 
 
 -- Obtain promise from shell
