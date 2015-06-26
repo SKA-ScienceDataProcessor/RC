@@ -257,7 +257,7 @@ main = dnaRun rtable $ do
                          , dsPolar   = polar
                          , dsRepeats = repeats
                          }
-               | freq <- freqs, polar <- [XX] ]
+               | freq <- freqs, polar <- [minBound..maxBound] ]
 
     -- Execute main actor
     chan <- eval mainActor (config, dataSets)

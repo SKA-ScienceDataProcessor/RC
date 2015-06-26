@@ -122,7 +122,7 @@ dumpVis v = do
                       , show (length (visBaselines v)), " baselines, "
                       , show (visTimesteps v), " timesteps, "
                       , show (vectorSize (visPositions v)), " positions, "
-                      , show (vectorSize (visData v)), " visibilities"
+                      , show (vectorSize (visData v)), " visibilities, "
                       , show (vectorSize (visBinData v)), " binning data"
                       ]
     posV <- dupCVector $ visPositions v
@@ -170,7 +170,15 @@ instance Storable UVW where
 -- | Generate a duplicate of the visibilities, setting all of them to
 -- the given value. Useful for determining the response to 
 constVis :: Complex Double -> Vis -> IO Vis
-constVis = undefined
+constVis val vis = do
+  pos' <- dupCVector (visPositions vis)
+  data' <- dupCVector (visData vis)
+  forM_ [0..vectorSize data'] $ \i ->
+     pokeVector data' i val
+  return vis { visPositions = pos'
+             , visData = data'
+             , visBinData = nullVector
+             }
 
 -- | Subtract two visibility sets from each other. They must be using
 -- the same positions.
