@@ -115,6 +115,13 @@ data Vis = Vis
   deriving (Typeable,Generic)
 instance Binary Vis
 
+-- | Free data associated with a visibility set
+freeVis :: Vis -> IO ()
+freeVis vis = do
+    freeVector (visPositions vis)
+    freeVector (visData vis)
+    freeVector (visBinData vis)
+
 -- | Dump visibility information to "stdout"
 dumpVis :: Vis -> IO ()
 dumpVis v = do
@@ -122,7 +129,7 @@ dumpVis v = do
                       , show (length (visBaselines v)), " baselines, "
                       , show (visTimesteps v), " timesteps, "
                       , show (vectorSize (visPositions v)), " positions, "
-                      , show (vectorSize (visData v)), " visibilities"
+                      , show (vectorSize (visData v)), " visibilities, "
                       , show (vectorSize (visBinData v)), " binning data"
                       ]
     posV <- dupCVector $ visPositions v
@@ -170,12 +177,29 @@ instance Storable UVW where
 -- | Generate a duplicate of the visibilities, setting all of them to
 -- the given value. Useful for determining the response to 
 constVis :: Complex Double -> Vis -> IO Vis
-constVis = undefined
+constVis val vis = do
+  pos' <- dupCVector (visPositions vis)
+  data' <- dupCVector (visData vis)
+  forM_ [0..vectorSize data'] $ \i ->
+     pokeVector data' i val
+  return vis { visPositions = pos'
+             , visData = data'
+             , visBinData = nullVector
+             }
 
 -- | Subtract two visibility sets from each other. They must be using
--- the same positions.
+-- the same positions. Both input visibilities are consumed in the
+-- process.
 subtractVis :: Vis -> Vis -> IO Vis
-subtractVis = undefined
+subtractVis vis0 vis1 = do
+  let n = min (vectorSize (visData vis0))
+              (vectorSize (visData vis1))
+  forM_ [0..n] $ \i -> do
+    v0 <- peekVector (visData vis0) i
+    v1 <- peekVector (visData vis1) i
+    pokeVector (visData vis1) i (v0 - v1)
+  freeVis vis1
+  return vis0
 
 -- | Sort baselines according to the given sorting functions
 -- (e.g. `comparing vblMinW`)

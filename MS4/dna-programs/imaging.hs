@@ -36,7 +36,6 @@ import Vector
 gridderActor :: GridPar -> GCFPar -> GridKernel -> DFTKernel
              -> Actor (Vis, GCFSet) Image
 gridderActor gpar gcfpar gridk dftk = actor $ \(vis,gcfSet) -> do
-
     -- Grid visibilities to a fresh uv-grid
     grid <- kernel "grid" [] $ liftIO $ do
       grid <- gridkCreateGrid gridk gpar gcfpar
@@ -205,6 +204,9 @@ mainActor = actor $ \(cfg, dataSets) -> do
     -- Run estimation, collect weighted data sets
     grp <- delayGroup estimateWorkers
     weightedDataSets <- gather grp (flip (:)) []
+    logMessage "Weight Table:"
+    forM_ weightedDataSets $ \(ds, w) ->
+      logMessage $ show (fromRational w :: Float) ++ " - " ++ show (dsName ds)
 
     -- Now start worker actors
     waitForResoures estimateWorkers
@@ -252,12 +254,13 @@ main = dnaRun rtable $ do
             readOskarHeader chan "data.vis"
 
         -- Interpret every combination as a data set
-        return [ DataSet { dsData    = chan
+        return [ DataSet { dsName    = file ++ "/" ++ show freq ++ "/" ++ show polar
+                         , dsData    = chan
                          , dsChannel = freq
                          , dsPolar   = polar
                          , dsRepeats = repeats
                          }
-               | freq <- freqs, polar <- [XX] ]
+               | freq <- freqs, polar <- [minBound..maxBound] ]
 
     -- Execute main actor
     chan <- eval mainActor (config, dataSets)

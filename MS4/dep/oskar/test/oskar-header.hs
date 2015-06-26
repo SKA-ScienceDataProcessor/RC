@@ -35,7 +35,6 @@ main = do
       putStrLn $ "    BL " ++ show bl ++ ": " ++ show (mmMinW mm) ++ " - " ++ show (mmMaxW mm)
       when showVis $ do
         let pts = tdTimes taskData * tdChannels taskData * 4
-        return ()
         forM_ [0..tdTimes taskData-1] $ \t ->
             forM_ [0..tdChannels taskData-1] $ \ch -> do
                 CDouble u <- peek $ tdUVWPtr taskData bl t 0
