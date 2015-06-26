@@ -28,7 +28,7 @@ grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
 grid _ _ = return
 
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
-degrid _ _ = return
+degrid _ vis = constVis 0
 
 -- DFT kernel definition
 
