@@ -249,7 +249,8 @@ receiveShell ch aid pid handler = do
     -- We obtain shell or notification that process is dead
     r <- liftP $ waitForShell ch (==pid)
     case r of
-      Left _ -> do
+      Left err -> do
+        errorMsg (show err)
         stChildren      . at aid .= Just Failed
         stActorRecvAddr . at aid .= Just Nothing
         freeActorResouces aid
@@ -272,8 +273,10 @@ receiveShellGroup ch aid assemble handler = do
     -- Check that we don't have too many failures
     Just (Running (RunInfo _ nFail)) <- use $ stChildren . at aid
     let (fails,oks) = partitionEithers dsts
-    if (length fails > nFail)
-       then do stChildren      . at aid .= Just Failed
+    if length fails > nFail
+       then do forM_ fails $ \err ->
+                   errorMsg (show err)
+               stChildren      . at aid .= Just Failed
                stActorRecvAddr . at aid .= Just Nothing
                freeActorResouces aid
                terminateActor    aid
