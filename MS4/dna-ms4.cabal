@@ -107,6 +107,7 @@ executable imaging-dataflow
     base >=4.6,
     distributed-process,
     dna-ms4,
+    oskar,
     binary,
     bytestring,
     data-binary-ieee754,

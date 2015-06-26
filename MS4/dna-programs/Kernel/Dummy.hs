@@ -22,7 +22,7 @@ prepareGCF = return
 createGrid :: GridPar -> GCFPar -> IO UVGrid
 createGrid gp _ = do
    dat <- allocCVector (gridHalfSize gp)
-   return $ UVGrid gp dat
+   return $ UVGrid gp 0 dat
 
 grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
 grid _ _ = return
@@ -37,14 +37,14 @@ degrid _ _ = return
 -- for in-place FFT to work!
 
 dft :: Image -> IO UVGrid
-dft (Image gp v) = do
+dft (Image gp pad v) = do
     CVector n p <- toCVector v
-    return $ UVGrid gp (CVector n (castPtr p))
+    return $ UVGrid gp (pad `div` 2) (CVector n (castPtr p))
 
 dfti :: UVGrid -> IO Image
-dfti (UVGrid gp v) = do
+dfti (UVGrid gp pad v) = do
     CVector n p <- toCVector v
-    return $ Image gp (CVector n (castPtr p))
+    return $ Image gp (pad * 2) (CVector n (castPtr p))
 
 -- GCF kernel definition
 
@@ -65,7 +65,7 @@ gcf _gp gcfp wlow whigh = do
         v <- allocCVector (gcfpMaxSize gcfp * gcfpMaxSize gcfp)
         return $ GCF wmin wmax (gcfpMaxSize gcfp) v
 
-    return $ GCFSet gcfp gs
+    return $ GCFSet gcfp gs nullVector
 
 -- GCF kernel definition
 
@@ -74,7 +74,7 @@ clean _clp dirty _psf = do
 
     -- Create fresh image for the model
     modelData <- allocCVector (imageSize (imgPar dirty))
-    let model = Image (imgPar dirty) modelData
+    let model = Image (imgPar dirty) 0 modelData
 
     -- Return the uncleaned image together with the model
     return (dirty, model)

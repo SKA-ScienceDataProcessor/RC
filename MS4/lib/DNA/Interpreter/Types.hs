@@ -133,7 +133,7 @@ doPanic msg = do
     panicMsg msg
     liftIO $ throw $ PanicException msg
 
--- | Actually 
+-- | Write fatal error to log
 doFatal :: MonadLog m => String -> m a
 doFatal msg = do
     fatalMsg msg
