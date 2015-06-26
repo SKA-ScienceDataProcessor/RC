@@ -10,6 +10,7 @@
   typedef cuDoubleComplex complexd;
   #include <math_constants.h>
   #define __PI CUDART_PI
+  #define __NATIVE0 __device__ __inline__
   #define __NATIVE __device__ __inline__ static
 #else
   #define cuCmul(a,b) ((a)*(b))
@@ -25,8 +26,24 @@
     typedef double complex complexd;
     #define make_cuDoubleComplex(r,i) ((r)+I*(i))
   #endif
+  #define __NATIVE0 __inline
   #define __NATIVE __inline static
 #endif
+
+// Tiny 2d accessor class to make code look
+//   the same when accessing statically and dynamically sized 2d arrays
+template <typename t> struct acc2d {
+  __NATIVE0 acc2d(t * ptr, int p) : dptr(ptr), pitch(p) {;}
+  __NATIVE0 acc2d(const t * ptr, int p) : pitch(p) {dptr = const_cast<t*>(ptr);}
+  __NATIVE0 t * operator[](int i){return dptr + i*pitch;}
+
+private:
+  t * dptr;
+  int pitch;
+};
+
+#define __PASTE(a,b) a##b
+#define __ACC(typ, id, pitch)  acc2d<typ> id(__PASTE(_,id), pitch);
 
 struct Double4c
 {
@@ -64,8 +81,10 @@ __NATIVE complexd rotw(complexd v, double w){
 
 #if defined __cplusplus || defined __CUDACC__
 template <
-    int grid_size
-  , int over
+#ifndef __DYN_GRID_SIZE
+    int grid_size,
+#endif
+    int over
   , bool do_mirror
   >
 #ifndef __CUDACC__
@@ -79,7 +98,11 @@ inline
 #define w z
 __inline__ __device__
 #endif
-static void pregridPoint(double scale, double wstep, Double3 uvw, Pregridded & res){
+static void pregridPoint(double scale, double wstep, Double3 uvw, Pregridded & res
+#ifdef __DYN_GRID_SIZE
+    , int grid_size
+#endif
+  ){
     uvw.u *= scale;
     uvw.v *= scale;
     uvw.w *= scale;
