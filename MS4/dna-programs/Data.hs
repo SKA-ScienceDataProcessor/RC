@@ -115,6 +115,13 @@ data Vis = Vis
   deriving (Typeable,Generic)
 instance Binary Vis
 
+-- | Free data associated with a visibility set
+freeVis :: Vis -> IO ()
+freeVis vis = do
+    freeVector (visPositions vis)
+    freeVector (visData vis)
+    freeVector (visBinData vis)
+
 -- | Dump visibility information to "stdout"
 dumpVis :: Vis -> IO ()
 dumpVis v = do
@@ -181,9 +188,18 @@ constVis val vis = do
              }
 
 -- | Subtract two visibility sets from each other. They must be using
--- the same positions.
+-- the same positions. Both input visibilities are consumed in the
+-- process.
 subtractVis :: Vis -> Vis -> IO Vis
-subtractVis = undefined
+subtractVis vis0 vis1 = do
+  let n = min (vectorSize (visData vis0))
+              (vectorSize (visData vis1))
+  forM_ [0..n] $ \i -> do
+    v0 <- peekVector (visData vis0) i
+    v1 <- peekVector (visData vis1) i
+    pokeVector (visData vis1) i (v0 - v1)
+  freeVis vis1
+  return vis0
 
 -- | Sort baselines according to the given sorting functions
 -- (e.g. `comparing vblMinW`)
