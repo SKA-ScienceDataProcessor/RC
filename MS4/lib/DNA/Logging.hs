@@ -311,7 +311,7 @@ errorMsg msg = do
     verbosity <- logOptVerbose `liftM` logLoggerOpt
     when (verbosity >= -1) $ do
         attrs <- processAttributes
-        liftIO $ rawMessage "FATAL" attrs msg True
+        liftIO $ rawMessage "ERROR" attrs msg True
 
 -- | Put a warning message. Warnings have a verbosity of 0.
 warningMsg :: MonadLog m => String -> m ()
@@ -319,7 +319,7 @@ warningMsg msg = do
     verbosity <- logOptVerbose `liftM` logLoggerOpt
     when (verbosity >= -2) $ do
         attrs <- processAttributes
-        liftIO $ rawMessage "FATAL" attrs msg True
+        liftIO $ rawMessage "WARNING" attrs msg True
     
 -- | Put a debug message
 debugMsg :: MonadLog m => String -> m ()
