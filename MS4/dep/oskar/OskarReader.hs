@@ -13,6 +13,8 @@ module OskarReader
   , WMaxMin(..)
   , tdVisibilitiesSize
   , tdUVWSize
+  , tdVisibilityPtr
+  , tdUVWPtr
   , finalizeTaskData
   , readOskarData
   , writeTaskData
@@ -55,6 +57,25 @@ tdVisibilitiesSize td = tdPoints td * 8 * sizeOf (undefined :: CDouble)
 
 tdUVWSize :: TaskData -> Int
 tdUVWSize td = tdPoints td * 3 * sizeOf (undefined :: CDouble)
+
+-- | Computes pointer to a visibility in the task data
+tdVisibilityPtr :: TaskData
+                -> Int -- ^ Baseline
+                -> Int -- ^ Timestep
+                -> Int -- ^ Channel
+                -> Int -- ^ Polarisation
+                -> Ptr CxDouble
+tdVisibilityPtr td bl t ch p
+  = tdVisibilies td `advancePtr` (p + 4 * (ch + tdChannels td * (t + tdTimes td * bl)))
+
+-- | Computes pointer to a position in the task data
+tdUVWPtr :: TaskData
+         -> Int -- ^ Baseline
+         -> Int -- ^ Timestep
+         -> Int -- ^ U/V/W
+         -> Ptr CDouble
+tdUVWPtr td bl t o
+  = tdUVWs td `advancePtr` (o + 3 * (t + tdTimes td * bl))
 
 finalizeTaskData :: TaskData -> IO ()
 finalizeTaskData td = do

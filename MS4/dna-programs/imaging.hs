@@ -65,7 +65,7 @@ imagingActor cfg = actor $ \dataSet -> do
     -- Copy data set locally
     oskarChan <- createFileChan Local "oskar"
     (gridk, dftk, cleank, vis0, psfVis, gcfSet) <- unboundKernel "setup" [] $ liftIO $ do
-      transferFileChan (dsData dataSet) oskarChan "data"
+      transferFileChan (dsData dataSet) oskarChan "data.vis"
 
       -- Initialise our kernels
       gcfk <- initKernel gcfKernels (cfgGCFKernel cfg)
@@ -74,9 +74,7 @@ imagingActor cfg = actor $ \dataSet -> do
       cleank <- initKernel cleanKernels (cfgCleanKernel cfg)
 
       -- Read input data from Oskar
-      let readOskarData :: FileChan OskarData -> Int -> Polar -> IO Vis
-          readOskarData = undefined
-      vis <- readOskarData oskarChan (dsChannel dataSet) (dsPolar dataSet)
+      vis <- readOskar oskarChan "data.vis" (dsChannel dataSet) (dsPolar dataSet)
       psfVis <- constVis 1 vis
 
       -- Run GCF kernel to generate GCFs
@@ -155,7 +153,7 @@ workerActor = actor $ \(cfg, dataSet) -> do
 
     -- Allocate file channel for output
     outChan <- createFileChan Remote "image"
-    kernel "write image" [] $ liftIO $ writeImage img outChan "data"
+    kernel "write image" [] $ liftIO $ writeImage img outChan "data.img"
     return outChan
 
 -- | Actor which collects images in tree-like fashion
@@ -250,8 +248,8 @@ main = dnaRun rtable $ do
         -- Import file, and determine the used frequency channels and
         -- polarisations
         (polars, freqs) <- unboundKernel "import oskar" [] $ liftIO $ do
-            importToFileChan chan "data" file
-            readOskarHeader chan "data"
+            importToFileChan chan "data.vis" file
+            readOskarHeader chan "data.vis"
 
         -- Interpret every combination as a data set
         return [ DataSet { dsData    = chan
@@ -259,13 +257,13 @@ main = dnaRun rtable $ do
                          , dsPolar   = polar
                          , dsRepeats = repeats
                          }
-               | freq <- freqs, polar <- polars ]
+               | freq <- freqs, polar <- [XX] ]
 
     -- Execute main actor
     chan <- eval mainActor (config, dataSets)
 
     -- Copy result image to working directory
     unboundKernel "export image" [] $ liftIO $
-        exportFromFileChan chan "data" "output.img"
+        exportFromFileChan chan "data.img" "output.img"
   where
     rtable = __remoteTable

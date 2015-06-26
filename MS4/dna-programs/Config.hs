@@ -117,5 +117,5 @@ instance FromJSON GCFPar where
 
 -- | Visibility polarisation
 data Polar = XX | YY | XY | YX
-           deriving (Show,Typeable,Generic)
+           deriving (Show,Typeable,Generic,Enum,Bounded)
 instance Binary Polar
