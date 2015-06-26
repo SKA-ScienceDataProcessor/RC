@@ -120,8 +120,8 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
     mRestart <- use $ stActorClosure . at aid
     msrc     <- use $ stActorSrc     . at aid
     case st of
-      Completed _ -> fatal "Completed process crashed"
-      Failed      -> fatal "Process failed process "
+      Completed _ -> panic "Completed process crashed"
+      Failed      -> panic "Failed process crashed twice"
       -- If actor is still running we need to decide whether to
       -- restart or accept failure. We can restart actor iff one of
       -- the following is true in addition to having closure
