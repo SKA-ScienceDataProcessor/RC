@@ -160,7 +160,7 @@ execSendParam :: Serializable a => a -> Shell (Val a) b -> DnaMonad ()
 execSendParam a (Shell aid) = do
     Just mdst <- use $ stActorRecvAddr . at aid
     case mdst of
-      Nothing -> doFatal "Connecting to terminated actor"
+      Nothing -> doFatal "sendParam: Connecting to terminated actor"
       Just (dst,_) -> do
           stActorSrc . at aid .= Just (Left trySend)
           liftP $ trySend dst
@@ -180,7 +180,7 @@ execBroadcast :: Serializable a => a -> Shell (Scatter a) b -> DnaMonad ()
 execBroadcast a (Shell aid) = do
     Just mdst <- use $ stActorRecvAddr . at aid
     case mdst of
-      Nothing -> doFatal "Connecting to terminated actor"
+      Nothing -> doFatal "broadcast: Connecting to terminated actor"
       Just (dst,_) -> do
           stActorSrc . at aid .= Just (Left trySend)
           liftP $ trySend dst
@@ -200,7 +200,7 @@ execDistributeWork
 execDistributeWork a f (Shell aid) = do
     Just mdst <- use $ stActorRecvAddr . at aid
     case mdst of
-      Nothing -> doFatal "Connecting to terminated actor"
+      Nothing -> doFatal "distributeWork: Connecting to terminated actor"
       Just (dst,_) -> do
           stActorSrc . at aid .= Just (Left trySend)
           liftP $ trySend dst
