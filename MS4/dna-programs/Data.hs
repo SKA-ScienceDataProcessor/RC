@@ -18,6 +18,7 @@ module Data
     -- * Visibilities
   , Vis(..)
   , VisBaseline(..)
+  , dumpVis
   , constVis
   , subtractVis
   , sortBaselines
@@ -32,12 +33,17 @@ module Data
   , CleanPar(..)
   ) where
 
+import Control.Applicative
+import Control.Monad
 import Data.Complex
 import Data.Binary   (Binary)
 import Data.List     (sortBy)
 import Data.Typeable (Typeable)
-import GHC.Generics  (Generic)
+import Foreign.Ptr
+import Foreign.Storable
 import Foreign.Storable.Complex ( )
+import GHC.Generics  (Generic)
+import Text.Printf
 
 import DNA.Channel.File
 
@@ -106,15 +112,45 @@ data Vis = Vis
                                -- this to traverse visibilities in an
                                -- optimised fashion.
   }
-  deriving (Show,Typeable,Generic)
+  deriving (Typeable,Generic)
 instance Binary Vis
+
+-- | Free data associated with a visibility set
+freeVis :: Vis -> IO ()
+freeVis vis = do
+    freeVector (visPositions vis)
+    freeVector (visData vis)
+    freeVector (visBinData vis)
+
+-- | Dump visibility information to "stdout"
+dumpVis :: Vis -> IO ()
+dumpVis v = do
+    putStrLn $ concat [ "Visibilities -- "
+                      , show (length (visBaselines v)), " baselines, "
+                      , show (visTimesteps v), " timesteps, "
+                      , show (vectorSize (visPositions v)), " positions, "
+                      , show (vectorSize (visData v)), " visibilities, "
+                      , show (vectorSize (visBinData v)), " binning data"
+                      ]
+    posV <- dupCVector $ visPositions v
+    visV <- dupCVector $ visData v
+    forM_ (visBaselines v) $ \bl -> do
+        putStrLn $ "Baseline @ " ++ show (vblOffset bl) ++ ":"
+        forM_ [0..vblPoints bl-1] $ \p -> do
+            pos <- peekVector posV (p + vblOffset bl)
+            vr :+ vi <- peekVector visV (p + vblOffset bl)
+            putStrLn $ printf " %8.02f / %8.02f / %8.02f: %6.03f%-+.03fi"
+                              (uvwU pos) (uvwV pos) (uvwW pos) vr vi
+    freeVector posV
+    freeVector visV
 
 -- | Visibilities are a list of correlator outputs from a dataset
 -- concerning the same frequency band and polarisation.
 data VisBaseline = VisBaseline
   { vblOffset    :: !Int     -- ^ Offset into the "visPositions" / "visData" vector
-  , vblMinW      :: !Double  -- ^ Minimum @w@ value for this baseline
-  , vblMaxW      :: !Double  -- ^ Maximum @w@ value for this baseline
+  , vblPoints    :: !Int     -- ^ Number of points
+  , vblMinW      :: !Double  -- ^ Minimum @w@ value
+  , vblMaxW      :: !Double  -- ^ Maximum @w@ value
   }
   deriving (Show,Typeable,Generic)
 instance Binary VisBaseline
@@ -127,16 +163,43 @@ data UVW = UVW
   }
   deriving (Show,Typeable,Generic)
 instance Binary UVW
+instance Storable UVW where
+  sizeOf    _ = 3 * sizeOf (undefined :: Double)
+  alignment _ = alignment (undefined :: Double)
+  peek p = UVW <$> peekElemOff (castPtr p) 0
+               <*> peekElemOff (castPtr p) 1
+               <*> peekElemOff (castPtr p) 2
+  poke p (UVW u v w) = do
+     pokeElemOff (castPtr p) 0 u
+     pokeElemOff (castPtr p) 1 v
+     pokeElemOff (castPtr p) 2 w
 
 -- | Generate a duplicate of the visibilities, setting all of them to
 -- the given value. Useful for determining the response to 
 constVis :: Complex Double -> Vis -> IO Vis
-constVis = undefined
+constVis val vis = do
+  pos' <- dupCVector (visPositions vis)
+  data' <- dupCVector (visData vis)
+  forM_ [0..vectorSize data'] $ \i ->
+     pokeVector data' i val
+  return vis { visPositions = pos'
+             , visData = data'
+             , visBinData = nullVector
+             }
 
 -- | Subtract two visibility sets from each other. They must be using
--- the same positions.
+-- the same positions. Both input visibilities are consumed in the
+-- process.
 subtractVis :: Vis -> Vis -> IO Vis
-subtractVis = undefined
+subtractVis vis0 vis1 = do
+  let n = min (vectorSize (visData vis0))
+              (vectorSize (visData vis1))
+  forM_ [0..n] $ \i -> do
+    v0 <- peekVector (visData vis0) i
+    v1 <- peekVector (visData vis1) i
+    pokeVector (visData vis1) i (v0 - v1)
+  freeVis vis1
+  return vis0
 
 -- | Sort baselines according to the given sorting functions
 -- (e.g. `comparing vblMinW`)

@@ -36,7 +36,6 @@ import Vector
 gridderActor :: GridPar -> GCFPar -> GridKernel -> DFTKernel
              -> Actor (Vis, GCFSet) Image
 gridderActor gpar gcfpar gridk dftk = actor $ \(vis,gcfSet) -> do
-
     -- Grid visibilities to a fresh uv-grid
     grid <- kernel "grid" [] $ liftIO $ do
       grid <- gridkCreateGrid gridk gpar gcfpar
@@ -65,7 +64,7 @@ imagingActor cfg = actor $ \dataSet -> do
     -- Copy data set locally
     oskarChan <- createFileChan Local "oskar"
     (gridk, dftk, cleank, vis0, psfVis, gcfSet) <- unboundKernel "setup" [] $ liftIO $ do
-      transferFileChan (dsData dataSet) oskarChan "data"
+      transferFileChan (dsData dataSet) oskarChan "data.vis"
 
       -- Initialise our kernels
       gcfk <- initKernel gcfKernels (cfgGCFKernel cfg)
@@ -74,9 +73,7 @@ imagingActor cfg = actor $ \dataSet -> do
       cleank <- initKernel cleanKernels (cfgCleanKernel cfg)
 
       -- Read input data from Oskar
-      let readOskarData :: FileChan OskarData -> Int -> Polar -> IO Vis
-          readOskarData = undefined
-      vis <- readOskarData oskarChan (dsChannel dataSet) (dsPolar dataSet)
+      vis <- readOskar oskarChan "data.vis" (dsChannel dataSet) (dsPolar dataSet)
       psfVis <- constVis 1 vis
 
       -- Run GCF kernel to generate GCFs
@@ -155,7 +152,7 @@ workerActor = actor $ \(cfg, dataSet) -> do
 
     -- Allocate file channel for output
     outChan <- createFileChan Remote "image"
-    kernel "write image" [] $ liftIO $ writeImage img outChan "data"
+    kernel "write image" [] $ liftIO $ writeImage img outChan "data.img"
     return outChan
 
 -- | Actor which collects images in tree-like fashion
@@ -207,6 +204,9 @@ mainActor = actor $ \(cfg, dataSets) -> do
     -- Run estimation, collect weighted data sets
     grp <- delayGroup estimateWorkers
     weightedDataSets <- gather grp (flip (:)) []
+    logMessage "Weight Table:"
+    forM_ weightedDataSets $ \(ds, w) ->
+      logMessage $ show (fromRational w :: Float) ++ " - " ++ show (dsName ds)
 
     -- Now start worker actors
     waitForResoures estimateWorkers
@@ -236,7 +236,7 @@ mainActor = actor $ \(cfg, dataSets) -> do
     await =<< delay Remote collector
 
 main :: IO ()
-main = dnaRun id $ do
+main = dnaRun rtable $ do
     -- We expect configuration in our working directory
     (datafiles, Just config) <- unboundKernel "configure" [] $ liftIO $ do
         !datafiles <- fmap decode $ LBS.readFile "data.cfg" :: IO (Maybe [(String, Int)])
@@ -250,20 +250,23 @@ main = dnaRun id $ do
         -- Import file, and determine the used frequency channels and
         -- polarisations
         (polars, freqs) <- unboundKernel "import oskar" [] $ liftIO $ do
-            importToFileChan chan "data" file
-            readOskarHeader chan "data"
+            importToFileChan chan "data.vis" file
+            readOskarHeader chan "data.vis"
 
         -- Interpret every combination as a data set
-        return [ DataSet { dsData    = chan
+        return [ DataSet { dsName    = file ++ "/" ++ show freq ++ "/" ++ show polar
+                         , dsData    = chan
                          , dsChannel = freq
                          , dsPolar   = polar
                          , dsRepeats = repeats
                          }
-               | freq <- freqs, polar <- polars ]
+               | freq <- freqs, polar <- [minBound..maxBound] ]
 
     -- Execute main actor
     chan <- eval mainActor (config, dataSets)
 
     -- Copy result image to working directory
     unboundKernel "export image" [] $ liftIO $
-        exportFromFileChan chan "data" "output.img"
+        exportFromFileChan chan "data.img" "output.img"
+  where
+    rtable = __remoteTable

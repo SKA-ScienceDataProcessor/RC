@@ -4,14 +4,17 @@
 
 module Vector
   ( Vector(..)
+  , vectorSize
   , nullVector
   , castVector
   , offsetVector
+  , peekVector, pokeVector
   -- * Memory Management
   , allocCVector, allocHostVector, allocDeviceVector
   , freeVector
   -- * Conversion
   , toCVector, toHostVector, toDeviceVector
+  , dupCVector, dupHostVector, dupDeviceVector
   ) where
 
 import Data.Binary   (Binary(..))
@@ -41,6 +44,13 @@ instance Binary (Vector a) where
     get = undefined
     put = undefined
 
+-- | Returns the number of elements a vector has. Note that this will
+-- return @0@ for the result of "offsetVector".
+vectorSize :: Vector a -> Int
+vectorSize (CVector n _) = n
+vectorSize (HostVector n _) = n
+vectorSize (DeviceVector n _) = n
+
 -- | A vector carrying no data, pointing nowhere
 nullVector :: Vector a
 nullVector = CVector 0 nullPtr
@@ -57,6 +67,18 @@ offsetVector :: Storable a => Vector a -> Int -> Vector a
 offsetVector (CVector _ p) off = CVector 0 $ p `advancePtr` off
 offsetVector (HostVector _ p) off = HostVector 0 $ p `advanceHostPtr` off
 offsetVector (DeviceVector _ p) off = DeviceVector 0 $ p `advanceDevPtr` off
+
+-- | Read an element from the vector
+peekVector :: Storable a => Vector a -> Int -> IO a
+peekVector (CVector _ p)    off = peekElemOff p off
+peekVector (HostVector _ p) off = peekElemOff (useHostPtr p) off
+peekVector (DeviceVector _ _) _ = error "Attempted to peek device vector!"
+
+-- | Write an element to a vector
+pokeVector :: Storable a => Vector a -> Int -> a -> IO ()
+pokeVector (CVector _ p)    off = pokeElemOff p off
+pokeVector (HostVector _ p) off = pokeElemOff (useHostPtr p) off
+pokeVector (DeviceVector _ _) _ = error "Attempted to poke device vector!"
 
 -- | Allocate a C vector using @malloc@ that is large enough for the
 -- given number of elements.
@@ -80,7 +102,7 @@ allocDeviceVector n = fmap (DeviceVector n) $ CUDA.mallocArray n
 -- @nullVector@ or @offsetVector@.
 freeVector :: Vector a -> IO ()
 freeVector (CVector 0 _)        = return ()
-freeVector (CVector n ptr)      = Foreign.Marshal.Alloc.free ptr
+freeVector (CVector _ ptr)      = Foreign.Marshal.Alloc.free ptr
 freeVector (HostVector 0 _)     = return ()
 freeVector (HostVector _ ptr)   = freeHost ptr
 freeVector (DeviceVector 0 _)   = return ()
@@ -92,40 +114,63 @@ toCVector :: Storable a => Vector a -> IO (Vector a)
 toCVector v@CVector{}      = return v
 toCVector (HostVector n p) = return $ CVector n (useHostPtr p)
                              -- Can use a host ptr as C ptr
-toCVector v@(DeviceVector n p) = do
-  v'@(CVector _ p') <- allocCVector n
-  peekArray n p p'
-  freeVector v
-  return v'
+toCVector v                = do v' <- dupCVector v; freeVector v; return v'
 
 -- | Convert the given vector into a host vector. The passed vector is
 -- consumed.
 toHostVector :: forall a. Storable a => Vector a -> IO (Vector a)
 toHostVector v@HostVector{} = return v
-toHostVector v@(CVector n p) = do
-  v'@(HostVector _ p') <- allocHostVector n
-  let s = sizeOf (undefined :: a)
-  copyBytes (useHostPtr p') p (s * n)
-  freeVector v
-  return v'
-toHostVector v@(DeviceVector n p) = do
-  v'@(HostVector _ p') <- allocHostVector n
-  peekArray n p (useHostPtr p')
-  freeVector v
-  return v'
+toHostVector v              = do v' <- dupHostVector v; freeVector v; return v'
 
 -- | Convert the given vector into a device vector. The passed vector
 -- is consumed.
 toDeviceVector :: forall a. Storable a => Vector a -> IO (Vector a)
 toDeviceVector v@DeviceVector{} = return v
-toDeviceVector v@(CVector n p) = do
-  v'@(DeviceVector _ p') <- allocDeviceVector n
-  pokeArray n p p'
-  freeVector v
-  return v'
-toDeviceVector v@(HostVector n p) = do
-  v'@(DeviceVector _ p') <- allocDeviceVector n
-  pokeArray n (useHostPtr p) p'
-  freeVector v
+toDeviceVector v                = do v' <- dupDeviceVector v; freeVector v; return v'
+
+-- | Create a copy of the given vector as a C vector. Leaves the
+-- original vector intact.
+dupCVector :: forall a. Storable a => Vector a -> IO (Vector a)
+dupCVector v = do
+  let n = vectorSize v
+      s = sizeOf (undefined :: a)
+  v'@(CVector _ p') <- allocCVector n
+  case v of
+    CVector _ p      -> copyBytes p' p (s * n)
+    HostVector _ p   -> copyBytes p' (useHostPtr p) (s * n)
+    DeviceVector _ p -> peekArray n p p'
   return v'
 
+-- | Create a copy of the given vector as a host vector. Leaves the
+-- original vector intact.
+dupHostVector :: forall a. Storable a => Vector a -> IO (Vector a)
+dupHostVector (CVector n p) = do
+  v'@(HostVector _ p') <- allocHostVector n
+  let s = sizeOf (undefined :: a)
+  copyBytes (useHostPtr p') p (s * n)
+  return v'
+dupHostVector (HostVector n p) = do
+  v'@(HostVector _ p') <- allocHostVector n
+  let s = sizeOf (undefined :: a)
+  copyBytes (useHostPtr p') (useHostPtr p) (s * n)
+  return v'
+dupHostVector (DeviceVector n p) = do
+  v'@(HostVector _ p') <- allocHostVector n
+  peekArray n p (useHostPtr p')
+  return v'
+
+-- | Create a copy of the given vector as a device vector. Leaves the
+-- original vector intact.
+dupDeviceVector :: forall a. Storable a => Vector a -> IO (Vector a)
+dupDeviceVector (CVector n p) = do
+  v'@(DeviceVector _ p') <- allocDeviceVector n
+  pokeArray n p p'
+  return v'
+dupDeviceVector (HostVector n p) = do
+  v'@(DeviceVector _ p') <- allocDeviceVector n
+  pokeArray n (useHostPtr p) p'
+  return v'
+dupDeviceVector (DeviceVector n p) = do
+  v'@(DeviceVector _ p') <- allocDeviceVector n
+  copyArray n p p'
+  return v'
