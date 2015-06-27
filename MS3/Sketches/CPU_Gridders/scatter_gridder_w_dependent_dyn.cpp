@@ -18,20 +18,23 @@
 #define as256p(p) (reinterpret_cast<__m256d*>(p))
 #define as256pc(p) (reinterpret_cast<const __m256d*>(p))
 
-template <int grid_size>
+inline
 void addGrids(
-    Double4c dst[grid_size][grid_size]
-  , const Double4c srcs[][grid_size][grid_size]
+    Double4c dst[]
+  , const Double4c srcs[]
   , int nthreads
+  , int grid_pitch
+  , int grid_size
   )
 {
+  int siz = grid_size*grid_pitch;
 #pragma omp parallel for
-  for (unsigned int i = 0; i < grid_size*grid_size*sizeof(Double4c)/(256/8); i++) {
-    __m256d sum = as256pc(srcs[0])[i];
-    // __m256d sum = _mm256_loadu_pd(reinterpret_cast<const double*>(as256pc(srcs[0])+i));
+  for (unsigned int i = 0; i < siz*sizeof(Double4c)/(256/8); i++) {
+    __m256d sum = as256pc(srcs)[i];
+    // __m256d sum = _mm256_loadu_pd(reinterpret_cast<const double*>(as256pc(srcs)+i));
 
     for (int g = 1; g < nthreads; g ++)
-      sum = _mm256_add_pd(sum, as256pc(srcs[g])[i]);
+      sum = _mm256_add_pd(sum, as256pc(srcs + g * siz)[i]);
 
     as256p(dst)[i] = sum;
   }
@@ -67,7 +70,6 @@ template <
   , bool is_half_gcf
   , bool use_permutations
 
-  , int grid_size
   , typename Inp
   >
 // grid must be initialized to 0s.
@@ -76,7 +78,7 @@ void gridKernel_scatter(
   , double wstep
   , int baselines
   , const BlWMap permutations[/* baselines */]
-  , Double4c grids[][grid_size][grid_size]
+  , Double4c grids[]
     // We have a [w_planes][over][over]-shaped array of pointers to
     // variable-sized gcf layers, but we precompute (in pregrid)
     // exact index into this array, thus we use plain pointer here
@@ -84,13 +86,17 @@ void gridKernel_scatter(
   , const Inp _uvw[]
   , const Double4c _vis[]
   , int ts_ch
+  , int grid_pitch
+  , int grid_size
   ) {
   __ACC(Inp, uvw, ts_ch);
   __ACC(Double4c, vis, ts_ch);
+  int siz = grid_size*grid_pitch;
 #pragma omp parallel
   {
-    auto grid = grids[omp_get_thread_num()];
-    memset(grid, 0, sizeof(*grid));
+    Double4c * _grid = grids + omp_get_thread_num() * siz;
+    memset(_grid, 0, sizeof(Double4c) * siz);
+    __ACC(Double4c, grid, grid_pitch);
 
 #pragma omp for schedule(dynamic)
     for(int bl0 = 0; bl0 < baselines; bl0++) {
@@ -174,7 +180,6 @@ template <
   , bool is_half_gcf
   , bool use_permutations
 
-  , int grid_size
   , typename Inp
   >
 // grid must be initialized to 0s.
@@ -183,7 +188,7 @@ void gridKernel_scatter_full(
   , double wstep
   , int baselines
   , const BlWMap permutations[/* baselines */]
-  , Double4c grid[grid_size][grid_size]
+  , Double4c grid[]
     // We have a [w_planes][over][over]-shaped array of pointers to
     // variable-sized gcf layers, but we precompute (in pregrid)
     // exact index into this array, thus we use plain pointer here
@@ -191,10 +196,11 @@ void gridKernel_scatter_full(
   , const Inp uvw[]
   , const Double4c vis[]
   , int ts_ch
+  , int grid_pitch
+  , int grid_size
   ) {
-  typedef Double4c GT[grid_size][grid_size];
-
 #if defined _OPENMP
+  int siz = grid_size*grid_pitch;
   int nthreads;
 
 #pragma omp parallel
@@ -202,17 +208,17 @@ void gridKernel_scatter_full(
   nthreads = omp_get_num_threads();
 
   // Nullify incoming grid, allocate thread-local grids
-  memset(grid, 0, sizeof(GT));
-  GT * tmpgrids = alignedMallocArray<GT>(nthreads, 32);
+  memset(grid, 0, sizeof(Double4c) * siz);
+  Double4c * tmpgrids = alignedMallocArray<Double4c>(siz * nthreads, 32);
+  
   gridKernel_scatter<
       over
     , is_half_gcf
     , use_permutations
 
-    , grid_size
     , Inp
-    >(scale, wstep, baselines, permutations, tmpgrids, gcf, uvw, vis, ts_ch);
-  addGrids<grid_size>(grid, tmpgrids, nthreads);
+    >(scale, wstep, baselines, permutations, tmpgrids, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);
+  addGrids(grid, tmpgrids, nthreads, grid_pitch, grid_size);
   free(tmpgrids);
 #else
   gridKernel_scatter<
@@ -220,9 +226,8 @@ void gridKernel_scatter_full(
     , is_half_gcf
     , use_permutations
 
-    , grid_size
     , Inp
-    >(scale, wstep, baselines, permutations, reinterpret_cast<GT*>(&grid), gcf, uvw, vis, ts_ch);
+    >(scale, wstep, baselines, permutations, grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);
 #endif
 }
 
@@ -233,15 +238,17 @@ void gridKernelCPU##hgcfSuff##permSuff(                    \
   , double wstep                                           \
   , int baselines                                          \
   , const BlWMap permutations[/* baselines */]             \
-  , Double4c grid[GRID_SIZE][GRID_SIZE]                    \
+  , Double4c grid[]                                        \
   , const complexd * gcf[]                                 \
   , const Double3 uvw[]                                    \
   , const Double4c vis[]                                   \
   , int ts_ch                                              \
+  , int grid_pitch                                         \
+  , int grid_size                                          \
   ){                                                       \
-  gridKernel_scatter_full<OVER, isHgcf, isPerm, GRID_SIZE> \
+  gridKernel_scatter_full<OVER, isHgcf, isPerm>            \
     ( scale, wstep, baselines, permutations                \
-    , grid, gcf, uvw, vis, ts_ch);                         \
+    , grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);  \
 }
 
 gridKernelCPU(HalfGCF, true, Perm, true)
@@ -249,24 +256,21 @@ gridKernelCPU(HalfGCF, true, , false)
 gridKernelCPU(FullGCF, false, Perm, true)
 gridKernelCPU(FullGCF, false, , false)
 
-template <int grid_size, int num_pols>
+typedef complexd poltyp[4];
+
+extern "C"
 void normalizeAndExtractPolarization(
     int n
-  , complexd dst[grid_size][grid_size]
-  , const complexd src[grid_size][grid_size][num_pols]
+  , complexd dst[]
+  , const poltyp src[]
+  , int grid_pitch
+  , int grid_size
   )
 {
-  const double norm = 1.0/double(grid_size * grid_size);
+  int siz = grid_size*grid_pitch;
+  const double norm = 1.0/double(siz);
 #pragma omp parallel for
-  for (int i = 0; i < grid_size*grid_size; i++) {
-    dst[0][i] = src[0][i][n] * norm;
+  for (int i = 0; i < siz; i++) {
+    dst[i] = src[i][n] * norm;
   }
-}
-
-extern "C" void normalizeAndExtractPolarizationCPU(
-    int n
-  , complexd dst[GRID_SIZE][GRID_SIZE]
-  , const complexd src[GRID_SIZE][GRID_SIZE][NUM_POL]
-  ) {
-  normalizeAndExtractPolarization<GRID_SIZE, NUM_POL>(n, dst, src);
 }
