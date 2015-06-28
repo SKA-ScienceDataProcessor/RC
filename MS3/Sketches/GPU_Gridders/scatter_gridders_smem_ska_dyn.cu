@@ -8,11 +8,17 @@
 
 static __inline__ __device__ void loadVisIntoSharedMem (
     const Double4c vis[]
+  , const double3 uvw[]
   , Double4c vis_shared[]
   , int timesteps_x_channels
   ) {
   for (int i = threadIdx.x; i < timesteps_x_channels; i += blockDim.x) {
-    vis_shared[i] = vis[i];
+    // Add rotation
+    #define __ROT_N_COPY(pol) vis_shared[i].##pol = rotw(vis[i].##pol, uvw[i].z);
+    __ROT_N_COPY(XX)
+    __ROT_N_COPY(XY)
+    __ROT_N_COPY(YX)
+    __ROT_N_COPY(YY)
   }
 }
 
@@ -272,6 +278,7 @@ __device__ __inline__ void addBaselineToGrid(
     );
   loadVisIntoSharedMem(
       vis
+    , uvw
     , vis_shared
     , timesteps_x_channels
     );

@@ -104,7 +104,14 @@ inline int doit(const char * prefix, int num_channels, int num_points, double sc
           && us.quot < divs && vs.quot < divs
           );
 
-      filesp[i].put_point(us.quot, vs.quot, p, *amp_curr);
+      Double4c amp_rot;
+      #define __ROT_N_COPY(pol) amp_rot.pol = rotw(amp_curr->pol, uvw_curr->w);
+      __ROT_N_COPY(XX)
+      __ROT_N_COPY(XY)
+      __ROT_N_COPY(YX)
+      __ROT_N_COPY(YY)
+
+      filesp[i].put_point(us.quot, vs.quot, p, amp_rot);
 
       int margin;
       margin = p.gcf_layer_supp / 2;
@@ -114,34 +121,34 @@ inline int doit(const char * prefix, int num_channels, int num_points, double sc
         leftm = false; rightm = false; topm = false; botm = false;
 
         if (us.rem < margin && us.quot >= 1) {
-          filesp[i].put_point(us.quot-1, vs.quot, p, *amp_curr);
+          filesp[i].put_point(us.quot-1, vs.quot, p, amp_rot);
           leftm = true;
         }
         else if (us.rem > div_size - margin && us.quot < divs-1) {
-          filesp[i].put_point(us.quot+1, vs.quot, p, *amp_curr);
+          filesp[i].put_point(us.quot+1, vs.quot, p, amp_rot);
           rightm = true;
         }
 
         if (vs.rem < margin && vs.quot >= 1) {
-          filesp[i].put_point(us.quot, vs.quot-1, p, *amp_curr);
+          filesp[i].put_point(us.quot, vs.quot-1, p, amp_rot);
           botm = true;
         }
         else if (vs.rem > div_size - margin && vs.quot < divs-1) {
-          filesp[i].put_point(us.quot, vs.quot+1, p, *amp_curr);
+          filesp[i].put_point(us.quot, vs.quot+1, p, amp_rot);
           topm = true;
         }
 
         if (leftm && botm) {
-          filesp[i].put_point(us.quot-1, vs.quot-1, p, *amp_curr);
+          filesp[i].put_point(us.quot-1, vs.quot-1, p, amp_rot);
         }
         else if (leftm && topm) {
-          filesp[i].put_point(us.quot-1, vs.quot+1, p, *amp_curr);
+          filesp[i].put_point(us.quot-1, vs.quot+1, p, amp_rot);
         }
         else if (rightm && topm) {
-          filesp[i].put_point(us.quot+1, vs.quot+1, p, *amp_curr);
+          filesp[i].put_point(us.quot+1, vs.quot+1, p, amp_rot);
         }
         else if (rightm && botm) {
-          filesp[i].put_point(us.quot+1, vs.quot-1, p, *amp_curr);
+          filesp[i].put_point(us.quot+1, vs.quot-1, p, amp_rot);
         }
       }
 
