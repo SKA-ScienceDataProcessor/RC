@@ -90,7 +90,6 @@ void gridKernel_scatter(
   , int grid_size
   ) {
   __ACC(Inp, uvw, ts_ch);
-  __ACC(Double4c, vis, ts_ch);
   int siz = grid_size*grid_pitch;
 #pragma omp parallel
   {
@@ -104,6 +103,19 @@ void gridKernel_scatter(
       if (use_permutations) bl = permutations[bl0].bl;
       else bl = bl0;
       int max_supp_here = get_supp(permutations[bl].wp);
+
+      // Rotation
+      // VLA requires "--std=gnu..." extension
+      Double4c vis[ts_ch];
+      int off = bl*ts_ch;
+      for(int n=0; n<ts_ch; n++){
+        #define __ROT_N_COPY(pol) vis[n].pol = rotw(_vis[off + n].pol, _uvw[off + n].w);
+        __ROT_N_COPY(XX)
+        __ROT_N_COPY(XY)
+        __ROT_N_COPY(YX)
+        __ROT_N_COPY(YY)
+      }
+      
       for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
             Pregridded p;
@@ -113,8 +125,8 @@ void gridKernel_scatter(
           // We port Romein CPU code to doubles here (for MS2 we didn't)
           // vis0 covers XX and XY, vis1 -- YX and YY
           __m256d vis0, vis1;
-          vis0 = _mm256_load_pd((const double *) &vis[bl][i].XX);
-          vis1 = _mm256_load_pd((const double *) &vis[bl][i].YX);
+          vis0 = _mm256_load_pd((const double *) &vis[i].XX);
+          vis1 = _mm256_load_pd((const double *) &vis[i].YX);
           // vis0 = _mm256_loadu_pd((const double *) &vis[bl][i].XX);
           // vis1 = _mm256_loadu_pd((const double *) &vis[bl][i].YX);
 #endif

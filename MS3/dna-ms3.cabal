@@ -182,7 +182,7 @@ executable Gridder_DNA
   include-dirs:        ../../oskar_binary Sketches/Utils Sketches/Oskar_New_Reader Sketches/GPU_Gridders Sketches/CPU_Gridders
   extra-libraries:     oskar_binary stdc++ gomp fftw3
   extra-lib-dirs:      ../../oskar_binary
-  cc-options:          --std=c++0x -ffast-math -mavx -fopenmp
+  cc-options:          --std=gnu++0x -ffast-math -mavx -fopenmp
   main-is:             Gridder_DNA.hs
   build-depends:
     base >=4.6,
