@@ -4,20 +4,6 @@
 #include "atomic_add.h"
 #include "OskarBinReader.h"
 
-#include <math_functions.h>
-
-static __inline__ __device__ void loadVisIntoSharedMem (
-    const complexd vis[]
-  , const double3 uvw[]
-  , complexd vis_shared[]
-  , int timesteps_x_channels
-  ) {
-  for (int i = threadIdx.x; i < timesteps_x_channels; i += blockDim.x) {
-    // Add rotation
-    vis_shared[i] = rotw(vis[i], uvw[i].z);
-  }
-}
-
 template <
     int over
   , bool do_mirror
@@ -44,25 +30,22 @@ template <
     bool is_half_gcf
   >
 __inline__ __device__
-// grid must be initialized to 0s.
-void gridKernel_scatter_kernel_small(
+// psfi must be initialized to 0s.
+void psfiKernel_scatter_kernel_small(
     int max_supp
     // For full-size GCF should be passed 0-centered,
     // i.e. with 0-index in the middle
   , const complexd * gcf[]
-  , complexd _grid[]
+  , complexd _psfi[]
   , const Pregridded uvo_shared[]
-  , const complexd vis[]
   , const int2 off_shared[]
   , int myU
   , int myV
   , int timesteps_x_channels
   , int grid_size
   ) {
-  __ACC(complexd, grid, grid_size);
-  complexd
-      sumXX = {0, 0}
-    ;
+  __ACC(complexd, psfi, grid_size);
+  complexd sum = {0, 0};
   int
       grid_point_u = 0
     , grid_point_v = 0;
@@ -100,15 +83,14 @@ void gridKernel_scatter_kernel_small(
     }
 
     if (myGridU != grid_point_u || myGridV != grid_point_v) {
-      atomicAdd(&grid[grid_point_u][grid_point_v], sumXX);
-        sumXX
-      = make_cuDoubleComplex(0.0, 0.0);
+      atomicAdd(&psfi[grid_point_u][grid_point_v], sum);
+      sum = make_cuDoubleComplex(0.0, 0.0);
       grid_point_u = myGridU;
       grid_point_v = myGridV;
     }
-    sumXX = cuCfma(supportPixel, vis[i], sumXX);
+    sum = cuCadd(supportPixel, sum);
   }
-  atomicAdd(&grid[grid_point_u][grid_point_v], sumXX);
+  atomicAdd(&psfi[grid_point_u][grid_point_v], sum);
 }
 
 template <
@@ -116,12 +98,11 @@ template <
   >
 __inline__ __device__
 // grid must be initialized to 0s.
-void gridKernel_scatter_kernel(
+void psfiKernel_scatter_kernel(
     int max_supp
   , const complexd * gcf[]
-  , complexd grid[]
+  , complexd psfi[]
   , const Pregridded uvo_shared[]
-  , const complexd vis_shared[]
   , const int2 off_shared[]
   , int timesteps_x_channels
   , int grid_size
@@ -131,9 +112,9 @@ void gridKernel_scatter_kernel(
         myU = i % max_supp
       , myV = i / max_supp
       ;
-    gridKernel_scatter_kernel_small<
+    psfiKernel_scatter_kernel_small<
       is_half_gcf
-    > (max_supp, gcf, grid, uvo_shared, vis_shared, off_shared, myU, myV, timesteps_x_channels, grid_size);
+    > (max_supp, gcf, psfi, uvo_shared, off_shared, myU, myV, timesteps_x_channels, grid_size);
   }
 }
 
@@ -141,21 +122,19 @@ template <
     int over
   , bool is_half_gcf
   >
-__device__ __inline__ void addBaselineToGrid(
+__device__ __inline__ void addBaselineToPsfi(
     double scale
   , double wstep
   , int max_supp
-  , complexd grid[]
+  , complexd psfi[]
   , const complexd * gcf[]
   , const double3 uvw[]
-  , const complexd vis[]
   , int timesteps_x_channels
   , int grid_size
   ) {
-  // NOTE: Don't forget to put timesteps_x_channels*80
+  // NOTE: Don't forget to put timesteps_x_channels*16
   //   to kernel launch shared memory config.
-  extern __shared__ complexd vis_shared[];
-  Pregridded * uvo_shared = reinterpret_cast<Pregridded *>(vis_shared + timesteps_x_channels);
+  extern __shared__ Pregridded uvo_shared[];
   int2 * off_shared =  reinterpret_cast<int2 *>(uvo_shared + timesteps_x_channels);
   
   loadUVWIntoSharedMem<
@@ -170,20 +149,13 @@ __device__ __inline__ void addBaselineToGrid(
     , timesteps_x_channels
     , grid_size
     );
-  loadVisIntoSharedMem(
-      vis
-    , uvw
-    , vis_shared
-    , timesteps_x_channels
-    );
   syncthreads();
-  gridKernel_scatter_kernel<
+  psfiKernel_scatter_kernel<
       is_half_gcf
     >(max_supp
     , gcf
-    , grid
+    , psfi
     , uvo_shared
-    , vis_shared
     , off_shared
     , timesteps_x_channels
     , grid_size
@@ -195,14 +167,13 @@ template <
   , bool is_half_gcf
   , bool use_permutations
   >
-__device__ __inline__ void addBaselinesToGrid(
+__device__ __inline__ void addBaselinesToPsfi(
     double scale
   , double wstep
   , const BlWMap permutations[/* baselines */]
-  , complexd grid[]
+  , complexd psfi[]
   , const complexd * gcf[]
   , const double3 uvw[]
-  , const complexd vis[]
   , int blOff
   , int timesteps_x_channels
   , int grid_size
@@ -211,127 +182,72 @@ __device__ __inline__ void addBaselinesToGrid(
   if (use_permutations) bl = permutations[bl].bl;
   int max_supp = get_supp(permutations[bl].wp);
 
-  addBaselineToGrid<
+  addBaselineToPsfi<
       over
     , is_half_gcf
     >(scale
     , wstep
     , max_supp
-    , grid
+    , psfi
     , gcf
     , uvw + bl * timesteps_x_channels
-    , vis + bl * timesteps_x_channels
     , timesteps_x_channels
     , grid_size
     );
 }
 
-#define addBaselineToGrid(suff, ishalf)  \
-extern "C"                               \
-__global__ void addBaselineToGrid##suff( \
-    double scale                         \
-  , double wstep                         \
-  , int max_supp                         \
-  , complexd grid[]                      \
-  , const complexd * gcf[]               \
-  , const double3 uvw[]                  \
-  , const complexd vis[]                 \
-  , int timesteps_x_channels             \
-  , int grid_size                        \
-  ) {                                    \
-  addBaselineToGrid<OVER, ishalf>        \
-    ( scale                              \
-    , wstep                              \
-    , max_supp                           \
-    , grid                               \
-    , gcf                                \
-    , uvw                                \
-    , vis                                \
-    , timesteps_x_channels               \
-    , grid_size                          \
-    );                                   \
+#define addBaselinesToPsfiSkaMid(suff, ishalf)       \
+extern "C"                                           \
+__global__ void addBaselinesToPsfiSkaMid##suff(      \
+    double scale                                     \
+  , double wstep                                     \
+  , const BlWMap permutations[/* baselines */]       \
+  , complexd psfi[]                                  \
+  , const complexd * gcf[]                           \
+  , const double3 uvw[]                              \
+  , int blOff                                        \
+  , int timesteps_x_channels                         \
+  , int grid_size                                    \
+  ) {                                                \
+  addBaselinesToPsfi<OVER, ishalf, false>            \
+    ( scale                                          \
+    , wstep                                          \
+    , permutations                                   \
+    , psfi                                           \
+    , gcf                                            \
+    , uvw                                            \
+    , blOff                                          \
+    , timesteps_x_channels                           \
+    , grid_size                                      \
+    );                                               \
 }
-addBaselineToGrid(HalfGCF, true)
-addBaselineToGrid(FullGCF, false)
+addBaselinesToPsfiSkaMid(HalfGCF, true)
+addBaselinesToPsfiSkaMid(FullGCF, false)
 
-#define addBaselinesToGridSkaMid(suff, ishalf)  \
-extern "C"                                      \
-__global__ void addBaselinesToGridSkaMid##suff( \
-    double scale                                \
-  , double wstep                                \
-  , const BlWMap permutations[/* baselines */]  \
-  , complexd grid[]                             \
-  , const complexd * gcf[]                      \
-  , const double3 uvw[]                         \
-  , const complexd vis[]                        \
-  , int blOff                                   \
-  , int timesteps_x_channels                    \
-  , int grid_size                               \
-  ) {                                           \
-  addBaselinesToGrid<OVER, ishalf, false>       \
-    ( scale                                     \
-    , wstep                                     \
-    , permutations                              \
-    , grid                                      \
-    , gcf                                       \
-    , uvw                                       \
-    , vis                                       \
-    , blOff                                     \
-    , timesteps_x_channels                      \
-    , grid_size                                 \
-    );                                          \
-}
-addBaselinesToGridSkaMid(HalfGCF, true)
-addBaselinesToGridSkaMid(FullGCF, false)
-
-#define addBaselinesToGridSkaMidUsingPermutations(suff, ishalf)  \
+#define addBaselinesToPsfiSkaMidUsingPermutations(suff, ishalf)  \
 extern "C"                                                       \
-__global__ void addBaselinesToGridSkaMidUsingPermutations##suff( \
+__global__ void addBaselinesToPsfiSkaMidUsingPermutations##suff( \
     double scale                                                 \
   , double wstep                                                 \
   , const BlWMap permutations[/* baselines */]                   \
-  , complexd grid[]                                              \
+  , complexd psfi[]                                              \
   , const complexd * gcf[]                                       \
   , const double3 uvw[]                                          \
-  , const complexd vis[]                                         \
   , int blOff                                                    \
   , int timesteps_x_channels                                     \
   , int grid_size                                                \
   ) {                                                            \
-  addBaselinesToGrid<OVER, ishalf, true>                         \
+  addBaselinesToPsfi<OVER, ishalf, true>                         \
     ( scale                                                      \
     , wstep                                                      \
     , permutations                                               \
-    , grid                                                       \
+    , psfi                                                       \
     , gcf                                                        \
     , uvw                                                        \
-    , vis                                                        \
     , blOff                                                      \
     , timesteps_x_channels                                       \
     , grid_size                                                  \
     );                                                           \
 }
-addBaselinesToGridSkaMidUsingPermutations(HalfGCF, true)
-addBaselinesToGridSkaMidUsingPermutations(FullGCF, false)
-
-#include "../GCF_new/scale_complex_by_dbl.cuh"
-
-typedef complexd poltyp[4];
-
-extern "C"
-__global__ void  normalizeAndExtractPolarization_dyn(
-    complexd _dst_grid[]
-  , const poltyp _src_grid[]
-  , int pol
-  , int grid_size
-  , double inv_grid_size_2 // 1/(grid_size^2)
-  )
-{
-  __ACC(complexd, dst_grid, grid_size);
-  __ACC(poltyp, src_grid, grid_size);
-  const int
-      x = blockIdx.x * blockDim.x + threadIdx.x
-    , y = blockIdx.y * blockDim.y + threadIdx.y;
-
-  dst_grid[x][y] = cuMulComplexByDouble(src_grid[x][y][pol], inv_grid_size_2);
-}
+addBaselinesToPsfiSkaMidUsingPermutations(HalfGCF, true)
+addBaselinesToPsfiSkaMidUsingPermutations(FullGCF, false)
