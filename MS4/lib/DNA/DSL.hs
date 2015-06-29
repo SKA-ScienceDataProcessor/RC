@@ -49,6 +49,7 @@ module DNA.DSL (
     -- , startGroupN
     , startCollectorGroup
     , startCollectorTree
+    , startCollectorTreeGroup
       -- ** Dataflow building
     , delay
     , await
@@ -160,10 +161,13 @@ data DnaF a where
       -> DnaF (Shell (Grp a) (Grp b))
     SpawnCollectorTree
       :: (Serializable a)
-      => Res
-      -> ResGroup
-      -> Spawn (Closure (TreeCollector a))
+      => Spawn (Closure (TreeCollector a))
       -> DnaF (Shell (Grp a) (Val a))
+    SpawnCollectorTreeGroup
+      :: (Serializable a)
+      => Res
+      -> Spawn (Closure (TreeCollector a))
+      -> DnaF (Shell (Grp a) (Grp a))
 
     -- Connect running actors
     Connect
@@ -328,10 +332,12 @@ collectActor = CollectActor
 data TreeCollector a where
     TreeCollector :: (Serializable a)
                   => (a -> a -> IO a)
+                  -> IO a   
                   -> TreeCollector a
+    deriving (Typeable)
 
 -- | Smart constructor for tree collector.
-treeCollector :: Serializable a => (a -> a -> IO a) -> TreeCollector a
+treeCollector :: Serializable a => (a -> a -> IO a) -> IO a -> TreeCollector a
 treeCollector = TreeCollector
 
 
@@ -510,12 +516,19 @@ startCollectorGroup res resG child =
 -- | Start a group of collector actor processes
 startCollectorTree
     :: (Serializable a)
-    => Res
-    -> ResGroup
-    -> Spawn (Closure (TreeCollector a))
+    => Spawn (Closure (TreeCollector a))
     -> DNA (Shell (Grp a) (Val a))
-startCollectorTree res resG child =
-    DNA $ singleton $ SpawnCollectorTree res resG child
+startCollectorTree child =
+    DNA $ singleton $ SpawnCollectorTree child
+
+-- | Start a group of collector actor processes
+startCollectorTreeGroup
+    :: (Serializable a)
+    => Res
+    -> Spawn (Closure (TreeCollector a))
+    -> DNA (Shell (Grp a) (Grp a))
+startCollectorTreeGroup res child =
+    DNA $ singleton $ SpawnCollectorTreeGroup res child
 
 crashMaybe :: Double -> DNA ()
 crashMaybe = DNA . singleton . CrashMaybe

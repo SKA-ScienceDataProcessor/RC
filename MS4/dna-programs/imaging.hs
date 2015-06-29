@@ -196,6 +196,9 @@ mainActor = actor $ \(cfg, dataSets) -> do
         fail $ "Not enough nodes: Require " ++ show setCount ++ " to run data sets!"
 
     -- Allocate estimation nodes
+    --
+    -- DSL: This construct tells to spawn actor for every item in a
+    --      list. Essentially it's distributed map.
     estimateWorkers <- startGroup (N (setCount-1)) (NNodes 1) $ do
         useLocal
         return $(mkStaticClosure 'estimateActor)
@@ -226,14 +229,16 @@ mainActor = actor $ \(cfg, dataSets) -> do
 
     -- Spawn tree collector
     --
-    -- This is attempt to encapsulate tree-like reduction in single
-    -- actor. In hierarchical DDP tree-like reduction was defined by
-    -- spawning actors in tree.
-    collector <- startCollectorTree undefined undefined $ do
+    -- Spawn leaves 
+    leaves <- startCollectorTreeGroup (NNodes undefined) $ do
+        return $(mkStaticClosure 'treeCollector)
+    -- Top level collector
+    topLevel <- startCollectorTree $ do
         useLocal
-        return undefined -- $(mkStaticClosure 'treeCollector) -- see above
+        return $(mkStaticClosure 'treeCollector)
     connect workers collector
-    await =<< delay Remote collector
+    connect leaves  topLevel
+    await =<< delay Local topLevel
 
 main :: IO ()
 main = dnaRun rtable $ do

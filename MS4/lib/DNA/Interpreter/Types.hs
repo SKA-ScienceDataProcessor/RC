@@ -323,13 +323,14 @@ data ActorState
 --   processes and number of allowed failures. Number of still running
 --   processes is accessible via AID<->{PID} mapping
 data RunInfo = RunInfo
-    { nCompleted     :: Int
+    { nCompleted      :: !Int
       -- ^ Number of CH processes that complete execution 
-    , allowedFailures :: Int
+    , allowedFailures :: !Int
       -- ^ Number of allowed failures
+    , failedRanks     :: Set Int
+      -- ^ Set of failed ranks of processes
     }
     deriving (Show)
-
 
 $(makeLenses ''StateDNA)
 

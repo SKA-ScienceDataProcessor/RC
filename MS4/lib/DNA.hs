@@ -185,6 +185,7 @@ module DNA (
     -- , startGroupN
     , startCollectorGroup
     , startCollectorTree
+    , startCollectorTreeGroup
     , useLocal
     , respawnOnFail
     , debugFlags
