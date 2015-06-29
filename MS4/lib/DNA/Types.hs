@@ -171,7 +171,12 @@ data RecvAddr
     = RcvSimple Message
       -- ^ Actor/variable that receive single value
     | RcvReduce [(Message,SendPort Int)]
-      -- ^ Reduce actor or actors
+      -- ^ Reduce actor or actors. It's list of ports to send data to
+      --   and channels for sending number of values to expect
+    | RcvTree   [(Message,SendPort Int)]
+      -- ^ Ports of tree reducer. They have subtly different meaning.
+      --   In ordinary collector data is send to each collector. In
+      --   tree collector destination is determined by rank.
     | RcvGrp [Message]
       -- ^ Group of simple actors
     deriving (Show,Typeable,Generic)
