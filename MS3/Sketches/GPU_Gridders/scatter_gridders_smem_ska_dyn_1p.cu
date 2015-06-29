@@ -7,18 +7,14 @@
 #include <math_functions.h>
 
 static __inline__ __device__ void loadVisIntoSharedMem (
-    const Double4c vis[]
+    const complexd vis[]
   , const double3 uvw[]
-  , Double4c vis_shared[]
+  , complexd vis_shared[]
   , int timesteps_x_channels
   ) {
   for (int i = threadIdx.x; i < timesteps_x_channels; i += blockDim.x) {
     // Add rotation
-    #define __ROT_N_COPY(pol) vis_shared[i].##pol = rotw(vis[i].##pol, uvw[i].z);
-    __ROT_N_COPY(XX)
-    __ROT_N_COPY(XY)
-    __ROT_N_COPY(YX)
-    __ROT_N_COPY(YY)
+    vis_shared[i] = rotw(vis[i], uvw[i].z);
   }
 }
 
@@ -54,21 +50,18 @@ void gridKernel_scatter_kernel_small(
     // For full-size GCF should be passed 0-centered,
     // i.e. with 0-index in the middle
   , const complexd * gcf[]
-  , Double4c _grid[]
+  , complexd _grid[]
   , const Pregridded uvo_shared[]
-  , const Double4c vis[]
+  , const complexd vis[]
   , const int2 off_shared[]
   , int myU
   , int myV
   , int timesteps_x_channels
   , int grid_size
   ) {
-  __ACC(Double4c, grid, grid_size);
+  __ACC(complexd, grid, grid_size);
   complexd
       sumXX = {0, 0}
-    , sumXY = {0, 0}
-    , sumYX = {0, 0}
-    , sumYY = {0, 0}
     ;
   int
       grid_point_u = 0
@@ -107,22 +100,15 @@ void gridKernel_scatter_kernel_small(
     }
 
     if (myGridU != grid_point_u || myGridV != grid_point_v) {
-      atomicAdd(&grid[grid_point_u][grid_point_v], sumXX, sumXY, sumYX, sumYY);
+      atomicAdd(&grid[grid_point_u][grid_point_v], sumXX);
         sumXX
-      = sumXY
-      = sumYX
-      = sumYY
       = make_cuDoubleComplex(0.0, 0.0);
       grid_point_u = myGridU;
       grid_point_v = myGridV;
     }
-    #define __ADD_SUPP(pol) sum##pol = cuCfma(supportPixel, vis[i].pol, sum##pol)
-    __ADD_SUPP(XX);
-    __ADD_SUPP(XY);
-    __ADD_SUPP(YX);
-    __ADD_SUPP(YY);
+    sumXX = cuCfma(supportPixel, vis[i], sumXX);
   }
-  atomicAdd(&grid[grid_point_u][grid_point_v], sumXX, sumXY, sumYX, sumYY);
+  atomicAdd(&grid[grid_point_u][grid_point_v], sumXX);
 }
 
 template <
@@ -133,9 +119,9 @@ __inline__ __device__
 void gridKernel_scatter_kernel(
     int max_supp
   , const complexd * gcf[]
-  , Double4c grid[]
+  , complexd grid[]
   , const Pregridded uvo_shared[]
-  , const Double4c vis_shared[]
+  , const complexd vis_shared[]
   , const int2 off_shared[]
   , int timesteps_x_channels
   , int grid_size
@@ -159,16 +145,16 @@ __device__ __inline__ void addBaselineToGrid(
     double scale
   , double wstep
   , int max_supp
-  , Double4c grid[]
+  , complexd grid[]
   , const complexd * gcf[]
   , const double3 uvw[]
-  , const Double4c vis[]
+  , const complexd vis[]
   , int timesteps_x_channels
   , int grid_size
   ) {
   // NOTE: Don't forget to put timesteps_x_channels*80
   //   to kernel launch shared memory config.
-  extern __shared__ Double4c vis_shared[];
+  extern __shared__ complexd vis_shared[];
   Pregridded * uvo_shared = reinterpret_cast<Pregridded *>(vis_shared + timesteps_x_channels);
   int2 * off_shared =  reinterpret_cast<int2 *>(uvo_shared + timesteps_x_channels);
   
@@ -213,10 +199,10 @@ __device__ __inline__ void addBaselinesToGrid(
     double scale
   , double wstep
   , const BlWMap permutations[/* baselines */]
-  , Double4c grid[]
+  , complexd grid[]
   , const complexd * gcf[]
   , const double3 uvw[]
-  , const Double4c vis[]
+  , const complexd vis[]
   , int blOff
   , int timesteps_x_channels
   , int grid_size
@@ -246,10 +232,10 @@ __global__ void addBaselineToGrid##suff( \
     double scale                         \
   , double wstep                         \
   , int max_supp                         \
-  , Double4c grid[]                      \
+  , complexd grid[]                      \
   , const complexd * gcf[]               \
   , const double3 uvw[]                  \
-  , const Double4c vis[]                 \
+  , const complexd vis[]                 \
   , int timesteps_x_channels             \
   , int grid_size                        \
   ) {                                    \
@@ -274,10 +260,10 @@ __global__ void addBaselinesToGridSkaMid##suff( \
     double scale                                \
   , double wstep                                \
   , const BlWMap permutations[/* baselines */]  \
-  , Double4c grid[]                             \
+  , complexd grid[]                             \
   , const complexd * gcf[]                      \
   , const double3 uvw[]                         \
-  , const Double4c vis[]                        \
+  , const complexd vis[]                        \
   , int blOff                                   \
   , int timesteps_x_channels                    \
   , int grid_size                               \
@@ -304,10 +290,10 @@ __global__ void addBaselinesToGridSkaMidUsingPermutations##suff( \
     double scale                                                 \
   , double wstep                                                 \
   , const BlWMap permutations[/* baselines */]                   \
-  , Double4c grid[]                                              \
+  , complexd grid[]                                              \
   , const complexd * gcf[]                                       \
   , const double3 uvw[]                                          \
-  , const Double4c vis[]                                         \
+  , const complexd vis[]                                         \
   , int blOff                                                    \
   , int timesteps_x_channels                                     \
   , int grid_size                                                \

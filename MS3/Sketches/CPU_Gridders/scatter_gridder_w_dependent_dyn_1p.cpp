@@ -20,8 +20,8 @@
 
 inline
 void addGrids(
-    Double4c dst[]
-  , const Double4c srcs[]
+    complexd dst[]
+  , const complexd srcs[]
   , int nthreads
   , int grid_pitch
   , int grid_size
@@ -29,7 +29,7 @@ void addGrids(
 {
   int siz = grid_size*grid_pitch;
 #pragma omp parallel for
-  for (unsigned int i = 0; i < siz*sizeof(Double4c)/(256/8); i++) {
+  for (unsigned int i = 0; i < siz*sizeof(complexd)/(256/8); i++) {
     __m256d sum = as256pc(srcs)[i];
     // __m256d sum = _mm256_loadu_pd(reinterpret_cast<const double*>(as256pc(srcs)+i));
 
@@ -78,13 +78,13 @@ void gridKernel_scatter(
   , double wstep
   , int baselines
   , const BlWMap permutations[/* baselines */]
-  , Double4c grids[]
+  , complexd grids[]
     // We have a [w_planes][over][over]-shaped array of pointers to
     // variable-sized gcf layers, but we precompute (in pregrid)
     // exact index into this array, thus we use plain pointer here
   , const complexd * gcf[]
   , const Inp _uvw[]
-  , const Double4c _vis[]
+  , const complexd _vis[]
   , int ts_ch
   , int grid_pitch
   , int grid_size
@@ -93,9 +93,9 @@ void gridKernel_scatter(
   int siz = grid_size*grid_pitch;
 #pragma omp parallel
   {
-    Double4c * _grid = grids + omp_get_thread_num() * siz;
-    memset(_grid, 0, sizeof(Double4c) * siz);
-    __ACC(Double4c, grid, grid_pitch);
+    complexd * _grid = grids + omp_get_thread_num() * siz;
+    memset(_grid, 0, sizeof(complexd) * siz);
+    __ACC(complexd, grid, grid_pitch);
 
 #pragma omp for schedule(dynamic)
     for(int bl0 = 0; bl0 < baselines; bl0++) {
@@ -106,14 +106,10 @@ void gridKernel_scatter(
 
       // Rotation
       // VLA requires "--std=gnu..." extension
-      Double4c vis[ts_ch];
+      complexd vis[ts_ch];
       int off = bl*ts_ch;
       for(int n=0; n<ts_ch; n++){
-        #define __ROT_N_COPY(pol) vis[n].pol = rotw(_vis[off + n].pol, _uvw[off + n].w);
-        __ROT_N_COPY(XX)
-        __ROT_N_COPY(XY)
-        __ROT_N_COPY(YX)
-        __ROT_N_COPY(YY)
+        vis[n] = rotw(_vis[off + n], _uvw[off + n].w);
       }
       
       for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
@@ -121,15 +117,6 @@ void gridKernel_scatter(
             Pregridded p;
             cvt<over, is_half_gcf, Inp>::pre(scale, wstep, uvw[bl][i], p, grid_size);
 
-#ifdef __AVX__
-          // We port Romein CPU code to doubles here (for MS2 we didn't)
-          // vis0 covers XX and XY, vis1 -- YX and YY
-          __m256d vis0, vis1;
-          vis0 = _mm256_load_pd((const double *) &vis[i].XX);
-          vis1 = _mm256_load_pd((const double *) &vis[i].YX);
-          // vis0 = _mm256_loadu_pd((const double *) &vis[bl][i].XX);
-          // vis1 = _mm256_loadu_pd((const double *) &vis[bl][i].YX);
-#endif
           for (int sv = 0; sv < max_supp_here; sv++) {
             // Don't forget our u v are already translated by -max_supp_here/2
             int gsu, gsv;
@@ -153,32 +140,7 @@ void gridKernel_scatter(
                 supportPixel = gcf[p.gcf_layer_index][__layeroff];
             }
 
-#ifdef __AVX__
-            __m256d weight_r, weight_i;
-            weight_r = _mm256_set1_pd(supportPixel.real());
-            weight_i = _mm256_set1_pd(supportPixel.imag());
-
-            /* _mm256_permute_pd(x, 5) swaps adjacent doubles pairs of x:
-               d0, d1, d2, d3 goes to d1, d0, d3, d2
-             */
-            #define __DO(p,f)                                     \
-            __m256d * gridptr##p = (__m256d *) &grid[gsu][gsv].f; \
-            __m256d tr##p = _mm256_mul_pd(weight_r, vis##p);      \
-            __m256d ti##p = _mm256_mul_pd(weight_i, vis##p);      \
-            __m256d tp##p = _mm256_permute_pd(ti##p, 5);          \
-            __m256d t##p = _mm256_addsub_pd(tr##p, tp##p);        \
-            gridptr##p[p] = _mm256_add_pd(gridptr##p[p], t##p)
-            //_mm256_storeu_pd(reinterpret_cast<double*>(gridptr##p + p), _mm256_add_pd(gridptr##p[p], t##p));
-
-            __DO(0, XX);
-            __DO(1, YX);
-#else
-            #define __GRID_POL(pol) grid[gsu][gsv].pol += vis[i].pol * supportPixel
-            __GRID_POL(XX);
-            __GRID_POL(XY);
-            __GRID_POL(YX);
-            __GRID_POL(YY);
-#endif
+            grid[gsu][gsv] += vis[i] * supportPixel;
           }
         }
       }
@@ -200,13 +162,13 @@ void gridKernel_scatter_full(
   , double wstep
   , int baselines
   , const BlWMap permutations[/* baselines */]
-  , Double4c grid[]
+  , complexd grid[]
     // We have a [w_planes][over][over]-shaped array of pointers to
     // variable-sized gcf layers, but we precompute (in pregrid)
     // exact index into this array, thus we use plain pointer here
   , const complexd * gcf[]
   , const Inp uvw[]
-  , const Double4c vis[]
+  , const complexd vis[]
   , int ts_ch
   , int grid_pitch
   , int grid_size
@@ -220,8 +182,8 @@ void gridKernel_scatter_full(
   nthreads = omp_get_num_threads();
 
   // Nullify incoming grid, allocate thread-local grids
-  memset(grid, 0, sizeof(Double4c) * siz);
-  Double4c * tmpgrids = alignedMallocArray<Double4c>(siz * nthreads, 32);
+  memset(grid, 0, sizeof(complexd) * siz);
+  complexd * tmpgrids = alignedMallocArray<complexd>(siz * nthreads, 32);
   
   gridKernel_scatter<
       over
@@ -250,10 +212,10 @@ void gridKernelCPU##hgcfSuff##permSuff(                    \
   , double wstep                                           \
   , int baselines                                          \
   , const BlWMap permutations[/* baselines */]             \
-  , Double4c grid[]                                        \
+  , complexd grid[]                                        \
   , const complexd * gcf[]                                 \
   , const Double3 uvw[]                                    \
-  , const Double4c vis[]                                   \
+  , const complexd vis[]                                   \
   , int ts_ch                                              \
   , int grid_pitch                                         \
   , int grid_size                                          \
@@ -268,21 +230,19 @@ gridKernelCPU(HalfGCF, true, , false)
 gridKernelCPU(FullGCF, false, Perm, true)
 gridKernelCPU(FullGCF, false, , false)
 
-typedef complexd poltyp[4];
-
+// Normalization is done inplace!
 extern "C"
-void normalizeAndExtractPolarization(
+void normalize(
     int n
-  , complexd dst[]
-  , const poltyp src[]
+  , complexd src[]
   , int grid_pitch
   , int grid_size
   )
 {
   int siz = grid_size*grid_pitch;
-  const double norm = 1.0/double(siz);
+  double norm = 1.0/double(siz);
 #pragma omp parallel for
   for (int i = 0; i < siz; i++) {
-    dst[i] = src[i][n] * norm;
+    src[i] *= norm;
   }
 }
