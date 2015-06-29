@@ -44,6 +44,7 @@ import DNA.Lens
 import DNA.Types
 import DNA.Interpreter.Types
 import DNA.Interpreter.Spawn
+import DNA.Interpreter.Run
 import DNA.Logging
 
 
@@ -129,7 +130,7 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
       --  * It's not connected yet
       --  * It's local process and we're holding var
       --  * It receives data from live actor
-      Running runInfo@(RunInfo _nDone _nFails)
+      Running runInfo
         | Just restart <- mRestart
         , Nothing      <- msrc
           -> do Just cad <- use $ stUsedResources . at pid
@@ -160,7 +161,7 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
                   Failed      -> do
                       fatalMsg $ printf "Source actor %s crashed already" (show aidSrc)
                       killActorAndCleanUp aid pid
-                  Running (RunInfo _ nFailsSrc) -> do
+                  Running (RunInfo _ nFailsSrc failedRnkSrc) -> do
                       -- Respawn
                       Just cad <- use $ stUsedResources . at pid
                       stUsedResources . at pid .= Nothing
@@ -169,7 +170,7 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
                       Just pids <- use $ stAid2Pid . at aid
                       errorMsg $ "Restarted connected actor as " ++ show pids
                       Just (Just dst) <- use $ stActorRecvAddr . at aid
-                      stChildren . at aidSrc .= Just (Running $ RunInfo 0 nFailsSrc)
+                      stChildren . at aidSrc .= Just (Running $ RunInfo 0 nFailsSrc failedRnkSrc)
                       sendToActor aidSrc dst
                       dest <- use $ stActorDst . at aid
                       case dest of
@@ -181,18 +182,21 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
                             mdst <- use $ stActorRecvAddr . at aidDst
                             T.forM_ mdst $ \d -> sendToActor aid d
         ----------------
+        -- Otherwise we simply handle accept fact that process failed
         | otherwise -> handleFail aid pid runInfo
 
 
 handleFail :: AID -> ProcessId -> RunInfo -> Controller ()
-handleFail aid pid (RunInfo nDone nFails)
+handleFail aid pid rInfo@(RunInfo nDone nFails failedRnk)
     -- Terminate process forcefully
     | nFails <= 0 = do
+          -- FIXME: Isn't doFatal really fatal? and everything after it useless
           void $ doFatal $ printf "Unrecoverable child process %s %s" (show aid) (show pid)
           killActorAndCleanUp aid pid
     -- We can still tolerate failures
     | otherwise = do
           freeResouces pid
+          Just (Rank rnk, _, _) <- use $ stPid2Aid . at pid 
           dropPID pid aid
             ( do stChildren . at aid .= Just (Completed nDone)
                  mch <- actorDestinationAddr aid
@@ -203,11 +207,24 @@ handleFail aid pid (RunInfo nDone nFails)
                    -- connection
                    Nothing | nDone == 0   -> return ()
                            | otherwise    -> panic "Unconnected actor terminated normally (crash)"
-                   Just (RcvReduce chans) -> liftP $ forM_ chans $ \(_,chN) -> sendChan chN nDone
-                   Just _                 -> return ()
+                   Just rcv               -> sendCompletionNotice rcv rInfo
             )
-            ( stChildren . at aid .= Just (Running $ RunInfo nDone nFails)
+            ( stChildren . at aid .= Just (Running $ RunInfo nDone (nFails-1) (Set.insert rnk failedRnk))
             )
+
+-- Notify downstream actor about completion of its source. It's needed
+-- for collector actors so they would know how many values it should
+-- receive
+sendCompletionNotice :: RecvAddr -> RunInfo -> Controller ()
+sendCompletionNotice (RcvReduce chans) (RunInfo nDone _ _) =
+    liftP $ forM_ chans $ \(_,chN) -> sendChan chN nDone
+sendCompletionNotice (RcvTree   chans) (RunInfo nDone _ failedRnk) = do
+    -- FIXME: not terrible efficient nor elegant
+    let blocks = [ length $ filter (\i -> not $ Set.member i failedRnk) [a .. b-1]
+                 | (a,b) <- splitEvenly (nDone + Set.size failedRnk) (length chans) ]
+    liftP $ forM_ (blocks `zip` chans) $ \(n,(_,chN)) -> sendChan chN n
+sendCompletionNotice _ _ = return ()
+
 
 killActorAndCleanUp :: AID -> ProcessId -> Controller ()
 killActorAndCleanUp aid pid = do
@@ -248,16 +265,15 @@ handleDataSent (SentTo aid pid dstID) = do
         case st of
           Completed _ -> panic $ printf "Actor %s terminated normally twice?" (show aid)
           Failed      -> panic $ printf "Failed actor %s terminated normally?" (show aid)
-          Running (RunInfo nDone nFails) -> do
+          Running (RunInfo nDone nFails failedRnk) ->
               dropPID pid aid
                 ( do stChildren . at aid .= Just (Completed (nDone + 1))
                      mch <- actorDestinationAddr aid
                      case mch of
-                       Nothing                -> panic "Unconnected actor terminated normally"
-                       Just (RcvReduce chans) -> liftP $ forM_ chans $ \(_,chN) -> sendChan chN (nDone + 1)
-                       Just _                 -> return ()
+                       Nothing  -> panic "Unconnected actor terminated normally"
+                       Just rcv -> sendCompletionNotice rcv (RunInfo (nDone+1) nFails failedRnk)
                 )
-                ( stChildren . at aid .= Just (Running $ RunInfo (nDone+1) nFails)
+                ( stChildren . at aid .= Just (Running $ RunInfo (nDone+1) nFails failedRnk)
                 )
 
 
