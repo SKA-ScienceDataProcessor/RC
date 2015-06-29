@@ -167,7 +167,7 @@ spawnSingleActor aid cad cmd@(SpawnSingle act _ addrTy flags) = do
     stAid2Pid       . at aid .= Just (Set.singleton pid)
     stAllAid2Pid    . at aid .= Just (Set.singleton pid)
     stPid2Aid       . at pid .= Just (Rank 0, GroupSize 1, aid)
-    stChildren      . at aid .= Just (Running (RunInfo 0 0))
+    stChildren      . at aid .= Just (Running (RunInfo 0 0 mempty))
     stUsedResources . at pid .= Just cad
     -- Add timeout for actor
     liftP $ setTimeout flags aid
@@ -202,7 +202,7 @@ spawnActorGroup res resG spwn = do
         nFail = if UseFailout `elem` flags then k else 0
     -- Record group existence
     aid <- AID <$> uniqID
-    stChildren . at aid .= Just (Running (RunInfo 0 nFail))
+    stChildren . at aid .= Just (Running (RunInfo 0 nFail mempty))
     (chSend,chRecv) <- liftP newChan
     -- Spawn actors
     forM_ ([0..] `zip` rs) $ \(rnk,cad) -> do
@@ -271,7 +271,7 @@ receiveShellGroup ch aid assemble handler = do
     Just pids <- use $ stAid2Pid . at aid
     dsts <- liftP $ replicateM (Set.size pids) $ waitForShell ch (`Set.member` pids)
     -- Check that we don't have too many failures
-    Just (Running (RunInfo _ nFail)) <- use $ stChildren . at aid
+    Just (Running (RunInfo _ nFail mempty)) <- use $ stChildren . at aid
     let (fails,oks) = partitionEithers dsts
     if length fails > nFail
        then do forM_ fails $ \err ->
