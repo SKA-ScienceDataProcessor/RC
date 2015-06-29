@@ -9,6 +9,7 @@ module DNA.Interpreter.Spawn (
     , execSpawnGroup
     -- , execSpawnGroupN
     , execSpawnCollectorGroup
+    , execSpawnCollectorTree
     , execSpawnCollectorTreeGroup
       -- * Workers
     , spawnSingleActor
@@ -132,6 +133,19 @@ execSpawnCollectorGroup res resG act = do
     return $ Shell aid
 
 
+execSpawnCollectorTree
+    :: (Serializable a)
+    => Spawn (Closure (TreeCollector a))
+    -> DnaMonad (Shell (Grp a) (Val a))
+execSpawnCollectorTree actorCmd = do
+    let (act,flags) = runSpawn
+                    $ closureApply $(mkStaticClosure 'runTreeActor) <$> actorCmd
+        res = if UseLocal `elem` flags then N 0 else N 1
+    aid <- AID <$> uniqID
+    cad <- acquireResources res flags
+    spawnSingleActor aid cad (SpawnSingle act res RcvTyTree flags)
+    return $ Shell aid
+
 execSpawnCollectorTreeGroup
     :: (Serializable a)
     => Res
@@ -186,6 +200,7 @@ spawnSingleActor aid cad cmd@(SpawnSingle act _ addrTy flags) = do
         (RcvSimple{},RcvTySimple) -> return ()
         (RcvReduce{},RcvTyReduce) -> return ()
         (RcvGrp{}   ,RcvTyGrp   ) -> return ()
+        (RcvTree{}  ,RcvTyTree  ) -> return ()
         _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
     logSpawn pid aid
 

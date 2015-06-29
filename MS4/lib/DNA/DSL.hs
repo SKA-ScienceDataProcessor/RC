@@ -48,6 +48,7 @@ module DNA.DSL (
     , startGroup
     -- , startGroupN
     , startCollectorGroup
+    , startCollectorTree
     , startCollectorTreeGroup
       -- ** Dataflow building
     , delay
@@ -158,6 +159,10 @@ data DnaF a where
       -> ResGroup
       -> Spawn (Closure (CollectActor a b))
       -> DnaF (Shell (Grp a) (Grp b))
+    SpawnCollectorTree
+      :: (Serializable a)
+      => Spawn (Closure (TreeCollector a))
+      -> DnaF (Shell (Grp a) (Val a))
     SpawnCollectorTreeGroup
       :: (Serializable a)
       => Res
@@ -507,6 +512,14 @@ startCollectorGroup
     -> DNA (Shell (Grp a) (Grp b))
 startCollectorGroup res resG child =
     DNA $ singleton $ SpawnCollectorGroup res resG child
+
+-- | Start a group of collector actor processes
+startCollectorTree
+    :: (Serializable a)
+    => Spawn (Closure (TreeCollector a))
+    -> DNA (Shell (Grp a) (Val a))
+startCollectorTree child =
+    DNA $ singleton $ SpawnCollectorTree child
 
 -- | Start a group of collector actor processes
 startCollectorTreeGroup

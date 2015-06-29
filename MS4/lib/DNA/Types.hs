@@ -187,6 +187,8 @@ data RecvAddrType
       -- ^ Actor/variable that receive single value
     | RcvTyReduce
       -- ^ Reduce actor or actors
+    | RcvTyTree
+      -- ^ Tree reduction actor
     | RcvTyGrp
       -- ^ Group of simple actors
     deriving (Show,Typeable,Generic)
