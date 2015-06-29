@@ -144,7 +144,7 @@ execSpawnCollectorTreeGroup res act = do
     -- Receive connection
     receiveShellGroup ch aid (RcvTree . concat) $ \dst -> case dst of
       RcvTree m -> return m
-      _         -> doPanic "Invalid RecvAddr in execSpawnGroup"
+      _         -> doPanic "Invalid RecvAddr in execSpawnCollectorTreeGroup"
     return $ Shell aid
 
 

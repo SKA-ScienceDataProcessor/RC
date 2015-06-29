@@ -142,14 +142,11 @@ runTreeActor (TreeCollector step start) = do
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
     sendChan (actorSendBack p)
-        ( RcvReduce [(wrapMessage chSendParam, chSendN)]
+        ( RcvTree [(wrapMessage chSendParam, chSendN)]
         , [ sendPortId chSendParam , sendPortId chSendN ]
         )
     -- Start execution of an actor
     !a <- runDnaParam p $ do
-           case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
-             pCrash : _ -> crashMaybe pCrash
-             _          -> return ()
            a0 <- kernel "tree collector init" [] (Kern start)
            gatherM (Group chRecvParam chRecvN) step a0
     sendResult p a
