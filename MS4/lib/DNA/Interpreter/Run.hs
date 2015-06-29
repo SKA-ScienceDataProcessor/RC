@@ -27,6 +27,7 @@ module DNA.Interpreter.Run (
       runActor
     -- , runActorManyRanks
     , runCollectActor
+    , runTreeActor
       -- * Helpers
     , doGatherDna
     , splitEvenly
@@ -34,6 +35,7 @@ module DNA.Interpreter.Run (
     , runActor__static
     -- , runActorManyRanks__static
     , runCollectActor__static
+    , runTreeActor__static
     , __remoteTable
     ) where
 
@@ -120,7 +122,6 @@ runCollectActor (CollectActor step start fini) = do
         ( RcvReduce [(wrapMessage chSendParam, chSendN)]
         , [ sendPortId chSendParam , sendPortId chSendN ]
         )
-    -- Now we want to check if process was requested to crash
     -- Start execution of an actor
     !b <- runDnaParam p $ do
            case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
@@ -130,6 +131,28 @@ runCollectActor (CollectActor step start fini) = do
            s  <- gatherM (Group chRecvParam chRecvN) step s0
            kernel "collector fini" [] (Kern (fini s))
     sendResult p b
+
+-- | Start execution of collector actor
+runTreeActor :: TreeCollector a -> Process ()
+runTreeActor (TreeCollector step start) = do
+    -- Obtain parameters
+    p <- expect
+    -- Create channels for communication
+    (chSendParam,chRecvParam) <- newChan
+    (chSendN,    chRecvN    ) <- newChan
+    -- Send shell process description back
+    sendChan (actorSendBack p)
+        ( RcvReduce [(wrapMessage chSendParam, chSendN)]
+        , [ sendPortId chSendParam , sendPortId chSendN ]
+        )
+    -- Start execution of an actor
+    !a <- runDnaParam p $ do
+           case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
+             pCrash : _ -> crashMaybe pCrash
+             _          -> return ()
+           a0 <- kernel "tree collector init" [] (Kern start)
+           gatherM (Group chRecvParam chRecvN) step a0
+    sendResult p a
 
 
 
@@ -213,4 +236,5 @@ doGatherDna ms (Group chA chN) f x0 = do
 remotable [ 'runActor
           -- , 'runActorManyRanks
           , 'runCollectActor
+          , 'runTreeActor
           ]

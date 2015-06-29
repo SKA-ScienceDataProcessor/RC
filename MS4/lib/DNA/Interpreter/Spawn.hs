@@ -9,7 +9,7 @@ module DNA.Interpreter.Spawn (
     , execSpawnGroup
     -- , execSpawnGroupN
     , execSpawnCollectorGroup
-    , execSpawnCollectorTree
+    , execSpawnCollectorTreeGroup
       -- * Workers
     , spawnSingleActor
     ) where
@@ -131,17 +131,21 @@ execSpawnCollectorGroup res resG act = do
       _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
     return $ Shell aid
 
--- |
-execSpawnCollectorTree
+
+execSpawnCollectorTreeGroup
     :: (Serializable a)
     => Res
-    -> ResGroup
     -> Spawn (Closure (TreeCollector a))
-    -> DnaMonad (Shell (Grp a) (Val a))
-execSpawnCollectorTree res resG act = do
-    -- FIXME: not implemented. We need to understand how to allocate
-    --        resources for actor tree
-    undefined
+    -> DnaMonad (Shell (Grp a) (Grp a))
+execSpawnCollectorTreeGroup res act = do
+    -- Spawn actors
+    (aid,ch) <- spawnActorGroup res (NWorkers 1)
+              $ closureApply $(mkStaticClosure 'runTreeActor) <$> act
+    -- Receive connection
+    receiveShellGroup ch aid (RcvTree . concat) $ \dst -> case dst of
+      RcvTree m -> return m
+      _         -> doPanic "Invalid RecvAddr in execSpawnGroup"
+    return $ Shell aid
 
 
 ----------------------------------------------------------------

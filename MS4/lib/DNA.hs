@@ -184,7 +184,7 @@ module DNA (
     , waitForResoures
     -- , startGroupN
     , startCollectorGroup
-    , startCollectorTree
+    , startCollectorTreeGroup
     , useLocal
     , respawnOnFail
     , debugFlags
