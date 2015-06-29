@@ -27,9 +27,9 @@ module DNA.Interpreter.Run (
       runActor
     -- , runActorManyRanks
     , runCollectActor
-    , runDnaParam 
       -- * Helpers
     , doGatherDna
+    , splitEvenly
       -- * CH
     , runActor__static
     -- , runActorManyRanks__static
@@ -42,14 +42,14 @@ import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
 import Data.Typeable (Typeable)
+import Data.List (findIndex)
 import qualified Data.Foldable as T
--- import System.Random
 
 import DNA.CH
 import DNA.Types
 import DNA.DSL
 import DNA.Interpreter.Types
--- import DNA.Interpreter.Testing
+
 
 
 ----------------------------------------------------------------
@@ -112,7 +112,7 @@ runCollectActor :: CollectActor a b -> Process ()
 runCollectActor (CollectActor step start fini) = do
     -- Obtain parameters
     p <- expect
-    -- -- Create channels for communication
+    -- Create channels for communication
     (chSendParam,chRecvParam) <- newChan
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
@@ -137,16 +137,8 @@ runCollectActor (CollectActor step start fini) = do
 -- Helpers
 ----------------------------------------------------------------
 
-{-
--- Send value to the destination
-sendToDest :: (Serializable a) => Dest a -> a -> Process ()
-sendToDest dst a = case dst of
-    SendLocally ch  -> unsafeSendChan ch a
-    SendRemote  chs -> forM_ chs $ \ch -> sendChan ch a
--}
-
 -- Send result to the destination we 
-sendResult :: (Serializable a) => ActorParam ->a -> Process ()
+sendResult :: (Serializable a) => ActorParam -> a -> Process ()
 sendResult p !a =
     sendLoop =<< drainExpect
   where
@@ -155,6 +147,12 @@ sendResult p !a =
         case dst of
           RcvSimple msg  -> trySend msg
           RcvReduce msgs -> forM_ msgs $ \(m,_) -> trySend m
+          RcvTree   msgs -> do
+              let nReducers           = length msgs
+                  GroupSize nResults  = actorGroupSize p
+                  Rank      rnk       = actorRank p
+                  (ch,_) = msgs !! findIndexInSplittedList nResults nReducers rnk
+              trySend ch
           RcvGrp    msgs -> mapM_ trySend msgs
         -- Send confirmation to parent and wait for 
         T.forM_ (actorParent p) $ \pid -> do
@@ -172,6 +170,21 @@ sendResult p !a =
           Just ch -> unsafeSendChan ch a
           Nothing -> doPanic "Type error in channel!"
 
+findIndexInSplittedList :: Int -> Int -> Int -> Int
+findIndexInSplittedList nElems n rank =
+    case findIndex (\(a,b) -> rank >= a && rank < b) bins of
+      Just i -> i
+      _      -> error "Impossible split!"
+  where
+    bins = splitEvenly nElems n
+
+splitEvenly :: Int -> Int -> [(Int,Int)]
+splitEvenly nElems n
+    = offs `zip` tail offs
+  where
+    (bin,rest) = nElems `divMod` n
+    sizes = zipWith (+) (replicate n bin) (replicate rest 1 ++ repeat 0)
+    offs  = scanl (+) 0 sizes
 
 doGatherDna
     :: Serializable a
