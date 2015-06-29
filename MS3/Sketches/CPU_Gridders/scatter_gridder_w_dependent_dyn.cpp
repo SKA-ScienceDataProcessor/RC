@@ -173,7 +173,7 @@ void gridKernel_scatter(
             __DO(0, XX);
             __DO(1, YX);
 #else
-            #define __GRID_POL(pol) grid[gsu][gsv].pol += vis[bl][i].pol * supportPixel
+            #define __GRID_POL(pol) grid[gsu][gsv].pol += vis[i].pol * supportPixel
             __GRID_POL(XX);
             __GRID_POL(XY);
             __GRID_POL(YX);
