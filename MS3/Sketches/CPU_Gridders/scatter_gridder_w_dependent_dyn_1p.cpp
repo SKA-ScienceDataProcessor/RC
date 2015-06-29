@@ -89,7 +89,6 @@ void gridKernel_scatter(
   , int grid_pitch
   , int grid_size
   ) {
-  __ACC(Inp, uvw, ts_ch);
   int siz = grid_size*grid_pitch;
 #pragma omp parallel
   {
@@ -102,20 +101,24 @@ void gridKernel_scatter(
       int bl;
       if (use_permutations) bl = permutations[bl0].bl;
       else bl = bl0;
-      int max_supp_here = get_supp(permutations[bl].wp);
+      int max_supp_here;
+      max_supp_here = get_supp(permutations[bl].wp);
 
       // Rotation
       // VLA requires "--std=gnu..." extension
       complexd vis[ts_ch];
-      int off = bl*ts_ch;
+      int off;
+      off = bl*ts_ch;
+      const Inp * uvw;
+      uvw = _uvw + off;
       for(int n=0; n<ts_ch; n++){
-        vis[n] = rotw(_vis[off + n], _uvw[off + n].w);
+        vis[n] = rotw(_vis[off + n], uvw[n].w);
       }
       
       for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
             Pregridded p;
-            cvt<over, is_half_gcf, Inp>::pre(scale, wstep, uvw[bl][i], p, grid_size);
+            cvt<over, is_half_gcf, Inp>::pre(scale, wstep, uvw[i], p, grid_size);
 
           for (int sv = 0; sv < max_supp_here; sv++) {
             // Don't forget our u v are already translated by -max_supp_here/2
