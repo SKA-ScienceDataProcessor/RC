@@ -18,6 +18,9 @@
 #define as256p(p) (reinterpret_cast<__m256d*>(p))
 #define as256pc(p) (reinterpret_cast<const __m256d*>(p))
 
+#ifndef __DEGRID
+#define GRID_MOD
+#define VIS_MOD const
 inline
 void addGrids(
     complexd dst[]
@@ -39,6 +42,10 @@ void addGrids(
     as256p(dst)[i] = sum;
   }
 }
+#else
+#define GRID_MOD const
+#define VIS_MOD
+#endif
 
 // We could simply use pointer-to-function template
 // but most C++ compilers seem to produce worse code
@@ -78,13 +85,13 @@ void gridKernel_scatter(
   , double wstep
   , int baselines
   , const BlWMap permutations[/* baselines */]
-  , complexd grids[]
+  , GRID_MOD complexd grids[]
     // We have a [w_planes][over][over]-shaped array of pointers to
     // variable-sized gcf layers, but we precompute (in pregrid)
     // exact index into this array, thus we use plain pointer here
   , const complexd * gcf[]
   , const Inp _uvw[]
-  , const complexd _vis[]
+  , VIS_MOD complexd _vis[]
   , int ts_ch
   , int grid_pitch
   , int grid_size
@@ -92,8 +99,12 @@ void gridKernel_scatter(
   int siz = grid_size*grid_pitch;
 #pragma omp parallel
   {
-    complexd * _grid = grids + omp_get_thread_num() * siz;
+    GRID_MOD complexd * _grid = grids + omp_get_thread_num() * siz;
+#ifndef __DEGRID
     memset(_grid, 0, sizeof(complexd) * siz);
+#else
+    memset(_vis, 0, sizeof(complexd) * baselines * ts_ch);
+#endif
     __ACC(complexd, grid, grid_pitch);
 
 #pragma omp for schedule(dynamic)
@@ -104,17 +115,21 @@ void gridKernel_scatter(
       int max_supp_here;
       max_supp_here = get_supp(permutations[bl].wp);
 
-      // Rotation
-      // VLA requires "--std=gnu..." extension
-      complexd vis[ts_ch];
       int off;
       off = bl*ts_ch;
       const Inp * uvw;
       uvw = _uvw + off;
+#ifndef __DEGRID
+      // Rotation
+      // VLA requires "--std=gnu..." extension
+      complexd vis[ts_ch];
       for(int n=0; n<ts_ch; n++){
         vis[n] = rotw(_vis[off + n], uvw[n].w);
       }
-      
+#else
+      complexd * vis;
+      vis = _vis + off;
+#endif
       for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
             Pregridded p;
@@ -142,8 +157,11 @@ void gridKernel_scatter(
             } else {
                 supportPixel = gcf[p.gcf_layer_index][__layeroff];
             }
-
+#ifndef __DEGRID
             grid[gsu][gsv] += vis[i] * supportPixel;
+#else
+            vis[i] += rotw(grid[gsu][gsv] * supportPixel, uvw[i].w);
+#endif
           }
         }
       }
@@ -151,7 +169,7 @@ void gridKernel_scatter(
   }
 }
 
-
+#ifndef __DEGRID
 template <
     int over
   , bool is_half_gcf
@@ -249,3 +267,32 @@ void normalize(
     src[i] *= norm;
   }
 }
+
+#else
+
+#define deGridKernelCPU(hgcfSuff, isHgcf, permSuff, isPerm) \
+extern "C"                                                  \
+void deGridKernelCPU##hgcfSuff##permSuff(                   \
+    double scale                                            \
+  , double wstep                                            \
+  , int baselines                                           \
+  , const BlWMap permutations[/* baselines */]              \
+  , const complexd grid[]                                   \
+  , const complexd * gcf[]                                  \
+  , const Double3 uvw[]                                     \
+  , complexd vis[]                                          \
+  , int ts_ch                                               \
+  , int grid_pitch                                          \
+  , int grid_size                                           \
+  ){                                                        \
+  gridKernel_scatter<OVER, isHgcf, isPerm>                  \
+    ( scale, wstep, baselines, permutations                 \
+    , grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);   \
+}
+
+deGridKernelCPU(HalfGCF, true, Perm, true)
+deGridKernelCPU(HalfGCF, true, , false)
+deGridKernelCPU(FullGCF, false, Perm, true)
+deGridKernelCPU(FullGCF, false, , false)
+
+#endif
