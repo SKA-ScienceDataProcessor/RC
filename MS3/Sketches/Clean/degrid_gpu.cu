@@ -59,7 +59,8 @@ void degrid_kernel(complexd* out, const double3* in, size_t npts, const complexd
       tmp.x = sum_r;
       tmp.y = sum_i;
       if (threadIdx.x == 0) {
-         out[n+q] = tmp;
+         // Add rotation
+         out[n+q] = rotw(tmp, inn.z);
       }
    }
    }
