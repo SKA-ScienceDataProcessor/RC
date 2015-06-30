@@ -28,16 +28,27 @@
 #define nullptr NULL
 #endif
 
+#ifdef _WIN32
+#define __DLLIMP __declspec(dllimport)
+#else
+#define __DLLIMP
+#endif
+
 // Helper for aligned allocation from Haskell land
-extern "C" void *_aligned_malloc(
+extern "C" __DLLIMP void *_aligned_malloc(
     size_t size
   , size_t alignment
-  ) {
+  )
+#ifndef _WIN32
+   {
   void * p;
   errno = posix_memalign(&p, alignment, size);
   if (errno != 0) return NULL;
   return p;
 }
+#else
+;
+#endif
 
 using namespace std;
 
