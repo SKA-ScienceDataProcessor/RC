@@ -82,6 +82,13 @@ pokeVector (DeviceVector _ _) _ = error "Attempted to poke device vector!"
 
 -- | Allocate a C vector using @malloc@ that is large enough for the
 -- given number of elements.
+-- Such allocated vector could be unsuitable for using with some AVX instructions
+-- which require 32-bytes aligned data.
+-- OTOH, we need grid/image data be padded on CPU to accelerate FFT considerably
+--   and this could contradict the AVX alignment requirement.
+-- Thus we have 2 options here: marshal the data to change their layout or switch
+--   back to unaligned AVX instructions usage. The latter could be, perhaps,
+--    the preferred way to deal with this.
 allocCVector :: forall a. Storable a => Int -> IO (Vector a)
 allocCVector n = fmap (CVector n) $ mallocBytes (n * s)
   where s = sizeOf (undefined :: a)
