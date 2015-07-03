@@ -20,6 +20,7 @@ module Vector
 import Data.Binary   (Binary(..))
 import Data.Typeable (Typeable)
 import Foreign.Ptr
+import Foreign.C
 import Foreign.Marshal.Alloc
 import Foreign.Marshal.Array (advancePtr)
 import Foreign.Marshal.Utils
@@ -123,10 +124,13 @@ toCVector (HostVector n p) = return $ CVector n (useHostPtr p)
                              -- Can use a host ptr as C ptr
 toCVector v                = do v' <- dupCVector v; freeVector v; return v'
 
+-- Slightly non-puristic signature (second Int parameter)
+foreign import ccall unsafe cudaHostRegister :: Ptr a -> Int -> CUInt -> IO CInt
 -- | Convert the given vector into a host vector. The passed vector is
 -- consumed.
 toHostVector :: forall a. Storable a => Vector a -> IO (Vector a)
 toHostVector v@HostVector{} = return v
+toHostVector v@(CVector n p) = do _ <- cudaHostRegister p n 0; return v
 toHostVector v              = do v' <- dupHostVector v; freeVector v; return v'
 
 -- | Convert the given vector into a device vector. The passed vector
