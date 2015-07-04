@@ -44,10 +44,6 @@ readOskar chan file freq polar = do
   -- Go through baselines and collect our data
   let oskarPolar = 4 -- hardcoded
       oskarBaselinePoints = tdTimes taskData * tdChannels taskData * oskarPolar
-  --
-  -- FIXME: What is tdVisibilityPtr ???
-  --
-  let tdVisibilityPtr = error "tdVisibilityPtr is undefined"
   baselines <- forM [0..tdBaselines taskData-1] $ \bl -> do
      forM_ [0..baselinePoints-1] $ \p -> do
          pokeElemOff visp (bl * baselinePoints + p) =<< peek (tdVisibilityPtr taskData bl p freq (fromEnum polar))
