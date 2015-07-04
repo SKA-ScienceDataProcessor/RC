@@ -180,7 +180,7 @@ estimateActor = actor $ \(cfg, dataSet) -> do
 
 remotable
   [ 'workerActor
-  --, 'imageCollector -- doesn't work yet?
+  , 'imageCollector
   , 'estimateActor
   ]
 
@@ -230,13 +230,13 @@ mainActor = actor $ \(cfg, dataSets) -> do
     -- Spawn tree collector
     --
     -- Spawn leaves 
-    leaves <- startCollectorTreeGroup (NNodes undefined) $ do
-        return $(mkStaticClosure 'treeCollector)
+    leaves <- startCollectorTreeGroup (N undefined) $ do
+        return $(mkStaticClosure 'imageCollector)
     -- Top level collector
     topLevel <- startCollectorTree $ do
         useLocal
-        return $(mkStaticClosure 'treeCollector)
-    connect workers collector
+        return $(mkStaticClosure 'imageCollector)
+    connect workers leaves
     connect leaves  topLevel
     await =<< delay Local topLevel
 
