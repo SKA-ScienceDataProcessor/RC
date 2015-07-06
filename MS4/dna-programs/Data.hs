@@ -38,6 +38,7 @@ module Data
 
 import Control.Applicative
 import Control.Monad
+import qualified Data.ByteString as BS
 import Data.Complex
 import Data.Binary   (Binary)
 import Data.List     (sortBy)
@@ -46,6 +47,7 @@ import Foreign.Ptr
 import Foreign.Storable
 import Foreign.Storable.Complex ( )
 import GHC.Generics  (Generic)
+import System.IO     (IOMode(..))
 import Text.Printf
 
 import DNA.Channel.File
@@ -91,15 +93,35 @@ freeImage img = freeVector (imgData img)
 -- | Create an image filled with the given value, allocated as a
 -- simple C buffer.
 constImage :: GridPar -> Double -> IO Image
-constImage = undefined
+constImage gp v = do
+   img <- allocCVector (imageSize gp)
+   forM_ [0..imageSize gp-1] $ \i -> pokeVector img i v
+   return $ Image gp 0 img
 
 -- | Add two images together. Assumed to consume both images.
 addImage :: Image -> Image -> IO Image
-addImage = undefined
+addImage img1 img2 = do
+
+   -- Check image data layout
+   when (imgPar img1 /= imgPar img2) $
+     fail $ "addImage: Got different image parameters: " ++ show (imgPar img1) ++ " vs " ++ show (imgPar img2)
+
+   -- Convert both to C vectors
+   img1' <- toCVector (imgData img1)
+   img2' <- toCVector (imgData img2)
+   forM_ [0..imageSize (imgPar img1)-1] $ \i -> do
+     v1 <- peekVector img1' i
+     v2 <- peekVector img2' i
+     pokeVector img1' i (v1 + v2)
+   freeVector img2'
+   return img1{imgData=img1'}
+
 
 -- | Write image to a file channel
 writeImage :: Image -> FileChan Image -> String -> IO ()
-writeImage = undefined
+writeImage img chan file =
+  withFileChan chan file WriteMode $ \h ->
+    BS.hPut h =<< unsafeToByteString (imgData img)
 
 -- | Visibilities are a list of correlator outputs from a dataset
 -- concerning the same frequency band and polarisation.

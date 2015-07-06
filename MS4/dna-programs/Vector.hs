@@ -16,11 +16,14 @@ module Vector
   -- * Conversion
   , toCVector, toHostVector, toDeviceVector
   , dupCVector, dupHostVector, dupDeviceVector
+  , unsafeToByteString
   ) where
 
 import Control.Monad (when)
 import Data.Binary   (Binary(..))
 import Data.Typeable (Typeable)
+import Data.ByteString (ByteString)
+import Data.ByteString.Unsafe (unsafePackAddressLen)
 import Foreign.Ptr
 import Foreign.C
 import Foreign.Marshal.Alloc
@@ -32,8 +35,12 @@ import Foreign.CUDA.Runtime as CUDA
 
 import Foreign.Storable
 
+import GHC.Exts     (Ptr(..))
 import GHC.Generics (Generic)
 
+-- | The alignment that we are going to use for all vectors
+vectorAlign :: CUInt
+vectorAlign = 32
 
 -- | Vector type. Depending on the requirements of the kernel that
 -- uses it, it might have a different underlying pointer type.
@@ -200,3 +207,14 @@ dupDeviceVector (DeviceVector n p) = do
   v'@(DeviceVector _ p') <- allocDeviceVector n
   copyArray n p p'
   return v'
+
+-- | Turn a vector into a bytestring referencing the same data. This
+-- is unsafe insofar that changes to the vector might change the
+-- bytestring, and freeing it might cause crashes.
+unsafeToByteString :: Storable a => Vector a -> IO ByteString
+unsafeToByteString v@(CVector _ (Ptr addr)) =
+  unsafePackAddressLen (vectorByteSize v) addr
+unsafeToByteString v@(HostVector _ (HostPtr (Ptr addr))) =
+  unsafePackAddressLen (vectorByteSize v) addr
+unsafeToByteString DeviceVector{} =
+  error "unsafeToByteString: Device vector!"

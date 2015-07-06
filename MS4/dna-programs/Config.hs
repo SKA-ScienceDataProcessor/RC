@@ -81,7 +81,7 @@ data GridPar = GridPar
                        -- be larger than width if data is meant to be
                        -- padded.
   }
-  deriving (Show,Typeable,Generic)
+  deriving (Show,Typeable,Generic,Eq)
 instance Binary GridPar
 instance FromJSON GridPar where
   parseJSON (Object v)
