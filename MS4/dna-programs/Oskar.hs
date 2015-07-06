@@ -20,7 +20,7 @@ readOskarHeader :: FileChan OskarData -> String -> IO ([Polar], [Int])
 readOskarHeader chan file = do
   taskData <- readOskarData (getFileChan chan file)
   finalizeTaskData taskData
-  return ([XX,YY,XY,YX], [0..tdChannels taskData-1])
+  return ([minBound..maxBound], [0..tdChannels taskData-1])
 
 -- | Read visibilities from an Oskar file.
 --
@@ -42,8 +42,6 @@ readOskar chan file freq polar = do
   let CVector _ visp = vis
 
   -- Go through baselines and collect our data
-  let oskarPolar = 4 -- hardcoded
-      oskarBaselinePoints = tdTimes taskData * tdChannels taskData * oskarPolar
   baselines <- forM [0..tdBaselines taskData-1] $ \bl -> do
      forM_ [0..baselinePoints-1] $ \p -> do
          pokeElemOff visp (bl * baselinePoints + p) =<< peek (tdVisibilityPtr taskData bl p freq (fromEnum polar))

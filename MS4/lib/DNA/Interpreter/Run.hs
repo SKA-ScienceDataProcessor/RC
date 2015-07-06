@@ -191,8 +191,8 @@ sendResult p !a =
           Nothing -> doPanic "Type error in channel!"
 
 findIndexInSplittedList :: Int -> Int -> Int -> Int
-findIndexInSplittedList nElems n rank =
-    case findIndex (\(a,b) -> rank >= a && rank < b) bins of
+findIndexInSplittedList nElems n rnk =
+    case findIndex (\(a,b) -> rnk >= a && rnk < b) bins of
       Just i -> i
       _      -> error "Impossible split!"
   where

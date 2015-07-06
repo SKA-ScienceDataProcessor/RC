@@ -6,7 +6,6 @@
 -- | High level dataflow for imaging program
 module Main where
 
-import Control.Distributed.Process (Closure)
 import Control.Monad
 
 import DNA
@@ -167,7 +166,7 @@ workerActor = actor $ \(cfg, dataSet) -> do
 
 -- | Actor which collects images in tree-like fashion
 imageCollector :: TreeCollector (FileChan Image)
-imageCollector = undefined
+imageCollector = error "image collector"
 
 -- | A measure for the complexity of processing a data set.
 type Weight = Rational
@@ -244,7 +243,7 @@ mainActor = actor $ \(cfg, dataSets) -> do
     -- Spawn tree collector
     --
     -- Spawn leaves 
-    leaves <- startCollectorTreeGroup (N undefined) $ do
+    leaves <- startCollectorTreeGroup (N (error "leaves")) $ do
         return $(mkStaticClosure 'imageCollector)
     -- Top level collector
     topLevel <- startCollectorTree $ do
@@ -279,7 +278,7 @@ main = dnaRun rtable $ do
                          , dsPolar   = polar
                          , dsRepeats = repeats
                          }
-               | freq <- freqs, polar <- [minBound..maxBound] ]
+               | freq <- freqs, polar <- polars ]
 
     -- Execute main actor
     chan <- eval mainActor (config, dataSets)

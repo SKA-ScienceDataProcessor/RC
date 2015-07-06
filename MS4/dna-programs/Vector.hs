@@ -42,8 +42,8 @@ data Vector a
   deriving (Show, Typeable, Generic)
 -- FIXME: No sane binary  instance but we need to pass this data type around
 instance Binary (Vector a) where
-    get = undefined
-    put = undefined
+    get = error "getting vectors is undefined!"
+    put = error "putting vectors is undefined!"
 
 -- | Returns the number of elements a vector has. Note that this will
 -- return @0@ for the result of "offsetVector".
@@ -55,7 +55,7 @@ vectorSize (DeviceVector n _) = n
 -- | Returns the size of the vector in bytes. Note that this will
 -- return @0@ for the result of "offsetVector".
 vectorByteSize :: forall a. Storable a => Vector a -> Int
-vectorByteSize (CVector n _) = n * sizeOf (undefined :: a)
+vectorByteSize v = (vectorSize v) * sizeOf (undefined :: a)
 
 -- | A vector carrying no data, pointing nowhere
 nullVector :: Vector a
@@ -136,7 +136,7 @@ foreign import ccall unsafe cudaHostRegister :: Ptr a -> Int -> CUInt -> IO CInt
 -- consumed.
 toHostVector :: forall a. Storable a => Vector a -> IO (Vector a)
 toHostVector v@HostVector{}  = return v
-toHostVector v@(CVector n p) = do _ <- cudaHostRegister p (vectorByteSize v) 0; return v
+toHostVector v@(CVector _ p) = do _ <- cudaHostRegister p (vectorByteSize v) 0; return v
 toHostVector v               = do v' <- dupHostVector v; freeVector v; return v'
 
 -- | Convert the given vector into a device vector. The passed vector

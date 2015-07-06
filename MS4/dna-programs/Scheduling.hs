@@ -32,4 +32,4 @@ distributer
     -> [a]   -- ^ Data sets
     -> [a]
 distributer split schedule = concatMap go . zip schedule
-  where go (n, dat) = map (\r -> split r (r+1%n) dat) [0..(n-1)%n]
+  where go (n, dat) = map (\r -> split r (r+1%n) dat) [0,1%n..(n-1)%n]
