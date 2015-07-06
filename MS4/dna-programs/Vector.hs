@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
+{-# LANGUAGE CPP #-}
 
 module Vector
   ( Vector(..)
@@ -17,6 +18,7 @@ module Vector
   , dupCVector, dupHostVector, dupDeviceVector
   ) where
 
+import Control.Monad (when)
 import Data.Binary   (Binary(..))
 import Data.Typeable (Typeable)
 import Foreign.Ptr
@@ -87,17 +89,28 @@ pokeVector (HostVector _ p) off = pokeElemOff (useHostPtr p) off
 pokeVector (DeviceVector _ _) _ = error "Attempted to poke device vector!"
 
 -- | Allocate a C vector using @malloc@ that is large enough for the
--- given number of elements.
--- Such allocated vector could be unsuitable for using with some AVX instructions
--- which require 32-bytes aligned data.
--- OTOH, we need grid/image data be padded on CPU to accelerate FFT considerably
---   and this could contradict the AVX alignment requirement.
--- Thus we have 2 options here: marshal the data to change their layout or switch
---   back to unaligned AVX instructions usage. The latter could be, perhaps,
---    the preferred way to deal with this.
+-- given number of elements. The returned vector will be aligned
+-- according to "vectorAlign".
 allocCVector :: forall a. Storable a => Int -> IO (Vector a)
-allocCVector n = fmap (CVector n) $ mallocBytes (n * s)
-  where s = sizeOf (undefined :: a)
+#ifdef _WIN32
+-- On Windows we can use _aligned_malloc directly
+allocCVector n = fmap (CVector n) $ c_aligned_malloc vectorAlign vs
+  where vs = fromIntegral $ n * sizeOf (undefined :: a)
+foreign import ccall unsafe "_aligned_malloc"
+    c_aligned_malloc :: CUInt -> CUInt -> IO (Ptr a)
+#else
+-- The POSIX version is slightly less nice because just "memalign" is
+-- apparently obsolete.
+allocCVector n = alloca $ \pp -> do
+  let vs = fromIntegral $ n * sizeOf (undefined :: a)
+  ret <- c_posix_memalign pp vectorAlign vs
+  when (ret /= 0) $
+    ioError $ errnoToIOError "allocCVector" (Errno ret) Nothing Nothing
+  p <- peek pp
+  return $ CVector n p
+foreign import ccall unsafe "posix_memalign"
+    c_posix_memalign :: Ptr (Ptr a) -> CUInt -> CUInt -> IO CInt
+#endif
 
 -- | Allocate a CUDA host vector in pinned memory with the given
 -- number of elements.
