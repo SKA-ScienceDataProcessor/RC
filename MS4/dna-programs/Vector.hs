@@ -130,7 +130,7 @@ toCVector (HostVector n p) = return $ CVector n (useHostPtr p)
 toCVector v                = do v' <- dupCVector v; freeVector v; return v'
 
 -- Slightly non-puristic signature (second Int parameter)
-foreign import ccall unsafe cudaHostRegister :: Ptr a -> CInt -> CUInt -> IO CInt
+foreign import ccall unsafe cudaHostRegister :: Ptr a -> Int -> CUInt -> IO CInt
 
 -- | Convert the given vector into a host vector. The passed vector is
 -- consumed.
