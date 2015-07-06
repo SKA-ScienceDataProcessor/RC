@@ -11,6 +11,7 @@ module Data
     -- * Image
   , Image(..)
   , imageSize
+  , freeImage
   , constImage
   , addImage
   , writeImage
@@ -18,6 +19,7 @@ module Data
     -- * Visibilities
   , Vis(..)
   , VisBaseline(..)
+  , freeVis
   , dumpVis
   , constVis
   , subtractVis
@@ -27,6 +29,7 @@ module Data
   , GCFPar(..)
   , GCF(..)
   , GCFSet(..)
+  , freeGCFSet
 
     -- * Common
   , UVW(..), Polar(..)
@@ -80,6 +83,10 @@ instance Binary Image
 -- that for consistency we honor the pitch requirements of the grid.
 imageSize :: GridPar -> Int
 imageSize gp = gridHeight gp * gridPitch gp
+
+-- | Free data associated with an image
+freeImage :: Image -> IO ()
+freeImage img = freeVector (imgData img)
 
 -- | Create an image filled with the given value, allocated as a
 -- simple C buffer.
@@ -227,3 +234,9 @@ data GCF = GCF
   }
   deriving (Show,Typeable,Generic)
 instance Binary GCF
+
+-- | Free data associated with a GCF set
+freeGCFSet :: GCFSet -> IO ()
+freeGCFSet gcfSet = do
+  forM_ (gcfs gcfSet) $ \gcf ->
+    freeVector (gcfData gcf)

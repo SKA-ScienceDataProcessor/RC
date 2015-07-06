@@ -95,6 +95,9 @@ imagingActor cfg = actor $ \dataSet -> do
         degridAct = degridderActor gridk dftk
     psf <- eval gridAct (psfVis,gcfSet)
 
+    -- Free PSF vis
+    kernel "psf cleanup" [] $ liftIO $ freeVis psfVis
+
     -- Major cleaning loop. We always do the number of configured
     -- iterations.
     let majorLoop i vis = do
@@ -106,8 +109,11 @@ imagingActor cfg = actor $ \dataSet -> do
            cleanKernel cleank (cfgCleanPar cfg) dirtyImage psf
 
          -- Done with the loop?
-         if i >= cfgMajorLoops cfg then return residual else do
+         if i >= cfgMajorLoops cfg then do
+           unboundKernel "clean cleanup vis" [] $ liftIO $ freeVis vis
+           return residual
 
+         else do
            -- We continue - residual isn't needed any more
            kernel "free" [] $ liftIO $ freeVector (imgData residual)
            -- De-grid the model
@@ -120,10 +126,10 @@ imagingActor cfg = actor $ \dataSet -> do
     -- result of this actor
     res <- majorLoop 1 vis0
 
-    -- Free GCFs
+    -- Free GCFs & PSF
     kernel "clean cleanup" [] $ liftIO $ do
-        forM_ (gcfs gcfSet) $ \gcf ->
-            freeVector (gcfData gcf)
+      freeGCFSet gcfSet
+      freeImage psf
 
     -- More Cleanup? Eventually kernels will probably want to do
     -- something here...
@@ -144,15 +150,19 @@ workerActor = actor $ \(cfg, dataSet) -> do
                    | otherwise = do
            -- Generate image, sum up
            img' <- eval (imagingActor cfg) dataSet
-           unboundKernel "addImage" [] $ liftIO $
+           img'' <- unboundKernel "addImage" [] $ liftIO $
              addImage img img'
+           loop (i+1) img''
 
     -- Run the loop
     img <- loop 0 img0
 
     -- Allocate file channel for output
     outChan <- createFileChan Remote "image"
-    kernel "write image" [] $ liftIO $ writeImage img outChan "data.img"
+    kernel "write image" [] $ liftIO $ do
+        writeImage img outChan "data.img"
+        putStrLn "image written"
+        freeImage img
     return outChan
 
 -- | Actor which collects images in tree-like fashion
