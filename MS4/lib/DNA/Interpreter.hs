@@ -177,6 +177,7 @@ execSendParam a (Shell aid) = do
           Just ch -> sendChan ch a
     trySend RcvGrp{}    = doPanic "execSendParam: destination type mismatch, expect single, got group"
     trySend RcvReduce{} = doPanic "execSendParam: destination type mismatch, expect single, got reducer"
+    trySend RcvTree{}   = doPanic "execSendParam: destination type mismatch, expect single, got tree reducer"
 
 -- Send parameter
 execBroadcast :: Serializable a => a -> Shell (Scatter a) b -> DnaMonad ()
