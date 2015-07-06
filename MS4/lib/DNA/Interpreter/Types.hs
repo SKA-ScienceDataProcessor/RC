@@ -117,7 +117,7 @@ instance Exception PanicException
 data FatalException = FatalException String
              deriving (Show,Typeable)
 instance Exception FatalException
-      
+
 -- | Fatal error
 fatal :: MonadError DnaError m => String -> m a
 fatal = throwError . FatalErr
@@ -139,7 +139,7 @@ doFatal msg = do
     fatalMsg msg
     liftIO $ throw $ FatalException msg
 
-    
+
 -- | Run controller monad. On failure will terminate process forefully
 runController :: Controller a -> DnaMonad a
 runController m = do
@@ -151,32 +151,27 @@ runController m = do
         Except   e -> liftIO $ throw e
       Right a -> return a
 
--- | Run DNA monad
-runDnaMonad
-    :: AID
-    -> Rank
-    -> GroupSize
-    -> Closure DnaInterpreter
-    -> [NodeInfo]
-    -> [DebugFlag]
-    -> LoggerOpt
-    -> FilePath
-    -> DnaMonad a
-    -> Process a
-runDnaMonad aid (Rank rnk) (GroupSize grp) interp nodes flags logopt workDir =
-    flip runReaderT env . flip evalStateT s0 . unDnaMonad
+-- | Run DNA monad using ActorParam as source of input parameters and
+--   interpreter
+runDnaParam :: ActorParam -> DNA a -> Process a
+runDnaParam p action = do
+  interpreter <- unClosure $ actorInterpreter p
+  flip runReaderT env
+    $ flip evalStateT s0
+    $ unDnaMonad
+    $ dnaInterpreter interpreter action
   where
-    env = Env { envRank        = rnk
-              , envGroupSize   = grp
-              , envInterpreter = interp
-              , envAID         = aid
-              , envWorkDir     = workDir
+    env = Env { envRank        = case actorRank      p of Rank      i -> i
+              , envGroupSize   = case actorGroupSize p of GroupSize i -> i
+              , envInterpreter = actorInterpreter p
+              , envAID         = actorAID p
+              , envWorkDir     = actorWorkDir p
               }
     s0 = StateDNA
            { _stCounter       = 0
-           , _stDebugFlags    = flags
-           , _stLogOpt        = logopt
-           , _stNodePool      = Set.fromList nodes
+           , _stDebugFlags    = actorDebugFlags p
+           , _stLogOpt        = actorLogOpt p
+           , _stNodePool      = Set.fromList $ vcadNodePool $ actorNodes p
            , _stUsedResources = Map.empty
            , _stChildren      = Map.empty
            , _stActorSrc      = Map.empty
@@ -189,20 +184,7 @@ runDnaMonad aid (Rank rnk) (GroupSize grp) interp nodes flags logopt workDir =
            , _stActorClosure  = Map.empty
            }
 
--- | Run DNA monad using ActorParam as source of input parameters and
---   interpreter
-runDnaParam :: ActorParam -> DNA a -> Process a
-runDnaParam p action = do
-  interpreter <- unClosure $ actorInterpreter p
-  runDnaMonad (actorAID p)
-              (actorRank p)
-              (actorGroupSize p)
-              (actorInterpreter p)
-              (vcadNodePool $ actorNodes       p)
-              (actorDebugFlags  p)
-              (actorLogOpt p)
-              (actorWorkDir p)
-    $ dnaInterpreter interpreter action
+
 
 -- | Evaluator for DNA monad. We have to pass closure with function
 --   for interpreting DNA monad manually since we have to break
@@ -324,7 +306,7 @@ data ActorState
 --   processes is accessible via AID<->{PID} mapping
 data RunInfo = RunInfo
     { nCompleted      :: !Int
-      -- ^ Number of CH processes that complete execution 
+      -- ^ Number of CH processes that complete execution
     , allowedFailures :: !Int
       -- ^ Number of allowed failures
     , failedRanks     :: Set Int
