@@ -221,20 +221,24 @@ mainActor = actor $ \(cfg, dataSets) -> do
     forM_ weightedDataSets $ \(ds, w) ->
       logMessage $ show (fromRational w :: Float) ++ " - " ++ show (dsName ds)
 
-    -- Now start worker actors
-    waitForResoures estimateWorkers
-    workers <- startGroup (Frac 1) (NNodes 1) $ do
-        useLocal
-        return $(mkStaticClosure 'workerActor)
-
     -- Schedule work
-    let schedule = balancer avail (map (fromRational . snd) weightedDataSets)
+    let schedule = balancer (avail + 1) (map (fromRational . snd) weightedDataSets)
         splitData low high dataSet =
             let atRatio r = floor $ r * fromIntegral (dsRepeats dataSet)
             in dataSet { dsRepeats = atRatio high - atRatio low }
+        dist = distributer splitData schedule (map fst weightedDataSets)
+    logMessage ("Schedule: " ++ show schedule)
+    forM_ (zip [1..] dist) $ \(i,ds) ->
+       logMessage (show i ++ ": " ++ show (dsRepeats ds) ++ " x " ++ show (dsName ds))
+
+    -- Now start worker actors
+    waitForResoures estimateWorkers
+    workers <- startGroup (N avail) (NNodes 1) $ do
+        useLocal
+        return $(mkStaticClosure 'workerActor)
     distributeWork
         (map fst weightedDataSets)
-        (const $ map ((,) cfg) . distributer splitData schedule)
+        (\_ _ -> map ((,) cfg) dist)
         workers
 
     -- Spawn tree collector
