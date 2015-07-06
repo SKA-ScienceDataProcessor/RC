@@ -103,7 +103,7 @@ void calcAccums(
   // Simple linear addition (it is faster than starting any threads here)
   // Don't use any fance AVX tricks because of
   // a negligibility of the whole processing time.
-  for(int i=0; i<nthreads; i++)
+  for(int i=0; i<nthreads-1; i++)
   for(int j=0; j<numOfWPlanes; j++) {
     sums[j] += tmpsums[i][j];
     npts[j] += tmpnpts[i][j];
