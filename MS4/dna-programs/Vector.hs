@@ -4,7 +4,7 @@
 
 module Vector
   ( Vector(..)
-  , vectorSize
+  , vectorSize, vectorByteSize
   , nullVector
   , castVector
   , offsetVector
@@ -51,6 +51,11 @@ vectorSize :: Vector a -> Int
 vectorSize (CVector n _) = n
 vectorSize (HostVector n _) = n
 vectorSize (DeviceVector n _) = n
+
+-- | Returns the size of the vector in bytes. Note that this will
+-- return @0@ for the result of "offsetVector".
+vectorByteSize :: forall a. Storable a => Vector a -> Int
+vectorByteSize (CVector n _) = n * sizeOf (undefined :: a)
 
 -- | A vector carrying no data, pointing nowhere
 nullVector :: Vector a
@@ -125,13 +130,14 @@ toCVector (HostVector n p) = return $ CVector n (useHostPtr p)
 toCVector v                = do v' <- dupCVector v; freeVector v; return v'
 
 -- Slightly non-puristic signature (second Int parameter)
-foreign import ccall unsafe cudaHostRegister :: Ptr a -> Int -> CUInt -> IO CInt
+foreign import ccall unsafe cudaHostRegister :: Ptr a -> CInt -> CUInt -> IO CInt
+
 -- | Convert the given vector into a host vector. The passed vector is
 -- consumed.
 toHostVector :: forall a. Storable a => Vector a -> IO (Vector a)
-toHostVector v@HostVector{} = return v
-toHostVector v@(CVector n p) = do _ <- cudaHostRegister p n 0; return v
-toHostVector v              = do v' <- dupHostVector v; freeVector v; return v'
+toHostVector v@HostVector{}  = return v
+toHostVector v@(CVector n p) = do _ <- cudaHostRegister p (vectorByteSize v) 0; return v
+toHostVector v               = do v' <- dupHostVector v; freeVector v; return v'
 
 -- | Convert the given vector into a device vector. The passed vector
 -- is consumed.
@@ -143,27 +149,23 @@ toDeviceVector v                = do v' <- dupDeviceVector v; freeVector v; retu
 -- original vector intact.
 dupCVector :: forall a. Storable a => Vector a -> IO (Vector a)
 dupCVector v = do
-  let n = vectorSize v
-      s = sizeOf (undefined :: a)
-  v'@(CVector _ p') <- allocCVector n
+  v'@(CVector _ p') <- allocCVector (vectorSize v)
   case v of
-    CVector _ p      -> copyBytes p' p (s * n)
-    HostVector _ p   -> copyBytes p' (useHostPtr p) (s * n)
-    DeviceVector _ p -> peekArray n p p'
+    CVector _ p      -> copyBytes p' p (vectorByteSize v)
+    HostVector _ p   -> copyBytes p' (useHostPtr p) (vectorByteSize v)
+    DeviceVector _ p -> peekArray (vectorSize v) p p'
   return v'
 
 -- | Create a copy of the given vector as a host vector. Leaves the
 -- original vector intact.
 dupHostVector :: forall a. Storable a => Vector a -> IO (Vector a)
-dupHostVector (CVector n p) = do
+dupHostVector v@(CVector n p) = do
   v'@(HostVector _ p') <- allocHostVector n
-  let s = sizeOf (undefined :: a)
-  copyBytes (useHostPtr p') p (s * n)
+  copyBytes (useHostPtr p') p (vectorByteSize v)
   return v'
-dupHostVector (HostVector n p) = do
+dupHostVector v@(HostVector n p) = do
   v'@(HostVector _ p') <- allocHostVector n
-  let s = sizeOf (undefined :: a)
-  copyBytes (useHostPtr p') (useHostPtr p) (s * n)
+  copyBytes (useHostPtr p') (useHostPtr p) (vectorByteSize v)
   return v'
 dupHostVector (DeviceVector n p) = do
   v'@(HostVector _ p') <- allocHostVector n
