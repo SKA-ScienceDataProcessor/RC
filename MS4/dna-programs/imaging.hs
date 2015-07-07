@@ -15,6 +15,7 @@ import Data.Aeson
 import qualified Data.ByteString.Lazy as LBS
 import Data.Maybe      (fromMaybe)
 import Data.Time.Clock
+import System.IO       (IOMode(..))
 
 import Config
 import Data
@@ -61,9 +62,7 @@ imagingActor :: Config -> Actor DataSet Image
 imagingActor cfg = actor $ \dataSet -> do
 
     -- Copy data set locally
-    oskarChan <- createFileChan Local "oskar"
     (gridk, dftk, cleank, vis0, psfVis, gcfSet) <- unboundKernel "setup" [] $ liftIO $ do
-      transferFileChan (dsData dataSet) oskarChan "data.vis"
 
       -- Initialise our kernels
       gcfk <- initKernel gcfKernels (cfgGCFKernel cfg)
@@ -72,7 +71,7 @@ imagingActor cfg = actor $ \dataSet -> do
       cleank <- initKernel cleanKernels (cfgCleanKernel cfg)
 
       -- Read input data from Oskar
-      vis <- readOskar oskarChan "data.vis" (dsChannel dataSet) (dsPolar dataSet)
+      vis <- readOskar (dsData dataSet) "data.vis" (dsChannel dataSet) (dsPolar dataSet)
       psfVis <- constVis 1 vis
 
       -- Run GCF kernel to generate GCFs
@@ -143,18 +142,29 @@ imagingActor cfg = actor $ \dataSet -> do
 workerActor :: Actor (Config, DataSet) (FileChan Image)
 workerActor = actor $ \(cfg, dataSet) -> do
 
+    -- Create input file channel & transfer data
+    oskarChan <- createFileChan Local "oskar"
+    unboundKernel "transfer" [] $ liftIO $
+        transferFileChan (dsData dataSet) oskarChan "data.vis"
+
     -- Initialise image sum
     img0 <- kernel "init image" [] $ liftIO $ constImage (cfgGridPar cfg) 0
     let loop i img | i >= dsRepeats dataSet  = return img
                    | otherwise = do
            -- Generate image, sum up
-           img' <- eval (imagingActor cfg) dataSet
-           img'' <- unboundKernel "addImage" [] $ liftIO $
+           let dataSet' = dataSet{ dsData = oskarChan }
+           img' <- eval (imagingActor cfg) dataSet'
+           img'' <- unboundKernel "addImage" [] $ liftIO $ do
+             putStrLn $ "addImage " ++ show i
              addImage img img'
            loop (i+1) img''
 
     -- Run the loop
     img <- loop 0 img0
+
+    -- Delete oskar data
+    unboundKernel "clear oskar data" [] $ liftIO $
+        deleteFileChan oskarChan
 
     -- Allocate file channel for output
     outChan <- createFileChan Remote "image"
@@ -179,10 +189,20 @@ type Weight = Rational
 estimateActor :: Actor (Config, DataSet) (DataSet, Weight)
 estimateActor = actor $ \(cfg, dataSet) -> do
 
+    -- Create input file channel & transfer data
+    oskarChan <- createFileChan Local "oskar"
+    unboundKernel "transfer" [] $ liftIO $
+        transferFileChan (dsData dataSet) oskarChan "data.vis"
+
     -- Generate image, measuring time
+    let dataSet' = dataSet{ dsData = oskarChan }
     start <- unboundKernel "estimate start" [] $ liftIO getCurrentTime
     void $ eval (imagingActor cfg) dataSet
     end <- unboundKernel "estimate end" [] $ liftIO getCurrentTime
+
+    -- Delete oskar data
+    unboundKernel "clear oskar data" [] $ liftIO $
+        deleteFileChan oskarChan
 
     -- Return time taken
     return (dataSet, toRational $ end `diffUTCTime` start)
@@ -240,6 +260,18 @@ mainActor = actor $ \(cfg, dataSets) -> do
         (\_ _ -> map ((,) cfg) dist)
         workers
 
+    -- Sum up results
+    grp <- delayGroup workers
+    resultImages <- gather grp (flip (:)) []
+    -- Allocate file channel for output
+    outChan <- createFileChan Local "finalImage"
+    kernel "final image sum" [] $ liftIO $ do
+       -- TODO...
+       withFileChan outChan "data.img" WriteMode $ \_h -> return ()
+       forM_ resultImages deleteFileChan
+    return outChan
+
+{--
     -- Spawn tree collector
     --
     -- Spawn leaves 
@@ -252,6 +284,7 @@ mainActor = actor $ \(cfg, dataSets) -> do
     connect workers leaves
     connect leaves  topLevel
     await =<< delay Local topLevel
+--}
 
 main :: IO ()
 main = dnaRun rtable $ do
