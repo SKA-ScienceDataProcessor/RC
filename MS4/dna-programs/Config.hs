@@ -80,12 +80,14 @@ data GridPar = GridPar
   , gridPitch :: !Int  -- ^ Distance between rows in grid storage. Can
                        -- be larger than width if data is meant to be
                        -- padded.
+  , gridTheta :: !Double  -- ^ Size of the field of view
   }
   deriving (Show,Typeable,Generic,Eq)
 instance Binary GridPar
 instance FromJSON GridPar where
   parseJSON (Object v)
-    = GridPar <$> v .: "width" <*> v .: "height" <*> v .: "pitch"
+    = GridPar <$> v .: "width" <*> v .: "height"
+              <*> v .: "pitch" <*> v .: "theta"
   parseJSON _ = mzero
 
 -- | Minimum number of rows we need to allocate for the grid in order
@@ -106,14 +108,14 @@ gridFullSize gp = gridHeight gp * gridPitch gp
 
 -- | Parameters going into GCF generation
 data GCFPar = GCFPar
-  { gcfOver :: !Int      -- ^ Amount of oversampling. Note that
-                         -- kernels might only work with one
-                         -- oversampling value!
-  , gcfpStepW :: !Double -- ^ Size of the @w@ bins
-  , gcfpGrowth :: !Double  -- ^ Size of the GCF depending on targeted
-                           -- @w@ value (exact formula TBD).
-  , gcfpMinSize :: !Int  -- ^ Minimum size for the GCF
-  , gcfpMaxSize :: !Int  -- ^ Maximum size for the GCF (?)
+  { gcfpOver :: !Int      -- ^ Amount of oversampling. Note that
+                          -- kernels might only work with one
+                          -- oversampling value!
+  , gcfpStepW :: !Double  -- ^ Size of the @w@ bins
+  , gcfpGrowth :: !Int    -- ^ Size of the GCF depending on targeted
+                          -- @w@ value (exact formula TBD).
+  , gcfpMinSize :: !Int   -- ^ Minimum size for the GCF
+  , gcfpMaxSize :: !Int   -- ^ Maximum size for the GCF
   }
   deriving (Show,Typeable,Generic)
 instance Binary GCFPar

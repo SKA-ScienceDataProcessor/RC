@@ -75,8 +75,7 @@ imagingActor cfg = actor $ \dataSet -> do
       psfVis <- constVis 1 vis
 
       -- Run GCF kernel to generate GCFs
-      gcfSet <- gcfKernel gcfk (cfgGridPar cfg) (cfgGCFPar cfg)
-                               (visMinW vis) (visMaxW vis)
+      gcfSet <- gcfKernel gcfk (cfgGridPar cfg) (cfgGCFPar cfg) vis
 
       -- Let grid kernel prepare for processing GCF and visibilities
       -- (transfer buffers, do binning etc.)
@@ -197,7 +196,7 @@ estimateActor = actor $ \(cfg, dataSet) -> do
     -- Generate image, measuring time
     let dataSet' = dataSet{ dsData = oskarChan }
     start <- unboundKernel "estimate start" [] $ liftIO getCurrentTime
-    void $ eval (imagingActor cfg) dataSet
+    void $ eval (imagingActor cfg) dataSet'
     end <- unboundKernel "estimate end" [] $ liftIO getCurrentTime
 
     -- Delete oskar data
@@ -248,7 +247,7 @@ mainActor = actor $ \(cfg, dataSets) -> do
         dist = distributer splitData schedule (map fst weightedDataSets)
     logMessage ("Schedule: " ++ show schedule)
     forM_ (zip [1..] dist) $ \(i,ds) ->
-       logMessage (show i ++ ": " ++ show (dsRepeats ds) ++ " x " ++ show (dsName ds))
+       logMessage (show (i :: Int) ++ ": " ++ show (dsRepeats ds) ++ " x " ++ show (dsName ds))
 
     -- Now start worker actors
     waitForResoures estimateWorkers
@@ -261,8 +260,8 @@ mainActor = actor $ \(cfg, dataSets) -> do
         workers
 
     -- Sum up results
-    grp <- delayGroup workers
-    resultImages <- gather grp (flip (:)) []
+    grp' <- delayGroup workers
+    resultImages <- gather grp' (flip (:)) []
     -- Allocate file channel for output
     outChan <- createFileChan Local "finalImage"
     kernel "final image sum" [] $ liftIO $ do
@@ -317,7 +316,8 @@ main = dnaRun rtable $ do
     chan <- eval mainActor (config, dataSets)
 
     -- Copy result image to working directory
-    unboundKernel "export image" [] $ liftIO $
+    unboundKernel "export image" [] $ liftIO $ do
         exportFromFileChan chan "data.img" "output.img"
+        deleteFileChan chan
   where
     rtable = __remoteTable

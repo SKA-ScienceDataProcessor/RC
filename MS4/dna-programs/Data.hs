@@ -116,6 +116,11 @@ addImage img1 img2 = do
    freeVector img2'
    return img1{imgData=img1'}
 
+-- | Read image from a file channel
+readImage :: Image -> FileChan Image -> String -> IO ()
+readImage img chan file =
+  withFileChan chan file WriteMode $ \h ->
+    BS.hPut h =<< unsafeToByteString (imgData img)
 
 -- | Write image to a file channel
 writeImage :: Image -> FileChan Image -> String -> IO ()
@@ -248,7 +253,10 @@ instance Binary GCFSet
 -- to the @UVGrid@. It is valid in a given range of @w@-values.
 -- The size will also depend significantly on the @w@ value.
 data GCF = GCF
-  { gcfMinW :: !Double  -- ^ Low @w@ value it was generated for
+  { gcfMidW :: !Double  -- ^ Target @w@ value it was generated
+                        -- for. Might not be the middle of "gcfMinW"
+                        -- and "gcfMax" if that is benificial.
+  , gcfMinW :: !Double  -- ^ Low @w@ value it was generated for
   , gcfMaxW :: !Double  -- ^ High @w@ value is was generated for
   , gcfSize :: !Int     -- ^ Width and height of the convolution function in pixels
   , gcfData :: Vector (Complex Double)
