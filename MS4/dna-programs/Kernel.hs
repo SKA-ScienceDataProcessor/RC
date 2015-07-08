@@ -2,7 +2,9 @@
 module Kernel where
 
 import Data
+
 import qualified Kernel.Dummy as Dummy
+import qualified Kernel.GPU.GCF as GPU_GCF
 
 -- | Gridding kernels deal with adding or extracting visibilities
 -- to/from an "UVGrid"
@@ -45,12 +47,11 @@ data DFTKernel = DFTKernel
 
 -- | Grid convolution generator kernel.
 data GCFKernel = GCFKernel
-  { -- | Produces all "GCF"s we will need for gridding data in the
-    -- @w@-range indicated by the two "Double" values.
+  { -- | Produces all "GCF"s we will need for gridding the given
+    -- visibility data.
     gcfKernel :: GridPar
               -> GCFPar
-              -> Double
-              -> Double
+              -> Vis
               -> IO GCFSet
   }
 
@@ -97,7 +98,8 @@ dftKernels =
 -- The supported discrete fourier transformation kernels
 gcfKernels :: [(String, IO GCFKernel)]
 gcfKernels =
-  [ ("dummy", return $ GCFKernel Dummy.gcf) ]
+  [ ("dummy", return $ GCFKernel Dummy.gcf)
+  , ("gpu", return $ GCFKernel GPU_GCF.kernel) ]
 
 -- The supported discrete fourier transformation kernels
 cleanKernels :: [(String, IO CleanKernel)]

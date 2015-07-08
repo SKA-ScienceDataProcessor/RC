@@ -1,10 +1,11 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
+{-# LANGUAGE CPP #-}
 
 module Vector
   ( Vector(..)
-  , vectorSize
+  , vectorSize, vectorByteSize
   , nullVector
   , castVector
   , offsetVector
@@ -15,10 +16,14 @@ module Vector
   -- * Conversion
   , toCVector, toHostVector, toDeviceVector
   , dupCVector, dupHostVector, dupDeviceVector
+  , unsafeToByteString
   ) where
 
+import Control.Monad (when)
 import Data.Binary   (Binary(..))
 import Data.Typeable (Typeable)
+import Data.ByteString (ByteString)
+import Data.ByteString.Unsafe (unsafePackAddressLen)
 import Foreign.Ptr
 import Foreign.C
 import Foreign.Marshal.Alloc
@@ -30,8 +35,12 @@ import Foreign.CUDA.Runtime as CUDA
 
 import Foreign.Storable
 
+import GHC.Exts     (Ptr(..))
 import GHC.Generics (Generic)
 
+-- | The alignment that we are going to use for all vectors
+vectorAlign :: CUInt
+vectorAlign = 32
 
 -- | Vector type. Depending on the requirements of the kernel that
 -- uses it, it might have a different underlying pointer type.
@@ -42,8 +51,8 @@ data Vector a
   deriving (Show, Typeable, Generic)
 -- FIXME: No sane binary  instance but we need to pass this data type around
 instance Binary (Vector a) where
-    get = undefined
-    put = undefined
+    get = error "getting vectors is undefined!"
+    put = error "putting vectors is undefined!"
 
 -- | Returns the number of elements a vector has. Note that this will
 -- return @0@ for the result of "offsetVector".
@@ -51,6 +60,11 @@ vectorSize :: Vector a -> Int
 vectorSize (CVector n _) = n
 vectorSize (HostVector n _) = n
 vectorSize (DeviceVector n _) = n
+
+-- | Returns the size of the vector in bytes. Note that this will
+-- return @0@ for the result of "offsetVector".
+vectorByteSize :: forall a. Storable a => Vector a -> Int
+vectorByteSize v = (vectorSize v) * sizeOf (undefined :: a)
 
 -- | A vector carrying no data, pointing nowhere
 nullVector :: Vector a
@@ -82,17 +96,28 @@ pokeVector (HostVector _ p) off = pokeElemOff (useHostPtr p) off
 pokeVector (DeviceVector _ _) _ = error "Attempted to poke device vector!"
 
 -- | Allocate a C vector using @malloc@ that is large enough for the
--- given number of elements.
--- Such allocated vector could be unsuitable for using with some AVX instructions
--- which require 32-bytes aligned data.
--- OTOH, we need grid/image data be padded on CPU to accelerate FFT considerably
---   and this could contradict the AVX alignment requirement.
--- Thus we have 2 options here: marshal the data to change their layout or switch
---   back to unaligned AVX instructions usage. The latter could be, perhaps,
---    the preferred way to deal with this.
+-- given number of elements. The returned vector will be aligned
+-- according to "vectorAlign".
 allocCVector :: forall a. Storable a => Int -> IO (Vector a)
-allocCVector n = fmap (CVector n) $ mallocBytes (n * s)
-  where s = sizeOf (undefined :: a)
+#ifdef _WIN32
+-- On Windows we can use _aligned_malloc directly
+allocCVector n = fmap (CVector n) $ c_aligned_malloc vectorAlign vs
+  where vs = fromIntegral $ n * sizeOf (undefined :: a)
+foreign import ccall unsafe "_aligned_malloc"
+    c_aligned_malloc :: CUInt -> CUInt -> IO (Ptr a)
+#else
+-- The POSIX version is slightly less nice because just "memalign" is
+-- apparently obsolete.
+allocCVector n = alloca $ \pp -> do
+  let vs = fromIntegral $ n * sizeOf (undefined :: a)
+  ret <- c_posix_memalign pp vectorAlign vs
+  when (ret /= 0) $
+    ioError $ errnoToIOError "allocCVector" (Errno ret) Nothing Nothing
+  p <- peek pp
+  return $ CVector n p
+foreign import ccall unsafe "posix_memalign"
+    c_posix_memalign :: Ptr (Ptr a) -> CUInt -> CUInt -> IO CInt
+#endif
 
 -- | Allocate a CUDA host vector in pinned memory with the given
 -- number of elements.
@@ -126,12 +151,13 @@ toCVector v                = do v' <- dupCVector v; freeVector v; return v'
 
 -- Slightly non-puristic signature (second Int parameter)
 foreign import ccall unsafe cudaHostRegister :: Ptr a -> Int -> CUInt -> IO CInt
+
 -- | Convert the given vector into a host vector. The passed vector is
 -- consumed.
 toHostVector :: forall a. Storable a => Vector a -> IO (Vector a)
-toHostVector v@HostVector{} = return v
-toHostVector v@(CVector n p) = do _ <- cudaHostRegister p n 0; return v
-toHostVector v              = do v' <- dupHostVector v; freeVector v; return v'
+toHostVector v@HostVector{}  = return v
+toHostVector v@(CVector _ p) = do _ <- cudaHostRegister p (vectorByteSize v) 0; return v
+toHostVector v               = do v' <- dupHostVector v; freeVector v; return v'
 
 -- | Convert the given vector into a device vector. The passed vector
 -- is consumed.
@@ -143,27 +169,23 @@ toDeviceVector v                = do v' <- dupDeviceVector v; freeVector v; retu
 -- original vector intact.
 dupCVector :: forall a. Storable a => Vector a -> IO (Vector a)
 dupCVector v = do
-  let n = vectorSize v
-      s = sizeOf (undefined :: a)
-  v'@(CVector _ p') <- allocCVector n
+  v'@(CVector _ p') <- allocCVector (vectorSize v)
   case v of
-    CVector _ p      -> copyBytes p' p (s * n)
-    HostVector _ p   -> copyBytes p' (useHostPtr p) (s * n)
-    DeviceVector _ p -> peekArray n p p'
+    CVector _ p      -> copyBytes p' p (vectorByteSize v)
+    HostVector _ p   -> copyBytes p' (useHostPtr p) (vectorByteSize v)
+    DeviceVector _ p -> peekArray (vectorSize v) p p'
   return v'
 
 -- | Create a copy of the given vector as a host vector. Leaves the
 -- original vector intact.
 dupHostVector :: forall a. Storable a => Vector a -> IO (Vector a)
-dupHostVector (CVector n p) = do
+dupHostVector v@(CVector n p) = do
   v'@(HostVector _ p') <- allocHostVector n
-  let s = sizeOf (undefined :: a)
-  copyBytes (useHostPtr p') p (s * n)
+  copyBytes (useHostPtr p') p (vectorByteSize v)
   return v'
-dupHostVector (HostVector n p) = do
+dupHostVector v@(HostVector n p) = do
   v'@(HostVector _ p') <- allocHostVector n
-  let s = sizeOf (undefined :: a)
-  copyBytes (useHostPtr p') (useHostPtr p) (s * n)
+  copyBytes (useHostPtr p') (useHostPtr p) (vectorByteSize v)
   return v'
 dupHostVector (DeviceVector n p) = do
   v'@(HostVector _ p') <- allocHostVector n
@@ -185,3 +207,14 @@ dupDeviceVector (DeviceVector n p) = do
   v'@(DeviceVector _ p') <- allocDeviceVector n
   copyArray n p p'
   return v'
+
+-- | Turn a vector into a bytestring referencing the same data. This
+-- is unsafe insofar that changes to the vector might change the
+-- bytestring, and freeing it might cause crashes.
+unsafeToByteString :: Storable a => Vector a -> IO ByteString
+unsafeToByteString v@(CVector _ (Ptr addr)) =
+  unsafePackAddressLen (vectorByteSize v) addr
+unsafeToByteString v@(HostVector _ (HostPtr (Ptr addr))) =
+  unsafePackAddressLen (vectorByteSize v) addr
+unsafeToByteString DeviceVector{} =
+  error "unsafeToByteString: Device vector!"

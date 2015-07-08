@@ -11,6 +11,7 @@ module Data
     -- * Image
   , Image(..)
   , imageSize
+  , freeImage
   , constImage
   , addImage
   , writeImage
@@ -18,6 +19,7 @@ module Data
     -- * Visibilities
   , Vis(..)
   , VisBaseline(..)
+  , freeVis
   , dumpVis
   , constVis
   , subtractVis
@@ -27,6 +29,7 @@ module Data
   , GCFPar(..)
   , GCF(..)
   , GCFSet(..)
+  , freeGCFSet
 
     -- * Common
   , UVW(..), Polar(..)
@@ -35,6 +38,7 @@ module Data
 
 import Control.Applicative
 import Control.Monad
+import qualified Data.ByteString as BS
 import Data.Complex
 import Data.Binary   (Binary)
 import Data.List     (sortBy)
@@ -43,6 +47,7 @@ import Foreign.Ptr
 import Foreign.Storable
 import Foreign.Storable.Complex ( )
 import GHC.Generics  (Generic)
+import System.IO     (IOMode(..))
 import Text.Printf
 
 import DNA.Channel.File
@@ -81,18 +86,47 @@ instance Binary Image
 imageSize :: GridPar -> Int
 imageSize gp = gridHeight gp * gridPitch gp
 
+-- | Free data associated with an image
+freeImage :: Image -> IO ()
+freeImage img = freeVector (imgData img)
+
 -- | Create an image filled with the given value, allocated as a
 -- simple C buffer.
 constImage :: GridPar -> Double -> IO Image
-constImage = undefined
+constImage gp v = do
+   img <- allocCVector (imageSize gp)
+   forM_ [0..imageSize gp-1] $ \i -> pokeVector img i v
+   return $ Image gp 0 img
 
 -- | Add two images together. Assumed to consume both images.
 addImage :: Image -> Image -> IO Image
-addImage = undefined
+addImage img1 img2 = do
+
+   -- Check image data layout
+   when (imgPar img1 /= imgPar img2) $
+     fail $ "addImage: Got different image parameters: " ++ show (imgPar img1) ++ " vs " ++ show (imgPar img2)
+
+   -- Convert both to C vectors
+   img1' <- toCVector (imgData img1)
+   img2' <- toCVector (imgData img2)
+   forM_ [0..imageSize (imgPar img1)-1] $ \i -> do
+     v1 <- peekVector img1' i
+     v2 <- peekVector img2' i
+     pokeVector img1' i (v1 + v2)
+   freeVector img2'
+   return img1{imgData=img1'}
+
+-- | Read image from a file channel
+readImage :: Image -> FileChan Image -> String -> IO ()
+readImage img chan file =
+  withFileChan chan file WriteMode $ \h ->
+    BS.hPut h =<< unsafeToByteString (imgData img)
 
 -- | Write image to a file channel
 writeImage :: Image -> FileChan Image -> String -> IO ()
-writeImage = undefined
+writeImage img chan file =
+  withFileChan chan file WriteMode $ \h ->
+    BS.hPut h =<< unsafeToByteString (imgData img)
 
 -- | Visibilities are a list of correlator outputs from a dataset
 -- concerning the same frequency band and polarisation.
@@ -219,7 +253,10 @@ instance Binary GCFSet
 -- to the @UVGrid@. It is valid in a given range of @w@-values.
 -- The size will also depend significantly on the @w@ value.
 data GCF = GCF
-  { gcfMinW :: !Double  -- ^ Low @w@ value it was generated for
+  { gcfMidW :: !Double  -- ^ Target @w@ value it was generated
+                        -- for. Might not be the middle of "gcfMinW"
+                        -- and "gcfMax" if that is benificial.
+  , gcfMinW :: !Double  -- ^ Low @w@ value it was generated for
   , gcfMaxW :: !Double  -- ^ High @w@ value is was generated for
   , gcfSize :: !Int     -- ^ Width and height of the convolution function in pixels
   , gcfData :: Vector (Complex Double)
@@ -227,3 +264,9 @@ data GCF = GCF
   }
   deriving (Show,Typeable,Generic)
 instance Binary GCF
+
+-- | Free data associated with a GCF set
+freeGCFSet :: GCFSet -> IO ()
+freeGCFSet gcfSet = do
+  forM_ (gcfs gcfSet) $ \gcf ->
+    freeVector (gcfData gcf)

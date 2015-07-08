@@ -290,7 +290,7 @@ receiveShellGroup ch aid assemble handler = do
     Just pids <- use $ stAid2Pid . at aid
     dsts <- liftP $ replicateM (Set.size pids) $ waitForShell ch (`Set.member` pids)
     -- Check that we don't have too many failures
-    Just (Running (RunInfo _ nFail mempty)) <- use $ stChildren . at aid
+    Just (Running (RunInfo _ nFail _)) <- use $ stChildren . at aid
     let (fails,oks) = partitionEithers dsts
     if length fails > nFail
        then do forM_ fails $ \err ->

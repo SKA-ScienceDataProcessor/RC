@@ -28,7 +28,7 @@ grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
 grid _ _ = return
 
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
-degrid _ vis = constVis 0
+degrid _ _ = constVis 0
 
 -- DFT kernel definition
 
@@ -48,14 +48,14 @@ dfti (UVGrid gp pad v) = do
 
 -- GCF kernel definition
 
-gcf :: GridPar -> GCFPar -> Double -> Double -> IO GCFSet
-gcf _gp gcfp wlow whigh = do
+gcf :: GridPar -> GCFPar -> Vis -> IO GCFSet
+gcf _gp gcfp vis = do
 
     -- Number of positive / negative GCFs to generate
     let wstep = gcfpStepW gcfp
         neg, pos :: Int
-        neg = max 1 $ ceiling (-wlow / wstep)
-        pos = max 1 $ ceiling (whigh / wstep)
+        neg = max 1 $ ceiling (-visMinW vis / wstep)
+        pos = max 1 $ ceiling (visMaxW vis / wstep)
 
     -- Actually generate GCFs
     gs <- forM [-neg..pos] $ \i -> do
@@ -63,7 +63,7 @@ gcf _gp gcfp wlow whigh = do
             wmin = w - wstep / 2
             wmax = w + wstep / 2
         v <- allocCVector (gcfpMaxSize gcfp * gcfpMaxSize gcfp)
-        return $ GCF wmin wmax (gcfpMaxSize gcfp) v
+        return $ GCF w wmin wmax (gcfpMaxSize gcfp) v
 
     return $ GCFSet gcfp gs nullVector
 

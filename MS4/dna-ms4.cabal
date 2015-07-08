@@ -138,16 +138,8 @@ executable imaging-dataflow
   if flag(cuda)
     build-depends: cuda, cufft
     cpp-options:   -DUSE_CUDA
+  x-cuda-sources:
+    kernel/gpu/gcf/misc.cu,
+    kernel/gpu/gcf/GCF.cu
+    kernel/gpu/fft/cufftshift.cu
   other-modules:
-
-
-----------------------------------------------------------------
-executable test-program
-  default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded -eventlog
-  Hs-source-dirs:      dna-programs
-  main-is:             test.hs
-  build-depends:
-    base >=4.6,
-    distributed-process,
-    dna-ms4

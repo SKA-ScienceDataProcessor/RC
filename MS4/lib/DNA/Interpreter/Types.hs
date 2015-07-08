@@ -356,6 +356,7 @@ dropActor aid = do
 freeResouces :: (MonadState StateDNA m) => ProcessId -> m ()
 freeResouces pid = do
     mr <- use $ stUsedResources . at pid
+    stUsedResources . at pid .= Nothing
     case mr of
       Nothing -> return ()
       Just (VirtualCAD Local  _ ns) -> stNodePool %= (Set.fromList ns <>)

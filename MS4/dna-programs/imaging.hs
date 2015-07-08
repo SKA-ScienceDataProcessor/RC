@@ -6,7 +6,6 @@
 -- | High level dataflow for imaging program
 module Main where
 
-import Control.Distributed.Process (Closure)
 import Control.Monad
 
 import DNA
@@ -16,6 +15,7 @@ import Data.Aeson
 import qualified Data.ByteString.Lazy as LBS
 import Data.Maybe      (fromMaybe)
 import Data.Time.Clock
+import System.IO       (IOMode(..))
 
 import Config
 import Data
@@ -62,9 +62,7 @@ imagingActor :: Config -> Actor DataSet Image
 imagingActor cfg = actor $ \dataSet -> do
 
     -- Copy data set locally
-    oskarChan <- createFileChan Local "oskar"
     (gridk, dftk, cleank, vis0, psfVis, gcfSet) <- unboundKernel "setup" [] $ liftIO $ do
-      transferFileChan (dsData dataSet) oskarChan "data.vis"
 
       -- Initialise our kernels
       gcfk <- initKernel gcfKernels (cfgGCFKernel cfg)
@@ -73,12 +71,11 @@ imagingActor cfg = actor $ \dataSet -> do
       cleank <- initKernel cleanKernels (cfgCleanKernel cfg)
 
       -- Read input data from Oskar
-      vis <- readOskar oskarChan "data.vis" (dsChannel dataSet) (dsPolar dataSet)
+      vis <- readOskar (dsData dataSet) "data.vis" (dsChannel dataSet) (dsPolar dataSet)
       psfVis <- constVis 1 vis
 
       -- Run GCF kernel to generate GCFs
-      gcfSet <- gcfKernel gcfk (cfgGridPar cfg) (cfgGCFPar cfg)
-                               (visMinW vis) (visMaxW vis)
+      gcfSet <- gcfKernel gcfk (cfgGridPar cfg) (cfgGCFPar cfg) vis
 
       -- Let grid kernel prepare for processing GCF and visibilities
       -- (transfer buffers, do binning etc.)
@@ -95,6 +92,9 @@ imagingActor cfg = actor $ \dataSet -> do
         degridAct = degridderActor gridk dftk
     psf <- eval gridAct (psfVis,gcfSet)
 
+    -- Free PSF vis
+    kernel "psf cleanup" [] $ liftIO $ freeVis psfVis
+
     -- Major cleaning loop. We always do the number of configured
     -- iterations.
     let majorLoop i vis = do
@@ -106,8 +106,11 @@ imagingActor cfg = actor $ \dataSet -> do
            cleanKernel cleank (cfgCleanPar cfg) dirtyImage psf
 
          -- Done with the loop?
-         if i >= cfgMajorLoops cfg then return residual else do
+         if i >= cfgMajorLoops cfg then do
+           unboundKernel "clean cleanup vis" [] $ liftIO $ freeVis vis
+           return residual
 
+         else do
            -- We continue - residual isn't needed any more
            kernel "free" [] $ liftIO $ freeVector (imgData residual)
            -- De-grid the model
@@ -120,10 +123,10 @@ imagingActor cfg = actor $ \dataSet -> do
     -- result of this actor
     res <- majorLoop 1 vis0
 
-    -- Free GCFs
+    -- Free GCFs & PSF
     kernel "clean cleanup" [] $ liftIO $ do
-        forM_ (gcfs gcfSet) $ \gcf ->
-            freeVector (gcfData gcf)
+      freeGCFSet gcfSet
+      freeImage psf
 
     -- More Cleanup? Eventually kernels will probably want to do
     -- something here...
@@ -138,26 +141,41 @@ imagingActor cfg = actor $ \dataSet -> do
 workerActor :: Actor (Config, DataSet) (FileChan Image)
 workerActor = actor $ \(cfg, dataSet) -> do
 
+    -- Create input file channel & transfer data
+    oskarChan <- createFileChan Local "oskar"
+    unboundKernel "transfer" [] $ liftIO $
+        transferFileChan (dsData dataSet) oskarChan "data.vis"
+
     -- Initialise image sum
     img0 <- kernel "init image" [] $ liftIO $ constImage (cfgGridPar cfg) 0
     let loop i img | i >= dsRepeats dataSet  = return img
                    | otherwise = do
            -- Generate image, sum up
-           img' <- eval (imagingActor cfg) dataSet
-           unboundKernel "addImage" [] $ liftIO $
+           let dataSet' = dataSet{ dsData = oskarChan }
+           img' <- eval (imagingActor cfg) dataSet'
+           img'' <- unboundKernel "addImage" [] $ liftIO $ do
+             putStrLn $ "addImage " ++ show i
              addImage img img'
+           loop (i+1) img''
 
     -- Run the loop
     img <- loop 0 img0
 
+    -- Delete oskar data
+    unboundKernel "clear oskar data" [] $ liftIO $
+        deleteFileChan oskarChan
+
     -- Allocate file channel for output
     outChan <- createFileChan Remote "image"
-    kernel "write image" [] $ liftIO $ writeImage img outChan "data.img"
+    kernel "write image" [] $ liftIO $ do
+        writeImage img outChan "data.img"
+        putStrLn "image written"
+        freeImage img
     return outChan
 
 -- | Actor which collects images in tree-like fashion
 imageCollector :: TreeCollector (FileChan Image)
-imageCollector = undefined
+imageCollector = error "image collector"
 
 -- | A measure for the complexity of processing a data set.
 type Weight = Rational
@@ -170,10 +188,20 @@ type Weight = Rational
 estimateActor :: Actor (Config, DataSet) (DataSet, Weight)
 estimateActor = actor $ \(cfg, dataSet) -> do
 
+    -- Create input file channel & transfer data
+    oskarChan <- createFileChan Local "oskar"
+    unboundKernel "transfer" [] $ liftIO $
+        transferFileChan (dsData dataSet) oskarChan "data.vis"
+
     -- Generate image, measuring time
+    let dataSet' = dataSet{ dsData = oskarChan }
     start <- unboundKernel "estimate start" [] $ liftIO getCurrentTime
-    void $ eval (imagingActor cfg) dataSet
+    void $ eval (imagingActor cfg) dataSet'
     end <- unboundKernel "estimate end" [] $ liftIO getCurrentTime
+
+    -- Delete oskar data
+    unboundKernel "clear oskar data" [] $ liftIO $
+        deleteFileChan oskarChan
 
     -- Return time taken
     return (dataSet, toRational $ end `diffUTCTime` start)
@@ -211,26 +239,42 @@ mainActor = actor $ \(cfg, dataSets) -> do
     forM_ weightedDataSets $ \(ds, w) ->
       logMessage $ show (fromRational w :: Float) ++ " - " ++ show (dsName ds)
 
-    -- Now start worker actors
-    waitForResoures estimateWorkers
-    workers <- startGroup (Frac 1) (NNodes 1) $ do
-        useLocal
-        return $(mkStaticClosure 'workerActor)
-
     -- Schedule work
-    let schedule = balancer avail (map (fromRational . snd) weightedDataSets)
+    let schedule = balancer (avail + 1) (map (fromRational . snd) weightedDataSets)
         splitData low high dataSet =
             let atRatio r = floor $ r * fromIntegral (dsRepeats dataSet)
             in dataSet { dsRepeats = atRatio high - atRatio low }
+        dist = distributer splitData schedule (map fst weightedDataSets)
+    logMessage ("Schedule: " ++ show schedule)
+    forM_ (zip [1..] dist) $ \(i,ds) ->
+       logMessage (show (i :: Int) ++ ": " ++ show (dsRepeats ds) ++ " x " ++ show (dsName ds))
+
+    -- Now start worker actors
+    waitForResoures estimateWorkers
+    workers <- startGroup (N avail) (NNodes 1) $ do
+        useLocal
+        return $(mkStaticClosure 'workerActor)
     distributeWork
         (map fst weightedDataSets)
-        (const $ map ((,) cfg) . distributer splitData schedule)
+        (\_ _ -> map ((,) cfg) dist)
         workers
 
+    -- Sum up results
+    grp' <- delayGroup workers
+    resultImages <- gather grp' (flip (:)) []
+    -- Allocate file channel for output
+    outChan <- createFileChan Local "finalImage"
+    kernel "final image sum" [] $ liftIO $ do
+       -- TODO...
+       withFileChan outChan "data.img" WriteMode $ \_h -> return ()
+       forM_ resultImages deleteFileChan
+    return outChan
+
+{--
     -- Spawn tree collector
     --
     -- Spawn leaves 
-    leaves <- startCollectorTreeGroup (N undefined) $ do
+    leaves <- startCollectorTreeGroup (N (error "leaves")) $ do
         return $(mkStaticClosure 'imageCollector)
     -- Top level collector
     topLevel <- startCollectorTree $ do
@@ -239,6 +283,7 @@ mainActor = actor $ \(cfg, dataSets) -> do
     connect workers leaves
     connect leaves  topLevel
     await =<< delay Local topLevel
+--}
 
 main :: IO ()
 main = dnaRun rtable $ do
@@ -265,13 +310,14 @@ main = dnaRun rtable $ do
                          , dsPolar   = polar
                          , dsRepeats = repeats
                          }
-               | freq <- freqs, polar <- [minBound..maxBound] ]
+               | freq <- freqs, polar <- polars ]
 
     -- Execute main actor
     chan <- eval mainActor (config, dataSets)
 
     -- Copy result image to working directory
-    unboundKernel "export image" [] $ liftIO $
+    unboundKernel "export image" [] $ liftIO $ do
         exportFromFileChan chan "data.img" "output.img"
+        deleteFileChan chan
   where
     rtable = __remoteTable
