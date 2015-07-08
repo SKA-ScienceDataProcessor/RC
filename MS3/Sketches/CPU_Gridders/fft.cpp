@@ -17,7 +17,7 @@ template<int N> void fft_center(complexd data[N][N]){
 template<int N> void fftshift_even(complexd data[N][N]){
   complexd tmp;
   for (int i = 0; i < N/2; i++) {
-    for (int j = 0; j < N/2; j++) {
+    for (int j = 0; j < N; j++) {
        tmp = data[i+N/2][j+N/2];
        data[i+N/2][j+N/2] = data[i][j];
        data[i][j] = tmp;
