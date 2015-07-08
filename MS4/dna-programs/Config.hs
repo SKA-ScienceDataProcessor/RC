@@ -81,6 +81,7 @@ data GridPar = GridPar
                        -- be larger than width if data is meant to be
                        -- padded.
   , gridTheta :: !Double  -- ^ Size of the field of view
+  , gridLambda :: !Double -- ^ Size of the uv-grid
   }
   deriving (Show,Typeable,Generic,Eq)
 instance Binary GridPar
@@ -88,6 +89,7 @@ instance FromJSON GridPar where
   parseJSON (Object v)
     = GridPar <$> v .: "width" <*> v .: "height"
               <*> v .: "pitch" <*> v .: "theta"
+              <*> v .: "lambda"
   parseJSON _ = mzero
 
 -- | Minimum number of rows we need to allocate for the grid in order

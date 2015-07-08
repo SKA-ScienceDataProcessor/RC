@@ -5,17 +5,15 @@ import Data
 
 import qualified Kernel.Dummy as Dummy
 import qualified Kernel.GPU.GCF as GPU_GCF
+import qualified Kernel.GPU.ScatterGrid as GPU_ScatterGrid
 
 -- | Gridding kernels deal with adding or extracting visibilities
 -- to/from an "UVGrid"
 data GridKernel = GridKernel
-  { gridkPrepareVis :: Vis -> IO Vis
-    -- ^ Prepare visibilities for gridding. This can transfer the
-    -- visibility data into another memory region and/or calculate
+  { gridkPrepare :: GridPar -> Vis -> GCFSet -> IO (Vis, GCFSet)
+    -- ^ Prepare visibilities and GCFs for gridding. This can transfer
+    -- the visibility data into another memory region and/or calculate
     -- required binning data.
-  , gridkPrepareGCF :: GCFSet -> IO GCFSet
-    -- ^ Prepare the grid convolution function for gridding. Might,
-    -- again, involve memory transfer.
   , gridkCreateGrid :: GridPar -> GCFPar -> IO UVGrid
     -- ^ Produce a new UV grid suitable for gridding
   , gridkGrid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
@@ -68,25 +66,21 @@ data CleanKernel = CleanKernel
 -- | The supported gridding kernels
 gridKernels :: [(String, IO GridKernel)]
 gridKernels =
-  [ ("dummy", return $ GridKernel Dummy.prepareVis Dummy.prepareGCF Dummy.createGrid
+  [ ("dummy", return $ GridKernel Dummy.prepare Dummy.createGrid
                                   Dummy.grid Dummy.degrid)
-  , ("gpu", do
-        -- ...
-        let prepareVis = undefined -- transfer to GPU, possibly sort
-            prepareGCF = undefined -- transfer to GPU
-            createGrid = undefined -- create GPU buffer
-            grid = undefined -- some kernel, possibly depending on "opts"
-            degrid = undefined -- nVidia's kernel?
-        return (GridKernel prepareVis prepareGCF createGrid grid degrid)
+  , ("gpu_scatter",
+      return $ GridKernel GPU_ScatterGrid.prepare
+                          GPU_ScatterGrid.createGrid
+                          GPU_ScatterGrid.grid
+                          GPU_ScatterGrid.degrid
     )
   , ("cpu", do
         -- ...
-        let prepareVis = undefined
-            prepareGCF = undefined
+        let prepare = undefined
             createGrid = undefined
             grid = undefined
             degrid = undefined
-        return (GridKernel prepareVis prepareGCF createGrid grid degrid)
+        return (GridKernel prepare createGrid grid degrid)
     )
   ]
 

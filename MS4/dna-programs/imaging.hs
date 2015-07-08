@@ -79,13 +79,12 @@ imagingActor cfg = actor $ \dataSet -> do
 
       -- Let grid kernel prepare for processing GCF and visibilities
       -- (transfer buffers, do binning etc.)
-      vis' <- gridkPrepareVis gridk vis
-      psfVis' <- gridkPrepareVis gridk psfVis
-      gcfSet' <- gridkPrepareGCF gridk gcfSet
+      (vis', gcfSet') <- gridkPrepare gridk (cfgGridPar cfg) vis gcfSet
+      (psfVis', gcfSet'') <- gridkPrepare gridk (cfgGridPar cfg) psfVis gcfSet'
 
       -- Calculate PSF using the positions from Oskar data
       return (gridk, dftk, cleank,
-              vis', psfVis', gcfSet')
+              vis', psfVis', gcfSet'')
 
     -- Calculate PSF
     let gridAct = gridderActor (cfgGridPar cfg) (cfgGCFPar cfg) gridk dftk

@@ -138,8 +138,10 @@ executable imaging-dataflow
   if flag(cuda)
     build-depends: cuda, cufft
     cpp-options:   -DUSE_CUDA
-  x-cuda-sources:
-    kernel/gpu/gcf/misc.cu,
-    kernel/gpu/gcf/GCF.cu
-    kernel/gpu/fft/cufftshift.cu
+  x-cuda-sources: kernel/gpu/gcf/misc.cu,
+                  kernel/gpu/gcf/GCF.cu
+                  kernel/gpu/fft/cufftshift.cu
+                  kernel/gpu/scatter_grid/scatter_grid.cu
+  x-cuda-options:
+    -gencode arch=compute_20,code=sm_20
   other-modules:

@@ -64,4 +64,5 @@ readOskar chan file freq polar = do
              , visPositions = pos
              , visData = vis
              , visBinData = nullVector
+             , visPregridded = nullVector
              }

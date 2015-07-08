@@ -69,6 +69,9 @@ instance FP Int where funp = IArg
 instance FP Float where funp = FArg
 instance FP Double where funp = DArg
 instance Storable a => FP a where funp = VArg
+instance FP (Vector a) where
+  funp (DeviceVector _ p) = VArg p
+  funp _other             = error "Attempted to pass non-device vector to CUDA kernel!"
 
 class ArgMapper a where
   mapArgs :: a

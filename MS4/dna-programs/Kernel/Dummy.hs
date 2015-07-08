@@ -13,11 +13,8 @@ import Foreign.Ptr
 
 -- Grid kernel definition
 
-prepareVis :: Vis -> IO Vis
-prepareVis = return
-
-prepareGCF :: GCFSet -> IO GCFSet
-prepareGCF = return
+prepare :: GridPar -> Vis -> GCFSet -> IO (Vis, GCFSet)
+prepare _ vis gcfSet = return (vis, gcfSet)
 
 createGrid :: GridPar -> GCFPar -> IO UVGrid
 createGrid gp _ = do

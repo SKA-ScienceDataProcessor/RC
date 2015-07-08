@@ -30,6 +30,7 @@ module Data
   , GCF(..)
   , GCFSet(..)
   , freeGCFSet
+  , findGCF
 
     -- * Common
   , UVW(..), Polar(..)
@@ -41,7 +42,7 @@ import Control.Monad
 import qualified Data.ByteString as BS
 import Data.Complex
 import Data.Binary   (Binary)
-import Data.List     (sortBy)
+import Data.List     (sortBy, find)
 import Data.Typeable (Typeable)
 import Foreign.Ptr
 import Foreign.Storable
@@ -142,6 +143,7 @@ data Vis = Vis
   , visBaselines :: [VisBaseline] -- ^ Possibily sorted map of visibility data to baselines
   , visPositions :: Vector UVW    -- ^ Visibility positions in the (u,v,w) plane
   , visData      :: Vector (Complex Double) -- ^ Visibility data
+  , visPregridded :: Vector ()    -- ^ Visibilitiy positions, prepared for gridding
   , visBinData   :: Vector ()  -- ^ Binning data. Kernels might use
                                -- this to traverse visibilities in an
                                -- optimised fashion.
@@ -270,3 +272,8 @@ freeGCFSet :: GCFSet -> IO ()
 freeGCFSet gcfSet = do
   forM_ (gcfs gcfSet) $ \gcf ->
     freeVector (gcfData gcf)
+
+-- | Find GCF appropriate for given @w@-value
+findGCF :: GCFSet -> Double -> Maybe GCF
+findGCF gcfSet w = find inRange $ gcfs gcfSet
+  where inRange gcf = w >= gcfMinW gcf && w < gcfMaxW gcf
