@@ -132,7 +132,7 @@ kernel gp gcfp vis = do
         over = gcfpOver gcfp
 
     -- Allocate GCFs, generate lookup table
-    table <- allocDeviceVector ((pos + neg + 1) * over * over)
+    table <- allocCVector ((pos + neg + 1) * over * over)
     gs <- forM [-neg..pos] $ \i -> do
 
         -- TODO: This is probably not the best way to select w values?
@@ -146,12 +146,13 @@ kernel gp gcfp vis = do
         -- Populate lookup table for all oversampling values
         forM_ [0..over*over-1] $ \j -> do
             let DeviceVector _ p = offsetVector v (size*size*j)
-            pokeVector table (i*over*over+j) p
+            pokeVector table ((neg+i)*over*over+j) p
 
         return $ GCF w wmin wmax size v
 
     -- Generate GCFs
-    let gcfSet = GCFSet gcfp gs (castVector table)
+    gpuTable <- toDeviceVector table
+    let gcfSet = GCFSet gcfp gs (castVector gpuTable)
     generateGCFs gp gcfSet
 
     -- Clean up?

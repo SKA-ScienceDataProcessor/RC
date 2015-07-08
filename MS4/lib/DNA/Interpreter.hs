@@ -261,9 +261,9 @@ execConnect (Shell aidSrc) (Shell aidDst) = do
               liftP $ send p dst
           -- Handler special case
           case (dst,stSrc) of
-            ((RcvReduce chs,_), Completed 0) -> liftP $ forM_ chs $ \(_,chN) -> sendChan chN 0
-            ((RcvReduce _  ,_), Completed _) -> doPanic "Unconnected actor completed execution"
-            _                                -> return ()
+            ((RcvReduce chs,_), CompletedUnconnected) -> liftP $ forM_ chs $ \(_,chN) -> sendChan chN 0
+            ((RcvReduce _  ,_), Completed) -> doPanic "Unconnected actor completed execution!"
+            _                              -> return ()
     logConnect (Just aidSrc) (Just aidDst)
 
 createFileChan :: Location -> String -> DnaMonad (FileChan a)
