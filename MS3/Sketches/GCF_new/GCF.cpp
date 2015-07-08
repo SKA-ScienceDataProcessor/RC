@@ -43,3 +43,46 @@ void mkGCFLayer(
   // Transposition and extraction here.
   // I believe we should combine transposition with extraction.
 }
+
+
+template <int over>
+void __transpose_and_extract(
+    complexd dst[]       // [over][over][support][support]
+  , const complexd src[] // [max_support][over][max_support][over]
+  , int support
+  , int max_support
+  , int src_pad
+  ) {
+  int
+      src_size = max_support * over
+    , src_pitch = src_size + src_pad
+    , start_loc = (max_support - support) * over * src_pitch / 2
+    ;
+  const complexd * srcp = src + start_loc;
+
+  // NOTE: check this thoroughly
+  for (int overu = 0; overu < over; overu++, srcp+=src_pitch) {
+    const complexd * srcp1; srcp1 = srcp;
+    for (int overv = 0; overv < over; overv++, srcp1++) {
+      const complexd * srcp2; srcp2 = srcp1;
+      for (int suppu = 0; suppu < support; suppu++, srcp2+=over*src_pitch) {
+        const complexd * srcp3; srcp3 = srcp2;
+        for (int suppv = 0; suppv < support; suppv++, srcp3+=over) {
+          *dst++ = *srcp3;
+        }
+      }
+    }
+  }
+}
+
+// Inst
+extern "C"
+void transpose_and_extract(
+    complexd dst[]
+  , const complexd src[]
+  , int support
+  , int max_support
+  , int src_pad
+  ) {
+  __transpose_and_extract<8>(dst, src, support, max_support, src_pad);
+}
