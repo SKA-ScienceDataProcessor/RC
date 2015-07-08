@@ -14,6 +14,7 @@ module Data
   , freeImage
   , constImage
   , addImage
+  , readImage
   , writeImage
 
     -- * Visibilities

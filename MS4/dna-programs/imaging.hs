@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
@@ -174,7 +175,22 @@ workerActor = actor $ \(cfg, dataSet) -> do
 
 -- | Actor which collects images in tree-like fashion
 imageCollector :: TreeCollector (FileChan Image)
-imageCollector = error "image collector"
+imageCollector = treeCollector
+  (\mimg imgCh -> do
+       img' <- error "Allocate image"
+       readImage img' imgCh "data.img"
+       case mimg of
+         Just img -> Just `fmap` addImage img img'
+         Nothing  -> return (Just img')
+  )
+  (return Nothing)
+  (\(Just img) -> do
+       ch <- error "Create file chan in IO!"
+       -- createFileChan Remote "image"
+       writeImage img ch "data.img"
+       return ch
+  )
+
 
 -- | A measure for the complexity of processing a data set.
 type Weight = Rational
@@ -258,6 +274,7 @@ mainActor = actor $ \(cfg, dataSets) -> do
         (\_ _ -> map ((,) cfg) dist)
         workers
 
+{-
     -- Sum up results
     grp' <- delayGroup workers
     resultImages <- gather grp' (flip (:)) []
@@ -268,8 +285,8 @@ mainActor = actor $ \(cfg, dataSets) -> do
        withFileChan outChan "data.img" WriteMode $ \_h -> return ()
        forM_ resultImages deleteFileChan
     return outChan
+-}
 
-{--
     -- Spawn tree collector
     --
     -- Spawn leaves 
@@ -282,7 +299,6 @@ mainActor = actor $ \(cfg, dataSets) -> do
     connect workers leaves
     connect leaves  topLevel
     await =<< delay Local topLevel
---}
 
 main :: IO ()
 main = dnaRun rtable $ do
