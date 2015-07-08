@@ -35,9 +35,10 @@ fft2dComplexDSqInplaceCentered mbstream mode size inoutp = do
     mkshift fftshift_kernel
   where
     threads_per_dim = min size 16
-    blocks_per_dim = (size + threads_per_dim - 1) `div` threads_per_dim
+    blocks_per_dim0 = (size + threads_per_dim - 1) `div` threads_per_dim
+    blocks_per_dim1 = (size - 1) `div` (threads_per_dim * 2) + 1
     mkshift sfun =
-      launchKernel sfun (blocks_per_dim, blocks_per_dim, 1) (threads_per_dim, threads_per_dim, 1)
+      launchKernel sfun (blocks_per_dim0, blocks_per_dim1, 1) (threads_per_dim, threads_per_dim, 1)
         0 mbstream $ mapArgs inoutp size
 
 fftGridPolarization :: CxDoubleDevPtr -> IO ()
