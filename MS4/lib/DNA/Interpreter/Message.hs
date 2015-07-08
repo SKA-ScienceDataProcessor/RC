@@ -121,8 +121,9 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
     mRestart <- use $ stActorClosure . at aid
     msrc     <- use $ stActorSrc     . at aid
     case st of
-      Completed _ -> panic "Completed process crashed"
-      Failed      -> panic "Failed process crashed twice"
+      Completed            -> panic "Completed process crashed"
+      CompletedUnconnected -> panic "Completed process crashed"
+      Failed               -> panic "Failed process crashed twice"
       -- If actor is still running we need to decide whether to
       -- restart or accept failure. We can restart actor iff one of
       -- the following is true in addition to having closure
@@ -157,7 +158,8 @@ handleProcessCrash msg pid = withAID pid $ \aid -> do
         , Just (Right aidSrc) <- msrc
           -> do Just stSrc <- use $ stChildren . at aidSrc
                 case stSrc of
-                  Completed{} -> handleFail aid pid runInfo
+                  Completed            -> handleFail aid pid runInfo
+                  CompletedUnconnected -> handleFail aid pid runInfo
                   Failed      -> do
                       fatalMsg $ printf "Source actor %s crashed already" (show aidSrc)
                       killActorAndCleanUp aid pid
@@ -198,16 +200,16 @@ handleFail aid pid rInfo@(RunInfo nDone nFails failedRnk)
           freeResouces pid
           Just (Rank rnk, _, _) <- use $ stPid2Aid . at pid 
           dropPID pid aid
-            ( do stChildren . at aid .= Just (Completed nDone)
-                 mch <- actorDestinationAddr aid
+            ( do mch <- actorDestinationAddr aid
                  case mch of
                    -- It's possible that all actors crashed but
                    -- actor is not connected yet. But it's not
                    -- possible to get normal termination without
                    -- connection
-                   Nothing | nDone == 0   -> return ()
+                   Nothing | nDone == 0   -> stChildren . at aid .= Just CompletedUnconnected
                            | otherwise    -> panic "Unconnected actor terminated normally (crash)"
-                   Just rcv               -> sendCompletionNotice rcv rInfo
+                   Just rcv               -> do sendCompletionNotice rcv rInfo
+                                                stChildren . at aid .= Just Completed
             )
             ( stChildren . at aid .= Just (Running $ RunInfo nDone (nFails-1) (Set.insert rnk failedRnk))
             )
@@ -263,11 +265,12 @@ handleDataSent (SentTo aid pid dstID) = do
         freeResouces pid
         Just st <- use $ stChildren . at aid
         case st of
-          Completed _ -> panic $ printf "Actor %s terminated normally twice?" (show aid)
-          Failed      -> panic $ printf "Failed actor %s terminated normally?" (show aid)
+          Completed            -> panic $ printf "Actor %s terminated normally twice?" (show aid)
+          CompletedUnconnected -> panic $ printf "Actor %s terminated normally twice?" (show aid)
+          Failed               -> panic $ printf "Failed actor %s terminated normally?" (show aid)
           Running (RunInfo nDone nFails failedRnk) ->
               dropPID pid aid
-                ( do stChildren . at aid .= Just (Completed (nDone + 1))
+                ( do stChildren . at aid .= Just Completed
                      mch <- actorDestinationAddr aid
                      case mch of
                        Nothing  -> panic "Unconnected actor terminated normally"

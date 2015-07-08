@@ -298,7 +298,10 @@ data SpawnCmd
 data ActorState
     = Failed                    -- ^ Actor failed
     | Running RunInfo           -- ^ Actor is still running
-    | Completed Int             -- ^ Actor finished execution successfully
+    | Completed                 -- ^ Actor finished execution successfully
+    | CompletedUnconnected      -- ^ Actor finished execution
+                                --   successfully while not connected
+                                --   (and doesn't produce any output)
     deriving (Show)
 
 -- | Information about running process. We store number of completed
