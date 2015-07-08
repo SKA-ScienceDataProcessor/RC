@@ -98,6 +98,24 @@ library
     cbits/channel-file.c
 
 ----------------------------------------------------------------
+-- Programs
+executable ddp-in-memory-hierachical
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             ddp-in-memory-hierarchical.hs
+  build-depends:
+    base >=4.6,
+    dna-ms4,
+    binary,
+    bytestring,
+    data-binary-ieee754,
+    vector >= 0.10
+  other-modules:
+    DDP
+    DDP_Slice
+
+----------------------------------------------------------------
 executable imaging-dataflow
 --  Buildable:           False
   default-language:    Haskell2010
