@@ -124,29 +124,29 @@ kernel gp gcfp vis = do
     when (gcfpOver gcfp /= 8) $
         fail "Oversampling must be 8 for this GCF generation kernel!"
 
-    -- Number of positive / negative GCFs to generate
+    -- Number of GCFs to generate
     let wstep = gcfpStepW gcfp
-        neg, pos :: Int
-        neg = max 1 $ ceiling (-visMinW vis / wstep)
-        pos = max 1 $ ceiling (visMaxW vis / wstep)
+        wplanes :: Int
+        wplanes = maximum [1, round (visMaxW vis / wstep), round (-visMinW vis / wstep)]
         over = gcfpOver gcfp
 
     -- Allocate GCFs, generate lookup table
-    table <- allocCVector ((pos + neg + 1) * over * over)
-    gs <- forM [-neg..pos] $ \i -> do
+    table <- allocCVector ((wplanes + 1) * over * over)
+    gs <- forM [0..wplanes] $ \i -> do
 
         -- TODO: This is probably not the best way to select w values?
         let w = wstep * fromIntegral i
             wmin = w - wstep / 2
             wmax = w + wstep / 2
-            size = gcfpMinSize gcfp + gcfpGrowth gcfp * abs i
+            size = min (gcfpMaxSize gcfp)
+                       (gcfpMinSize gcfp + gcfpGrowth gcfp * abs i)
 
         v <- allocDeviceVector (size * size * over * over)
 
         -- Populate lookup table for all oversampling values
         forM_ [0..over*over-1] $ \j -> do
             let DeviceVector _ p = offsetVector v (size*size*j)
-            pokeVector table ((neg+i)*over*over+j) p
+            pokeVector table (i*over*over+j) p
 
         return $ GCF w wmin wmax size v
 
