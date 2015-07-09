@@ -103,7 +103,7 @@ pregrid gridp vis gcfSet (gcfv, gcf_suppv) = do
         baselines = length bls
     CUDA.launchKernel scatter_grid_pregrid_kern
       (baselines,1,1) (min 1024 points,1,1) 0 Nothing $
-      mapArgs scale wstep max_supp posv' gcfv gcf_suppv uvov' points grid_size
+      mapArgs scale wstep posv' gcfv gcf_suppv uvov' max_supp points grid_size
     CUDA.sync
 
     freeVector uvov'
@@ -123,8 +123,7 @@ prepare :: GridPar -> Vis -> GCFSet -> IO (Vis, GCFSet)
 prepare gridp vis gcfSet = do
 
   -- Free old data, if any
-  freeVector (visPregridded vis)
-  freeVector (gcfTable gcfSet)
+  freeVector (castVector $ visPregridded vis :: Vector Word8)
 
   -- Prepare GCFS
   (gcfSet', gcfMap) <- prepareGCFs gcfSet
@@ -177,7 +176,7 @@ grid vis gcfSet grid = do
         grid_pitch = gridPitch $ uvgPar grid
     CUDA.launchKernel scatter_grid_kern
       (baselines,1,1) (min 1024 (max_supp*max_supp),1,1) 0 Nothing $
-      mapArgs max_supp (uvgData grid) uvov' datv' points grid_size grid_pitch
+      mapArgs (uvgData grid) uvov' datv' max_supp points grid_size grid_pitch
     CUDA.sync
 
     freeVector uvov'

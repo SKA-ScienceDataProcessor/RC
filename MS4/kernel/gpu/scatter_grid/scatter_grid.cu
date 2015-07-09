@@ -64,18 +64,18 @@ static __device__ void scatter_grid_pregrid
 
     // Scale and round uv so it gives us the top-left corner of the
     // top-left corner where a maximum-size GCF would get applied.
-    short u = short(grid_size/2 + floor(uvw[i].x * scale) - max_supp/2)
-        , v = short(grid_size/2 + floor(uvw[i].y * scale) - max_supp/2);
-    uvo[i].u = u;
-    uvo[i].v = v;
-    uvo[i].x = u % max_supp;
-    uvo[i].y = v % max_supp;
+    short u = short(floor(uvw[i].x * scale))
+        , v = short(floor(uvw[i].y * scale))
+        , over_u = short(floor(over * (uvw[i].x * scale - u)))
+        , over_v = short(floor(over * (uvw[i].y * scale - v)));
+    uvo[i].u = u + grid_size/2 - max_supp/2;
+    uvo[i].v = v + grid_size/2 - max_supp/2;
+    uvo[i].x = uvo[i].u % max_supp;
+    uvo[i].y = uvo[i].v % max_supp;
 
     // Determine GCF to use
     short w_plane = short(round(fabs(uvw[i].z / wstep)))
-        , supp = gcf_supp[w_plane]
-        , over_u = short(floor(over * (uvw[i].x - u)))
-        , over_v = short(floor(over * (uvw[i].y - v)));
+        , supp = gcf_supp[w_plane];
     uvo[i].conj = short(copysign(1.0, uvw[i].z));
     uvo[i].gcf = gcfs[w_plane] + (over_u * over + over_v)*supp*supp;
     uvo[i].gcf_supp = supp;
@@ -84,11 +84,11 @@ static __device__ void scatter_grid_pregrid
 extern "C" __global__ void scatter_grid_pregrid_kern
   ( double scale
   , double wstep
-  , int max_supp
   , const double3 *uvws[]
   , const complexd *gcfs[]
   , const int gcf_supp[]
   , Pregridded *uvo[]
+  , int max_supp
   , int visibilities
   , int baselines
   , int grid_size
@@ -177,10 +177,10 @@ __device__ void scatter_grid
 }
 
 extern "C" __global__ void scatter_grid_kern
-  ( int max_supp
-  , complexd grid[] // must be initialized to 0.
+  ( complexd grid[] // must be initialized to 0.
   , const Pregridded *uvo[]
   , const complexd *vis[]
+  , int max_supp
   , int visibilities
   , int grid_size
   , int grid_pitch

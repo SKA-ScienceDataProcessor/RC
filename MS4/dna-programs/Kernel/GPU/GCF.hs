@@ -108,7 +108,7 @@ generateGCFs gpar gcfSet = do
 
             -- Extract a GCF of the appropriate size
             let outp = outv `CUDA.advanceDevPtr` (n * hsupp * hsupp)
-            launchOnFF wextract1 1 $ CUDA.mapArgs hsupp outp layerp
+            launchOnFF wextract1 1 $ CUDA.mapArgs outp layerp hsupp
             CUDA.sync
     } }
 
