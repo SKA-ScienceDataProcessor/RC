@@ -134,7 +134,7 @@ runCollectActor (CollectActor step start fini) = do
 
 -- | Start execution of collector actor
 runTreeActor :: TreeCollector a -> Process ()
-runTreeActor (TreeCollector step start) = do
+runTreeActor (TreeCollector step start fini) = do
     -- Obtain parameters
     p <- expect
     -- Create channels for communication
@@ -147,8 +147,9 @@ runTreeActor (TreeCollector step start) = do
         )
     -- Start execution of an actor
     !a <- runDnaParam p $ do
-           a0 <- kernel "tree collector init" [] (Kern start)
-           gatherM (Group chRecvParam chRecvN) step a0
+           s0 <- kernel "tree collector init" [] (Kern start)
+           s  <- gatherM (Group chRecvParam chRecvN) step s0
+           kernel "tree collector fini" [] (Kern $ fini s)
     sendResult p a
 
 

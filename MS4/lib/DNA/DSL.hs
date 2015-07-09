@@ -331,13 +331,19 @@ collectActor = CollectActor
 -- | Collector which could collect data in tree-like fashion
 data TreeCollector a where
     TreeCollector :: (Serializable a)
-                  => (a -> a -> IO a)
-                  -> IO a   
+                  => (s -> a -> IO s)
+                  -> IO s
+                  -> (s -> IO a)   
                   -> TreeCollector a
     deriving (Typeable)
 
 -- | Smart constructor for tree collector.
-treeCollector :: Serializable a => (a -> a -> IO a) -> IO a -> TreeCollector a
+treeCollector
+    :: Serializable a
+    => (s -> a -> IO s)
+    -> IO s
+    -> (s -> IO a)
+    -> TreeCollector a
 treeCollector = TreeCollector
 
 
