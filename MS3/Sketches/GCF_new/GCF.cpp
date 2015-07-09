@@ -4,13 +4,23 @@
 using namespace std;
 
 template <int over>
-void __transpose_and_extract(
+void __transpose_and_normalize_and_extract(
     complexd dst[]       // [over][over][support][support]
   , const complexd src[] // [max_support][over][max_support][over]
   , int support
   , int max_support
   , int src_pad
   ) {
+
+  double sums[over][over];  for(int i = 0; i<over*over; i++) (&sums[0][0])[i] = 0.0;
+
+  const complexd * srcp = src;
+  for (int suppu = 0; suppu < max_support; suppu++)
+  for (int overu = 0; overu < over; overu++)
+  for (int suppv = 0; suppv < max_support; suppv++)
+  for (int overv = 0; overv < over; overv++)
+     sums[overu][overv] += (srcp++)->real();
+
   int
       src_size = max_support * over
     , src_pitch = src_size + src_pad
@@ -23,7 +33,7 @@ void __transpose_and_extract(
       for (int suppu = 0; suppu < support; suppu++, srcp2+=over*src_pitch) {
         const complexd * srcp3; srcp3 = srcp2;
         for (int suppv = 0; suppv < support; suppv++, srcp3+=over) {
-          *dst++ = *srcp3;
+          *dst++ = *srcp3 / sums[overu][overv];
         }
       }
     }
@@ -73,7 +83,7 @@ void __mkGCFLayer(
     = center[ i][ j] = complexd(c,-s);
   }
   fft_inplace_even(arena, size, pitch);
-  __transpose_and_extract<over>(
+  __transpose_and_normalize_and_extract<over>(
       dst
     , arena
     , support
