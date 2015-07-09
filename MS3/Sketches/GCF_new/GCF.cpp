@@ -56,13 +56,10 @@ void __transpose_and_extract(
   int
       src_size = max_support * over
     , src_pitch = src_size + src_pad
-    , start_loc = (max_support - support) * over * src_pitch / 2
     ;
-  const complexd * srcp = src + start_loc;
 
-  // NOTE: check this thoroughly
-  for (int overu = 0; overu < over; overu++, srcp+=src_pitch) {
-    const complexd * srcp1; srcp1 = srcp;
+  for (int overu = 0; overu < over; overu++, src+=src_pitch) {
+    const complexd * srcp1; srcp1 = src;
     for (int overv = 0; overv < over; overv++, srcp1++) {
       const complexd * srcp2; srcp2 = srcp1;
       for (int suppu = 0; suppu < support; suppu++, srcp2+=over*src_pitch) {
