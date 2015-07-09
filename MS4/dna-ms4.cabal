@@ -144,4 +144,5 @@ executable imaging-dataflow
                   kernel/gpu/scatter_grid/scatter_grid.cu
   x-cuda-options:
     -gencode arch=compute_20,code=sm_20
+    -gencode arch=compute_35,code=sm_35
   other-modules:

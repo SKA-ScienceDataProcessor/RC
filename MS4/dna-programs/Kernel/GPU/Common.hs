@@ -34,6 +34,8 @@ import Data.Int
 import Data.Complex
 import Data.Typeable
 
+import Vector
+
 type CxDouble = Complex Double
 type CxDoubleDevPtr = DevicePtr CxDouble
 type CxDoubleHostPtr = HostPtr CxDouble

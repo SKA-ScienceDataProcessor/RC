@@ -10,6 +10,7 @@ module Vector
   , castVector
   , offsetVector
   , peekVector, pokeVector
+  , makeVector
   -- * Memory Management
   , allocCVector, allocHostVector, allocDeviceVector
   , freeVector
@@ -19,7 +20,7 @@ module Vector
   , unsafeToByteString
   ) where
 
-import Control.Monad (when)
+import Control.Monad (when, forM_)
 import Data.Binary   (Binary(..))
 import Data.Typeable (Typeable)
 import Data.ByteString (ByteString)
@@ -95,6 +96,14 @@ pokeVector (CVector _ p)    off = pokeElemOff p off
 pokeVector (HostVector _ p) off = pokeElemOff (useHostPtr p) off
 pokeVector (DeviceVector _ _) _ = error "Attempted to poke device vector!"
 
+-- | Make a vector populated with values from the given list
+makeVector :: Storable a => (Int -> IO (Vector a)) -> [a] -> IO (Vector a)
+makeVector alloc vs = do
+  let len = length vs
+  vec <- alloc len
+  forM_ (zip [0..len-1] vs) $ uncurry (pokeVector vec)
+  return vec
+
 -- | Allocate a C vector using @malloc@ that is large enough for the
 -- given number of elements. The returned vector will be aligned
 -- according to "vectorAlign".
@@ -156,7 +165,8 @@ foreign import ccall unsafe cudaHostRegister :: Ptr a -> Int -> CUInt -> IO CInt
 -- consumed.
 toHostVector :: forall a. Storable a => Vector a -> IO (Vector a)
 toHostVector v@HostVector{}  = return v
-toHostVector v@(CVector _ p) = do _ <- cudaHostRegister p (vectorByteSize v) 0; return v
+toHostVector v@(CVector n p) = do _ <- cudaHostRegister p (vectorByteSize v) 0
+                                  return (HostVector n (HostPtr p))
 toHostVector v               = do v' <- dupHostVector v; freeVector v; return v'
 
 -- | Convert the given vector into a device vector. The passed vector
@@ -173,7 +183,7 @@ dupCVector v = do
   case v of
     CVector _ p      -> copyBytes p' p (vectorByteSize v)
     HostVector _ p   -> copyBytes p' (useHostPtr p) (vectorByteSize v)
-    DeviceVector _ p -> peekArray (vectorSize v) p p'
+    DeviceVector _ p -> putStrLn "??" >> peekArray (vectorSize v) p p' >> putStrLn "!!"
   return v'
 
 -- | Create a copy of the given vector as a host vector. Leaves the
