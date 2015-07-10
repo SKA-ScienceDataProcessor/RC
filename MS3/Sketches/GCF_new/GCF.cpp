@@ -69,6 +69,8 @@ void __mkGCFLayer(
 
   #pragma omp parallel for // not so much important
   // Can make this slightly more optimal ...
+  // FIXME: it works only for odd max_support values
+  //          and is wrong for even ones.
   for(int i = 0; i <= radius; i++)
   for(int j = 0; j <= radius; j++) {
     double x, y, ph;
