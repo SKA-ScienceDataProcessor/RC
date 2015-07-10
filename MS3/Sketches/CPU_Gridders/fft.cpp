@@ -16,10 +16,18 @@ template<int N> void fft_center(complexd data[N][N]){
 // And for even sizes fftshift and ifftshift coinside.
 template<int N> void fftshift_even(complexd data[N][N]){
   complexd tmp;
-  for (int i = 0; i < N/2; i++) {
-    for (int j = 0; j < N; j++) {
+  int i;
+  for (i = 0; i < N/2; i++) {
+    for (int j = 0; j < N/2; j++) {
        tmp = data[i+N/2][j+N/2];
        data[i+N/2][j+N/2] = data[i][j];
+       data[i][j] = tmp;
+    }
+  }
+  for (i = N/2; i < N; i++) {
+    for (int j = 0; j < N/2; j++) {
+       tmp = data[i-N/2][j+N/2];
+       data[i-N/2][j+N/2] = data[i][j];
        data[i][j] = tmp;
     }
   }

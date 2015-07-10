@@ -17,12 +17,20 @@ inline void fftshift_even(complexd * data, int size, int pitch){
   complexd tmp;
   int
       halfsize = size / 2
-    , maxi = halfsize * pitch
+    , midi = halfsize * pitch
     ;
-  for (int i = 0; i < maxi; i+=pitch) {
-    for (int j = 0; j < size; j++) {
-       tmp = data[i+maxi+j+halfsize];
-       data[i+maxi+j+halfsize] = data[i+j];
+  int i;
+  for (i = 0; i < midi; i+=pitch) {
+    for (int j = 0; j < halfsize; j++) {
+       tmp = data[i+midi+j+halfsize];
+       data[i+midi+j+halfsize] = data[i+j];
+       data[i+j] = tmp;
+    }
+  }
+  for (i = midi; i < size * pitch; i+=pitch) {
+    for (int j = 0; j < halfsize; j++) {
+       tmp = data[i-midi+j+halfsize];
+       data[i-midi+j+halfsize] = data[i+j];
        data[i+j] = tmp;
     }
   }
