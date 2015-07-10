@@ -122,7 +122,10 @@ void scatter_grid_point
     // Grid point changed?
     if (myGridU != grid_point_u || myGridV != grid_point_v) {
       // Atomically add to grid. This is the bottleneck of this kernel.
-      atomicAdd(&grid[grid_point_u + grid_pitch*grid_point_v], sum);
+      if (grid_point_u >= 0 && grid_point_u < grid_size &&
+          grid_point_v >= 0 && grid_point_v < grid_size) {
+        atomicAdd(&grid[grid_point_u + grid_pitch*grid_point_v], sum);
+      }
       // Switch to new point
       sum = make_cuDoubleComplex(0.0, 0.0);
       grid_point_u = myGridU;
@@ -139,7 +142,10 @@ void scatter_grid_point
   }
 
   // Add remaining sum to grid
-  atomicAdd(&grid[grid_point_u + grid_pitch*grid_point_v], sum);
+  if (grid_point_u >= 0 && grid_point_u < grid_size &&
+      grid_point_v >= 0 && grid_point_v < grid_size) {
+    atomicAdd(&grid[grid_point_u + grid_pitch*grid_point_v], sum);
+  }
 }
 
 extern __shared__ __device__ complexd shared[];
