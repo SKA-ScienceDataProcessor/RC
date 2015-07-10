@@ -73,11 +73,16 @@ static __device__ void scatter_grid_pregrid
     uvo[i].x = uvo[i].u % max_supp;
     uvo[i].y = uvo[i].v % max_supp;
 
-    // Determine GCF to use
+    // Determine GCF to use by w-plane and oversampling point. Note
+    // that we need to re-centre the GCF if it is larger than
+    // max_supp, as the gridder itself will only ever access a
+    // max_supp*max_supp window of it.
     short w_plane = short(round(fabs(uvw[i].z / wstep)))
-        , supp = gcf_supp[w_plane];
+        , supp = gcf_supp[w_plane]
+        , gcf_off = (supp - max_supp) / 2;
     uvo[i].conj = short(copysign(1.0, uvw[i].z));
-    uvo[i].gcf = gcfs[w_plane] + (over_u * over + over_v)*supp*supp;
+    uvo[i].gcf = gcfs[w_plane] + (over_u * over + over_v)*supp*supp
+                               + gcf_off*supp + gcf_off;
     uvo[i].gcf_supp = supp;
   }
 }
@@ -145,10 +150,9 @@ void scatter_grid_point
       grid_point_v = myGridV;
     }
 
-    // Load GCF pixel, taking care to re-centre if max_supp != supp.
-    short supp = uvo[i].gcf_supp
-        , supp_off = (supp - max_supp) / 2;
-    complexd px = uvo[i].gcf[(myConvU+supp_off) * supp + myConvV+supp_off];
+    // Load GCF pixel
+    short supp = uvo[i].gcf_supp;
+    complexd px = uvo[i].gcf[myConvU * supp + myConvV];
     px.y = copysign(px.y, double(uvo[i].conj));
 
     // Sum up
