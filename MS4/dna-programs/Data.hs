@@ -158,6 +158,7 @@ freeVis vis = do
     freeVector (visPositions vis)
     freeVector (visData vis)
     freeVector (visBinData vis)
+    freeVector (visPregridded vis)
 
 -- | Dump visibility information to "stdout"
 dumpVis :: Vis -> IO ()
@@ -212,7 +213,7 @@ instance Storable UVW where
      pokeElemOff (castPtr p) 2 w
 
 -- | Generate a duplicate of the visibilities, setting all of them to
--- the given value. Useful for determining the response to 
+-- the given value.
 constVis :: Complex Double -> Vis -> IO Vis
 constVis val vis = do
   pos' <- dupCVector (visPositions vis)
@@ -264,6 +265,7 @@ instance Binary GCF
 -- | Free data associated with a GCF set
 freeGCFSet :: GCFSet -> IO ()
 freeGCFSet gcfSet = do
+  freeVector $ gcfTable gcfSet
   forM_ (gcfs gcfSet) $ \gcf ->
     freeVector (gcfData gcf)
 
