@@ -18,7 +18,7 @@ import Vector
 -- TODO: Currently still reads the whole file!
 readOskarHeader :: FileChan OskarData -> String -> IO ([Polar], [Int])
 readOskarHeader chan file = do
-  taskData <- readOskarData (getFileChan chan file)
+  taskData <- readOskarDataHeader (getFileChan chan file)
   finalizeTaskData taskData
   return ([minBound..maxBound], [0..tdChannels taskData-1])
 

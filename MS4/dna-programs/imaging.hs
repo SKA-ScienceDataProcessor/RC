@@ -114,9 +114,8 @@ imagingActor cfg = actor $ \dataSet -> do
            -- We continue - residual isn't needed any more
            kernel "free" [] $ liftIO $ freeVector (imgData residual)
            -- De-grid the model
-           mvis <- eval degridAct (model,vis,gcfSet1)
+           vis' <- eval degridAct (model,vis,gcfSet1)
            -- Loop
-           vis' <- kernel "subtract" [] $ liftIO $ subtractVis vis mvis
            majorLoop (i+1) vis'
 
     -- Run above loop. The residual of the last iteration is the

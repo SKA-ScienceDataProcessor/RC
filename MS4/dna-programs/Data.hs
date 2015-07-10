@@ -23,7 +23,6 @@ module Data
   , freeVis
   , dumpVis
   , constVis
-  , subtractVis
   , sortBaselines
   , baselineMinWPlane
 
@@ -224,20 +223,6 @@ constVis val vis = do
              , visData = data'
              , visBinData = nullVector
              }
-
--- | Subtract two visibility sets from each other. They must be using
--- the same positions. Both input visibilities are consumed in the
--- process.
-subtractVis :: Vis -> Vis -> IO Vis
-subtractVis vis0 vis1 = do
-  let n = min (vectorSize (visData vis0))
-              (vectorSize (visData vis1))
-  forM_ [0..n] $ \i -> do
-    v0 <- peekVector (visData vis0) i
-    v1 <- peekVector (visData vis1) i
-    pokeVector (visData vis1) i (v0 - v1)
-  freeVis vis1
-  return vis0
 
 -- | Sort baselines according to the given sorting functions
 -- (e.g. `comparing vblMinW`)

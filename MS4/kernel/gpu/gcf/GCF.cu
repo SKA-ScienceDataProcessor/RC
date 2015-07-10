@@ -110,22 +110,19 @@ template <
   >
 __device__ __inline__
 void cut_out(
-    int half_supp
+    int supp
   , cuDoubleComplex * dst
   , const cuDoubleComplex src[max_support][max_support]
   ) {
   __SET_MAP
-  const int supp = half_supp * 2 + 1;
-
   if (x >= supp || y >= supp) return;
-
   dst[x * supp + y] = src[x][y];
 }
 
 extern "C" __global__ void wextract1(
     cuDoubleComplex * dst
   , const cuDoubleComplex src[256][256]
-  , int half_supp
+  , int supp
   ){
-  cut_out<256,8>(half_supp, dst, src);
+  cut_out<256,8>(supp, dst, src);
 }

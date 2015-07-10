@@ -26,8 +26,8 @@ data GridKernel = GridKernel
     -- with updated data.
   , gridkDegrid :: UVGrid -> GCFSet -> Vis -> IO Vis
     -- ^ Extract visibilities from the grid using the set of grid
-    -- convolution functions. The output visibilities are guaranteed
-    -- to have the same positions as the input visibilities.
+    -- convolution functions, and subtract them from the given
+    -- visibility data.
   }
 
 -- | Fourier transformation kernels. These allow us to obtain "Image"

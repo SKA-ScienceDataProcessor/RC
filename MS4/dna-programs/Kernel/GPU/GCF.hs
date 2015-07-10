@@ -90,7 +90,7 @@ generateGCFs gpar gcfSet = do
         CUDA.sync
 
         -- Now extract oversampling kernels
-        let hsupp = gcfSize gcf
+        let supp = gcfSize gcf
             DeviceVector _ outv = gcfData gcf
         forM_ [0..over*over-1] $ \n -> do
 
@@ -107,8 +107,8 @@ generateGCFs gpar gcfSet = do
             CUDA.sync
 
             -- Extract a GCF of the appropriate size
-            let outp = outv `CUDA.advanceDevPtr` (n * hsupp * hsupp)
-            launchOnFF wextract1 1 $ CUDA.mapArgs outp layerp hsupp
+            let outp = outv `CUDA.advanceDevPtr` (n * supp * supp)
+            launchOnFF wextract1 1 $ CUDA.mapArgs outp layerp supp
             CUDA.sync
     } }
 

@@ -17,6 +17,7 @@ module OskarReader
   , tdUVWPtr
   , finalizeTaskData
   , readOskarData
+  , readOskarDataHeader
   , writeTaskData
   , readTaskData
   , readTaskDataHeader
@@ -84,7 +85,13 @@ finalizeTaskData td = do
   free $ tdUVWs td
 
 readOskarData :: FilePath -> IO TaskData
-readOskarData fname = withCString fname doRead
+readOskarData = readOskarDataGen False
+
+readOskarDataHeader :: FilePath -> IO TaskData
+readOskarDataHeader = readOskarDataGen True
+
+readOskarDataGen :: Bool -> FilePath -> IO TaskData
+readOskarDataGen headerOnly fname = withCString fname doRead
   where
     fi = fromIntegral
     throwErr = throwIf_ (/= 0) (\n -> printf "While trying to read binary file %s : %d" fname $ fi n)
@@ -98,15 +105,21 @@ readOskarData fname = withCString fname doRead
       let
         n = fi npts
         nb = fi nbls
-      mmptr <- mallocArray nb
-      visptr <- alignedMallocArray (n * 4) 32
-      uvwptr <- mallocArray (n * 3)
-      alloca $ \mptr -> do
-        throwErr $ readAndReshuffle vptr visptr uvwptr mptr mmptr
-        freeBinHandler vptr
-        metrics <- peek mptr
-        return $ TaskData nb (fi ntms) (fi nchs) n metrics mmptr visptr uvwptr
-
+        dummyMx = Metrix 0 0 0 0 0 0
+        header = TaskData nb (fi ntms) (fi nchs) n dummyMx nullPtr nullPtr nullPtr
+      if headerOnly then freeBinHandler vptr >> return header else do
+        mmptr <- mallocArray nb
+        visptr <- alignedMallocArray (n * 4) 32
+        uvwptr <- mallocArray (n * 3)
+        alloca $ \mptr -> do
+          throwErr $ readAndReshuffle vptr visptr uvwptr mptr mmptr
+          freeBinHandler vptr
+          metrics <- peek mptr
+          return $ header{ tdMetrix = metrics
+                         , tdBlMaxMin = mmptr
+                         , tdVisibilies = visptr
+                         , tdUVWs = uvwptr
+                         }
 
 -- Our Binary instance is unrelated to deep serializing.
 -- Here is deep from/to disk marchalling.
