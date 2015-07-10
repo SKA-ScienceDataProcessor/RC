@@ -190,5 +190,4 @@ grid vis gcfSet grid = do
   return grid
 
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
-degrid = undefined
-
+degrid _ _ = return -- TODO
