@@ -38,16 +38,21 @@ inline void fftshift_even(complexd * data, int size, int pitch){
 
 #define dp reinterpret_cast<fftw_complex*>(data)
 void __fft_inplace(complexd * data, int size, int pitch){
-  int n[] = {size, pitch};
   fft_center(data, size, pitch);
-  fftw_plan p = fftw_plan_many_dft(
-      2, n, 1
-    , dp, NULL, pitch, 0
-    , dp, NULL, pitch, 0
+
+  fftw_iodim trans_dims[2] = {
+      {size, pitch, pitch}
+    , {size, 1, 1}
+    };
+  fftw_plan p = fftw_plan_guru_dft(
+      2, trans_dims
+    , 0, NULL
+    , dp, dp
     , FFTW_FORWARD, FFTW_ESTIMATE
     );
   fftw_execute(p);
   fftw_destroy_plan(p);
+
   fftshift_even(data, size, pitch);
 }
 
