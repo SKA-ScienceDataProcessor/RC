@@ -1,6 +1,7 @@
 #include <fftw3.h>
 #include "common.h"
 
+template <bool oddSize>
 inline void fft_center(complexd * data, int size, int pitch){
   bool flip = false;
   for (int i = 0; i < size * pitch; i+=pitch) {
@@ -8,6 +9,7 @@ inline void fft_center(complexd * data, int size, int pitch){
       if (flip) data[i+j] = complexd(-data[i+j].real(), -data[i+j].imag());
       flip = !flip;
     }
+    if (oddSize) flip = !flip;
   }
 }
 
@@ -38,7 +40,9 @@ inline void fftshift_even(complexd * data, int size, int pitch){
 
 #define dp reinterpret_cast<fftw_complex*>(data)
 void __fft_inplace(complexd * data, int size, int pitch){
-  fft_center(data, size, pitch);
+  // This does not quite work. Don't understand why yet.
+  // fft_center<false>(data, size, pitch);
+  fftshift_even(data, size, pitch);
 
   fftw_iodim trans_dims[2] = {
       {size, pitch, pitch}
