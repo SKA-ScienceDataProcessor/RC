@@ -70,10 +70,10 @@ void __mkGCFLayer(
   #pragma omp parallel for // not so much important
   // Can make this slightly more optimal ...
   for(int i = 0; i <= radius; i++)
-  for(int j = 0; i <= radius; i++) {
+  for(int j = 0; j <= radius; j++) {
     double x, y, ph;
-    x = double(i) / normer;
-    y = double(j) / normer;
+    x = double(i) * normer;
+    y = double(j) * normer;
     ph = w * (1 - sqrt(1 - x*x - y*y));
     double s, c;
     sincos(2.0 * M_PI * ph, &s, &c);
