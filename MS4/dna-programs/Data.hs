@@ -25,6 +25,7 @@ module Data
   , constVis
   , subtractVis
   , sortBaselines
+  , baselineMinWPlane
 
     -- * GCF
   , GCFPar(..)
@@ -242,6 +243,13 @@ subtractVis vis0 vis1 = do
 -- (e.g. `comparing vblMinW`)
 sortBaselines :: (VisBaseline -> VisBaseline -> Ordering) -> Vis -> Vis
 sortBaselines f v = v { visBaselines = sortBy f (visBaselines v) }
+
+-- | Get minimum W-plane covered by a baseline
+baselineMinWPlane :: Double -> VisBaseline -> Int
+baselineMinWPlane wstep bl
+  | vblMinW bl > 0 = round (vblMinW bl / wstep)
+  | vblMaxW bl < 0 = round (-vblMaxW bl / wstep)
+  | otherwise      = 0
 
 -- | A set of GCFs.
 data GCFSet = GCFSet

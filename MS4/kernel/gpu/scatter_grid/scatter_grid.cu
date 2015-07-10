@@ -10,6 +10,16 @@ typedef cuDoubleComplex complexd;
 // Hard-coded configuration
 const short over = 8;
 
+// Pre-gridded visibility positions
+struct Pregridded
+{
+    short u, v;
+    short x, y;
+    short conj;
+    short gcf_supp;
+    const complexd *gcf;
+};
+
 static __inline__ __device__ complexd rotw(complexd v, double w)
 {
   double s, c;
@@ -18,69 +28,73 @@ static __inline__ __device__ complexd rotw(complexd v, double w)
 }
 
 // Visibility phase rotation
-extern "C" __device__ void scatter_grid_phaseRotate
-  ( const complexd vis[]
+static __device__ void scatter_grid_phaseRotate
+  ( complexd vis[]
   , const double3 uvw[]
-  , complexd vis_out[]
   , int visibilities
   )
 {
   for (int i = threadIdx.x; i < visibilities; i += blockDim.x) {
     // Add rotation
-    vis_out[i] = rotw(vis[i], uvw[i].z);
+    vis[i] = rotw(vis[i], uvw[i].z);
   }
 }
-
-// GCF information
-struct GCF
+extern "C" __global__ void scatter_grid_phaseRotate_kern
+  ( complexd vis[]
+  , const double3 uvw[]
+  , int visibilities
+  )
 {
-    const complexd *gcf;
-    short supp;
-};
-
-// Pre-gridded visibility positions
-struct Pregridded
-{
-    short u, v;
-    short x, y;
-    short conj;
-    const complexd *gcf;
-    short gcf_supp;
-};
-
+  scatter_grid_phaseRotate(vis, uvw, visibilities);
+}
 // Prepare positions for main gridding
-extern "C" __device__ void scatter_grid_preparePos
+static __device__ void scatter_grid_pregrid
   ( double scale
   , double wstep
   , int max_supp
   , const double3 uvw[]
-  , const GCF gcfs[]
+  , const complexd *gcfs[]
+  , const int gcf_supp[]
   , Pregridded uvo[]
   , int visibilities
   , int grid_size
   )
 {
-
   for (int i = threadIdx.x; i < visibilities; i += blockDim.x) {
 
     // Scale and round uv so it gives us the top-left corner of the
     // top-left corner where a maximum-size GCF would get applied.
-    short u = short(grid_size/2 + floor(uvw[i].x * scale) - max_supp/2)
-        , v = short(grid_size/2 + floor(uvw[i].y * scale) - max_supp/2);
-    uvo[i].u = u;
-    uvo[i].v = v;
-    uvo[i].x = u % max_supp;
-    uvo[i].y = v % max_supp;
+    short u = short(floor(uvw[i].x * scale))
+        , v = short(floor(uvw[i].y * scale))
+        , over_u = short(floor(over * (uvw[i].x * scale - u)))
+        , over_v = short(floor(over * (uvw[i].y * scale - v)));
+    uvo[i].u = u + grid_size/2 - max_supp/2;
+    uvo[i].v = v + grid_size/2 - max_supp/2;
+    uvo[i].x = uvo[i].u % max_supp;
+    uvo[i].y = uvo[i].v % max_supp;
 
     // Determine GCF to use
     short w_plane = short(round(fabs(uvw[i].z / wstep)))
-        , supp = gcfs[w_plane].supp
-        , over_u = short(floor(over * (uvw[i].x - u)))
-        , over_v = short(floor(over * (uvw[i].y - v)));
+        , supp = gcf_supp[w_plane];
     uvo[i].conj = short(copysign(1.0, uvw[i].z));
-    uvo[i].gcf = gcfs[w_plane].gcf + (over_u * over + over_v)*supp*supp;
+    uvo[i].gcf = gcfs[w_plane] + (over_u * over + over_v)*supp*supp;
     uvo[i].gcf_supp = supp;
   }
+}
+extern "C" __global__ void scatter_grid_pregrid_kern
+  ( double scale
+  , double wstep
+  , const double3 *uvws[]
+  , const complexd *gcfs[]
+  , const int gcf_supp[]
+  , Pregridded *uvo[]
+  , int max_supp
+  , int visibilities
+  , int baselines
+  , int grid_size
+  )
+{
+  scatter_grid_pregrid(scale, wstep, max_supp, uvws[blockIdx.x], gcfs, gcf_supp, uvo[blockIdx.x], visibilities, grid_size);
 }
 
 static __inline__ __device__
@@ -134,7 +148,7 @@ void scatter_grid_point
     // Load GCF pixel, taking care to re-centre if max_supp != supp.
     short supp = uvo[i].gcf_supp
         , supp_off = (supp - max_supp) / 2;
-    complexd px = uvo[i].gcf[(myConvU+supp_off) *  + myConvV+supp_off];
+    complexd px = uvo[i].gcf[(myConvU+supp_off) * supp + myConvV+supp_off];
     px.y = copysign(px.y, double(uvo[i].conj));
 
     // Sum up
@@ -145,7 +159,9 @@ void scatter_grid_point
   atomicAdd(&grid[grid_point_u + grid_pitch*grid_point_v], sum);
 }
 
-extern "C" __device__ void scatter_grid
+extern __shared__ __device__ complexd shared[];
+
+__device__ void scatter_grid
   ( int max_supp
   , complexd grid[] // must be initialized to 0.
   , const Pregridded uvo[]
@@ -155,9 +171,33 @@ extern "C" __device__ void scatter_grid
   , int grid_pitch
   )
 {
+  // Copy arrays to shared memory
+  complexd *vis_shared = (complexd*)shared;
+  Pregridded *uvo_shared = (Pregridded *)&shared[visibilities];
+  for (int i = threadIdx.x; i < visibilities; i += blockDim.x) {
+    vis_shared[i] = vis[i];
+    uvo_shared[i] = uvo[i];
+  }
+  __syncthreads();
+
+  // Start gridding points
   for (int i = threadIdx.x; i < max_supp * max_supp; i += blockDim.x) {
     int myU = i % max_supp
       , myV = i / max_supp;
-    scatter_grid_point(max_supp, grid, uvo, vis, myU, myV, visibilities, grid_size, grid_pitch);
+    scatter_grid_point(max_supp, grid, uvo_shared, vis_shared, myU, myV, visibilities, grid_size, grid_pitch);
   }
+}
+
+extern "C" __global__ void scatter_grid_kern
+  ( complexd grid[] // must be initialized to 0.
+  , const Pregridded *uvo[]
+  , const complexd *vis[]
+  , int max_supp
+  , int visibilities
+  , int grid_size
+  , int grid_pitch
+  )
+{
+  // Run GPU code
+  scatter_grid(max_supp, grid, uvo[blockIdx.x], vis[blockIdx.x], visibilities, grid_size, grid_pitch);
 }

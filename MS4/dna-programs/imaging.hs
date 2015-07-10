@@ -62,44 +62,44 @@ degridderActor gridk dftk = actor $ \(model,vis,gcfSet) -> do
 imagingActor :: Config -> Actor DataSet Image
 imagingActor cfg = actor $ \dataSet -> do
 
-    -- Copy data set locally
-    (gridk, dftk, cleank, vis0, psfVis, gcfSet) <- unboundKernel "setup" [] $ liftIO $ do
-
-      -- Initialise our kernels
+    -- Initialise our kernels
+    (gridk, gcfk, dftk, cleank) <- kernel "kernel init" [] $ liftIO $ do
       gcfk <- initKernel gcfKernels (cfgGCFKernel cfg)
       gridk <- initKernel gridKernels (cfgGridKernel cfg)
       dftk <- initKernel dftKernels (cfgDFTKernel cfg)
       cleank <- initKernel cleanKernels (cfgCleanKernel cfg)
+      return (gridk, gcfk, dftk, cleank)
 
-      -- Read input data from Oskar
-      vis <- readOskar (dsData dataSet) "data.vis" (dsChannel dataSet) (dsPolar dataSet)
-      psfVis <- constVis 1 vis
+    -- Read input data from Oskar
+    (vis0, psfVis0) <-  kernel "read visibilities" [] $ liftIO $ do
+      vis0 <- readOskar (dsData dataSet) "data.vis" (dsChannel dataSet) (dsPolar dataSet)
+      psfVis0 <- constVis 1 vis0
+      return (vis0, psfVis0)
 
-      -- Run GCF kernel to generate GCFs
-      gcfSet <- gcfKernel gcfk (cfgGridPar cfg) (cfgGCFPar cfg) vis
+    -- Run GCF kernel to generate GCFs
+    gcfSet0 <- kernel "GCF" [] $ liftIO $
+      gcfKernel gcfk (cfgGridPar cfg) (cfgGCFPar cfg) vis0
 
-      -- Let grid kernel prepare for processing GCF and visibilities
-      -- (transfer buffers, do binning etc.)
-      (vis', gcfSet') <- gridkPrepare gridk (cfgGridPar cfg) vis gcfSet
-      (psfVis', gcfSet'') <- gridkPrepare gridk (cfgGridPar cfg) psfVis gcfSet'
-
-      -- Calculate PSF using the positions from Oskar data
-      return (gridk, dftk, cleank,
-              vis', psfVis', gcfSet'')
+    -- Let grid kernel prepare for processing GCF and visibilities
+    -- (transfer buffers, do binning etc.)
+    (vis1, psfVis1, gcfSet1) <- kernel "prepare" [] $ liftIO $ do
+      (vis', gcfSet') <- gridkPrepare gridk (cfgGridPar cfg) vis0 gcfSet0
+      (psfVis', gcfSet'') <- gridkPrepare gridk (cfgGridPar cfg) psfVis0 gcfSet'
+      return (vis', psfVis', gcfSet'')
 
     -- Calculate PSF
     let gridAct = gridderActor (cfgGridPar cfg) (cfgGCFPar cfg) gridk dftk
         degridAct = degridderActor gridk dftk
-    psf <- eval gridAct (psfVis,gcfSet)
+    psf <- eval gridAct (psfVis1,gcfSet1)
 
     -- Free PSF vis
-    kernel "psf cleanup" [] $ liftIO $ freeVis psfVis
+    kernel "psf cleanup" [] $ liftIO $ freeVis psfVis1
 
     -- Major cleaning loop. We always do the number of configured
     -- iterations.
     let majorLoop i vis = do
          -- Generate the dirty image from the visibilities
-         dirtyImage <- eval gridAct (vis,gcfSet)
+         dirtyImage <- eval gridAct (vis,gcfSet1)
 
          -- Clean the image
          (residual, model) <- kernel "clean" [] $ liftIO $
@@ -107,25 +107,25 @@ imagingActor cfg = actor $ \dataSet -> do
 
          -- Done with the loop?
          if i >= cfgMajorLoops cfg then do
-           unboundKernel "clean cleanup vis" [] $ liftIO $ freeVis vis
+           kernel "clean cleanup vis" [] $ liftIO $ freeVis vis
            return residual
 
          else do
            -- We continue - residual isn't needed any more
            kernel "free" [] $ liftIO $ freeVector (imgData residual)
            -- De-grid the model
-           mvis <- eval degridAct (model,vis,gcfSet)
+           mvis <- eval degridAct (model,vis,gcfSet1)
            -- Loop
            vis' <- kernel "subtract" [] $ liftIO $ subtractVis vis mvis
            majorLoop (i+1) vis'
 
     -- Run above loop. The residual of the last iteration is the
     -- result of this actor
-    res <- majorLoop 1 vis0
+    res <- majorLoop 1 vis1
 
     -- Free GCFs & PSF
     kernel "clean cleanup" [] $ liftIO $ do
-      freeGCFSet gcfSet
+      freeGCFSet gcfSet1
       freeImage psf
 
     -- More Cleanup? Eventually kernels will probably want to do

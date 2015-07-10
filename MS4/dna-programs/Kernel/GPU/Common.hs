@@ -4,7 +4,6 @@
   , MultiParamTypeClasses
   , FlexibleInstances
   , FlexibleContexts
-  , OverlappingInstances
   , UndecidableInstances
   , StandaloneDeriving
   , DeriveDataTypeable
@@ -33,6 +32,8 @@ import Foreign.Storable
 import Data.Int
 import Data.Complex
 import Data.Typeable
+
+import Vector
 
 type CxDouble = Complex Double
 type CxDoubleDevPtr = DevicePtr CxDouble
@@ -65,10 +66,11 @@ launchKernel !fn (!gx,!gy,!gz) (!bx,!by,!bz) !sm !mst !args = do
 class FP a where
   funp :: a -> FunParam
 
-instance FP Int where funp = IArg
+instance FP Int where funp i = VArg (fromIntegral i :: Int32)
 instance FP Float where funp = FArg
 instance FP Double where funp = DArg
-instance Storable a => FP a where funp = VArg
+instance FP CxDouble where funp = VArg
+instance FP (DevicePtr a) where funp = VArg
 instance FP (Vector a) where
   funp (DeviceVector _ p) = VArg p
   funp _other             = error "Attempted to pass non-device vector to CUDA kernel!"
