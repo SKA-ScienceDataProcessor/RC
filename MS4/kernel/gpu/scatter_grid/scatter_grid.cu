@@ -159,6 +159,8 @@ void scatter_grid_point
   atomicAdd(&grid[grid_point_u + grid_pitch*grid_point_v], sum);
 }
 
+extern __shared__ __device__ complexd shared[];
+
 __device__ void scatter_grid
   ( int max_supp
   , complexd grid[] // must be initialized to 0.
@@ -169,10 +171,20 @@ __device__ void scatter_grid
   , int grid_pitch
   )
 {
+  // Copy arrays to shared memory
+  complexd *vis_shared = (complexd*)shared;
+  Pregridded *uvo_shared = (Pregridded *)&shared[visibilities];
+  for (int i = threadIdx.x; i < visibilities; i += blockDim.x) {
+    vis_shared[i] = vis[i];
+    uvo_shared[i] = uvo[i];
+  }
+  __syncthreads();
+
+  // Start gridding points
   for (int i = threadIdx.x; i < max_supp * max_supp; i += blockDim.x) {
     int myU = i % max_supp
       , myV = i / max_supp;
-    scatter_grid_point(max_supp, grid, uvo, vis, myU, myV, visibilities, grid_size, grid_pitch);
+    scatter_grid_point(max_supp, grid, uvo_shared, vis_shared, myU, myV, visibilities, grid_size, grid_pitch);
   }
 }
 
@@ -186,5 +198,6 @@ extern "C" __global__ void scatter_grid_kern
   , int grid_pitch
   )
 {
+  // Run GPU code
   scatter_grid(max_supp, grid, uvo[blockIdx.x], vis[blockIdx.x], visibilities, grid_size, grid_pitch);
 }

@@ -183,7 +183,7 @@ dupCVector v = do
   case v of
     CVector _ p      -> copyBytes p' p (vectorByteSize v)
     HostVector _ p   -> copyBytes p' (useHostPtr p) (vectorByteSize v)
-    DeviceVector _ p -> putStrLn "??" >> peekArray (vectorSize v) p p' >> putStrLn "!!"
+    DeviceVector _ p -> peekArray (vectorSize v) p p'
   return v'
 
 -- | Create a copy of the given vector as a host vector. Leaves the

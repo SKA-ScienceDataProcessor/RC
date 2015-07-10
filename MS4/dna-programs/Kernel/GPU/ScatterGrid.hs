@@ -10,6 +10,7 @@ import Control.Monad
 import Data.Function ( on )
 import Data.List
 import Data.Word
+import Foreign.Storable ( sizeOf )
 
 import Data
 import Kernel.GPU.Common as CUDA
@@ -170,12 +171,16 @@ grid vis gcfSet grid = do
                , let DeviceVector _ datp = visData vis `offsetVector` vblOffset bl ]
 
     -- Actually launch kernel. Blocks are baselines, and threads will
-    -- sum up visibilities per convultion kernel po
+    -- sum up visibilities per convolution kernel point. Every block
+    -- will copy its visibilities & pregridded positions into shared
+    -- memory, so we need to instruct CUDA to allocate enough memory
+    -- for it.
     let baselines = length bls
         grid_size = gridWidth $ uvgPar grid
         grid_pitch = gridPitch $ uvgPar grid
+        shared_mem = fromIntegral $ points * (sizeOf (undefined :: CxDouble) + pregriddedSize)
     CUDA.launchKernel scatter_grid_kern
-      (baselines,1,1) (min 1024 (max_supp*max_supp),1,1) 0 Nothing $
+      (baselines,1,1) (min 1024 (max_supp*max_supp),1,1) shared_mem Nothing $
       mapArgs (uvgData grid) uvov' datv' max_supp points grid_size grid_pitch
     CUDA.sync
 
