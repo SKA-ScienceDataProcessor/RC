@@ -27,7 +27,7 @@ import Foreign.CUDA.Runtime hiding (launchKernel)
 import Foreign.CUDA.Runtime.Stream
 import Foreign.C
 import Foreign.Ptr
-import Foreign.Storable
+import Foreign.Storable.Complex ()
 
 import Data.Int
 import Data.Complex
