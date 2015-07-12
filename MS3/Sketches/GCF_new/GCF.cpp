@@ -62,27 +62,27 @@ void __mkGCFLayer(
     , pitch = size + src_pad
     ;
 
-  acc2d<complexd> center = acc2d<complexd>(arena + size * pitch / 2, pitch);
-
   int radius = max_support / 2;
   double normer = t2 / double (radius);
 
+  complexd *currp = arena + (pitch+1) * (size/2-radius);
+  int
+      radiuspos = radius + max_support % 2
+    , istep = pitch - max_support
+    ;
+
   #pragma omp parallel for // not so much important
-  // Can make this slightly more optimal ...
-  // FIXME: it works only for odd max_support values
-  //          and is wrong for even ones.
-  for(int i = 0; i <= radius; i++)
-  for(int j = 0; j <= radius; j++) {
-    double x, y, ph;
-    x = double(i) * normer;
-    y = double(j) * normer;
-    ph = w * (1 - sqrt(1 - x*x - y*y));
-    double s, c;
-    sincos(2.0 * M_PI * ph, &s, &c);
-      center[-i][-j]
-    = center[-i][ j]
-    = center[ i][-j]
-    = center[ i][ j] = complexd(c,-s);
+  for(int i = -radius; i < radiuspos; i++) {
+    for(int j = -radius; j < radiuspos; j++) {
+      double x, y, ph;
+      x = double(i) * normer;
+      y = double(j) * normer;
+      ph = w * (1 - sqrt(1 - x*x - y*y));
+      double s, c;
+      sincos(2.0 * M_PI * ph, &s, &c);
+      *currp++ = complexd(c,-s);
+    }
+    currp += istep;
   }
   fft_inplace_even(arena, size, pitch);
   __transpose_and_normalize_and_extract<over>(
