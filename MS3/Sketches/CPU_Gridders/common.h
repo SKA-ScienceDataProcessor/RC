@@ -14,6 +14,9 @@
   #define __NATIVE0 __device__ __inline__
   #define __NATIVE __device__ __inline__ static
 #else
+  #ifdef _MSC_VER
+  #define sincos(v,sp,cp) *(sp)=sin(v);*(cp)=cos(v)
+  #endif
   #define cuCmul(a,b) ((a)*(b))
   #define _USE_MATH_DEFINES
   #include <math.h>
