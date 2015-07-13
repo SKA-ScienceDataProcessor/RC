@@ -127,15 +127,7 @@ reduceBlocksGen(const styp *g_idata, typ *g_odata, unsigned int n)
     if (tid == 0) g_odata[blockIdx.x] = sdata[0];
 }
 
-// Global variable used by reduceSinglePass to count how many blocks have finished
-__device__ unsigned int retirementCount = 0;
-
-extern "C"
-__host__ cudaError_t resetRetirementCount()
-{
-  unsigned int retCnt = 0;
-  return cudaMemcpyToSymbol(__SYM(retirementCount), &retCnt, sizeof(unsigned int), 0, cudaMemcpyHostToDevice);
-}
+extern __device__ unsigned int retirementCount = 0;
 
 // This reduction kernel reduces an arbitrary size array in a single kernel invocation
 // It does so by keeping track of how many blocks have finished.  After each thread

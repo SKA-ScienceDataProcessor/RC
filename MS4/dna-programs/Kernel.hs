@@ -9,6 +9,7 @@ import qualified Kernel.Dummy as Dummy
 import qualified Kernel.GPU.GCF as GPU_GCF
 import qualified Kernel.GPU.ScatterGrid as GPU_ScatterGrid
 import qualified Kernel.GPU.FFT as GPU_FFT
+import qualified Kernel.GPU.Hogbom as GPU_Hogbom
 
 -- Dummy imports only to make them compile
 import Kernel.CPU.FFT ()
@@ -68,11 +69,15 @@ data GCFKernel = GCFKernel
 -- | Cleaning kernel. This kernel is meant to run some variant of Hogbom's
 -- CLEAN algorithm.
 data CleanKernel = CleanKernel
-  { -- | Runs Hogbom's algorithm. The returned values are the residual
+  { -- | Prepare cleaning algorithm for using the specified point
+    -- spread function. This allows for transfering the image data and
+    -- caching peak information.
+    cleanPrepare :: CleanPar -> Image -> IO Image
+    -- | Runs Hogbom's algorithm. The returned values are the residual
     -- and the model image. The parameters are the cleaning
     -- parameters, the image to clean as well as a suitable point
     -- spread function (PSF).
-    cleanKernel :: CleanPar -> Image -> Image -> IO (Image, Image)
+  , cleanKernel :: CleanPar -> Image -> Image -> IO (Image, Image)
   }
 
 -- | The supported gridding kernels
@@ -117,7 +122,9 @@ gcfKernels =
 -- The supported discrete fourier transformation kernels
 cleanKernels :: [(String, IO CleanKernel)]
 cleanKernels =
-  [ ("dummy", return $ CleanKernel Dummy.clean) ]
+  [ ("dummy", return $ CleanKernel Dummy.cleanPrepare Dummy.clean)
+  , ("gpu_hogbom", return $ CleanKernel GPU_Hogbom.cleanPrepare
+                                        GPU_Hogbom.cleanKernel) ]
 
 initKernel :: [(String, IO a)] -> String -> IO a
 initKernel kernels name = case lookup name kernels of
