@@ -49,7 +49,7 @@ import Foreign.Ptr
 import Foreign.Storable
 import Foreign.Storable.Complex ( )
 import GHC.Generics  (Generic)
-import System.IO     (IOMode(..))
+import System.IO     (IOMode(..),hGetBuf)
 import Text.Printf
 
 import DNA.Channel.File
@@ -119,10 +119,15 @@ addImage img1 img2 = do
    return img1{imgData=img1'}
 
 -- | Read image from a file channel
-readImage :: Image -> FileChan Image -> String -> IO ()
-readImage img chan file =
-  withFileChan chan file WriteMode $ \h ->
-    BS.hPut h =<< unsafeToByteString (imgData img)
+readImage :: GridPar -> FileChan Image -> String -> IO Image
+readImage gridp chan file = do
+  let size = gridFullSize gridp
+  dat@(CVector _ ptr) <- allocCVector size
+  n <- withFileChan chan file ReadMode $ \h ->
+    hGetBuf h ptr size
+  when (n /= size) $
+    freeVector dat >> fail "readImage: File not large enough!"
+  return (Image gridp 0 dat)
 
 -- | Write image to a file channel
 writeImage :: Image -> FileChan Image -> String -> IO ()

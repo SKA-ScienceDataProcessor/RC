@@ -14,7 +14,7 @@ import DNA.Channel.File
 
 import Data.Aeson
 import qualified Data.ByteString.Lazy as LBS
-import Data.Maybe      (fromMaybe)
+import Data.Maybe      (fromJust,isNothing)
 import Data.Time.Clock
 import System.IO       (IOMode(..))
 
@@ -137,7 +137,7 @@ imagingActor cfg = actor $ \dataSet -> do
 ----------------------------------------------------------------
 
 -- | Actor which generate N clean images for given frequency channel
-workerActor :: Actor (Config, DataSet) (FileChan Image)
+workerActor :: Actor (Config, DataSet) (GridPar, FileChan Image)
 workerActor = actor $ \(cfg, dataSet) -> do
 
     -- Create input file channel & transfer data
@@ -170,26 +170,23 @@ workerActor = actor $ \(cfg, dataSet) -> do
         writeImage img outChan "data.img"
         putStrLn "image written"
         freeImage img
-    return outChan
+    return (cfgGridPar cfg, outChan)
 
 -- | Actor which collects images in tree-like fashion
-imageCollector :: TreeCollector (FileChan Image)
-imageCollector = treeCollector
-  (\mimg imgCh -> do
-       img' <- error "Allocate image"
-       readImage img' imgCh "data.img"
-       case mimg of
-         Just img -> Just `fmap` addImage img img'
-         Nothing  -> return (Just img')
-  )
-  (return Nothing)
-  (\(Just img) -> do
-       ch <- error "Create file chan in IO!"
-       -- createFileChan Remote "image"
-       writeImage img ch "data.img"
-       return ch
-  )
-
+imageCollector :: TreeCollector (GridPar, FileChan Image)
+imageCollector = treeCollector collect init finish
+  where init = return Nothing
+        collect mimg (gridp, imgCh) = do
+          img' <- readImage gridp imgCh "data.img"
+          img'' <- case mimg of
+            Nothing -> return img'
+            Just (img, chan) -> do
+              deleteFileChan chan
+              addImage img img'
+          return $ Just (img'', imgCh)
+        finish (Just (img, ch)) = do
+          writeImage img ch "data.img"
+          return (imgPar img, ch)
 
 -- | A measure for the complexity of processing a data set.
 type Weight = Rational
@@ -273,23 +270,11 @@ mainActor = actor $ \(cfg, dataSets) -> do
         (\_ _ -> map ((,) cfg) dist)
         workers
 
-{-
-    -- Sum up results
-    grp' <- delayGroup workers
-    resultImages <- gather grp' (flip (:)) []
-    -- Allocate file channel for output
-    outChan <- createFileChan Local "finalImage"
-    kernel "final image sum" [] $ liftIO $ do
-       -- TODO...
-       withFileChan outChan "data.img" WriteMode $ \_h -> return ()
-       forM_ resultImages deleteFileChan
-    return outChan
--}
-
     -- Spawn tree collector
     --
     -- Spawn leaves 
-    leaves <- startCollectorTreeGroup (N (error "leaves")) $ do
+    leaves <- startCollectorTreeGroup (N 1) $ do
+        useLocal
         return $(mkStaticClosure 'imageCollector)
     -- Top level collector
     topLevel <- startCollectorTree $ do
@@ -297,7 +282,7 @@ mainActor = actor $ \(cfg, dataSets) -> do
         return $(mkStaticClosure 'imageCollector)
     connect workers leaves
     connect leaves  topLevel
-    await =<< delay Local topLevel
+    fmap snd . await =<< delay Local topLevel
 
 main :: IO ()
 main = dnaRun rtable $ do
@@ -334,7 +319,7 @@ main = dnaRun rtable $ do
                | freq <- freqs ]
 
     -- Execute main actor
-    chan <- eval mainActor (config, dataSets)
+    chan <- eval mainActor (fromJust config, dataSets)
 
     -- Copy result image to working directory
     unboundKernel "export image" [] $ liftIO $ do
