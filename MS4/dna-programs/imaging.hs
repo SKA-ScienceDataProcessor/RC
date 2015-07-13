@@ -301,14 +301,21 @@ mainActor = actor $ \(cfg, dataSets) -> do
 
 main :: IO ()
 main = dnaRun rtable $ do
+
     -- We expect configuration in our working directory
-    (datafiles, Just config) <- unboundKernel "configure" [] $ liftIO $ do
-        !datafiles <- fmap decode $ LBS.readFile "data.cfg" :: IO (Maybe [(String, Int)])
+    (datafiles, config) <- unboundKernel "configure" [] $ liftIO $ do
+        !datafiles <- fmap decode $ LBS.readFile "data.cfg" :: IO (Maybe [(String, Polar, Int)])
         !config    <- fmap decode $ LBS.readFile "imaging.cfg" :: IO (Maybe Config)
         return (datafiles, config)
 
+    -- Make sure parsing of configuration files worked
+    when (isNothing config) $
+        fail "Failed to parse configuration file 'imaging.cfg'. Make sure it exists and matches program version!"
+    when (isNothing datafiles) $
+        fail "Failed to parse dataset file 'data.cfg'. Make sure it exists and matches program version!"
+
     -- Create Oskar file channels
-    dataSets <- fmap concat $ forM (fromMaybe [] datafiles) $ \(file, repeats) -> do
+    dataSets <- fmap concat $ forM (fromJust datafiles) $ \(file, polar, repeats) -> do
         chan <- createFileChan Remote "oskar"
 
         -- Import file, and determine the used frequency channels and
@@ -324,7 +331,7 @@ main = dnaRun rtable $ do
                          , dsPolar   = polar
                          , dsRepeats = repeats
                          }
-               | freq <- freqs, polar <- polars ]
+               | freq <- freqs ]
 
     -- Execute main actor
     chan <- eval mainActor (config, dataSets)

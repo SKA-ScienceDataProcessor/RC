@@ -131,3 +131,9 @@ instance FromJSON GCFPar where
 data Polar = XX | XY | YX | YY
            deriving (Show,Typeable,Generic,Enum,Bounded)
 instance Binary Polar
+instance FromJSON Polar where
+  parseJSON (String "XX") = return XX
+  parseJSON (String "XY") = return XY
+  parseJSON (String "YX") = return YX
+  parseJSON (String "YY") = return YY
+  parseJSON _             = mzero
