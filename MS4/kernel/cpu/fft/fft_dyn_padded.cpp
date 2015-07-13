@@ -46,31 +46,34 @@ inline void fftshift_even(complexd * data, int size, int pitch){
 }
 
 #define dp reinterpret_cast<fftw_complex*>(data)
-void __fft_inplace(complexd * data, int size, int pitch){
+fftw_plan __fft_inplace(fftw_plan p, complexd * data, int size, int pitch){
   // This does not quite work. Don't understand why yet.
   // fft_center<false>(data, size, pitch);
   fftshift_even(data, size, pitch);
 
-  fftw_iodim trans_dims[2] = {
-      {size, pitch, pitch}
-    , {size, 1, 1}
-    };
-  fftw_plan p = fftw_plan_guru_dft(
-      2, trans_dims
-    , 0, NULL
-    , dp, dp
-    , FFTW_FORWARD, FFTW_ESTIMATE
-    );
+  if (p == NULL) {
+    fftw_iodim trans_dims[2] = {
+        {size, pitch, pitch}
+      , {size, 1, 1}
+      };
+    p = fftw_plan_guru_dft(
+        2, trans_dims
+      , 0, NULL
+      , dp, dp
+      , FFTW_FORWARD, FFTW_ESTIMATE
+      );
+  }
   fftw_execute(p);
-  fftw_destroy_plan(p);
 
   fftshift_even(data, size, pitch);
+
+  return p;
 }
 
 extern "C" {
 
-void fft_inplace_even(complexd * data, int size, int pitch){
-  __fft_inplace(data, size, pitch);
+fftw_plan fft_inplace_even(fftw_plan p, complexd * data, int size, int pitch){
+  return __fft_inplace(p, data, size, pitch);
 }
 
 void fftInitThreading() {

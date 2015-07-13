@@ -1,4 +1,7 @@
+#define _USE_MATH_DEFINES
 #include <cmath>
+#include <fftw3.h>
+
 #include "common.h"
 #include "metrix.h"
 
@@ -42,15 +45,16 @@ void __transpose_and_normalize_and_extract(
 }
 
 extern "C"
-void fft_inplace_even(complexd * data, int size, int pitch);
+fftw_plan fft_inplace_even(fftw_plan p, complexd * data, int size, int pitch);
 
 // In principle, we can calculate 1 - (t2/r)^2 separately
 //   because it does not depend on w and can be reused for
 //   all layers, but we don't bother with caching and copying them
 //   over and thus recalculate them each time
 template <int over>
-void __mkGCFLayer(
-    complexd dst[]   // [over][over][support][support]
+fftw_plan __mkGCFLayer(
+    fftw_plan p
+  , complexd dst[]   // [over][over][support][support]
   , complexd arena[] // Full oversampled layer padded [max_support*over][max_support*over+src_pad]
   , int support
   , int max_support
@@ -85,7 +89,7 @@ void __mkGCFLayer(
     }
     currp += istep;
   }
-  fft_inplace_even(arena, size, pitch);
+  fftw_plan plan = fft_inplace_even(p, arena, size, pitch);
   __transpose_and_normalize_and_extract<over>(
       dst
     , arena
@@ -93,12 +97,14 @@ void __mkGCFLayer(
     , max_support
     , src_pad
     );
+  return plan;
 }
 
 // Inst
 extern "C"
-void mkGCFLayer(
-    complexd dst[] // should have [OVER][OVER][support][support] size
+fftw_plan mkGCFLayer(
+    fftw_plan p
+  , complexd dst[] // should have [OVER][OVER][support][support] size
   , complexd arena[]
   , int support
   , int max_support
@@ -106,8 +112,9 @@ void mkGCFLayer(
   , double t2
   , double w
   ){
-  __mkGCFLayer<OVER>(
-        dst
+  return __mkGCFLayer<OVER>(
+        p
+      , dst
       , arena
       , support
       , max_support
