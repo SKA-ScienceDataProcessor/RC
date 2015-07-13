@@ -105,11 +105,13 @@ execKernel msg mode hints kern = do
     -- IO code to run. Process atributes are derived before the spawn.
     profAttrs <- processAttributes
     let code = logProfile msg hints profAttrs $ runKern kern
+    message 1 $ msg ++ " starting..."
     -- Run according to requested mode
     a <- case mode of
            DefaultKernel -> liftIO $ async code
            BoundKernel   -> liftIO $ asyncBound code
     r <- handleRecieve messageHandlers [matchSTM' (waitCatchSTM a)]
+    message 1 $ msg ++ " finished"
     case r of
       Left  e -> doFatal (show e)
       Right x -> return x
