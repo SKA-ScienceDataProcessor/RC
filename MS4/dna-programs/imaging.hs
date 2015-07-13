@@ -16,7 +16,6 @@ import Data.Aeson
 import qualified Data.ByteString.Lazy as LBS
 import Data.Maybe      (fromJust,isNothing)
 import Data.Time.Clock
-import System.IO       (IOMode(..))
 
 import Config
 import Data
@@ -176,8 +175,8 @@ workerActor = actor $ \(cfg, dataSet) -> do
 
 -- | Actor which collects images in tree-like fashion
 imageCollector :: TreeCollector (GridPar, FileChan Image)
-imageCollector = treeCollector collect init finish
-  where init = return Nothing
+imageCollector = treeCollector collect start finish
+  where start = return Nothing
         collect mimg (gridp, imgCh) = do
           img' <- readImage gridp imgCh "data.img"
           img'' <- case mimg of
@@ -189,6 +188,7 @@ imageCollector = treeCollector collect init finish
         finish (Just (img, ch)) = do
           writeImage img ch "data.img"
           return (imgPar img, ch)
+        finish Nothing = fail "No images to reduce!"
 
 -- | A measure for the complexity of processing a data set.
 type Weight = Rational
@@ -307,7 +307,7 @@ main = dnaRun rtable $ do
 
         -- Import file, and determine the used frequency channels and
         -- polarisations
-        (polars, freqs) <- unboundKernel "import oskar" [] $ liftIO $ do
+        (_polars, freqs) <- unboundKernel "import oskar" [] $ liftIO $ do
             importToFileChan chan "data.vis" file
             readOskarHeader chan "data.vis"
 

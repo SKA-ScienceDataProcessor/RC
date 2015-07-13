@@ -66,6 +66,9 @@ gcf _gp gcfp vis = do
 
 -- GCF kernel definition
 
+cleanPrepare :: CleanPar -> Image -> IO Image
+cleanPrepare _ img = return img
+
 clean :: CleanPar -> Image -> Image -> IO (Image, Image)
 clean _clp dirty _psf = do
 

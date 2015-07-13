@@ -140,8 +140,10 @@ executable imaging-dataflow
     cpp-options:   -DUSE_CUDA
   x-cuda-sources: kernel/gpu/gcf/misc.cu,
                   kernel/gpu/gcf/GCF.cu
+                  kernel/gpu/gcf/threadFenceReduction_kernel.cu
                   kernel/gpu/fft/cufftshift.cu
                   kernel/gpu/scatter_grid/scatter_grid.cu
+                  kernel/gpu/hogbom/hogbom.cu
   x-cuda-options:
     -gencode arch=compute_20,code=sm_20
     -gencode arch=compute_35,code=sm_35

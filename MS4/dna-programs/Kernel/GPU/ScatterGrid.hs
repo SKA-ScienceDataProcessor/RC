@@ -142,11 +142,12 @@ pregrid gridp vis gcfSet (gcfv, gcf_suppv) = do
 
 createGrid :: GridPar -> GCFPar -> IO UVGrid
 createGrid gp _ = do
-   dat <- allocDeviceVector (gridFullSize gp)
+   dat@(DeviceVector _ p) <- allocDeviceVector (gridFullSize gp)
+   memset p (fromIntegral $ gridFullSize gp) 0
    return $ UVGrid gp 0 dat
 
 grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
-grid vis gcfSet grid = do
+grid vis gcfSet uvgrid = do
 
   -- Group baselines
   let wstep = gcfpStepW $ gcfsPar gcfSet
@@ -156,7 +157,6 @@ grid vis gcfSet grid = do
 
   -- Make vectors of pointers into positions & pregridded
   let pregridded = castVector (visPregridded vis) :: Vector Word8
-      DeviceVector _ prep = pregridded
   vs <- forM groupedBls $ \bls -> do
     uvov <- toDeviceVector =<< makeVector allocHostVector
         [ uvop | (i,_) <- bls
@@ -181,19 +181,19 @@ grid vis gcfSet grid = do
     -- memory, so we need to instruct CUDA to allocate enough memory
     -- for it.
     let baselines = length bls
-        grid_size = gridWidth $ uvgPar grid
-        grid_pitch = gridPitch $ uvgPar grid
+        grid_size = gridWidth $ uvgPar uvgrid
+        grid_pitch = gridPitch $ uvgPar uvgrid
         shared_mem = fromIntegral $ points * (sizeOf (undefined :: CxDouble) + pregriddedSize)
     CUDA.launchKernel scatter_grid_kern
       (baselines,1,1) (min 1024 (max_supp*max_supp),1,1) shared_mem Nothing $
-      mapArgs (uvgData grid) uvov datv max_supp points grid_size grid_pitch
+      mapArgs (uvgData uvgrid) uvov datv max_supp points grid_size grid_pitch
   CUDA.sync
 
   -- Free temporary arrays
   forM_ vs $ \(uvov, datv) -> do
     freeVector uvov
     freeVector datv
-  return grid
+  return uvgrid
 
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
 degrid _ _ = return -- TODO
