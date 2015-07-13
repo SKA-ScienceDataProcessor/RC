@@ -65,7 +65,7 @@ module DNA.DSL (
     , FileChan
     , createFileChan
 
-    , waitForResoures
+    , waitForResources
     ) where
 
 import Control.Applicative
@@ -545,5 +545,5 @@ createFileChan loc name = DNA $ singleton $ CreateFileChan loc name
 
 -- | Barrier that ensures that all resources associated with the given
 -- shell have been returned and can be re-allocated.
-waitForResoures :: Shell a b -> DNA ()
-waitForResoures (Shell aid) = DNA $ singleton $ WaitForResources aid
+waitForResources :: Shell a b -> DNA ()
+waitForResources (Shell aid) = DNA $ singleton $ WaitForResources aid

@@ -261,7 +261,7 @@ mainActor = actor $ \(cfg, dataSets) -> do
        logMessage (show (i :: Int) ++ ": " ++ show (dsRepeats ds) ++ " x " ++ show (dsName ds))
 
     -- Now start worker actors
-    waitForResoures estimateWorkers
+    waitForResources estimateWorkers
     workers <- startGroup (N avail) (NNodes 1) $ do
         useLocal
         return $(mkStaticClosure 'workerActor)
