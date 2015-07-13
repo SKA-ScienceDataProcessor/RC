@@ -48,7 +48,7 @@ instance FromJSON Config where
 -- | Cleaning parameterisiation
 data CleanPar = CleanPar
   { cleanIter :: !Int    -- ^ Maximum number of iterations for the minor loop
-  , cleanGain :: !Double -- ^ Model gain per source removed
+  , cleanGain :: !Double -- ^ "Loop gain" - fraction of brightest pixel removed in each iteration
   , cleanThreshold :: !Double -- ^ Threshold at which we should stop cleaning
   }
   deriving (Show,Typeable,Generic)
