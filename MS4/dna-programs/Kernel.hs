@@ -1,11 +1,14 @@
 
 module Kernel where
 
+import Data.IORef
+
 import Data
 
 import qualified Kernel.Dummy as Dummy
 import qualified Kernel.GPU.GCF as GPU_GCF
 import qualified Kernel.GPU.ScatterGrid as GPU_ScatterGrid
+import qualified Kernel.GPU.FFT as GPU_FFT
 
 -- Dummy imports only to make them compile
 import Kernel.CPU.FFT ()
@@ -38,10 +41,14 @@ data GridKernel = GridKernel
 -- | Fourier transformation kernels. These allow us to obtain "Image"
 -- from "UVGrid" as well as the other way around.
 data DFTKernel = DFTKernel
-  { -- | Transforms an image into an uv-grid. This constitutes a
+  { -- | Prepare fourier kernel for handling data of the given shape.
+    dftPrepare :: GridPar -> IO ()
+    -- | Free preparation data
+  , dftClean :: IO ()
+    -- | Transforms an image into an uv-grid. This constitutes a
     -- discrete fourier transformation. We assume that the image is
     -- freed by the kernel.
-    dftKernel :: Image -> IO UVGrid
+  , dftKernel :: Image -> IO UVGrid
     -- | Transforms an uv-grid into an image. This requires
     -- an inverse discrete fourier transformation. We assume that the
     -- grid is freed by the kernel.
@@ -92,7 +99,14 @@ gridKernels =
 -- The supported discrete fourier transformation kernels
 dftKernels :: [(String, IO DFTKernel)]
 dftKernels =
-  [ ("dummy", return $ DFTKernel Dummy.dft Dummy.dfti) ]
+  [ ("dummy", return $ DFTKernel (\_ -> return ()) (return ()) Dummy.dft Dummy.dfti)
+  , ("cufft", do
+      plans <- newIORef (error "DFT kernel called without dftPrepare!")
+      return $ DFTKernel (GPU_FFT.dftPrepare plans)
+                         (GPU_FFT.dftClean plans)
+                         (GPU_FFT.dftKernel plans)
+                         (GPU_FFT.dftIKernel plans))
+  ]
 
 -- The supported discrete fourier transformation kernels
 gcfKernels :: [(String, IO GCFKernel)]

@@ -69,8 +69,10 @@ gcf _gp gcfp vis = do
 clean :: CleanPar -> Image -> Image -> IO (Image, Image)
 clean _clp dirty _psf = do
 
-    -- Create fresh image for the model
-    modelData <- allocCVector (imageSize (imgPar dirty))
+    -- Create fresh image for the model. Note that in-place DFT
+    -- requires a buffer twice the image size (in order to store a
+    -- complex-valued uv-grid of the same size).
+    modelData <- allocCVector (2 * imageSize (imgPar dirty))
     let model = Image (imgPar dirty) 0 modelData
 
     -- Return the uncleaned image together with the model

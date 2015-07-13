@@ -80,11 +80,12 @@ imagingActor cfg = actor $ \dataSet -> do
     gcfSet0 <- kernel "GCF" [] $ liftIO $
       gcfKernel gcfk (cfgGridPar cfg) (cfgGCFPar cfg) vis0
 
-    -- Let grid kernel prepare for processing GCF and visibilities
-    -- (transfer buffers, do binning etc.)
+    -- Let kernels prepare for processing GCF and visibilities
+    -- (transfer buffers, do binning, plan FFTs etc.)
     (vis1, psfVis1, gcfSet1) <- kernel "prepare" [] $ liftIO $ do
       (vis', gcfSet') <- gridkPrepare gridk (cfgGridPar cfg) vis0 gcfSet0
       (psfVis', gcfSet'') <- gridkPrepare gridk (cfgGridPar cfg) psfVis0 gcfSet'
+      dftPrepare dftk (cfgGridPar cfg)
       return (vis', psfVis', gcfSet'')
 
     -- Calculate PSF
@@ -126,6 +127,7 @@ imagingActor cfg = actor $ \dataSet -> do
     kernel "clean cleanup" [] $ liftIO $ do
       freeGCFSet gcfSet1
       freeImage psf
+      dftClean dftk
 
     -- More Cleanup? Eventually kernels will probably want to do
     -- something here...

@@ -77,7 +77,7 @@ data Image = Image
                         -- format as the "UVGrid" here, except with
                         -- "Double" as our element type.
   , imgPadding :: !Int  -- ^ Amount of padding before actual data
-                        -- starts in "imgData" (in "Double" element).
+                        -- starts in "imgData" (in "Double" elements).
   , imgData :: Vector Double
   }
   deriving (Show,Typeable,Generic)
