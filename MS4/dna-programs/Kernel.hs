@@ -7,6 +7,11 @@ import qualified Kernel.Dummy as Dummy
 import qualified Kernel.GPU.GCF as GPU_GCF
 import qualified Kernel.GPU.ScatterGrid as GPU_ScatterGrid
 
+-- Dummy imports only to make them compile
+import Kernel.CPU.FFT ()
+import Kernel.CPU.GCF ()
+
+
 -- | Gridding kernels deal with adding or extracting visibilities
 -- to/from an "UVGrid"
 data GridKernel = GridKernel

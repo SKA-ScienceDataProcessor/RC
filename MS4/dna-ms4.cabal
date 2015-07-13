@@ -145,4 +145,9 @@ executable imaging-dataflow
   x-cuda-options:
     -gencode arch=compute_20,code=sm_20
     -gencode arch=compute_35,code=sm_35
-  other-modules:
+  c-sources:
+    kernel/cpu/fft/fft_dyn_padded.cpp
+    kernel/cpu/gcf/GCF.cpp
+  include-dirs:  kernel/common
+  extra-libraries:     stdc++ gomp fftw3 fftw3_omp
+  cc-options:          -Wall --std=gnu++0x -ffast-math -mavx -fopenmp
