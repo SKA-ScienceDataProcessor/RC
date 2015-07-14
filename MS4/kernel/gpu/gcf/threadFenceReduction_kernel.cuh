@@ -127,7 +127,16 @@ reduceBlocksGen(const styp *g_idata, typ *g_odata, unsigned int n)
     if (tid == 0) g_odata[blockIdx.x] = sdata[0];
 }
 
-extern __device__ unsigned int retirementCount = 0;
+// Helper for determining the last finishing thread. Note that this
+// will generate one copy per #include. As a result, every kernel
+// including this will have to have its own call/export of
+// resetRetirementCount!
+__device__ unsigned int retirementCount = 0;
+__host__ __inline__ cudaError_t resetRetirementCount()
+{
+  unsigned int retCnt = 0;
+  return cudaMemcpyToSymbol(__SYM(retirementCount), &retCnt, sizeof(unsigned int), 0, cudaMemcpyHostToDevice);
+}
 
 // This reduction kernel reduces an arbitrary size array in a single kernel invocation
 // It does so by keeping track of how many blocks have finished.  After each thread

@@ -67,7 +67,7 @@ cleanKernel cleanp dirty psf = do
            loop res' (fuel-1)
    loop dirty' (cleanIter cleanp)
 
-foreign import ccall unsafe resetRetirementCount :: IO CInt
+foreign import ccall unsafe findPeak_init :: IO CInt
 foreign import ccall unsafe "&" findPeak_512_e2 :: Fun
 
 -- | Number of blocks of a certain size required to cover data of a given size
@@ -82,7 +82,7 @@ findPeak img = do
   let DeviceVector _ imgp = imgData img
 
   -- Set up reduction kernel
-  nothingIfOk . toEnum . fromIntegral =<< resetRetirementCount
+  nothingIfOk . toEnum . fromIntegral =<< findPeak_init
   sync
 
   -- Run
