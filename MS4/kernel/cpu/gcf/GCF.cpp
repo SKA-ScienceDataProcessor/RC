@@ -1,6 +1,7 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <fftw3.h>
+#include <string.h>
 
 #include "common.h"
 #include "metrix.h"
