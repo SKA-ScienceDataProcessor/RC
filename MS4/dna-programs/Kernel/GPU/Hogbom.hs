@@ -28,10 +28,15 @@ cleanPrepare _ psf = do
 cleanKernel :: CleanPar -> Image -> Image -> IO (Image, Image)
 cleanKernel cleanp dirty psf = do
 
-   -- Check configuration
+   -- Check configuration - the peak find kernel requires a quadratic
+   -- grid without gaps.
    let width = gridWidth (imgPar dirty)
    when (width /= gridPitch (imgPar dirty) || width /= gridHeight (imgPar dirty)) $
      fail "Cleaning kernel assumes quadratic grid without internal padding!"
+   -- Furthermore, the reduction requires the field size to be a power of 2.
+   let powers = map (2^) [1..32]
+   when (width `notElem` powers) $
+     fail "Cleaning kernel requires a grid size that is a power of two!"
 
    -- Transfer images, if required
    dirtyv <- toDeviceVector (imgData dirty)
