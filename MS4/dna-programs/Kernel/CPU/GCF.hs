@@ -2,7 +2,6 @@
 
 module Kernel.CPU.GCF (kernel) where
 
-import Foreign.Storable
 import Foreign.C
 import Foreign.Ptr
 import Foreign.Marshal.Array
@@ -15,6 +14,7 @@ import Vector
 foreign import ccall mkGCFLayer ::
      FftPlan
   -> Ptr (Complex Double) -- destination buffer
+  -> Ptr (Ptr (Complex Double)) -- table
   -> Ptr (Complex Double) -- work buffer
   -> CInt                 -- support size to extract
   -> CInt                 -- maximum support size
@@ -28,23 +28,28 @@ kernel ::
   -> GCFPar
   -> Vis
   -> IO GCFSet
-kernel _gp gcfp vis = allocaArray arenaSize $ \arenap -> do
+kernel gp gcfp vis = allocaArray arenaSize $ \arenap -> do
     fftInitThreading
     gcfDataPtr <- mallocArray gcfDataSize
     gcfTablePtr <- mallocArray gcfTableSize
-    -- UNFINISHED !!! FIXME: 2 nonsence calls only to fix types!
-    _ <- mkGCFLayer nullPtr gcfDataPtr arenap 0 0 0 0 0
-    poke gcfTablePtr gcfDataPtr
-    {- UNFINISHED !!!
+    -- I'm using an explicit recursion explicitly.
+    -- Usually this generates much better code.
+    -- OTOH, higher-order functions could potentially be fused.
     let
-      mkLayers !p0 !destPtr !dTabPtr !(!s:!ss) = do
-        !p <- mkGCFLayer p0 !destPtr arenap s gcfMaxSize pad ... ...
-     -}
+      mkLayers !p0 !destPtr !dTabPtr (s:ss) (w:ww) = do
+        !p <- mkGCFLayer p0 destPtr dTabPtr arenap (f s) (f gcfMaxSize) (f pad) t2 w
+        mkLayers p (advancePtr destPtr $ over2 * s * s) (advancePtr dTabPtr over2) ss ww
+      mkLayers _ _ _ _ [] = return ()
+      mkLayers _ _ _ [] _ = return ()
+    --
+    mkLayers nullPtr gcfDataPtr gcfTablePtr layerSizes ws
     -- FIXME!!!: Change all data types in such a way
     --   that they would bring their own finalizers with them !!!
     -- No global finalizers anymore!
     return $ GCFSet gcfp [] (CVector gcfTableSize $ castPtr gcfTablePtr)
   where
+    f = fromIntegral
+    t2 = gridTheta gp / 2
     wstep = gcfpStepW gcfp
     over = gcfpOver gcfp
     over2 = over * over
@@ -52,7 +57,9 @@ kernel _gp gcfp vis = allocaArray arenaSize $ \arenap -> do
     size i = min gcfMaxSize
                (gcfpMinSize gcfp + gcfpGrowth gcfp * abs i)
     maxWPlane = max (round (visMaxW vis / wstep)) (round (-visMinW vis / wstep))
-    layerSizes = map size [-maxWPlane .. maxWPlane]
+    planes = [-maxWPlane .. maxWPlane]
+    layerSizes = map size planes
+    ws = map ((wstep*). fromIntegral) planes
     gcfDataSize = over2 * sum layerSizes
     gcfTableSize = over2 * (1 + 2 * maxWPlane)
     l = over * gcfMaxSize

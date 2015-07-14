@@ -1,5 +1,6 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <cstring>
 #include <fftw3.h>
 
 #include "common.h"
@@ -55,6 +56,7 @@ template <int over>
 fftw_plan __mkGCFLayer(
     fftw_plan p
   , complexd dst[]   // [over][over][support][support]
+  , complexd * table[]
   , complexd arena[] // Full oversampled layer padded [max_support*over][max_support*over+src_pad]
   , int support
   , int max_support
@@ -90,7 +92,9 @@ fftw_plan __mkGCFLayer(
     }
     currp += istep;
   }
+
   fftw_plan plan = fft_inplace_even(p, arena, size, pitch);
+
   __transpose_and_normalize_and_extract<over>(
       dst
     , arena
@@ -98,6 +102,14 @@ fftw_plan __mkGCFLayer(
     , max_support
     , src_pad
     );
+
+  // Fill layers table
+  complexd * tp = dst;
+  for (int i=0; i < over * over; i++) {
+    table[i] = tp;
+    tp += support * support;
+  }
+
   return plan;
 }
 
@@ -106,6 +118,7 @@ extern "C"
 fftw_plan mkGCFLayer(
     fftw_plan p
   , complexd dst[] // should have [OVER][OVER][support][support] size
+  , complexd * table[]
   , complexd arena[]
   , int support
   , int max_support
@@ -116,6 +129,7 @@ fftw_plan mkGCFLayer(
   return __mkGCFLayer<OVER>(
         p
       , dst
+      , table
       , arena
       , support
       , max_support
