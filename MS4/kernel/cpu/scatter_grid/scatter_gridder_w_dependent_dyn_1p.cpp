@@ -76,8 +76,6 @@ void gridKernel_scatter(
     GRID_MOD complexd * _grid = grids + omp_get_thread_num() * siz;
 #ifndef __DEGRID
     memset(_grid, 0, sizeof(complexd) * siz);
-#else
-    memset(_vis, 0, sizeof(complexd) * baselines * ts_ch);
 #endif
     __ACC(complexd, grid, grid_pitch);
 
@@ -99,17 +97,18 @@ void gridKernel_scatter(
       #else
       std::vector<complexd> vis(ts_ch);
       #endif
+#else
+      complexd * vis;
+      vis = _vis[bl];
 #endif
       for(int n=0; n<ts_ch; n++){
 #ifndef __DEGRID
         vis[n] = rotw(_vis[bl][n], uvw[n].w);
+#else
+        vis[n] = {0.0, 0.0};
 #endif
         pregridPoint<over, is_half_gcf>(scale, wstep, uvw[n], pa[n], grid_size);
       }
-#ifdef __DEGRID
-      complexd * vis;
-      vis = _vis[bl];
-#endif
       for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
           Pregridded p = pa[i];
