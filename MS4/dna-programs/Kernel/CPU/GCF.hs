@@ -45,7 +45,7 @@ kernel gp gcfp vis = allocaArray arenaSize $ \arenap -> do
     mkLayers nullPtr gcfDataPtr gcfTablePtr layerSizes ws
     -- FIXME!!!: Change all data types in such a way
     --   that they would bring their own finalizers with them !!!
-    -- No global finalizers anymore!
+    -- ATM we hack freeGCFSet slightly (see Data.hs)
     return $ GCFSet gcfp [] (CVector gcfTableSize $ castPtr gcfTablePtr)
   where
     f = fromIntegral

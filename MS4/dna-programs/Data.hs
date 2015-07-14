@@ -48,6 +48,7 @@ import Data.Typeable (Typeable)
 import Foreign.Ptr
 import Foreign.Storable
 import Foreign.Storable.Complex ( )
+import Foreign.Marshal.Alloc (free)
 import GHC.Generics  (Generic)
 import System.IO     (IOMode(..),hGetBuf)
 import Text.Printf
@@ -246,7 +247,7 @@ baselineMinWPlane wstep bl
 data GCFSet = GCFSet
   { gcfsPar :: GCFPar  -- ^ GCF parameterisiation
   , gcfs :: [GCF]      -- ^ The contained GCFs. Sorted ascending by @w@ value.
-  , gcfTable :: Vector () -- ^ GCF lookup table. Used by the gridding algorithm to speed up access.
+  , gcfTable :: Vector (Ptr (Complex Double)) -- ^ GCF lookup table. Used by the gridding algorithm to speed up access.
   }
   deriving (Show,Typeable,Generic)
 instance Binary GCFSet
@@ -270,9 +271,17 @@ instance Binary GCF
 -- | Free data associated with a GCF set
 freeGCFSet :: GCFSet -> IO ()
 freeGCFSet gcfSet = do
-  freeVector $ gcfTable gcfSet
-  forM_ (gcfs gcfSet) $ \gcf ->
-    freeVector (gcfData gcf)
+  -- Dirty hack.
+  -- We have packed GCF and empty gcfs list for CPU, thus ...
+  if null gcfsList
+    then peekVector gcfTbl 0 >>= free
+    else
+      forM_ gcfsList $ \gcf ->
+        freeVector (gcfData gcf)
+  freeVector gcfTbl
+  where
+    gcfsList = gcfs gcfSet
+    gcfTbl = gcfTable gcfSet
 
 -- | Find GCF appropriate for given @w@-value
 findGCF :: GCFSet -> Double -> Maybe GCF
