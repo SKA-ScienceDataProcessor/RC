@@ -14,6 +14,7 @@ import Foreign.Storable ( sizeOf )
 
 import Data
 import Kernel.GPU.Common as CUDA
+import qualified Kernel.GPU.NvidiaDegrid as Nvidia
 import Vector
 
 pregriddedSize :: Int
@@ -196,4 +197,4 @@ grid vis gcfSet uvgrid = do
   return uvgrid
 
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
-degrid _ _ = return -- TODO
+degrid = Nvidia.degrid
