@@ -11,7 +11,7 @@ type CPUGridderType =
      CDouble   -- scale
   -> CDouble   -- wstep
   -> CInt      -- # of baselines
-  -> Ptr CInt  -- GCF supports vector
+  -> Ptr CInt  -- baselines supports vector
   -> PCD       -- grid
   -> Ptr PCD   -- GCF layers pointer
   -> Ptr PD    -- baselines' uvw data

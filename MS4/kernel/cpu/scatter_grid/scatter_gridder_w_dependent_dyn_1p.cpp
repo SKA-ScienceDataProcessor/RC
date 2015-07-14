@@ -58,7 +58,7 @@ void gridKernel_scatter(
     double scale
   , double wstep
   , int baselines
-  , const int gcf_supps[/* baselines */]
+  , const int bl_supps[/* baselines */]
   , GRID_MOD complexd grids[]
     // We have a [w_planes][over][over]-shaped array of pointers to
     // variable-sized gcf layers, but we precompute (in pregrid)
@@ -82,7 +82,7 @@ void gridKernel_scatter(
 #pragma omp for schedule(dynamic)
     for(int bl = 0; bl < baselines; bl++) {
       int max_supp_here;
-      max_supp_here = gcf_supps[bl];
+      max_supp_here = bl_supps[bl];
 
       const Double3 * uvw;
       uvw = _uvw[bl];
@@ -156,7 +156,7 @@ void gridKernel_scatter_full(
     double scale
   , double wstep
   , int baselines
-  , const int gcf_supps[/* baselines */]
+  , const int bl_supps[/* baselines */]
   , complexd grid[]
     // We have a [w_planes][over][over]-shaped array of pointers to
     // variable-sized gcf layers, but we precompute (in pregrid)
@@ -183,14 +183,14 @@ void gridKernel_scatter_full(
   gridKernel_scatter<
       over
     , is_half_gcf
-    >(scale, wstep, baselines, gcf_supps, tmpgrids, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);
+    >(scale, wstep, baselines, bl_supps, tmpgrids, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);
   addGrids(grid, tmpgrids, nthreads, grid_pitch, grid_size);
   free(tmpgrids);
 #else
   gridKernel_scatter<
       over
     , is_half_gcf
-    >(scale, wstep, baselines, gcf_supps, grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);
+    >(scale, wstep, baselines, bl_supps, grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);
 #endif
 }
 
@@ -200,7 +200,7 @@ void gridKernelCPU##hgcfSuff(                             \
     double scale                                          \
   , double wstep                                          \
   , int baselines                                         \
-  , const int gcf_supps[/* baselines */]                  \
+  , const int bl_supps[/* baselines */]                   \
   , complexd grid[]                                       \
   , const complexd * gcf[]                                \
   , const Double3 * uvw[]                                 \
@@ -210,7 +210,7 @@ void gridKernelCPU##hgcfSuff(                             \
   , int grid_size                                         \
   ){                                                      \
   gridKernel_scatter_full<OVER, isHgcf>                   \
-    ( scale, wstep, baselines, gcf_supps                  \
+    ( scale, wstep, baselines, bl_supps                   \
     , grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size); \
 }
 
@@ -242,7 +242,7 @@ void deGridKernelCPU##hgcfSuff(                           \
     double scale                                          \
   , double wstep                                          \
   , int baselines                                         \
-  , const int gcf_supps[/* baselines */]                  \
+  , const int bl_supps[/* baselines */]                   \
   , const complexd grid[]                                 \
   , const complexd * gcf[]                                \
   , const Double3 * uvw[]                                 \
@@ -252,7 +252,7 @@ void deGridKernelCPU##hgcfSuff(                           \
   , int grid_size                                         \
   ){                                                      \
   gridKernel_scatter<OVER, isHgcf>                        \
-    ( scale, wstep, baselines, gcf_supps                  \
+    ( scale, wstep, baselines, bl_supps                   \
     , grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size); \
 }
 
