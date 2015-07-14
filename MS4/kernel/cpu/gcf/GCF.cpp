@@ -76,6 +76,7 @@ fftw_plan __mkGCFLayer(
     , istep = pitch - max_support
     ;
 
+  memset(arena, 0, size * pitch * sizeof(complexd));
   #pragma omp parallel for // not so much important
   for(int i = -radius; i < radiuspos; i++) {
     for(int j = -radius; j < radiuspos; j++) {
