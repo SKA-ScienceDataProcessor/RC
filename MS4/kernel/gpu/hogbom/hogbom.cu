@@ -23,6 +23,11 @@ struct posFinder {
   TASKCFG place f(unsigned int i, double c){return place(i, fabs(c));}
 };
 
+extern "C" __host__
+void findPeak_init() {
+    resetRetirementCount();
+}
+
 extern "C" __global__
 void findPeak_512_e2(const double *g_idata, place *g_odata, unsigned int n) {
   reduceSinglePass_devGen<512, true, place, double, posFinder>(g_idata, g_odata, n);

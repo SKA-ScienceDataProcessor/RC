@@ -13,6 +13,11 @@ void reduceSinglePass_dev(const cuDoubleComplex *g_idata, double *g_odata, unsig
   reduceSinglePass_devGen<blockSize, nIsPow2, double, cuDoubleComplex, doubleSum>(g_idata, g_odata, n);
 }
 
+extern "C" __host__
+void reduce_init() {
+    resetRetirementCount();
+}
+
 extern "C" __global__ void reduce_512_e2(const cuDoubleComplex *g_idata, double *g_odata, unsigned int n) {
   reduceSinglePass_dev<512, true>(g_idata, g_odata, n);
 }

@@ -28,10 +28,15 @@ cleanPrepare _ psf = do
 cleanKernel :: CleanPar -> Image -> Image -> IO (Image, Image)
 cleanKernel cleanp dirty psf = do
 
-   -- Check configuration
+   -- Check configuration - the peak find kernel requires a quadratic
+   -- grid without gaps.
    let width = gridWidth (imgPar dirty)
    when (width /= gridPitch (imgPar dirty) || width /= gridHeight (imgPar dirty)) $
      fail "Cleaning kernel assumes quadratic grid without internal padding!"
+   -- Furthermore, the reduction requires the field size to be a power of 2.
+   let powers = map (2^) [1..32]
+   when (width `notElem` powers) $
+     fail "Cleaning kernel requires a grid size that is a power of two!"
 
    -- Transfer images, if required
    dirtyv <- toDeviceVector (imgData dirty)
@@ -67,7 +72,7 @@ cleanKernel cleanp dirty psf = do
            loop res' (fuel-1)
    loop dirty' (cleanIter cleanp)
 
-foreign import ccall unsafe resetRetirementCount :: IO CInt
+foreign import ccall unsafe findPeak_init :: IO CInt
 foreign import ccall unsafe "&" findPeak_512_e2 :: Fun
 
 -- | Number of blocks of a certain size required to cover data of a given size
@@ -82,7 +87,7 @@ findPeak img = do
   let DeviceVector _ imgp = imgData img
 
   -- Set up reduction kernel
-  nothingIfOk . toEnum . fromIntegral =<< resetRetirementCount
+  nothingIfOk . toEnum . fromIntegral =<< findPeak_init
   sync
 
   -- Run
