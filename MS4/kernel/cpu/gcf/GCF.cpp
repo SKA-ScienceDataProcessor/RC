@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstring>
 #include <fftw3.h>
+#include <string.h>
 
 #include "common.h"
 #include "metrix.h"
