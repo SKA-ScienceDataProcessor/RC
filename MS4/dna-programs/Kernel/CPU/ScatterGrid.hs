@@ -50,11 +50,11 @@ createGrid gp _ = fmap (UVGrid gp 0) $ allocCVector (gridFullSize gp)
 gridWrapper :: CPUGridderType -> Vis -> GCFSet -> UVGrid -> IO ()
 -- This massive nested pattern matches are not quite flexible, but I think a burden
 --   to adapt them if data types change is small, thus we stick to this more concise code ATM.
-gridWrapper gfun (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) (GCFSet gcfp _ (CVector _ table)) (UVGrid gp _ (CVector _ gptr)) =
+gridWrapper gfun (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) (GCFSet gcfp _ (CVector tsiz table)) (UVGrid gp _ (CVector _ gptr)) =
     withArray supps $ \suppp -> 
       withArray uvws $ \uvwp -> 
         withArray amps $ \ampp -> 
-          gfun scale wstep (fi $ length bls) suppp gptr table (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp)
+          gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp)
           -- NOTE: Remember about normalization!
   where
     fi = fromIntegral
