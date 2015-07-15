@@ -34,6 +34,7 @@ foreign import ccall "dynamic" mkCPUGridderFun :: FunPtr CPUGridderType -> CPUGr
 -}
 
 foreign import ccall gridKernelCPUFullGCF :: CPUGridderType
+foreign import ccall deGridKernelCPUFullGCF :: CPUGridderType
 
 -- trivial
 -- we make all additional things (pregridding and rotation) inside the gridder
@@ -46,16 +47,14 @@ prepare gp v gs
 createGrid :: GridPar -> GCFPar -> IO UVGrid
 createGrid gp _ = fmap (UVGrid gp 0) $ allocCVector (gridFullSize gp)
 
-grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
+gridWrapper :: CPUGridderType -> Vis -> GCFSet -> UVGrid -> IO ()
 -- This massive nested pattern matches are not quite flexible, but I think a burden
 --   to adapt them if data types change is small, thus we stick to this more concise code ATM.
-grid (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) (GCFSet gcfp _ (CVector _ table)) g@(UVGrid gp _ (CVector _ gptr)) =
+gridWrapper gfun (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) (GCFSet gcfp _ (CVector _ table)) (UVGrid gp _ (CVector _ gptr)) =
     withArray supps $ \suppp -> 
       withArray uvws $ \uvwp -> 
-        withArray amps $ \ampp -> do
-          gridKernelCPUFullGCF
-            scale wstep (fi $ length bls) suppp gptr table (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp)
-          return g
+        withArray amps $ \ampp -> 
+          gfun scale wstep (fi $ length bls) suppp gptr table (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp)
           -- NOTE: Remember about normalization!
   where
     fi = fromIntegral
@@ -66,7 +65,10 @@ grid (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) (GCFSet gcfp
     supps = map (fi . size . baselineMinWPlane wstep) bls
     uvws = map (advancePtr uwpptr . vblOffset) bls
     amps = map (advancePtr ampptr . vblOffset) bls
-grid _ _ _ = error "Wrong Vis or GCF or Grid location for CPU."
+gridWrapper _ _ _ _ = error "Wrong Vis or GCF or Grid location for CPU."
+
+grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
+grid vis gcfset uvg = gridWrapper gridKernelCPUFullGCF vis gcfset uvg >> return uvg
 
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
-degrid = error "CPU degridder is not wrapped yet."
+degrid uvg gcfset vis = gridWrapper deGridKernelCPUFullGCF vis gcfset uvg >> return vis
