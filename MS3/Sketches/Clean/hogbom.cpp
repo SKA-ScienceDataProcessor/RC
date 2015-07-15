@@ -14,9 +14,24 @@ inline place pmax(const place & x, const place & y){
   if (y.val > x.val) return y; else return x;
 }
 
+// We shall zero data pad area to make
+//  the peak finder ignore it.
+inline void zeroPad(
+    double * data
+  , int siz
+  , int pitch
+  ){
+  double * p = data + siz;
+  for (int i=0; i < siz; i++, p+=siz)
+    for (int j=0; j < pitch - siz; j++) *p++ = 0.0;
+}
+
 inline
-void findPeak(const double *idata, place * odata, unsigned int n) {
+void findPeak(double *idata, place * odata, int siz, int pitch) {
   place p = {0u, 0.0};
+
+  zeroPad(idata, siz, pitch);
+  unsigned int n = siz * pitch;
 
   #pragma omp declare reduction (maxer: place : omp_out = pmax(omp_out, omp_in))
   #pragma omp parallel for reduction(maxer: p)
@@ -73,9 +88,9 @@ void subtractPSF(
 
 extern "C"
 void deconvolve(
-          double * mod_p
-  ,       double * res_p
-  , const double * psf_p
+    double * mod_p
+  , double * res_p
+  , double * psf_p // not a 'const' because modifies the pad area (zeroes)
   , int siz
   , int pitch
   , unsigned int niters
@@ -86,12 +101,11 @@ void deconvolve(
       found_place_psf
     , found_place_res
     ;
-  int totsize = siz * pitch;
 
-  findPeak(psf_p, &found_place_psf, totsize);
+  findPeak(psf_p, &found_place_psf, siz, pitch);
 
   for (unsigned int i = 0; i < niters; ++i) {
-    findPeak(res_p, &found_place_res, totsize);
+    findPeak(res_p, &found_place_res, siz, pitch);
 
     if (abs(found_place_res.val) < threshold) break;
 
