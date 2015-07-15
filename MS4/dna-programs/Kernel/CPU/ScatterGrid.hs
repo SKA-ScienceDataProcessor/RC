@@ -42,15 +42,9 @@ prepare gp v gs
   | gridHeight gp /= gridWidth gp = error "Assume CPU grid is square!"
   | otherwise = return (v, gs)
 
-foreign import ccall memset :: Ptr a -> CInt -> Int -> IO (Ptr a)
-
+-- Need no zero data
 createGrid :: GridPar -> GCFPar -> IO UVGrid
-createGrid gp _ = do
-   dat@(CVector _ p) <- allocCVector siz
-   _ <- memset p 0 siz
-   return $ UVGrid gp 0 dat
-  where
-    siz = gridFullSize gp
+createGrid gp _ = fmap (UVGrid gp 0) $ allocCVector (gridFullSize gp)
 
 grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
 -- This massive nested pattern matches are not quite flexible, but I think a burden
