@@ -25,7 +25,9 @@ grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
 grid _ _ = return
 
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
-degrid _ _ = return
+degrid uvg _ vis = do
+  freeVector (uvgData uvg)
+  return vis
 
 -- DFT kernel definition
 

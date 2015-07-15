@@ -143,8 +143,8 @@ executable imaging-dataflow
                   kernel/gpu/fft/cufftshift.cu
                   kernel/gpu/scatter_grid/scatter_grid.cu
                   kernel/gpu/hogbom/hogbom.cu
+                  kernel/gpu/nvidia_degrid/nvidia_degrid.cu
   x-cuda-options:
-    -gencode arch=compute_20,code=sm_20
     -gencode arch=compute_35,code=sm_35
   c-sources:
     kernel/cpu/fft/fft_dyn_padded.cpp

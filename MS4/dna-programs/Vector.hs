@@ -18,12 +18,13 @@ module Vector
   , toCVector, toHostVector, toDeviceVector
   , dupCVector, dupHostVector, dupDeviceVector
   , unsafeToByteString
+  , dumpVector
   ) where
 
 import Control.Monad (when, forM_)
 import Data.Binary   (Binary(..))
 import Data.Typeable (Typeable)
-import Data.ByteString (ByteString)
+import Data.ByteString (ByteString, hPut)
 import Data.ByteString.Unsafe (unsafePackAddressLen)
 import Foreign.Ptr
 import Foreign.C
@@ -38,6 +39,8 @@ import Foreign.Storable
 
 import GHC.Exts     (Ptr(..))
 import GHC.Generics (Generic)
+
+import System.IO
 
 -- | The alignment that we are going to use for all vectors
 vectorAlign :: CUInt
@@ -228,3 +231,11 @@ unsafeToByteString v@(HostVector _ (HostPtr (Ptr addr))) =
   unsafePackAddressLen (vectorByteSize v) addr
 unsafeToByteString DeviceVector{} =
   error "unsafeToByteString: Device vector!"
+
+-- | Write vector to a file (raw)
+dumpVector :: Storable a => Vector a -> FilePath ->  IO ()
+dumpVector v file = do
+  v' <- dupCVector v
+  withFile file WriteMode $ \h ->
+    hPut h =<< unsafeToByteString v'
+  freeVector v'

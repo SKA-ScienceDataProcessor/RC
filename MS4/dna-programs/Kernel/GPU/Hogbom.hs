@@ -34,7 +34,7 @@ cleanKernel cleanp dirty psf = do
    when (width /= gridPitch (imgPar dirty) || width /= gridHeight (imgPar dirty)) $
      fail "Cleaning kernel assumes quadratic grid without internal padding!"
    -- Furthermore, the reduction requires the field size to be a power of 2.
-   let powers = map (2^) [1..32]
+   let powers = map (2^) [1..32 :: Int]
    when (width `notElem` powers) $
      fail "Cleaning kernel requires a grid size that is a power of two!"
 
@@ -77,7 +77,7 @@ foreign import ccall unsafe "&" findPeak_512_e2 :: Fun
 
 -- | Number of blocks of a certain size required to cover data of a given size
 blockCount :: Int -> Int -> Int
-blockCount blkSize datSize = (datSize + blkSize - 1) `div` blkSize
+blockCount datSize blkSize = (datSize + blkSize - 1) `div` blkSize
 
 -- | Finds the position with the highest intensity in the image
 findPeak :: Image -> IO Peak
@@ -93,7 +93,7 @@ findPeak img = do
   -- Run
   let width = gridWidth $ imgPar img
       placeSize = sizeOf (undefined :: CULong) + sizeOf (undefined :: Double)
-      blocks = (width + 1024 - 1) `div` 1024
+      blocks = blockCount width 1024
   CUDA.allocaArray (placeSize * blocks)  $ \(workArea :: DevicePtr Word8) -> do
     launchKernel findPeak_512_e2
       (blocks, 1, 1) (512, 1, 1) (512 * fromIntegral placeSize) Nothing $

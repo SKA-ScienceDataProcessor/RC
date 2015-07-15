@@ -14,6 +14,7 @@ import Foreign.Storable ( sizeOf )
 
 import Data
 import Kernel.GPU.Common as CUDA
+import qualified Kernel.GPU.NvidiaDegrid as Nvidia
 import Vector
 
 pregriddedSize :: Int
@@ -143,7 +144,7 @@ pregrid gridp vis gcfSet (gcfv, gcf_suppv) = do
 createGrid :: GridPar -> GCFPar -> IO UVGrid
 createGrid gp _ = do
    dat@(DeviceVector _ p) <- allocDeviceVector (gridFullSize gp)
-   memset p (fromIntegral $ gridFullSize gp) 0
+   memset p (fromIntegral $ vectorByteSize dat) 0
    return $ UVGrid gp 0 dat
 
 grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
@@ -196,4 +197,4 @@ grid vis gcfSet uvgrid = do
   return uvgrid
 
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
-degrid _ _ = return -- TODO
+degrid = Nvidia.degrid
