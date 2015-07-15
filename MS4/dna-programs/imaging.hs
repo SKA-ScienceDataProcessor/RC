@@ -252,13 +252,8 @@ mainActor = actor $ \(cfg, dataSets) -> do
     forM_ weightedDataSets $ \(ds, w) ->
       logMessage $ show (fromRational w :: Float) ++ " - " ++ show (dsName ds)
 
-    -- * Schedule work
-    --
-    -- We use local node as top-level collector and hardcode 3 node as
-    -- intermediate collectors. Rest are worker nodes
-    let nLeaves  = 3
-        nWorkers = avail - nLeaves
-    let schedule = balancer nWorkers (map (fromRational . snd) weightedDataSets)
+    -- Schedule work
+    let schedule = balancer (avail+1) (map (fromRational . snd) weightedDataSets)
         splitData low high dataSet =
             let atRatio r = floor $ r * fromIntegral (dsRepeats dataSet)
             in dataSet { dsRepeats = atRatio high - atRatio low }
@@ -269,7 +264,8 @@ mainActor = actor $ \(cfg, dataSets) -> do
 
     -- Now start worker actors
     waitForResources estimateWorkers
-    workers <- startGroup (N nWorkers) (NNodes 1) $ do
+    workers <- startGroup (N avail) (NNodes 1) $ do
+        useLocal
         return $(mkStaticClosure 'workerActor)
     distributeWork
         (map fst weightedDataSets)
@@ -277,9 +273,8 @@ mainActor = actor $ \(cfg, dataSets) -> do
         workers
 
     -- Spawn tree collector
-    --
-    -- Spawn leaves 
-    leaves <- startCollectorTreeGroup (N nLeaves) $ do
+    leaves <- startCollectorTreeGroup (N 1) $ do
+        useLocal
         return $(mkStaticClosure 'imageCollector)
     -- Top level collector
     topLevel <- startCollectorTree $ do

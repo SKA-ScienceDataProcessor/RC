@@ -6,6 +6,16 @@
 
 // We only use double complex values
 typedef double2 CmplxType;
+typedef double3 PosType;
+
+extern "C" __global__
+void subtractVis(CmplxType out[], CmplxType in[], int npts)
+{
+  for (int n = threadIdx.x; n < npts; n += blockDim.x) {
+    out[n].x = out[n].x - in[n].x;
+    out[n].y = out[n].y - in[n].y;
+  }
+}
 
 __device__ double atomicAdd(double* address, double val)
 {
@@ -25,14 +35,13 @@ __device__ double make_zero(double2* in) { return (double)0.0;}
 
 extern "C" __global__ void
 //__launch_bounds__(256, 6)
-degrid_kernel(CmplxType* out, CmplxType* in, CmplxType* img, CmplxType* gcf, 
-              size_t npts, size_t img_dim, int gcf_dim) {
-    
+degrid_kernel(CmplxType* out, PosType* in, CmplxType* img, CmplxType* gcf,
+              int npts, int img_dim, int gcf_dim) {
    //TODO remove hard-coded 32
    for (int n = 32*blockIdx.x; n<npts; n+= 32*gridDim.x) {
    for (int q=threadIdx.y;q<32;q+=blockDim.y) {
       if (n+q >= npts) break;
-      CmplxType inn = in[n+q];
+      PosType inn = in[n+q];
       int sub_x = floorf(GCF_GRID*(inn.x-floorf(inn.x)));
       int sub_y = floorf(GCF_GRID*(inn.y-floorf(inn.y)));
       int main_x = floorf(inn.x);
@@ -45,11 +54,14 @@ degrid_kernel(CmplxType* out, CmplxType* in, CmplxType* img, CmplxType* gcf,
          //auto this_img = img[main_x+a+img_dim*(main_y+b)];
          //auto r1 = this_img.x;
          //auto i1 = this_img.y;
-         double r1 = img[main_x+a+img_dim*(main_y+b)].x;
-         double i1 = img[main_x+a+img_dim*(main_y+b)].y;
+         double r1;
+         double i1;
          if (main_x+a < 0 || main_y+b < 0 ||
              main_x+a >= img_dim  || main_y+b >= img_dim) {
             r1=i1=0.0;
+         } else {
+             r1 = img[main_x+a+img_dim*(main_y+b)].x;
+             i1 = img[main_x+a+img_dim*(main_y+b)].y;
          }
          //auto this_gcf = __ldg(&gcf[gcf_dim*gcf_dim*(GCF_GRID*sub_y+sub_x) +
          //               gcf_dim*b+a]);
@@ -58,7 +70,7 @@ degrid_kernel(CmplxType* out, CmplxType* in, CmplxType* img, CmplxType* gcf,
          double r2 = __ldg(&gcf[gcf_dim*gcf_dim*(GCF_GRID*sub_y+sub_x) +
                                 gcf_dim*b+a].x);
          double i2 = __ldg(&gcf[gcf_dim*gcf_dim*(GCF_GRID*sub_y+sub_x) +
-                               gcf_dim*b+a].y);
+                                gcf_dim*b+a].y);
          sum_r += r1*r2 - i1*i2;
          sum_i += r1*i2 + r2*i1;
       }
@@ -67,19 +79,17 @@ degrid_kernel(CmplxType* out, CmplxType* in, CmplxType* img, CmplxType* gcf,
          sum_r += __shfl_down(sum_r,s);
          sum_i += __shfl_down(sum_i,s);
       }
-      CmplxType tmp;
-      tmp.x = sum_r;
-      tmp.y = sum_i;
       if (threadIdx.x == 0) {
-         out[n+q] = tmp;
+          out[n+q].x = sum_r;
+          out[n+q].y = sum_i;
       }
    }
    }
 }
 extern "C" __global__ void
 //__launch_bounds__(256, 6)
-degrid_kernel_small_gcf(CmplxType* out, CmplxType* in, size_t npts, CmplxType* img,
-                        size_t img_dim, CmplxType* gcf, int gcf_dim) {
+degrid_kernel_small_gcf(CmplxType* out, PosType* in, CmplxType* img, CmplxType* gcf,
+                        int npts, int img_dim, int gcf_dim) {
 
    //TODO remove hard-coded 32
 #ifdef __COMPUTE_GCF
@@ -90,7 +100,8 @@ degrid_kernel_small_gcf(CmplxType* out, CmplxType* in, size_t npts, CmplxType* i
 #endif
    for (int n = 32*blockIdx.x; n<npts; n+= 32*gridDim.x) {
    for (int q=threadIdx.y;q<32;q+=blockDim.y) {
-      CmplxType inn = in[n+q];
+      if (n+q >= npts) break;
+      PosType inn = in[n+q];
       int sub_x = floorf(GCF_GRID*(inn.x-floorf(inn.x)));
       int sub_y = floorf(GCF_GRID*(inn.y-floorf(inn.y)));
       int main_x = floorf(inn.x);
@@ -103,33 +114,33 @@ degrid_kernel_small_gcf(CmplxType* out, CmplxType* in, size_t npts, CmplxType* i
          //auto this_img = img[main_x+a+img_dim*(main_y+b)];
          //auto r1 = this_img.x;
          //auto i1 = this_img.y;
-         double r1 = img[main_x+a+img_dim*(main_y+b)].x;
-         double i1 = img[main_x+a+img_dim*(main_y+b)].y;
+         double r1;
+         double i1;
          if (main_x+a < 0 || main_y+b < 0 ||
              main_x+a >= img_dim  || main_y+b >= img_dim) {
             r1=i1=0.0;
+         } else {
+             r1= img[main_x+a+img_dim*(main_y+b)].x;
+             i1= img[main_x+a+img_dim*(main_y+b)].y;
          }
          //auto this_gcf = __ldg(&gcf[gcf_dim*gcf_dim*(GCF_GRID*sub_y+sub_x) +
          //               gcf_dim*b+a]);
          //auto r2 = this_gcf.x;
          //auto i2 = this_gcf.y;
-         double r2 = __ldg(&gcf[gcf_dim*gcf_dim*(GCF_GRID*sub_y+sub_x) +
-                        gcf_dim*b+a].x);
-         double i2 = __ldg(&gcf[gcf_dim*gcf_dim*(GCF_GRID*sub_y+sub_x) +
-                        gcf_dim*b+a].y);
+         double r2 = 0.0; __ldg(&gcf[gcf_dim*gcf_dim*(GCF_GRID*sub_y+sub_x) +
+                                     gcf_dim*b+a].x);
+         double i2 = 0.0; __ldg(&gcf[gcf_dim*gcf_dim*(GCF_GRID*sub_y+sub_x) +
+                                     gcf_dim*b+a].y);
          sum_r += r1*r2 - i1*i2;
          sum_i += r1*i2 + r2*i1;
       }
-
       for(int s = blockDim.x < 16 ? blockDim.x : 16; s>0;s/=2) {
          sum_r += __shfl_down(sum_r,s);
          sum_i += __shfl_down(sum_i,s);
       }
-      CmplxType tmp;
-      tmp.x = sum_r;
-      tmp.y = sum_i;
       if (threadIdx.x == 0) {
-         out[n+q] = tmp;
+          out[n+q].x = sum_r;
+          out[n+q].y = sum_i;
       }
    }
    }
@@ -159,11 +170,11 @@ __device__ void warp_reduce2(double &in, int sz = 32) {
    }
 }
 extern "C"__global__
-void vis2ints(CmplxType *vis_in, int2* vis_out, int npts) {
+void vis2ints(PosType *vis_in, int2* vis_out, int npts) {
    for (int q=threadIdx.x+blockIdx.x*blockDim.x;
         q<npts;
         q+=gridDim.x*blockDim.x) {
-      CmplxType inn = vis_in[q];
+      PosType inn = vis_in[q];
       int main_y = floorf(inn.y);
       int sub_y = floorf(GCF_GRID*(inn.y-main_y));
       int main_x = floorf(inn.x);
