@@ -53,12 +53,14 @@ createGrid gp _ = do
     siz = gridFullSize gp
 
 grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
-grid vis (GCFSet gcfp _ (CVector _ table)) g@(UVGrid gp _ (CVector _ gptr)) =
+-- This massive nested pattern matches are not quite flexible, but I think a burden
+--   to adapt them if data types change is small, thus we stick to this more concise code ATM.
+grid (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) (GCFSet gcfp _ (CVector _ table)) g@(UVGrid gp _ (CVector _ gptr)) =
     withArray supps $ \suppp -> 
       withArray uvws $ \uvwp -> 
         withArray amps $ \ampp -> do
           gridKernelCPUFullGCF
-            scale wstep (fi $ length bls) suppp gptr table (castPtr uvwp) ampp (fi $ visTimesteps vis) (fi grWidth) (fi $ gridPitch gp)
+            scale wstep (fi $ length bls) suppp gptr table (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp)
           return g
           -- NOTE: Remember about normalization!
   where
@@ -66,14 +68,11 @@ grid vis (GCFSet gcfp _ (CVector _ table)) g@(UVGrid gp _ (CVector _ gptr)) =
     grWidth = gridWidth gp
     scale = fromIntegral grWidth / gridLambda gp
     wstep = gcfpStepW gcfp
-    bls = visBaselines vis
     size i = min (gcfpMaxSize gcfp) (gcfpMinSize gcfp + gcfpGrowth gcfp * i)
     supps = map (fi . size . baselineMinWPlane wstep) bls
-    (CVector _ uwpptr) = visPositions vis
     uvws = map (advancePtr uwpptr . vblOffset) bls
-    (CVector _ ampptr) = visData vis
     amps = map (advancePtr ampptr . vblOffset) bls
-grid _ _ _ = error "Wrong GCF or Grid location for CPU."
+grid _ _ _ = error "Wrong Vis or GCF or Grid location for CPU."
 
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
 degrid = error "CPU degridder is not wrapped yet."
