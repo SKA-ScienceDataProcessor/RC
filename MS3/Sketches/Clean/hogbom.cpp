@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 
 struct place {
   size_t pos;
@@ -101,6 +102,8 @@ void deconvolve(
       found_place_psf
     , found_place_res
     ;
+
+  memset(mod_p, 0, siz * pitch * sizeof(double));
 
   findPeak(psf_p, &found_place_psf, siz, pitch);
 
