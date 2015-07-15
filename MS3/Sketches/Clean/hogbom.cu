@@ -40,7 +40,7 @@ __global__ void subtract_psf_kernel(
       , y =  threadIdx.y + (blockIdx.y * blockDim.y)
       , tid = y * linsize + x
       ;
-    if (x < stopx && y < stopx) res_p_trans[tid] -= peak_x_gain * psf_p_trans[tid + diff];
+    if (x < stopx && y < stopy) res_p_trans[tid] -= peak_x_gain * psf_p_trans[tid + diff];
 }
 
 #define __BLOCK_DIM 16
