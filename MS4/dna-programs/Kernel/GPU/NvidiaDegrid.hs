@@ -9,6 +9,8 @@ import Kernel.GPU.Common
 import Vector
 
 foreign import ccall unsafe "&" degrid_kernel :: Fun
+foreign import ccall unsafe "&" degrid_kernel_small_gcf :: Fun
+foreign import ccall unsafe "&" subtractVis :: Fun
 
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
 degrid uvg gcfSet vis = do
@@ -23,6 +25,7 @@ degrid uvg gcfSet vis = do
    -- Allocate output array, transfer grid
    visOut <- allocDeviceVector $ vectorSize $ visData vis :: IO (Vector (Complex Double))
    uvg'@(DeviceVector _ uvgp) <- toDeviceVector $ uvgData uvg
+   sync
 
    -- Process visibilities by baselines
    forM_ (visBaselines vis) $ \bl -> do
@@ -31,28 +34,39 @@ degrid uvg gcfSet vis = do
      -- are only using one GCF per baseline... To improve data quality
      -- we might have to split the baseline in future...
      let w = (vblMinW bl + vblMaxW bl) / 2
-         Just gcf = findGCF gcfSet w
+         Just gcf = findGCF gcfSet (abs w)
          gcf_size = gcfSize gcf
 
      -- The nVidia kernel expects to get a pointer to the middle of
      -- the GCF.
-     let gcf_off = (gcf_size+1) * gcf_size `div` 2
+     let gcf_off = (gcf_size+1) * (gcf_size `div` 2)
          DeviceVector _ gcfp = offsetVector (gcfData gcf) gcf_off
 
-     -- Visibility pointers
+     -- Visibility pointers.
+     --
+     -- TODO: The kernel assumes these coordinates to be grid
+     -- coordinates, which is obviously not true at all!
      let offset = vblOffset bl
          DeviceVector _ outp = offsetVector visOut offset
          DeviceVector _ posp = offsetVector (visPositions vis) offset
          npts = vblPoints bl
 
      -- Call the kernel
-     launchKernel degrid_kernel
-       (npts `div` 32, 1, 1) (32, 8, 1) 0 Nothing $
+     launchKernel (if gcf_size < 16 then degrid_kernel_small_gcf else degrid_kernel)
+       ((npts + 31) `div` 32, 1, 1) (min gcf_size 32, 8, 1) 0 Nothing $
        mapArgs outp posp uvgp gcfp npts width gcf_size
-     sync
 
    -- Free grid
-   freeVector (uvgData uvg)
+   sync
+   freeVector uvg'
+
+   -- Subtract visibilities
+   visData'@(DeviceVector _ viso) <- toDeviceVector (visData vis) :: IO (Vector (Complex Double))
+   let DeviceVector _ outp = visOut
+   launchKernel subtractVis
+     (1, 1, 1) (1024, 1, 1) 0 Nothing $
+     mapArgs viso outp (vectorSize (visData vis))
+   freeVector visOut
 
    -- TODO: Subtract visibilities!
-   return vis
+   return vis{visData = visData'}
