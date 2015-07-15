@@ -3,13 +3,18 @@ module Kernel.CPU.ScatterGrid where
 import Data.Complex
 import Foreign.C
 import Foreign.Ptr
+import Foreign.Marshal.Array
+
+import Data
+import Vector
 
 type PD = Ptr Double
 type PCD = Ptr (Complex Double)
 
 type CPUGridderType =
-     CDouble   -- scale
-  -> CDouble   -- wstep
+     -- Use Double instead of CDouble to reduce clutter
+     Double   -- scale
+  -> Double   -- wstep
   -> CInt      -- # of baselines
   -> Ptr CInt  -- baselines supports vector
   -> PCD       -- grid
@@ -21,7 +26,54 @@ type CPUGridderType =
   -> CInt      -- grid size
   -> IO ()
 
+{-
 foreign import ccall "& gridKernelCPUHalfGCF" gridKernelCPUHalfGCF_ptr :: FunPtr CPUGridderType
 foreign import ccall "& gridKernelCPUFullGCF" gridKernelCPUFullGCF_ptr :: FunPtr CPUGridderType
 
 foreign import ccall "dynamic" mkCPUGridderFun :: FunPtr CPUGridderType -> CPUGridderType
+-}
+
+foreign import ccall gridKernelCPUFullGCF :: CPUGridderType
+
+-- trivial
+-- we make all additional things (pregridding and rotation) inside the gridder
+prepare :: GridPar -> Vis -> GCFSet -> IO (Vis, GCFSet)
+prepare gp v gs
+  | gridHeight gp /= gridWidth gp = error "Assume CPU grid is square!"
+  | otherwise = return (v, gs)
+
+foreign import ccall memset :: Ptr a -> CInt -> Int -> IO (Ptr a)
+
+createGrid :: GridPar -> GCFPar -> IO UVGrid
+createGrid gp _ = do
+   dat@(CVector _ p) <- allocCVector siz
+   _ <- memset p 0 siz
+   return $ UVGrid gp 0 dat
+  where
+    siz = gridFullSize gp
+
+grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
+grid vis (GCFSet gcfp _ (CVector _ table)) g@(UVGrid gp _ (CVector _ gptr)) =
+    withArray supps $ \suppp -> 
+      withArray uvws $ \uvwp -> 
+        withArray amps $ \ampp -> do
+          gridKernelCPUFullGCF
+            scale wstep (fi $ length bls) suppp gptr table (castPtr uvwp) ampp (fi $ visTimesteps vis) (fi grWidth) (fi $ gridPitch gp)
+          return g
+          -- NOTE: Remember about normalization!
+  where
+    fi = fromIntegral
+    grWidth = gridWidth gp
+    scale = fromIntegral grWidth / gridLambda gp
+    wstep = gcfpStepW gcfp
+    bls = visBaselines vis
+    size i = min (gcfpMaxSize gcfp) (gcfpMinSize gcfp + gcfpGrowth gcfp * i)
+    supps = map (fi . size . baselineMinWPlane wstep) bls
+    (CVector _ uwpptr) = visPositions vis
+    uvws = map (advancePtr uwpptr . vblOffset) bls
+    (CVector _ ampptr) = visData vis
+    amps = map (advancePtr ampptr . vblOffset) bls
+grid _ _ _ = error "Wrong GCF or Grid location for CPU."
+
+degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
+degrid = error "CPU degridder is not wrapped yet."
