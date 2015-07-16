@@ -99,7 +99,7 @@ import System.IO.Unsafe   (unsafePerformIO)
 import System.Locale      (defaultTimeLocale)
 import System.Mem         (performGC)
 
-import DNA.Types          (AID)
+import DNA.Types          (AID,VirtualCAD)
 
 
 ----------------------------------------------------------------
@@ -273,10 +273,11 @@ message v msg = do
         rawMessage "MSG" (("v", show v) : attrs) msg True
 
 -- | Log fact that actor with given PID was spawned
-logSpawn :: MonadLog m => ProcessId -> AID -> m ()
-logSpawn pid aid = do
+logSpawn :: MonadLog m => ProcessId -> AID -> VirtualCAD -> m ()
+logSpawn pid aid vcad = do
     attrs <- processAttributes
-    liftIO $ rawMessage "SPAWN" attrs (show pid ++ " " ++ show aid) False
+    liftIO $ rawMessage "SPAWN" attrs (show pid ++ " (" ++ show aid ++ ")") False
+    liftIO $ rawMessage "SPAWN" attrs (show vcad) False
 
 -- | Log that connection between actor was established. N.B. It means
 --   that actor now knows where to send data.

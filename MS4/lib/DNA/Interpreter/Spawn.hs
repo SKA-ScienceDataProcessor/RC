@@ -202,7 +202,7 @@ spawnSingleActor aid cad cmd@(SpawnSingle act _ addrTy flags) = do
         (RcvGrp{}   ,RcvTyGrp   ) -> return ()
         (RcvTree{}  ,RcvTyTree  ) -> return ()
         _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
-    logSpawn pid aid
+    logSpawn pid aid cad
 
 -- Spawn group of actors
 spawnActorGroup
@@ -233,7 +233,7 @@ spawnActorGroup res resG spwn = do
         stAllAid2Pid    . at aid %= Just . maybe (Set.singleton pid) (Set.insert pid)
         stPid2Aid       . at pid .= Just (Rank rnk, GroupSize k,aid)
         stUsedResources . at pid .= Just cad
-        logSpawn pid aid
+        logSpawn pid aid cad
     -- Add timeout for actor
     liftP $ setTimeout flags aid
     --
@@ -370,18 +370,21 @@ sendActorParam pid aid rnk g cad ch flags = do
 requestResources :: Res -> Controller [NodeInfo]
 requestResources r = do
     free <- Set.toList <$> use stNodePool
-    taggedMessage "DNA" $ "Req: " ++ show r ++ " pool: " ++ show free
+    taggedMessage "DNA" $ "Req:  " ++ show r
+    taggedMessage "DNA" $ "Pool: " ++ show free
     case r of
      N n -> do
         when (length free < n) $
             fatal $ printf "Cannot allocate %i nodes" n
-        let (used,rest) = splitAt n free
-        stNodePool .= Set.fromList rest
-        return used
+        returnNodes $ splitAt n free
      Frac frac -> do
         let n = length free
             k = round $ fromIntegral n * frac
-        let (used,rest) = splitAt k free
+        returnNodes $ splitAt k free
+  where
+    returnNodes (used,rest) = do
+        taggedMessage "DNA" $ "Returned: " ++ show used
+        taggedMessage "DNA" $ "Remains:  " ++ show rest
         stNodePool .= Set.fromList rest
         return used
 
