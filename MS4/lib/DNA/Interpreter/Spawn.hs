@@ -410,7 +410,6 @@ splitResources resG nodes = case resG of
         chunks <- toNChunks k nodes
         forM chunks $ \ns -> case ns of
             []     -> fatal "Impossible: empty nodelist"
-            -- FIXME: Local/Remote!
             n:rest -> return $ VirtualCAD Remote n rest
     NNodes k -> do
         when (length nodes < k) $
@@ -419,7 +418,6 @@ splitResources resG nodes = case resG of
         forM chunks $ \ns -> case ns of
             []     -> fatal "Impossible: empty nodelist"
             n:rest -> return $ VirtualCAD Remote n rest
-            -- FIXME: Local/Remote!
 
 
 
