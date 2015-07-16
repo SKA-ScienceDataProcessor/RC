@@ -265,7 +265,6 @@ mainActor = actor $ \(cfg, dataSets) -> do
     -- Now start worker actors
     waitForResources estimateWorkers
     workers <- startGroup (N avail) (NNodes 1) $ do
-        useLocal
         return $(mkStaticClosure 'workerActor)
     distributeWork
         (map fst weightedDataSets)
@@ -274,7 +273,6 @@ mainActor = actor $ \(cfg, dataSets) -> do
 
     -- Spawn tree collector
     leaves <- startCollectorTreeGroup (N 1) $ do
-        useLocal
         return $(mkStaticClosure 'imageCollector)
     -- Top level collector
     topLevel <- startCollectorTree $ do
