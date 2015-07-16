@@ -44,8 +44,7 @@ instance MonadProcess m => MonadProcess (ReaderT r m) where
 -- | Resources allocated to single process. It always have access to
 --   node it owns and possibly list of other nodes.
 data VirtualCAD = VirtualCAD
-    { vcadLoc      :: Location
-    , vcadNode     :: NodeInfo
+    { vcadNode     :: NodeInfo
     , vcadNodePool :: [NodeInfo]
     } 
     deriving (Show,Eq,Ord,Typeable,Generic)

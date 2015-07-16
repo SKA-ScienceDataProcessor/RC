@@ -360,7 +360,7 @@ freeResouces pid = do
     stUsedResources . at pid .= Nothing
     case mr of
       Nothing -> return ()
-      Just (VirtualCAD _ n ns) -> stNodePool %= (\xs -> Set.delete (NodeInfo me) $ Set.singleton n <> Set.fromList ns <> xs)
+      Just (VirtualCAD n ns) -> stNodePool %= (\xs -> Set.delete (NodeInfo me) $ Set.singleton n <> Set.fromList ns <> xs)
 
 -- | Put resources associated with PID to the pool
 freeActorResouces :: (MonadProcess m, MonadState StateDNA m) => AID -> m ()

@@ -391,10 +391,10 @@ requestResources r = do
 -- Create virtual CAD for single actor
 makeResource :: Location -> [NodeInfo] -> Controller VirtualCAD
 makeResource Remote []     = fatal "Need positive number of nodes"
-makeResource Remote (n:ns) = return (VirtualCAD Remote n ns)
+makeResource Remote (n:ns) = return (VirtualCAD n ns)
 makeResource Local  ns     = do
     n <- liftP getSelfNode
-    return $ VirtualCAD Local (NodeInfo n) ns
+    return $ VirtualCAD (NodeInfo n) ns
 
 -- Add local node to the list of nodes if needed
 addLocal :: [SpawnFlag] -> [NodeInfo] -> Controller [NodeInfo]
@@ -413,14 +413,14 @@ splitResources resG nodes = case resG of
         chunks <- toNChunks k nodes
         forM chunks $ \ns -> case ns of
             []     -> fatal "Impossible: empty nodelist"
-            n:rest -> return $ VirtualCAD Remote n rest
+            n:rest -> return $ VirtualCAD n rest
     NNodes k -> do
         when (length nodes < k) $
           fatal "Not enough nodes to schedule"
         chunks <- toSizedChunks k nodes
         forM chunks $ \ns -> case ns of
             []     -> fatal "Impossible: empty nodelist"
-            n:rest -> return $ VirtualCAD Remote n rest
+            n:rest -> return $ VirtualCAD n rest
 
 
 
