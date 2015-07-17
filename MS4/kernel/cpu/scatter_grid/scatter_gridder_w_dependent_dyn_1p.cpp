@@ -111,7 +111,8 @@ void gridKernel_scatter(
       }
       for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
-          Pregridded p = pa[i];
+          Pregridded p;
+          p = pa[i];
           for (int sv = 0; sv < max_supp_here; sv++) {
             // Don't forget our u v are already translated by -max_supp_here/2
             int gsu, gsv;
