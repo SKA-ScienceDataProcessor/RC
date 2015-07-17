@@ -4,6 +4,7 @@ module Kernel.CPU.GCF (kernel) where
 
 import Foreign.C
 import Foreign.Ptr
+import Foreign.Storable
 import Foreign.Marshal.Array
 import Data.Complex
 
@@ -23,31 +24,49 @@ foreign import ccall mkGCFLayer ::
   -> Double               -- w
   -> IO FftPlan
 
+foreign import ccall calcAccums ::
+     Ptr Double -- uvws
+  -> Ptr Double -- sums (out)
+  -> Ptr CInt   -- npts (out)
+  -> Double     -- wstep
+  -> CInt       -- # of points baselines * channels * timesteps
+  -> CInt       -- # of planes
+  -> IO ()
+
 kernel ::
      GridPar
   -> GCFPar
   -> Vis
   -> IO GCFSet
-kernel gp gcfp vis = allocaArray arenaSize $ \arenap -> do
+kernel gp gcfp vis =
+  allocaArray numOfPlanes $ \wsump ->
+  allocaArray numOfPlanes $ \np ->
+  allocaArray arenaSize $ \arenap -> do
     fftInitThreading
     gcfDataPtr <- mallocArray gcfDataSize
     gcfTablePtr <- mallocArray gcfTableSize
+
+    calcAccums uvwp wsump np wstep (f $ visTimesteps vis * (length $ visBaselines vis)) (f numOfPlanes)
     -- I'm using an explicit recursion explicitly.
     -- Usually this generates much better code.
     -- OTOH, higher-order functions could potentially be fused.
     let
-      mkLayers !p0 !destPtr !dTabPtr (s:ss) (w:ww) = do
-        !p <- mkGCFLayer p0 destPtr dTabPtr arenap (f s) (f gcfMaxSize) (f pad) t2 w
-        mkLayers p (advancePtr destPtr $ over2 * s * s) (advancePtr dTabPtr over2) ss ww
-      mkLayers _ _ _ _ [] = return ()
-      mkLayers _ _ _ [] _ = return ()
+      mkLayers !p0 !destPtr !dTabPtr (s:ss) wsumpc npc = do
+        wsumc <- peek wsumpc
+        nc <- peek npc
+        !p <- mkGCFLayer p0 destPtr dTabPtr arenap (f s) (f gcfMaxSize) (f pad) t2 (wsumc / fromIntegral nc)
+        mkLayers p (advancePtr destPtr $ over2 * s * s) (advancePtr dTabPtr over2) ss (advancePtr wsumpc 1) (advancePtr npc 1)
+      mkLayers _ _ _ [] _ _ = return ()
     --
-    mkLayers nullPtr gcfDataPtr gcfTablePtr layerSizes ws
+    mkLayers nullPtr gcfDataPtr gcfTablePtr layerSizes wsump np
     -- FIXME!!!: Change all data types in such a way
     --   that they would bring their own finalizers with them !!!
     -- ATM we hack freeGCFSet slightly (see Data.hs)
     return $ GCFSet gcfp [] (CVector gcfTableSize $ castPtr gcfTablePtr)
   where
+    uvwp = case visPositions vis of
+             CVector _ p -> castPtr p
+             _ -> error "Wrong uvw location for CPU GCF."
     f = fromIntegral
     t2 = gridTheta gp / 2
     wstep = gcfpStepW gcfp
@@ -57,9 +76,8 @@ kernel gp gcfp vis = allocaArray arenaSize $ \arenap -> do
     size i = min gcfMaxSize
                (gcfpMinSize gcfp + gcfpGrowth gcfp * abs i)
     maxWPlane = max (round (visMaxW vis / wstep)) (round (-visMinW vis / wstep))
-    planes = [-maxWPlane .. maxWPlane]
-    layerSizes = map size planes
-    ws = map ((wstep*). fromIntegral) planes
+    numOfPlanes = 2*maxWPlane+1
+    layerSizes = map size [-maxWPlane .. maxWPlane]
     gcfDataSize = over2 * sum layerSizes
     gcfTableSize = over2 * (1 + 2 * maxWPlane)
     l = over * gcfMaxSize

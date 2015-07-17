@@ -1,3 +1,4 @@
+#include <omp.h>
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <cstring>
@@ -137,4 +138,71 @@ fftw_plan mkGCFLayer(
       , t2
       , w
       );
+}
+
+extern "C"
+// This function is required to
+//   correctly calculate GCF, namely we
+//   need to know the correct w's mean value
+//   for each w-plane.
+void calcAccums(
+    const Double3 uvw[]
+  // We retain separate sum and num of points info
+  //   because it is a valuable information
+  , /*out*/ double sums[]
+  , /*out*/ int npts[]
+  , double wstep
+  , int numDataPoints // baselines * channels * timesteps
+  , int numOfWPlanes
+  ) {
+  int nthreads;
+  int center = numOfWPlanes / 2;
+
+#pragma omp parallel
+#pragma omp single
+  nthreads = omp_get_num_threads();
+
+  memset(sums, 0, sizeof(double) * numOfWPlanes);
+  memset(npts, 0, sizeof(int) * numOfWPlanes);
+
+  // VLAs. Requires GNU extension.
+  double tmpsums[nthreads-1][numOfWPlanes];
+  int tmpnpts[nthreads-1][numOfWPlanes];
+
+  #pragma omp parallel
+  {
+    int _thread = omp_get_thread_num();
+    double * _sums;
+    int * _npts;
+    if (_thread == 0) {
+      _sums = sums;
+      _npts = npts;
+    } else {
+      _sums = tmpsums[_thread - 1];
+      _npts = tmpnpts[_thread - 1];
+    }
+    memset(_sums, 0, sizeof(double) * numOfWPlanes);
+    memset(_npts, 0, sizeof(int) * numOfWPlanes);
+
+    // Center _sums and _npts
+    _sums += center;
+    _npts += center;
+    double w;
+    int wplane;
+    #pragma omp for schedule(dynamic)
+    for(int n = 0; n < numDataPoints; n++) {
+      w = uvw[n].w / wstep;
+      wplane = int(round(w));
+      _sums[wplane] += uvw[n].w;
+      _npts[wplane]++;
+    }
+  }
+  // Simple linear addition (it is faster than starting any threads here)
+  // Don't use any fancy AVX tricks because of
+  // a negligibility of the whole processing time.
+  for(int i=0; i<nthreads-1; i++)
+  for(int j=0; j<numOfWPlanes; j++) {
+    sums[j] += tmpsums[i][j];
+    npts[j] += tmpnpts[i][j];
+  }
 }
