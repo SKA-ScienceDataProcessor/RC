@@ -63,6 +63,7 @@ void calcAccums(
   , int numOfWPlanes
   ) {
   int nthreads;
+  int center = numOfWPlanes / 2;
 
 #pragma omp parallel
 #pragma omp single
@@ -90,6 +91,9 @@ void calcAccums(
     memset(_sums, 0, sizeof(double) * numOfWPlanes);
     memset(_npts, 0, sizeof(int) * numOfWPlanes);
 
+    // Center _sums and _npts
+    _sums += center;
+    _npts += center;
     double w;
     int wplane;
     #pragma omp for schedule(dynamic)
