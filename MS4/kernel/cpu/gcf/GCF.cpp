@@ -46,8 +46,9 @@ void __transpose_and_normalize_and_extract(
   }
 }
 
+// FIXME: Make a prototype in a header as it should be!
 extern "C"
-fftw_plan fft_inplace_even(fftw_plan p, complexd * data, int size, int pitch);
+fftw_plan fft_inplace_even(fftw_plan p, int sign, complexd * data, int size, int pitch);
 
 // In principle, we can calculate 1 - (t2/r)^2 separately
 //   because it does not depend on w and can be reused for
@@ -94,7 +95,7 @@ fftw_plan __mkGCFLayer(
     currp += istep;
   }
 
-  fftw_plan plan = fft_inplace_even(p, arena, size, pitch);
+  fftw_plan plan = fft_inplace_even(p, FFTW_FORWARD, arena, size, pitch);
 
   __transpose_and_normalize_and_extract<over>(
       dst
