@@ -100,7 +100,7 @@ void calcAccums(
     for(int n = 0; n < numDataPoints; n++) {
       w = uvw[n].w / wstep;
       wplane = int(round(w));
-      _sums[wplane] += w;
+      _sums[wplane] += uvw[n].w;
       _npts[wplane]++;
     }
   }
