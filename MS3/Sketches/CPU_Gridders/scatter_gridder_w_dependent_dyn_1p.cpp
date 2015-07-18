@@ -102,8 +102,6 @@ void gridKernel_scatter(
     GRID_MOD complexd * _grid = grids + omp_get_thread_num() * siz;
 #ifndef __DEGRID
     memset(_grid, 0, sizeof(complexd) * siz);
-#else
-    memset(_vis, 0, sizeof(complexd) * baselines * ts_ch);
 #endif
     __ACC(complexd, grid, grid_pitch);
 
@@ -119,21 +117,28 @@ void gridKernel_scatter(
       off = bl*ts_ch;
       const Inp * uvw;
       uvw = _uvw + off;
+
+      Pregridded pa[ts_ch];
 #ifndef __DEGRID
       // Rotation
       // VLA requires "--std=gnu..." extension
       complexd vis[ts_ch];
-      for(int n=0; n<ts_ch; n++){
-        vis[n] = rotw(_vis[off + n], uvw[n].w);
-      }
 #else
       complexd * vis;
       vis = _vis + off;
 #endif
+      for(int n=0; n<ts_ch; n++){
+#ifndef __DEGRID
+        vis[n] = rotw(_vis[off + n], uvw[n].w);
+#else
+        vis[n] = {0.0, 0.0};
+#endif
+        cvt<over, is_half_gcf, Inp>::pre(scale, wstep, uvw[n], pa[n], grid_size);
+      }
       for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
-            Pregridded p;
-            cvt<over, is_half_gcf, Inp>::pre(scale, wstep, uvw[i], p, grid_size);
+          Pregridded p;
+          p = pa[i];
 
           for (int sv = 0; sv < max_supp_here; sv++) {
             // Don't forget our u v are already translated by -max_supp_here/2
@@ -254,8 +259,7 @@ gridKernelCPU(FullGCF, false, , false)
 // Normalization is done inplace!
 extern "C"
 void normalize(
-    int n
-  , complexd src[]
+    complexd src[]
   , int grid_pitch
   , int grid_size
   )
