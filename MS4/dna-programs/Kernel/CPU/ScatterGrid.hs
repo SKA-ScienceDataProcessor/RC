@@ -36,6 +36,8 @@ foreign import ccall "dynamic" mkCPUGridderFun :: FunPtr CPUGridderType -> CPUGr
 foreign import ccall gridKernelCPUFullGCF :: CPUGridderType
 foreign import ccall deGridKernelCPUFullGCF :: CPUGridderType
 
+foreign import ccall normalize :: PCD -> CInt -> CInt -> IO ()
+
 -- trivial
 -- we make all additional things (pregridding and rotation) inside the gridder
 prepare :: GridPar -> Vis -> GCFSet -> IO (Vis, GCFSet)
@@ -53,9 +55,8 @@ gridWrapper :: CPUGridderType -> Vis -> GCFSet -> UVGrid -> IO ()
 gridWrapper gfun (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) (GCFSet gcfp _ (CVector tsiz table)) (UVGrid gp _ (CVector _ gptr)) =
     withArray supps $ \suppp -> 
       withArray uvws $ \uvwp -> 
-        withArray amps $ \ampp -> 
+        withArray amps $ \ampp -> do
           gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp)
-          -- NOTE: Remember about normalization!
   where
     fi = fromIntegral
     grWidth = gridWidth gp
@@ -68,7 +69,15 @@ gridWrapper gfun (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) 
 gridWrapper _ _ _ _ = error "Wrong Vis or GCF or Grid location for CPU."
 
 grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
-grid vis gcfset uvg = gridWrapper gridKernelCPUFullGCF vis gcfset uvg >> return uvg
+grid vis gcfset uvg = do
+    gridWrapper gridKernelCPUFullGCF vis gcfset uvg
+    normalize gptr (fi $ gridHeight gp) (fi $ gridPitch gp)
+    return uvg
+  where
+    CVector _ gptr = uvgData uvg
+    fi = fromIntegral
+    gp = uvgPar uvg
 
+-- What about the normalization here?
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
 degrid uvg gcfset vis = gridWrapper deGridKernelCPUFullGCF vis gcfset uvg >> return vis
