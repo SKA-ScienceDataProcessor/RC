@@ -71,7 +71,7 @@ void __mkGCFLayer(
     , istep = pitch - max_support
     ;
 
-  #pragma omp parallel for // not so much important
+  // #pragma omp parallel for // WRONG!
   for(int i = -radius; i < radiuspos; i++) {
     for(int j = -radius; j < radiuspos; j++) {
       double x, y, ph;
