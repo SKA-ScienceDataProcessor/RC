@@ -81,7 +81,7 @@ fftw_plan __mkGCFLayer(
     ;
 
   memset(arena, 0, size * pitch * sizeof(complexd));
-  #pragma omp parallel for // not so much important
+  // #pragma omp parallel for // WRONG USAGE!
   for(int i = -radius; i < radiuspos; i++) {
     for(int j = -radius; j < radiuspos; j++) {
       double x, y, ph;
