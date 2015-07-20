@@ -67,9 +67,7 @@ runActor (Actor action) = do
     (chSendParam,chRecvParam) <- newChan
     -- Send data destination back
     sendChan (actorSendBack p)
-             ( RcvSimple (wrapMessage chSendParam)
-             , [sendPortId chSendParam]
-             )
+             $ RcvSimple (makeRecv chSendParam)
     -- Now we can start execution and send back data
     a   <- receiveChan chRecvParam
     !b  <- runDnaParam p (action a)
@@ -119,9 +117,7 @@ runCollectActor (CollectActor step start fini) = do
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
     sendChan (actorSendBack p)
-        ( RcvReduce [(wrapMessage chSendParam, chSendN)]
-        , [ sendPortId chSendParam , sendPortId chSendN ]
-        )
+        $ RcvReduce [(makeRecv chSendParam, chSendN)]
     -- Start execution of an actor
     !b <- runDnaParam p $ do
            case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
@@ -142,9 +138,7 @@ runTreeActor (TreeCollector step start fini) = do
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
     sendChan (actorSendBack p)
-        ( RcvTree [(wrapMessage chSendParam, chSendN)]
-        , [ sendPortId chSendParam , sendPortId chSendN ]
-        )
+        $ RcvTree [(makeRecv chSendParam, chSendN)]
     -- Start execution of an actor
     !a <- runDnaParam p $ do
            s0 <- kernel "tree collector init" [] (Kern start)
@@ -163,7 +157,7 @@ sendResult :: (Serializable a) => ActorParam -> a -> Process ()
 sendResult p !a =
     sendLoop =<< drainExpect
   where
-    sendLoop (dst,dstId) = do
+    sendLoop dst = do
         -- Send data to destination
         case dst of
           RcvSimple msg  -> trySend msg
@@ -178,14 +172,14 @@ sendResult p !a =
         -- Send confirmation to parent and wait for 
         T.forM_ (actorParent p) $ \pid -> do
             me <- getSelfPid
-            send pid (SentTo (actorAID p) me dstId)
+            send pid (SentTo me dst)
             receiveWait
                 [ match $ \(Terminate msg) -> error msg
                 , match $ \newDest         -> sendLoop newDest
                 , match $ \AckSend         -> return ()
                 ]
     -- Loop over data
-    trySend msg = do
+    trySend (Recv _ msg) = do
         mch <- unwrapMessage msg
         case mch of
           Just ch -> unsafeSendChan ch a

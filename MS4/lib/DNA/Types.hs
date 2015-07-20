@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module DNA.Types where
@@ -130,8 +131,8 @@ newtype Timeout = Timeout AID
 instance Binary Timeout
 
 -- | Actor just sent data to following destination
-data SentTo = SentTo AID ProcessId [SendPortId]
-                 deriving (Show,Eq,Ord,Typeable,Generic)
+data SentTo = SentTo ProcessId (RecvAddr Recv)
+                 deriving (Show,Eq,Typeable,Generic)
 instance Binary SentTo
 
 -- | Acknowledgement of data transmission
@@ -162,24 +163,34 @@ data Scatter a
 -- Shell actors
 ----------------------------------------------------------------
 
--- | Address of receive port of an actor.
+-- | Address receive port stored as opaque message
+data Recv = Recv !SendPortId !Message
+          deriving (Show,Typeable,Generic)
+instance Eq Recv where
+  Recv a _ == Recv b _ = a == b
+instance Binary Recv
+
+makeRecv :: (Serializable a) => SendPort a -> Recv
+makeRecv ch = Recv (sendPortId ch) (wrapMessage ch)
+
+-- | Address of receive port of an actor. It's parametrized by communication channel type
 --
 --   Messages are sent via SendPort which is stored as 'Message' to
---   erase type.
-data RecvAddr
-    = RcvSimple Message
+-- erase type.
+data RecvAddr m
+    = RcvSimple m
       -- ^ Actor/variable that receive single value
-    | RcvReduce [(Message,SendPort Int)]
+    | RcvReduce [(m,SendPort Int)]
       -- ^ Reduce actor or actors. It's list of ports to send data to
       --   and channels for sending number of values to expect
-    | RcvTree   [(Message,SendPort Int)]
+    | RcvTree   [(m,SendPort Int)]
       -- ^ Ports of tree reducer. They have subtly different meaning.
       --   In ordinary collector data is send to each collector. In
       --   tree collector destination is determined by rank.
-    | RcvGrp [Message]
+    | RcvGrp [m]
       -- ^ Group of simple actors
-    deriving (Show,Typeable,Generic)
-instance Binary RecvAddr
+    deriving (Show,Eq,Functor,Typeable,Generic)
+instance Binary m => Binary (RecvAddr m)
 
 data RecvAddrType
     = RcvTySimple
@@ -190,7 +201,7 @@ data RecvAddrType
       -- ^ Tree reduction actor
     | RcvTyGrp
       -- ^ Group of simple actors
-    deriving (Show,Typeable,Generic)
+    deriving (Show,Eq,Typeable,Generic)
 instance Binary RecvAddrType
 
 

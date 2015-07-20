@@ -1,7 +1,8 @@
-{-# LANGUAGE ExistentialQuantification  #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE GADTs                     #-}
+{-# LANGUAGE LambdaCase                #-}
+{-# LANGUAGE RankNTypes                #-}
 -- |
 -- Handling of message for CH interpreter
 --
@@ -58,16 +59,16 @@ messageHandlers =
     [ MatchS handleProcessTermination
     , MatchS handleTerminate
     , MatchS handleDataSent
-    -- -- , MatchS handleReady
-    -- -- , MatchS handleDone
     , MatchS handleTimeout
+      --
+    -- , MatchS handleReady
+    -- , MatchS handleDone
     ]
 
 
 -- Process need to terminate immediately
 handleTerminate :: Terminate -> Controller ()
-handleTerminate (Terminate msg) = do
-    -- liftIO $ putStrLn $ "actor terminated because of: " ++ msg
+handleTerminate (Terminate msg) =
     fatal $ "Terminate arrived: " ++ msg
 
 
@@ -77,7 +78,12 @@ handleProcessTermination
     -> Controller ()
 handleProcessTermination (ProcessMonitorNotification _ pid reason) =
     case reason of
-      DiedNormal -> handleProcessDone  pid
+      -- Monitored process terminated normally. We don't do anything
+      -- here because we mark actor as terminated after receiving
+      -- 'SentTo' message. Since there's race between receiving
+      -- monitor message and 'SentTo' message we have to put all logic
+      -- into handler for one message.
+      DiedNormal -> return ()
       -- We need to propagate exception from other actors. If some
       -- actor paniced we have no other choice but to spread panic
       --
@@ -89,203 +95,235 @@ handleProcessTermination (ProcessMonitorNotification _ pid reason) =
       -- Otherwise treat it as normal crash
       _ -> handleProcessCrash (show reason) pid
 
-      -- FIXME: restart
-      -- _          -> do
-      --     m <- use $ stRestartable . at pid
-      --     case m of
-      --       Just (mtch,clos,msg) -> handleProcessRestart pid mtch clos msg
-      --       Nothing              -> handleProcessCrash (show reason) pid
 
 
 ----------------------------------------------------------------
 -- Handle child process termination
 ----------------------------------------------------------------
 
--- Monitored process terminated normally. We don't do anything here
--- because we mark actor as terminated after receiving 'SentTo'
--- message. Since there's race between receiving monitor message and
--- 'SentTo' message we have to put all logic into handler for one
--- handler.
-handleProcessDone :: ProcessId -> Controller ()
-handleProcessDone _pid = return ()
-
-
 -- Monitored process crashed or was disconnected
 handleProcessCrash :: String -> ProcessId -> Controller ()
-handleProcessCrash msg pid = withAID pid $ \aid -> do
-    errorMsg $ printf "Child %s/%s crash: %s" (show aid) (show pid) msg
+handleProcessCrash msg pid = do
+    errorMsg $ printf "Child %s crash: %s" (show pid) msg
     -- We can receive notifications from unknown processes. When we
     -- terminate actor forcefully we remove it from registry at the
     -- same time
-    Just st  <- use $ stChildren     . at aid
-    mRestart <- use $ stActorClosure . at aid
-    msrc     <- use $ stActorSrc     . at aid
-    case st of
-      Completed            -> panic "Completed process crashed"
-      CompletedUnconnected -> panic "Completed process crashed"
-      Failed               -> panic "Failed process crashed twice"
-      -- If actor is still running we need to decide whether to
-      -- restart or accept failure. We can restart actor iff one of
-      -- the following is true in addition to having closure
-      --
-      --  * It's not connected yet
-      --  * It's local process and we're holding var
-      --  * It receives data from live actor
-      Running runInfo
-        | Just restart <- mRestart
-        , Nothing      <- msrc
-          -> do Just cad <- use $ stUsedResources . at pid
-                stUsedResources . at pid .= Nothing
-                lift $ spawnSingleActor aid cad restart
-                --
-                Just pids <- use $ stAid2Pid . at aid
-                errorMsg $ "Restarted unconnected actor as " ++ show pids
-                actorDestinationAddr aid >>= T.mapM_ (sendToActor aid)
-        ----------------
-        | Just restart        <- mRestart
-        , Just (Left trySend) <- msrc
-          -> do Just cad <- use $ stUsedResources . at pid
-                stUsedResources . at pid .= Nothing
-                lift $ spawnSingleActor aid cad restart
-                --
-                Just pids <- use $ stAid2Pid . at aid
-                errorMsg $ "Restarted connected actor as " ++ show pids
-                Just (Just (dst,_)) <- use $ stActorRecvAddr . at aid
-                liftP $ trySend dst
-                actorDestinationAddr aid >>= T.mapM_ (sendToActor aid)
-        ----------------
-        | Just restart        <- mRestart
-        , Just (Right aidSrc) <- msrc
-          -> do Just stSrc <- use $ stChildren . at aidSrc
-                case stSrc of
-                  Completed            -> handleFail aid pid runInfo
-                  CompletedUnconnected -> handleFail aid pid runInfo
-                  Failed      -> do
-                      fatalMsg $ printf "Source actor %s crashed already" (show aidSrc)
-                      killActorAndCleanUp aid pid
-                  Running (RunInfo _ nFailsSrc failedRnkSrc) -> do
-                      -- Respawn
-                      Just cad <- use $ stUsedResources . at pid
-                      stUsedResources . at pid .= Nothing
-                      lift $ spawnSingleActor aid cad restart
-                      -- Reconnect
-                      Just pids <- use $ stAid2Pid . at aid
-                      errorMsg $ "Restarted connected actor as " ++ show pids
-                      Just (Just dst) <- use $ stActorRecvAddr . at aid
-                      stChildren . at aidSrc .= Just (Running $ RunInfo 0 nFailsSrc failedRnkSrc)
-                      sendToActor aidSrc dst
-                      dest <- use $ stActorDst . at aid
-                      case dest of
-                        Nothing -> return ()
-                        Just (Left  var) -> do
-                            Just d <- use $ stVars . at var
-                            sendToActor aid (d,[]::[SendPortId])
-                        Just (Right aidDst) -> do
-                            mdst <- use $ stActorRecvAddr . at aidDst
-                            T.forM_ mdst $ \d -> sendToActor aid d
-        ----------------
-        -- Otherwise we simply handle accept fact that process failed
-        | otherwise -> handleFail aid pid runInfo
+    maid <- use $ stPid2Aid . at pid
+    stPid2Aid . at pid .= Nothing
+    case maid of
+      Nothing  -> return ()
+      Just aid -> do
+        Just st <- use $ stActorState . at aid
+        topAid  <- topLevelActor aid
+        msrc    <- use $ stActorSrc . at topAid
+        case st of
+          Completed    -> panic "Completed process crashed"
+          Failed       -> panic "Failed process crashed twice"
+          GrpRunning{} -> panic "Group actor could not be linked to single process"
+          -- If actor is/was still running we need to decide whether to
+          -- restart or accept failure. We can restart actor iff one of
+          -- the following is true in addition to having closure
+          --
+          -- FIXME: what to do with failed node? 
+          Running pinfo
+            --  * It's not connected yet
+            | Just restart <- pinfo^.pinfoClosure
+            , Nothing      <- msrc
+            -> do lift $ spawnSingleActor aid (pinfo^.pinfoNodes) restart
+                  sendDestinationAddr aid
+                  errorMsg $ "Restarted unconnected actor " ++ show aid
+            --  * It's local process and we can resend data
+            | Just restart             <- pinfo^.pinfoClosure
+            , Just (SrcParent trySend) <- msrc
+            -> do lift  $ spawnSingleActor aid (pinfo^.pinfoNodes) restart
+                  liftP $ trySend (pinfo^.pinfoRecvAddr)
+                  sendDestinationAddr aid
+                  errorMsg $ "Restarted locally connected actor " ++ show aid
+            --  * It receives data from live actor
+            | Just restart           <- pinfo^.pinfoClosure
+            , Just (SrcActor aidSrc) <- msrc
+            -> do Just stSrc <- use $ stActorState . at aidSrc
+                  case stSrc of
+                    Completed -> handleFail aid
+                    Failed    -> handleFail aid
+                    Running{} -> do lift $ spawnSingleActor aid (pinfo^.pinfoNodes) restart
+                                    sendDestinationAddr aid
+                                    sendDestinationAddr aidSrc
+                    GrpRunning nFail -> do
+                        -- FIXME: check if logic is correct?
+                        children <- getCompundActorSubordinates aidSrc
+                        let nDone = sum [ 1 | (_,Completed) <- children ]
+                        if nDone > nFail
+                           then do error "FIXME: source actor failed!"
+                           else do error "FIXME: do respawn!"
+                                   error "FIXME: mark all source done actors as failed"
+                                   error "FIXME: send destination to source"
+            --  * Otherwise we don't try to restart actor
+            | otherwise -> handleFail aid
 
 
-handleFail :: AID -> ProcessId -> RunInfo -> Controller ()
-handleFail aid pid rInfo@(RunInfo nDone nFails failedRnk)
-    -- Terminate process forcefully
-    | nFails <= 0 = do
-          -- FIXME: Isn't doFatal really fatal? and everything after it useless
-          void $ doFatal $ printf "Unrecoverable child process %s %s" (show aid) (show pid)
-          killActorAndCleanUp aid pid
-    -- We can still tolerate failures
-    | otherwise = do
-          freeResouces pid
-          Just (Rank rnk, _, _) <- use $ stPid2Aid . at pid 
-          dropPID pid aid
-            ( do mch <- actorDestinationAddr aid
-                 case mch of
-                   -- It's possible that all actors crashed but
-                   -- actor is not connected yet. But it's not
-                   -- possible to get normal termination without
-                   -- connection
-                   Nothing | nDone == 0   -> stChildren . at aid .= Just CompletedUnconnected
-                           | otherwise    -> panic "Unconnected actor terminated normally (crash)"
-                   Just rcv               -> do sendCompletionNotice rcv rInfo
-                                                stChildren . at aid .= Just Completed
-            )
-            ( stChildren . at aid .= Just (Running $ RunInfo nDone (nFails-1) (Set.insert rnk failedRnk))
-            )
-
--- Notify downstream actor about completion of its source. It's needed
--- for collector actors so they would know how many values it should
--- receive
-sendCompletionNotice :: RecvAddr -> RunInfo -> Controller ()
-sendCompletionNotice (RcvReduce chans) (RunInfo nDone _ _) =
-    liftP $ forM_ chans $ \(_,chN) -> sendChan chN nDone
-sendCompletionNotice (RcvTree   chans) (RunInfo nDone _ failedRnk) = do
-    -- FIXME: not terrible efficient nor elegant
-    let blocks = [ length $ filter (\i -> not $ Set.member i failedRnk) [a .. b-1]
-                 | (a,b) <- splitEvenly (nDone + Set.size failedRnk) (length chans) ]
-    liftP $ forM_ (blocks `zip` chans) $ \(n,(_,chN)) -> sendChan chN n
-sendCompletionNotice _ _ = return ()
+-- Process has failed and wasn't respawned
+handleFail :: AID -> Controller ()
+handleFail aid = do
+    Just descr <- use $ stActors . at aid
+    case descr of
+      -- Simple actor directly mapping to CH processes
+      SimpleActor        -> do
+          freeActor aid
+          stActorState . at aid .= Just Failed
+          terminateDependencies aid
+      GroupMember parent -> do
+          freeActor aid
+          stActorState . at aid .= Just Failed
+          handleFail parent
+      -- Tree actors fail unconditionally
+      ActorTree{} -> do
+          flip traverseActor aid $ \a -> do
+              terminateActor a
+              freeActor a
+              stActorState . at a .= Just Failed
+          terminateDependencies aid
+      -- Group of actors
+      ActorGroup{} -> do
+          Just (GrpRunning nFail) <- use $ stActorState . at aid
+          case () of
+            _| nFail > 0 -> do
+                 stActorState . at aid .= Just (GrpRunning (nFail - 1))
+                 checkIfGroupDone aid
+             | otherwise -> do
+                 flip traverseActor aid $ \a -> do
+                     terminateActor a
+                     freeActor a
+                     stActorState . at a .= Just Failed
+                 terminateDependencies aid
 
 
-killActorAndCleanUp :: AID -> ProcessId -> Controller ()
-killActorAndCleanUp aid pid = do
-    freeResouces pid
-    -- Clean up after actor
-    terminateActor  aid
-    dropActor       aid
-    stChildren . at aid .= Just Failed
-    -- Notify dependent processes
-    mdst <- use $ stActorDst . at aid
-    T.forM_ mdst $ \dst -> case dst of
-        Left  _      -> fatal $ "Dependent actor "++ show aid ++ " (" ++ show pid ++ ") died"
-        Right aidDst -> terminateActor aidDst
+-- Terminate all actor which cannot continue anymore
+terminateDependencies :: AID -> Controller ()
+terminateDependencies aid = do
+    use (stActorSrc . at aid) >>= \case 
+      Just SrcParent{}  -> fatal "Child actor died. Cannot continue"
+      Just (SrcActor a) -> terminateActor a
+      _                 -> return ()
+    use (stActorDst . at aid) >>= \case
+      Just DstParent{}  -> fatal "Child actor died. Cannot continue"
+      Just (DstActor a) -> terminateActor a
+      _                 -> return ()
+
+-- Send destination address to an actor if it's connected already
+sendDestinationAddr :: AID -> Controller ()
+sendDestinationAddr aid =
+    use (stActorDst . at aid) >>= \case
+      Just (DstParent v) -> do Just addr <- use $ stVars . at v
+                               sendToActor aid addr
+      Just (DstActor  a) -> sendToActor aid =<< getRecvAddress a
+
+-- Check if group actor completed is execution
+checkIfGroupDone :: AID -> Controller ()
+checkIfGroupDone aid = do
+    -- Get states for all actors
+    states <- getCompundActorSubordinates aid
+    -- Calculate whether we are done or not
+    let nDone  = sum [ 1 | (_, Completed) <- states ]
+        isDone = and [ case s of
+                         (_,Completed) -> True
+                         (_,Failed   ) -> True
+                         _             -> False
+                     | s <- states ]
+   -- Send notification is 
+    when isDone $ do
+        stActorState . at aid .= Just Completed
+        use (stActorDst . at aid) >>= \case
+          Nothing -> return ()
+          Just (DstParent v) -> undefined
+          Just (DstActor  a) -> sendNItems nDone =<< getRecvAddress a
+  where
+    sendNItems n addr = case addr of
+      RcvTree   ps -> liftP $ forM_ ps $ \(_,p) -> sendChan p n
+      RcvReduce ps -> liftP $ forM_ ps $ \(_,p) -> sendChan p n
+      _            -> panic "Cannot send group of values to simple address"
 
 
--- Handle message that actor sent data to some destination
+getCompundActorSubordinates :: AID -> Controller [(AID,ActorState)]
+getCompundActorSubordinates aid = do
+    children <- use (stActors . at aid) >>= \case
+        Just (ActorGroup as) -> return as
+        Just (ActorTree  as) -> return as
+        _                    -> panic "Bad actor type!"
+    forM children $ \a -> do
+        Just s <- use $ stActorState . at a
+        return (a,s)
+
+-- Process sent its result to some destination. Check if it's
+-- correct. Due to respawning of actors it's possible that data was
+-- sent to now defunct actor
 handleDataSent :: SentTo -> Controller ()
-handleDataSent (SentTo aid pid dstID) = do
-    -- Check that data was sent to correct destination
-    --me <- liftP getSelfPid
-    Just dst <- use $ stActorDst . at aid
-    case dst of
-      Left  _      -> sendAck
-      Right aidDst -> do
-          d <- use $ stActorRecvAddr . at aidDst
-          case d of
-            Nothing      -> doPanic "Data sent to unconnected actor"
-            Just Nothing -> doPanic "Data sent to terminated actor"
-            Just (Just (trueDst,trueId))
-              | dstID == trueId -> sendAck
-              | otherwise       -> liftP $ send pid (trueDst,trueId)
+handleDataSent (SentTo pid dst) = do
+    maid <- use $ stPid2Aid . at pid
+    T.forM_ maid $ \aid -> do
+        Just d <- use $ stActorDst . at aid
+        case d of
+          DstParent vid    -> sendAck aid
+          DstActor  aidDst -> do
+              ok <- checkDestination dst aidDst
+              if ok then sendAck aid
+                    else error "FIXME!"
   where
     -- Send confirmation to the actor and remove it from registry
-    sendAck = do
+    sendAck aid = do
         liftP $ send pid AckSend
-        freeResouces pid
-        Just st <- use $ stChildren . at aid
-        case st of
-          Completed            -> panic $ printf "Actor %s terminated normally twice?" (show aid)
-          CompletedUnconnected -> panic $ printf "Actor %s terminated normally twice?" (show aid)
-          Failed               -> panic $ printf "Failed actor %s terminated normally?" (show aid)
-          Running (RunInfo nDone nFails failedRnk) ->
-              dropPID pid aid
-                ( do stChildren . at aid .= Just Completed
-                     mch <- actorDestinationAddr aid
-                     case mch of
-                       Nothing  -> panic "Unconnected actor terminated normally"
-                       Just rcv -> sendCompletionNotice rcv (RunInfo (nDone+1) nFails failedRnk)
-                )
-                ( stChildren . at aid .= Just (Running $ RunInfo (nDone+1) nFails failedRnk)
-                )
+        freeActor aid
+        stActorState . at aid .= Just Completed
 
+-- | Check if data was sent to correct destination
+checkDestination :: RecvAddr Recv -> AID -> Controller Bool
+checkDestination rcv aid = do
+    Just act <- use $ stActors   . at aid
+    Just st  <- use $ stActorState . at aid
+    case (st,rcv) of
+      -- FIXME: Is this correct?
+      (Completed,_) -> panic "Cannot send data to completed actor!"
+      -- Could happen in failout mode
+      (Failed,   _) -> return True
+      --
+      (Running p, r) -> return $ (p^.pinfoRecvAddr) == r
+      -- FIXME: groups of collectors are omitted
+      --
+      -- FIXME: safe zip
+      (GrpRunning as, RcvTree ms) -> do
+          aids <- case act of
+                    ActorTree as -> return as
+                    _            -> panic "Bad actor type"
+          sts <- forM aids $ \a -> use $ stActorState . at a
+          return $ and [ case (m,s) of
+                           (r1,Just (Running p)) -> case p^.pinfoRecvAddr of
+                               RcvTree [r2] -> r1 == r2
+                               _            -> False
+                           _ -> False
+                       | (m,s) <- ms `zip` sts
+                       ]
+          --              ]
+      (GrpRunning _, RcvGrp  ms) -> do
+          aids <- case act of
+                    ActorGroup as -> return as
+                    _             -> panic "Bad actor type"
+          sts <- forM aids $ \a -> use $ stActorState . at a
+          return $ and [ case (m,s) of
+                           (r1,Just (Running p)) -> case p^.pinfoRecvAddr of
+                               RcvSimple r2 -> r1 == r2
+                               _            -> False
+                           _ -> False
+                       | (m,s) <- ms `zip` sts
+                       ]
+          
 
 -- Perform action on actor. If no actor is associated with PID then do
 -- nothing
 withAID :: ProcessId -> (AID -> Controller ()) -> Controller ()
 withAID pid action = do
-    maid <- use $ stPid2Aid . at pid
-    T.forM_ maid $ \(_,_,aid) -> action aid
+    undefined
+    -- maid <- use $ stPid2Aid . at pid
+    -- T.forM_ maid $ \(_,_,aid) -> action aid
 
 -- Remove PID from mapping
 dropPID
@@ -295,95 +333,24 @@ dropPID
     -> Controller ()            -- ^ Call if actor is still working
     -> Controller ()
 dropPID pid aid actionDone actionGoing = do
-    Just pids <- use $ stAid2Pid . at aid
-    let  pids' = Set.delete pid pids
-    stPid2Aid . at pid .= Nothing
-    case Set.null pids' of
-      True -> do
-          stAid2Pid       . at aid .= Nothing
-          stActorRecvAddr . at aid .= Just Nothing
-          actionDone
-      False -> do
-          stAid2Pid  . at aid .= Just pids'
-          actionGoing
+    undefined
+    -- Just pids <- use $ stAid2Pid . at aid
+    -- let  pids' = Set.delete pid pids
+    -- stPid2Aid . at pid .= Nothing
+    -- case Set.null pids' of
+    --   True -> do
+    --       stAid2Pid       . at aid .= Nothing
+    --       stActorRecvAddr . at aid .= Just Nothing
+    --       actionDone
+    --   False -> do
+    --       stAid2Pid  . at aid .= Just pids'
+    --       actionGoing
 
 
 
 ----------------------------------------------------------------
 -- Handle restarts
 ----------------------------------------------------------------
-
-
-{-
--- Handle restart of a process
-handleProcessRestart
-    :: ProcessId                -- Old PID
-    -> Match' (SomeRecvEnd,SomeSendEnd,[SendPort Int])
-    -> Closure (Process ())     -- Closure to restart
-    -> Message                  -- Initial parameters
-    -> Controller ()
-handleProcessRestart oldPID mtch clos p0 = do
-    -- Get older resources
-    Just cad <- use $ stUsedResources . at oldPID
-    -- Get connections for the processes
-    --
-    -- FIXME: Here we (wrongly!) assume that connections are already
-    --        established. Doing thing right way would be too
-    --        difficult at the moment
-    --
-    -- FIXME: Also we don't take into account actors which receive
-    --        data from parent process
-    --
-    -- Restart process
-    (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) clos
-    liftP $ forward p0 pid
-    taggedMessage "INFO" $ printf "%s died, respawned as %s" (show oldPID) (show pid)
-    -- Record updated information about actor
-    stUsedResources . at oldPID .= Nothing
-    stUsedResources . at pid    .= Just cad
-    -- Children state
-    x <- use $ stChildren . at oldPID
-    stChildren . at pid .= x
-    -- Connection state
-    Just src <- use $ stConnUpstream   . at (SingleActor oldPID)
-    Just dst <- use $ stConnDownstream . at (SingleActor oldPID)
-    stConnUpstream   . at (SingleActor oldPID) .= Nothing
-    stConnDownstream . at (SingleActor oldPID) .= Nothing
-    stConnUpstream   . at (SingleActor pid)    .= Just src
-    stConnDownstream . at (SingleActor pid)    .= Just dst
-    -- Update restart state
-    stRestartable . at oldPID .= Nothing
-    stRestartable . at pid    .= Just (mtch,clos,p0)
-    -- Obtain communication ends
-    --
-    -- FIXME: Here we can run into situation when we need to respawn
-    --        another process while we're waiting for shells so we can
-    --        potentially confuse shells
-    (r,s,chN) <- lift $ handleRecieve messageHandlers [mtch]
-    liftIO $ print $ "Restarting " ++ show oldPID ++ " --> " ++ show pid ++ " | " ++ show chN
-    -- Record and connect everything
-    case src of
-      (aid,ss) -> do
-          stConnDownstream . at aid .= Just (Left (SingleActor pid, r))
-          liftP $ doConnectActorsExistentially ss r
-          -- We also need to update info about channel to send
-          case aid of
-            ActorGroup gid -> do
-                Just g <- use $ stGroups . at gid
-                g' <- case g of
-                  GrUnconnected{} -> fatal "It should be connected"
-                  GrConnected ty (nR,_) _ pids -> return $
-                      GrConnected ty (nR,0) chN pids
-                  GrFailed -> fatal "We should react to failure by now"
-                stGroups . at gid .= Just g'
-            SingleActor _   -> return ()
-    case dst of
-      Left (aid,rr) -> do
-          stConnUpstream . at aid .= Just (SingleActor pid, s)
-          liftP $ doConnectActorsExistentially s rr
-      Right rr ->
-          liftP $ doConnectActorsExistentially s rr
--}
 
 
 

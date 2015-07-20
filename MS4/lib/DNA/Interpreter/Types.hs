@@ -1,8 +1,9 @@
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
@@ -172,16 +173,12 @@ runDnaParam p action = do
            , _stDebugFlags    = actorDebugFlags p
            , _stLogOpt        = actorLogOpt p
            , _stNodePool      = Set.fromList $ vcadNodePool $ actorNodes p
-           , _stUsedResources = Map.empty
-           , _stChildren      = Map.empty
+           , _stActors        = Map.empty
+           , _stActorState    = Map.empty
            , _stActorSrc      = Map.empty
            , _stActorDst      = Map.empty
            , _stVars          = Map.empty
-           , _stActorRecvAddr = Map.empty
-           , _stAid2Pid       = Map.empty
-           , _stAllAid2Pid    = Map.empty
            , _stPid2Aid       = Map.empty
-           , _stActorClosure  = Map.empty
            }
 
 
@@ -211,7 +208,7 @@ data ActorParam = ActorParam
       -- ^ Nodes allocated to an actor
     , actorDebugFlags  :: [DebugFlag]
       -- ^ Extra flags for debugging
-    , actorSendBack    :: SendPort (RecvAddr,[SendPortId])
+    , actorSendBack    :: SendPort (RecvAddr Recv)
       -- ^ Send receive address and list of port ID's back to the parent process
     , actorAID         :: AID
       -- ^ AID of an actor as viewed by parent
@@ -247,88 +244,171 @@ data Env = Env
 --
 --
 data StateDNA = StateDNA
-    { _stCounter     :: !Int
-      -- Counter for generation of unique IDs
-    , _stDebugFlags  :: [DebugFlag]
-    , _stLogOpt      :: LoggerOpt
+    { _stCounter     :: !Int        -- ^ Counter for generation of unique IDs
+    , _stDebugFlags  :: [DebugFlag] -- ^ Extra debug flags
+    , _stLogOpt      :: LoggerOpt   -- ^ Options for logger
 
       -- Resources
     , _stNodePool      :: !(Set NodeInfo)
-      -- ^ Unused nodes which could be reused
-    , _stUsedResources :: !(Map ProcessId VirtualCAD)
-      -- ^ Resources used by child actors. Note that resources are
-      --   allocated per CH process not per actor.
+      -- ^ Nodes which are currently not in use
 
       -- Append only dataflow graph
-    , _stChildren      :: !(Map AID ActorState)
-      -- ^ State of child actors
-    , _stActorSrc :: !(Map AID (Either (RecvAddr -> Process ()) AID))
-      -- ^ Source of an actor. It's either another actor or parent
-      --   actor. In latter case we store encoded message.
-      --   message
-    , _stActorDst :: !(Map AID (Either VID AID))
-      -- ^ Destination of an actor. It could be either other actor or
-      --   variable local to parent actor.
-
-      -- State of connections
-    , _stVars          :: !(Map VID RecvAddr)
-      -- ^ Mapping for local variables
-    , _stActorRecvAddr :: !(Map AID (Maybe (RecvAddr,[SendPortId])))
-      -- ^ Receive address of an actor. When actor terminated it's set
-      --   to Nothing
-
+    , _stActors     :: !(Map AID ActorHier)
+      -- ^ List of all spawned processes
+    , _stActorState :: !(Map AID ActorState)
+      -- ^ State of all groups of processes
+    , _stActorSrc   :: !(Map AID ActorSrc)
+      -- ^ Data source of an actor.
+    , _stActorDst   :: !(Map AID ActorDst)
+      -- ^ Data destination of an actor.
+    , _stVars       :: !(Map VID (RecvAddr Recv))
+      -- ^ All local variables
+      
       -- Mapping ProcessID <-> AID
-    , _stPid2Aid    :: !(Map ProcessId (Rank,GroupSize,AID))
-    , _stAid2Pid    :: !(Map AID (Set ProcessId))
-    , _stAllAid2Pid :: !(Map AID (Set ProcessId))
-      -- ^ All PIDs ever associated with given AID
-
-      -- Restarts
-    , _stActorClosure   :: !(Map AID SpawnCmd)
-      -- ^ Closure for the actor. All restartable actors have closure
-      -- stored.
+    , _stPid2Aid    :: !(Map ProcessId AID)
     }
+
+-- | Hierarchy of actors
+data ActorHier
+    = SimpleActor               -- ^ Simple 1-process actor
+    | GroupMember AID           -- ^ Actor which is member of a group
+    | ActorGroup [AID]          -- 
+    | ActorTree  [AID]          -- 
+    deriving (Show,Eq)
+
+-- | State of leaf actor.
+data ActorState
+    = Completed              -- ^ Actor completed execution successfully
+    | Failed                 -- ^ Actor failed
+    | Running    ProcInfo    -- ^ Actor is running
+    | GrpRunning Int         -- ^ Group of actor is still running 
+    deriving (Show)
+
+-- | Data source of an actor
+data ActorSrc
+    = SrcParent (RecvAddr Recv -> Process ()) -- ^ Actor receive data from parent
+    | SrcActor  AID                      -- ^ Actor receive data from another actor
+    | SrcSubordinate                     -- ^ Actor is member of group of actors
+
+-- | Destination of an actor
+data ActorDst
+    = DstParent VID -- ^ Actor sends data back to parent
+    | DstActor  AID -- ^ Actor sends data to another actor
+    deriving (Show,Eq)
+
+
+-- | Data about actor which corresponds to single
+data ProcInfo = ProcInfo
+  { _pinfoPID      :: ProcessId
+  , _pinfoRecvAddr :: RecvAddr Recv
+  , _pinfoNodes    :: VirtualCAD
+  , _pinfoClosure  :: Maybe SpawnCmd
+  }
+  deriving (Show)
 
 -- | Command for spawning actor
 data SpawnCmd
-    = SpawnSingle (Closure (Process ())) Res RecvAddrType [SpawnFlag]
-    deriving (Show)
-
--- | State of actor.
-data ActorState
-    = Failed                    -- ^ Actor failed
-    | Running RunInfo           -- ^ Actor is still running
-    | Completed                 -- ^ Actor finished execution successfully
-    | CompletedUnconnected      -- ^ Actor finished execution
-                                --   successfully while not connected
-                                --   (and doesn't produce any output)
-    deriving (Show)
-
--- | Information about running process. We store number of completed
---   processes and number of allowed failures. Number of still running
---   processes is accessible via AID<->{PID} mapping
-data RunInfo = RunInfo
-    { nCompleted      :: !Int
-      -- ^ Number of CH processes that complete execution
-    , allowedFailures :: !Int
-      -- ^ Number of allowed failures
-    , failedRanks     :: Set Int
-      -- ^ Set of failed ranks of processes
-    }
-    deriving (Show)
+    = SpawnSingle
+        (Closure (Process ()))
+        Rank
+        GroupSize
+        ActorHier
+        RecvAddrType
+        [SpawnFlag]
+    deriving (Show,Eq)
 
 $(makeLenses ''StateDNA)
+$(makeLenses ''ProcInfo)
 
--- | Destination of actor.
-actorDestinationAddr :: AID -> Controller (Maybe RecvAddr)
-actorDestinationAddr aid = do
-    maidDst <- use $ stActorDst . at aid
-    case maidDst of
-      Nothing             -> return Nothing
-      Just (Left var)     -> use $ stVars . at var
-      Just (Right aidDst) -> do Just m <- use $ stActorRecvAddr . at aidDst
-                                -- FIXME: Pattern matching??
-                                return $ fmap fst m
+----------------------------------------------------------------
+-- Helpers
+----------------------------------------------------------------
+
+-- | Get ID of top-level actor in group
+topLevelActor :: MonadState StateDNA m => AID -> m AID
+topLevelActor aid = do
+    mst <- use $ stActors . at aid
+    case mst of
+      Just (GroupMember a) -> return a
+      Just  _              -> return aid
+
+-- | Obtain receive address for an actor
+getRecvAddress
+    :: (MonadState StateDNA m, MonadError DnaError m)
+    => AID -> m (RecvAddr Recv)
+getRecvAddress aid = do
+    Just act <- use $ stActors     . at aid
+    Just st  <- use $ stActorState . at aid
+    case (act,st) of
+      -- 1-process actor
+      (SimpleActor  , Running p) -> return $ p^.pinfoRecvAddr
+    
+      (ActorTree  as, GrpRunning{}) -> do
+          ms <- forM as $ \a -> do
+              getRecvAddress a >>= \case
+                RcvReduce m -> return m
+                _           -> panic "Bad subordinate actor for tree"
+          return $ RcvTree $ concat ms
+      -- Group of worker processes
+      (ActorGroup as, GrpRunning{}) -> do
+          ms <- forM as $ \a -> do
+              getRecvAddress a >>= \case
+                RcvSimple m -> return m
+                _           -> panic "Bad subordinate actor for group"
+          return $ RcvGrp ms
+      _ -> fail "getRecvAddress"
+
+-- | Execute action for each sub actor in compound actor
+traverseActor
+    :: (MonadState StateDNA m, Monoid r)
+    => (AID -> m r) -> AID -> m r
+traverseActor action aid = do
+    action aid
+    mst <- use $ stActors . at aid
+    case mst of
+      Just (ActorGroup as) -> do r <- forM as $ traverseActor action
+                                 return $ mconcat r
+      Just (ActorTree  as) -> do r <- forM as $ traverseActor action
+                                 return $ mconcat r
+      _                    -> return mempty
+
+-- | Send same message to all processes in actor
+sendToActor
+    :: (MonadProcess m, MonadState StateDNA m, Serializable a)
+    => AID -> a -> m ()
+sendToActor aid x = flip traverseActor aid $ \a -> do
+    use (stActorState . at aid) >>= \case
+        Just (Running p) -> liftP $ send (p^.pinfoPID) a
+        _                -> return ()
+
+-- | Terminate actor forcefully. This only kill actors' processes and
+--   doesn't affect registry
+terminateActor :: (MonadProcess m, MonadState StateDNA m) => AID -> m ()
+terminateActor aid = sendToActor aid (Terminate "TERMINATE")
+
+
+-- | Free actor's resources
+freeActor :: (MonadProcess m, MonadState StateDNA m) => AID -> m ()
+freeActor aid  = do
+    me <- liftP getSelfNode
+    st <- use $ stActorState . at aid
+    case st of
+      Just (Running p) -> case p^.pinfoNodes of
+        VirtualCAD n ns -> stNodePool %=
+            (\xs -> Set.delete (NodeInfo me) $ Set.singleton n <> Set.fromList ns <> xs)
+      _                -> return ()
+
+
+-- -- | Destination of actor.
+-- actorDestinationAddr :: AID -> Controller (Maybe RecvAddr)
+-- actorDestinationAddr aid = do
+--     maidDst <- use $ stActorDst . at aid
+--     case maidDst of
+--       Nothing             -> return Nothing
+--       Just (Left var)     -> use $ stVars . at var
+--       Just (Right aidDst) -> do Just m <- use $ stActorRecvAddr . at aidDst
+--                                 -- FIXME: Pattern matching??
+--                                 return $ fmap fst m
 
 
 
@@ -336,43 +416,81 @@ actorDestinationAddr aid = do
 -- Helpers
 ----------------------------------------------------------------
 
--- | Terminate actor forcefully
-terminateActor :: (MonadProcess m, MonadState StateDNA m) => AID -> m ()
-terminateActor aid = do
-    mpids <- use $ stAid2Pid . at aid
-    liftP $ T.forM_ mpids $ T.mapM_ $ \p ->
-        send p (Terminate "TERMINATE")
+-- -- | Stop actor and return resources to the pool
+-- stopActorWith
+--     :: (MonadState StateDNA m, MonadProcess m)
+--     => ActorState
+--     -> AID
+--     -> m ()
+-- stopActorWith newSt aid = do
+--     mst <- use $ stChildren . at aid
+--     case mst of
+--       Just (Running st) -> case st of
+--         SimpleActor   p   -> do free p
+--                                 stChildren . at aid .= Just newSt
+--         GroupMember _ p   -> do free p
+--                                 stChildren . at aid .= Just newSt
+--         ActorGroup as _   -> do T.forM_ as $ stopActorWith newSt
+--                                 stChildren . at aid .= Just newSt
+--         ActorTreeGroup as -> do T.forM_ as $ stopActorWith newSt
+--                                 stChildren . at aid .= Just newSt
+--       _ -> return ()
+--   where
+--     free p = do
+--         me <- liftP getSelfNode
+--         case _pinfoNodes p of
+--           VirtualCAD n ns -> stNodePool %=
+--             (\xs -> Set.delete (NodeInfo me) $ Set.singleton n <> Set.fromList ns <> xs)
 
--- | Drop actor from the registry
+-- topLevelActor :: (MonadState StateDNA m) => AID -> m AID
+-- topLevelActor aid = do
+--     Just st <- use $ stChildren . at aid
+--     case st of
+--       ActorGroup     a _ -> return a
+--       ActorTreeGroup a   -> return a
+--       _                  -> return aid
+
+{-
+-- | Drop actor from the registry. This only removes process from
+--   registry and assumes that it dead already
 dropActor :: (MonadState StateDNA m) => AID -> m ()
 dropActor aid = do
-    mpids <- use $ stAid2Pid . at aid
-    stAid2Pid       . at aid .= Nothing
-    stActorRecvAddr . at aid .= Just Nothing
-    T.forM_ mpids $ T.mapM_ $ \p ->
-        stPid2Aid . at p .= Nothing
+    -- mst <- use $ stChildren . at aid
+    -- case mst of
+    --   Just (Running st) -> case st of
+          
+    undefined
+    -- mpids <- use $ stAid2Pid . at aid
+    -- stAid2Pid       . at aid .= Nothing
+    -- stActorRecvAddr . at aid .= Just Nothing
+    -- T.forM_ mpids $ T.mapM_ $ \p ->
+    --     stPid2Aid . at p .= Nothing
 
 -- | Put resources associated with PID to the pool
 freeResouces :: (MonadProcess m, MonadState StateDNA m) => ProcessId -> m ()
 freeResouces pid = do
-    mr <- use $ stUsedResources . at pid
-    me <- liftP getSelfNode
-    stUsedResources . at pid .= Nothing
-    case mr of
-      Nothing -> return ()
-      Just (VirtualCAD n ns) -> stNodePool %= (\xs -> Set.delete (NodeInfo me) $ Set.singleton n <> Set.fromList ns <> xs)
+    undefined
+    -- mr <- use $ stUsedResources . at pid
+    -- me <- liftP getSelfNode
+    -- stUsedResources . at pid .= Nothing
+    -- case mr of
+    --   Nothing -> return ()
+    --   Just (VirtualCAD n ns) -> stNodePool %= (\xs -> Set.delete (NodeInfo me) $ Set.singleton n <> Set.fromList ns <> xs)
 
 -- | Put resources associated with PID to the pool
 freeActorResouces :: (MonadProcess m, MonadState StateDNA m) => AID -> m ()
 freeActorResouces aid = do
-    mpids <- use $ stAid2Pid . at aid
-    T.forM_ mpids $ T.mapM_ freeResouces
+    undefined
+    -- mpids <- use $ stAid2Pid . at aid
+    -- T.forM_ mpids $ T.mapM_ freeResouces
 
 
 sendToActor :: (MonadState StateDNA m, MonadProcess m, Serializable a) => AID -> a -> m ()
 sendToActor aid a = do
-    pids <- use $ stAid2Pid . at aid
-    liftP $ T.forM_ pids $ T.mapM_ (\p -> send p a)
+    undefined
+    -- pids <- use $ stAid2Pid . at aid
+    -- liftP $ T.forM_ pids $ T.mapM_ (\p -> send p a)
+-}
 
 -- Generate unique ID
 uniqID :: MonadState StateDNA m => m Int

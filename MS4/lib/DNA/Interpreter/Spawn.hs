@@ -58,7 +58,8 @@ execSpawnActor res actorCmd = do
                     $ closureApply $(mkStaticClosure 'runActor) <$> actorCmd
     aid <- AID <$> uniqID
     cad <- acquireResources res flags
-    spawnSingleActor aid cad (SpawnSingle act res RcvTySimple flags)
+    spawnSingleActor aid cad
+      $ SpawnSingle act (Rank 0) (GroupSize 1) SimpleActor RcvTySimple flags
     return $ Shell aid
 
 -- | Spawn collector actor on remote node
@@ -73,7 +74,8 @@ execSpawnCollector res actorCmd = do
                     $ closureApply $(mkStaticClosure 'runCollectActor) <$> actorCmd
     aid <- AID <$> uniqID
     cad <- acquireResources res flags
-    spawnSingleActor aid cad (SpawnSingle act res RcvTyReduce flags)
+    spawnSingleActor aid cad 
+      $ SpawnSingle act (Rank 0) (GroupSize 1) SimpleActor RcvTyReduce flags
     return $ Shell aid
 
 
@@ -87,12 +89,8 @@ execSpawnGroup
 -- BLOCKING
 execSpawnGroup res resG act = do
     -- Spawn actors
-    (aid,ch) <- spawnActorGroup res resG
-              $ closureApply $(mkStaticClosure 'runActor) <$> act
-    -- Receive connection
-    receiveShellGroup ch aid RcvGrp $ \dst -> case dst of
-      RcvSimple m -> return m
-      _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
+    aid <- spawnActorGroup res resG RcvTySimple ActorGroup
+         $ closureApply $(mkStaticClosure 'runActor) <$> act
     return $ Shell aid
 
 {-
@@ -124,12 +122,8 @@ execSpawnCollectorGroup
     -> DnaMonad (Shell (Grp a) (Grp b))
 execSpawnCollectorGroup res resG act = do
     -- Spawn actors
-    (aid,ch) <- spawnActorGroup res resG
-              $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
-    -- Receive connection
-    receiveShellGroup ch aid (RcvReduce . concat) $ \dst -> case dst of
-      RcvReduce m -> return m
-      _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
+    aid <- spawnActorGroup res resG RcvTyReduce ActorGroup
+         $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
     return $ Shell aid
 
 
@@ -143,7 +137,8 @@ execSpawnCollectorTree actorCmd = do
         res = if UseLocal `elem` flags then N 0 else N 1
     aid <- AID <$> uniqID
     cad <- acquireResources res flags
-    spawnSingleActor aid cad (SpawnSingle act res RcvTyTree flags)
+    spawnSingleActor aid cad
+      $ SpawnSingle act (Rank 0) (GroupSize 1) SimpleActor RcvTyTree flags
     return $ Shell aid
 
 execSpawnCollectorTreeGroup
@@ -152,13 +147,8 @@ execSpawnCollectorTreeGroup
     -> Spawn (Closure (TreeCollector a))
     -> DnaMonad (Shell (Grp a) (Grp a))
 execSpawnCollectorTreeGroup res act = do
-    -- Spawn actors
-    (aid,ch) <- spawnActorGroup res (NWorkers 1)
-              $ closureApply $(mkStaticClosure 'runTreeActor) <$> act
-    -- Receive connection
-    receiveShellGroup ch aid (RcvTree . concat) $ \dst -> case dst of
-      RcvTree m -> return m
-      _         -> doPanic "Invalid RecvAddr in execSpawnCollectorTreeGroup"
+    aid <- spawnActorGroup res (NWorkers 1) RcvTyTree ActorTree
+         $ closureApply $(mkStaticClosure 'runTreeActor) <$> act
     return $ Shell aid
 
 
@@ -173,71 +163,85 @@ acquireResources res flags = do
         $ makeResource (if UseLocal `elem` flags then Local else Remote)
       =<< requestResources res
 
--- Spawn actor which only uses single CH process.
+-- Spawn actor which only uses single CH process. It doesn't record
+-- actor into `stActors'
 spawnSingleActor
     :: AID
     -> VirtualCAD
     -> SpawnCmd
     -> DnaMonad ()
-spawnSingleActor aid cad cmd@(SpawnSingle act _ addrTy flags) = do
+spawnSingleActor aid cad cmd@(SpawnSingle act rnk grp actDescr addrTy flags) = do
+    -- Spawn process and receive recv. address back
     (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) act
-    -- Set registry
-    stAid2Pid       . at aid .= Just (Set.singleton pid)
-    stAllAid2Pid    . at aid .= Just (Set.singleton pid)
-    stPid2Aid       . at pid .= Just (Rank 0, GroupSize 1, aid)
-    stChildren      . at aid .= Just (Running (RunInfo 0 0 mempty))
-    stUsedResources . at pid .= Just cad
-    -- Add timeout for actor
-    liftP $ setTimeout flags aid
-    -- Send auxiliary parameter
     (chSend,chRecv) <- liftP newChan
-    _ <- sendActorParam pid aid (Rank 0) (GroupSize 1) cad chSend
-           (concat [fs | UseDebug fs <- flags])
-    when (UseRespawn `elem` flags) $ do
-        stActorClosure . at aid .= Just cmd
-    -- Receive shell back
-    receiveShell chRecv aid pid $ \dst -> case (dst,addrTy) of
+    _       <- sendActorParam
+                 pid aid rnk grp
+                 cad chSend (concat [fs | UseDebug fs <- flags])
+    maddr   <- receiveShell chRecv aid pid $ \dst -> case (dst,addrTy) of
         (RcvSimple{},RcvTySimple) -> return ()
         (RcvReduce{},RcvTyReduce) -> return ()
         (RcvGrp{}   ,RcvTyGrp   ) -> return ()
         (RcvTree{}  ,RcvTyTree  ) -> return ()
         _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
+    -- Add timeout for actor
+    liftP $ setTimeout flags aid
+    -- Record actor
+    stActors . at aid .= Just actDescr
+    case maddr of
+      Nothing ->
+          stActorState . at aid .= Just Failed
+      Just addr -> do
+          stPid2Aid    . at pid .= Just aid
+          stActorState . at aid .= Just 
+              (Running $ ProcInfo
+                 { _pinfoPID      = pid
+                 , _pinfoRecvAddr = addr
+                 , _pinfoNodes    = cad
+                 , _pinfoClosure  = if UseRespawn `elem` flags then Just cmd else Nothing
+                 })
     logSpawn pid aid cad
 
 -- Spawn group of actors
 spawnActorGroup
     :: Res                          -- Resourses allocated to group
     -> ResGroup                     -- How to split resources between actors
+    -> RecvAddrType                 -- 
+    -> ([AID] -> ActorHier)         -- 
     -> Spawn (Closure (Process ())) -- Closure to process'
-    -> DnaMonad (AID,ReceivePort (RecvAddr,[SendPortId])) -- Returns size of group and group ID
-spawnActorGroup res resG spwn = do
+    -> DnaMonad AID
+spawnActorGroup res resG addrTy actDescr spwn = do
     let (act,flags) = runSpawn spwn
     -- Acquire resources
     rs <- runController
          $ splitResources resG
        =<< addLocal flags
        =<< requestResources res
-    let k     = length rs
-        nFail = if UseFailout `elem` flags then k else 0
-    -- Record group existence
-    aid <- AID <$> uniqID
-    stChildren . at aid .= Just (Running (RunInfo 0 nFail mempty))
-    (chSend,chRecv) <- liftP newChan
+    let k = length rs
     -- Spawn actors
-    forM_ ([0..] `zip` rs) $ \(rnk,cad) -> do
-        (pid,_) <- liftP
-                 $ spawnSupervised (nodeId $ vcadNode cad) act
-        _ <- sendActorParam pid aid (Rank rnk) (GroupSize k) cad chSend
-               (concat [fs | UseDebug fs <- flags])
-        stAid2Pid       . at aid %= Just . maybe (Set.singleton pid) (Set.insert pid)
-        stAllAid2Pid    . at aid %= Just . maybe (Set.singleton pid) (Set.insert pid)
-        stPid2Aid       . at pid .= Just (Rank rnk, GroupSize k,aid)
-        stUsedResources . at pid .= Just cad
-        logSpawn pid aid cad
-    -- Add timeout for actor
-    liftP $ setTimeout flags aid
+    aid      <- AID <$> uniqID
+    children <- forM ([0..] `zip` rs) $ \(rnk,cad) -> do
+        a <- AID <$> uniqID
+        spawnSingleActor a cad
+          $ SpawnSingle act (Rank rnk) (GroupSize k) (GroupMember aid) addrTy flags
+        return a
+    -- Record compound actor
+    stActors . at aid .= Just (actDescr children)
+    nFailed <- do
+        ns <- forM children $ \a -> do
+            st <- use $ stActorState . at a
+            case st of
+              Just Failed -> return 1
+              _           -> return 0
+        return $! sum ns
+    case (if UseFailout `elem` flags then k else 0) - nFailed of
+      n | n < 0     -> do terminateActor aid
+                          forM_ children $ \a ->
+                              stActorState . at a .= Just Failed
+                          stActorState . at aid .= Just Failed
+        | otherwise -> do stActorState . at aid .= Just (GrpRunning n)
+                          liftP $ setTimeout flags aid
     --
-    return (aid,chRecv)
+    return aid
 
 
 ----------------------------------------------------------------
@@ -259,49 +263,21 @@ waitForShell ch p = receiveWait
 -- Receive shell process for single process actor and either record
 -- failure or success in the dataflow graph
 receiveShell
-    :: ReceivePort (RecvAddr,[SendPortId])
+    :: ReceivePort (RecvAddr Recv)
     -> AID
     -> ProcessId
-    -> (RecvAddr -> DnaMonad ())
-    -> DnaMonad ()
+    -> (RecvAddr Recv -> DnaMonad ())
+    -> DnaMonad (Maybe (RecvAddr Recv))
 receiveShell ch aid pid handler = do
     -- We obtain shell or notification that process is dead
     r <- liftP $ waitForShell ch (==pid)
     case r of
       Left err -> do
         errorMsg (show err)
-        stChildren      . at aid .= Just Failed
-        stActorRecvAddr . at aid .= Just Nothing
-        freeActorResouces aid
-        dropActor aid
-        -- FIXME: Does marking actor as failed interferes with respawning?
+        return Nothing
       Right dst -> do
-        stActorRecvAddr . at aid .= Just (Just dst)
-        handler $ fst dst
-
-receiveShellGroup
-    :: ReceivePort (RecvAddr,[SendPortId])
-    -> AID
-    -> ([a] -> RecvAddr)
-    -> (RecvAddr -> DnaMonad a)
-    -> DnaMonad ()
-receiveShellGroup ch aid assemble handler = do
-    -- Receive shells or notifications
-    Just pids <- use $ stAid2Pid . at aid
-    dsts <- liftP $ replicateM (Set.size pids) $ waitForShell ch (`Set.member` pids)
-    -- Check that we don't have too many failures
-    Just (Running (RunInfo _ nFail _)) <- use $ stChildren . at aid
-    let (fails,oks) = partitionEithers dsts
-    if length fails > nFail
-       then do forM_ fails $ \err ->
-                   errorMsg (show err)
-               stChildren      . at aid .= Just Failed
-               stActorRecvAddr . at aid .= Just Nothing
-               freeActorResouces aid
-               terminateActor    aid
-               dropActor aid
-       else do xs <- forM oks (handler . fst)
-               stActorRecvAddr . at aid .= Just (Just (assemble xs, snd =<< oks))
+        handler dst
+        return (Just dst)
 
 
 -- Create process for forcing timeout when process
@@ -326,14 +302,14 @@ sendActorParam
     -> Rank
     -> GroupSize
     -> VirtualCAD
-    -> SendPort (RecvAddr,[SendPortId])
+    -> SendPort (RecvAddr Recv)
     -> [DebugFlag]
     -> DnaMonad ActorParam
 sendActorParam pid aid rnk g cad ch flags = do
-    me     <- liftP getSelfPid
-    interp <- envInterpreter <$> ask
+    me      <- liftP getSelfPid
+    interp  <- envInterpreter <$> ask
     workDir <- envWorkDir <$> ask
-    logopt <- use stLogOpt
+    logopt  <- use stLogOpt
     let logopt' =
             ( case logOptDebugPrint logopt of
                 DebugPrintEnabled -> \l -> l { logOptDebugPrint = NoDebugPrint }
@@ -401,8 +377,6 @@ addLocal :: [SpawnFlag] -> [NodeInfo] -> Controller [NodeInfo]
 addLocal flags nodes
   | UseLocal `elem` flags = do
         n <- liftP getSelfNode
-        -- FIXME: We need to store information about local node
-        --        somewhere
         return $ NodeInfo n : nodes
   | otherwise             = return nodes
 
