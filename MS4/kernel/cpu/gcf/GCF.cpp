@@ -32,6 +32,7 @@ void __transpose_and_normalize_and_extract(
     , src_pitch = src_size + src_pad
     ;
 
+  src += (max_support / 2 - support / 2) * over * (src_pitch + 1);
   for (int overu = 0; overu < over; overu++, src+=src_pitch) {
     const complexd * srcp1; srcp1 = src;
     for (int overv = 0; overv < over; overv++, srcp1++) {
