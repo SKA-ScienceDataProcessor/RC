@@ -103,7 +103,8 @@ void gridKernel_scatter(
 #endif
       for(int n=0; n<ts_ch; n++){
 #ifndef __DEGRID
-        vis[n] = rotw(_vis[bl][n], uvw[n].w);
+        // We use scaled w for GCF hence scale w here too.
+        vis[n] = rotw(_vis[bl][n], uvw[n].w * scale);
 #else
         vis[n] = {0.0, 0.0};
 #endif
@@ -144,8 +145,9 @@ void gridKernel_scatter(
         }
       }
 #ifdef __DEGRID
+      // We use scaled w for GCF hence scale w here too.
       for(int n=0; n<ts_ch; n++)
-        vis[n] = rotw(vis[n], uvw[n].w);
+        vis[n] = rotw(vis[n], uvw[n].w * scale);
 #endif
     }
   }

@@ -55,8 +55,8 @@ kernel gp gcfp vis =
         wsumc <- peek wsumpc
         nc <- peek npc
         let avg = if nc > 0 then wsumc/fromIntegral nc else wmid
-        -- FIXME: w (avg here) should be scaled by exactly the same scale as uw's are before gridding!
-        !p <- mkGCFLayer p0 destPtr dTabPtr arenap (f s) (f gcfMaxSize) (f pad) t2 avg
+        -- Use scaled w's for GCF computation
+        !p <- mkGCFLayer p0 destPtr dTabPtr arenap (f s) (f gcfMaxSize) (f pad) t2 (avg * scale)
         mkLayers p (advancePtr destPtr $ over2 * s * s) (advancePtr dTabPtr over2) ss (advancePtr wsumpc 1) (advancePtr npc 1) (wmid + wstep)
       mkLayers _ _ _ [] _ _ _ = return ()
     --
@@ -86,3 +86,4 @@ kernel gp gcfp vis =
     pad = 4
     pitch = l + pad
     arenaSize = l * pitch
+    scale = fromIntegral (gridWidth gp) / gridLambda gp
