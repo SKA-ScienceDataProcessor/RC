@@ -116,7 +116,7 @@ void cut_out(
   ) {
   __SET_MAP
   if (x >= supp || y >= supp) return;
-  dst[x * supp + y] = src[x][y];
+  dst[x * supp + y] = src[max_support/2-supp/2+x][max_support/2-supp/2+y];
 }
 
 extern "C" __global__ void wextract1(
