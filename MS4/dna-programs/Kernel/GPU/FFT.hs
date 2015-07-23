@@ -116,19 +116,16 @@ dftKernel plans img = do
   -- Get image data
   DeviceVector n ptr <- toDeviceVector (imgData img)
   let padptr = ptr `plusDevPtr` imgPadding img
-
-  -- Image dimensions
-  let cxdSize = sizeOf (undefined :: Complex Double)
-      dSize = sizeOf (undefined :: Double)
-      n' = n * dSize `div` cxdSize
-
-  let pad' = imgPadding img * dSize `div` cxdSize
-      ptr' = castDevPtr ptr
-      padptr' = ptr' `plusDevPtr` pad'
+      endptr = ptr `plusDevPtr` n
 
   -- Make sure buffers are big enough for in-place transformation
   when (n' < height * pitch) $
     fail "DFT kernel got an image buffer too small to perform in-place real-to-complex DFT!"
+
+  -- Cast pointers
+  let ptr' = castDevPtr ptr       :: DevicePtr (Complex Double)
+      padptr' = castDevPtr padptr :: DevicePtr (Complex Double)
+      endptr' = castDevPtr endptr :: DevicePtr (Complex Double)
 
   -- Perform in-place fourier transformation
   fftShiftR False Nothing  height pitch padptr
@@ -136,6 +133,8 @@ dftKernel plans img = do
   fftShiftCx False Nothing  height pitch padptr'
   sync
 
+  let pad' = padptr' `minusDevPtr` ptr'
+      n' = endptr' `minusDevPtr` ptr'
   return $ UVGrid (imgPar img) pad' (DeviceVector n' ptr')
 
 dftIKernel :: IORef DftPlans -> UVGrid -> IO Image
@@ -148,15 +147,12 @@ dftIKernel plans uvg = do
   -- Get grid data
   DeviceVector n ptr <- toDeviceVector (uvgData uvg)
   let padptr = ptr `plusDevPtr` uvgPadding uvg
+      endptr = ptr `plusDevPtr` n
 
-  -- Image dimensions
-  let cxdSize = sizeOf (undefined :: Complex Double)
-      dSize = sizeOf (undefined :: Double)
-      n' = n * cxdSize `div` dSize
-
-  let pad' = uvgPadding uvg * cxdSize `div` dSize
-      ptr' = castDevPtr ptr
-      padptr' = ptr' `plusDevPtr` pad'
+  -- Cast pointers
+  let ptr' = castDevPtr ptr       :: DevicePtr Double
+      padptr' = castDevPtr padptr :: DevicePtr Double
+      endptr' = castDevPtr endptr :: DevicePtr Double
 
   -- Perform in-place fourier transformation
   fftShiftCx False Nothing  height pitch padptr
@@ -164,4 +160,6 @@ dftIKernel plans uvg = do
   fftShiftR False Nothing  height pitch padptr'
   sync
 
+  let pad' = padptr' `minusDevPtr` ptr'
+      n' = endptr' `minusDevPtr` ptr'
   return $ Image (uvgPar uvg) pad' (DeviceVector n' ptr')
