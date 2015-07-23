@@ -16,7 +16,6 @@ import Control.Monad (when)
 import Data.Complex
 import Data.IORef
 import Foreign.CUDA.FFT
-import Foreign.Storable
 import Foreign.Storable.Complex ()
 
 import Data
@@ -118,14 +117,14 @@ dftKernel plans img = do
   let padptr = ptr `plusDevPtr` imgPadding img
       endptr = ptr `plusDevPtr` n
 
-  -- Make sure buffers are big enough for in-place transformation
-  when (n' < height * pitch) $
-    fail "DFT kernel got an image buffer too small to perform in-place real-to-complex DFT!"
-
   -- Cast pointers
   let ptr' = castDevPtr ptr       :: DevicePtr (Complex Double)
       padptr' = castDevPtr padptr :: DevicePtr (Complex Double)
       endptr' = castDevPtr endptr :: DevicePtr (Complex Double)
+
+  -- Make sure buffers are big enough for in-place transformation
+  when (endptr' `minusDevPtr` ptr' < height * pitch) $
+    fail "DFT kernel got an image buffer too small to perform in-place real-to-complex DFT!"
 
   -- Perform in-place fourier transformation
   fftShiftR False Nothing  height pitch padptr
