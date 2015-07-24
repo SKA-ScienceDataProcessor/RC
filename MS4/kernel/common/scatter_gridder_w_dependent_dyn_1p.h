@@ -25,6 +25,7 @@ void gridKernelCPU##hgcfSuff(                             \
   , int ts_ch                                             \
   , int grid_pitch                                        \
   , int grid_size                                         \
+  , int gcf_supps[]                                       \
   );
 
 gridKernelCPUDecl(HalfGCF, true)
@@ -53,6 +54,7 @@ void deGridKernelCPU##hgcfSuff(                           \
   , int ts_ch                                             \
   , int grid_pitch                                        \
   , int grid_size                                         \
+  , int gcf_supps[]                                       \
   );
   
 deGridKernelCPUDecl(HalfGCF, true)

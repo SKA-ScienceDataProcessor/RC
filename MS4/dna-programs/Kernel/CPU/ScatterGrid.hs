@@ -24,6 +24,7 @@ type CPUGridderType =
   -> CInt      -- length of baselines vectors
   -> CInt      -- grid pitch
   -> CInt      -- grid size
+  -> Ptr CInt  -- GCF supports vector
   -> IO ()
 
 {-
@@ -52,11 +53,12 @@ createGrid gp _ = fmap (UVGrid gp 0) $ allocCVector (gridFullSize gp)
 gridWrapper :: CPUGridderType -> Vis -> GCFSet -> UVGrid -> IO ()
 -- This massive nested pattern matches are not quite flexible, but I think a burden
 --   to adapt them if data types change is small, thus we stick to this more concise code ATM.
-gridWrapper gfun (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) (GCFSet gcfp _ (CVector tsiz table)) (UVGrid gp _ (CVector _ gptr)) =
+gridWrapper gfun (Vis vmin vmax tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) (GCFSet gcfp _ (CVector tsiz table)) (UVGrid gp _ (CVector _ gptr)) =
     withArray supps $ \suppp -> 
       withArray uvws $ \uvwp -> 
         withArray amps $ \ampp -> do
-          gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp)
+          withArray gcfSupps $ \gcfsp -> do
+          gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp) gcfsp
   where
     fi = fromIntegral
     grWidth = gridWidth gp
@@ -66,6 +68,8 @@ gridWrapper gfun (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) 
     supps = map (fi . size . baselineMinWPlane wstep) bls
     uvws = map (advancePtr uwpptr . vblOffset) bls
     amps = map (advancePtr ampptr . vblOffset) bls
+    maxWPlane = max (round (vmax / wstep)) (round (-vmin / wstep))
+    gcfSupps = map (fi . size) [-maxWPlane .. maxWPlane]
 gridWrapper _ _ _ _ = error "Wrong Vis or GCF or Grid location for CPU."
 
 grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid

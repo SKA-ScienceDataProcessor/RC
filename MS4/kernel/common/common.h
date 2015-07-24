@@ -81,7 +81,10 @@ struct Pregridded
   short u;
   short v;
   short gcf_layer_index;
-  short gcf_layer_supp;
+  // Don't need it
+  // short gcf_layer_supp;
+  // Cache w-plane here
+  short w_plane;
 };
 
 __NATIVE complexd rotw(complexd v, double w){
@@ -154,7 +157,9 @@ static void pregridPoint(double scale, double wstep, Double3 uvw, int max_supp, 
     } else {
       res.gcf_layer_index = (w_plane * over + over_u) * over + over_v;
     }
-    res.gcf_layer_supp = max_supp;
+    // Don't need this anymore for CPU
+    // res.gcf_layer_supp = short(max_supp);
+    res.w_plane = w_plane;
 }
 #endif
 

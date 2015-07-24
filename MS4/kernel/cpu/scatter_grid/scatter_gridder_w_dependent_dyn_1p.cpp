@@ -68,6 +68,7 @@ void gridKernel_scatter(
   , int ts_ch
   , int grid_pitch
   , int grid_size
+  , int gcf_supps[]
   ) {
   int siz = grid_size*grid_pitch;
 #pragma omp parallel
@@ -89,8 +90,12 @@ void gridKernel_scatter(
       // VLA requires "--std=gnu..." extension
 #ifndef _MSC_VER
       Pregridded pa[ts_ch];
+      complexd * gcflp[ts_ch];
+      int gcfsupp[ts_ch];
 #else
       std::vector<Pregridded> pa(ts_ch);
+      std::vector<complexd*> gcflp(ts_ch);
+      std::vector<int> gcfsupp(ts_ch);
 #endif
 #ifndef __DEGRID
       // Clang doesn't allow non-POD types in VLAs,
@@ -112,6 +117,19 @@ void gridKernel_scatter(
         vis[n] = {0.0, 0.0};
 #endif
         pregridPoint<over, is_half_gcf>(scale, wstep, uvw[n], max_supp_here, pa[n], grid_size);
+        int index;
+        index = pa[n].gcf_layer_index;
+        if (is_half_gcf) {
+          if (index < 0)
+            gcflp[n] = const_cast<complexd *>(gcf[-index]);
+          else
+            gcflp[n] = const_cast<complexd *>(gcf[index]);
+        } else {
+            gcflp[n] = const_cast<complexd *>(gcf[index]);
+        }
+        // Correction
+        gcfsupp[n] = gcf_supps[pa[n].w_plane];
+        gcflp[n] += (gcfsupp[n] - max_supp_here) / 2 * (gcfsupp[n] + 1);
       }
       for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
@@ -124,20 +142,15 @@ void gridKernel_scatter(
             gsv = p.v + sv;
 
             complexd supportPixel;
-            #define __layeroff su * max_supp_here + sv
+            #define __layeroff su * gcfsupp[i] + sv
             if (is_half_gcf) {
-              int index;
-              index = p.gcf_layer_index;
-              // Negative index indicates that original w was mirrored
-              // and we shall negate the index to obtain correct
-              // offset *and* conjugate the result.
-              if (index < 0) {
-                supportPixel = conj(gcf[-index][__layeroff]);
+              if (p.gcf_layer_index < 0) {
+                supportPixel = conj(gcflp[i][__layeroff]);
               } else {
-                supportPixel = gcf[index][__layeroff];
+                supportPixel = gcflp[i][__layeroff];
               }
             } else {
-                supportPixel = gcf[p.gcf_layer_index][__layeroff];
+                supportPixel = gcflp[i][__layeroff];
             }
 #ifndef __DEGRID
             grid[gsu][gsv] += vis[i] * supportPixel;
@@ -177,6 +190,7 @@ void gridKernel_scatter_full(
   , int ts_ch
   , int grid_pitch
   , int grid_size
+  , int gcf_supps[]
   ) {
 #if defined _OPENMP
   int siz = grid_size*grid_pitch;
@@ -189,18 +203,17 @@ void gridKernel_scatter_full(
   // Nullify incoming grid, allocate thread-local grids
   memset(grid, 0, sizeof(complexd) * siz);
   complexd * tmpgrids = alignedMallocArray<complexd>(siz * nthreads, 32);
-  
   gridKernel_scatter<
       over
     , is_half_gcf
-    >(scale, wstep, baselines, bl_supps, tmpgrids, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);
+    >(scale, wstep, baselines, bl_supps, tmpgrids, gcf, uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps);
   addGrids(grid, tmpgrids, nthreads, grid_pitch, grid_size);
   _aligned_free(tmpgrids);
 #else
   gridKernel_scatter<
       over
     , is_half_gcf
-    >(scale, wstep, baselines, bl_supps, grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);
+    >(scale, wstep, baselines, bl_supps, grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps);
 #endif
 }
 
@@ -217,10 +230,11 @@ void gridKernelCPU##hgcfSuff(                             \
   , int ts_ch                                             \
   , int grid_pitch                                        \
   , int grid_size                                         \
+  , int gcf_supps[]                                       \
   ){                                                      \
   gridKernel_scatter_full<OVER, isHgcf>                   \
-    ( scale, wstep, baselines, bl_supps                   \
-    , grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size); \
+    ( scale, wstep, baselines, bl_supps, grid, gcf        \
+    , uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps); \
 }
 
 gridKernelCPU(HalfGCF, true)
@@ -256,10 +270,11 @@ void deGridKernelCPU##hgcfSuff(                           \
   , int ts_ch                                             \
   , int grid_pitch                                        \
   , int grid_size                                         \
+  , int gcf_supps[]                                       \
   ){                                                      \
   gridKernel_scatter<OVER, isHgcf>                        \
-    ( scale, wstep, baselines, bl_supps                   \
-    , grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size); \
+    ( scale, wstep, baselines, bl_supps, grid, gcf        \
+    , uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps); \
 }
 
 deGridKernelCPU(HalfGCF, true)
