@@ -34,8 +34,10 @@ void findPeak(double *idata, place * odata, int siz, int pitch) {
   zeroPad(idata, siz, pitch);
   unsigned int n = siz * pitch;
 
+#if !defined _MSC_VER || defined __clang__
   #pragma omp declare reduction (maxer: place : omp_out = pmax(omp_out, omp_in))
   #pragma omp parallel for reduction(maxer: p)
+#endif
   for (unsigned int i = 0; i<n; i++) {
     p = pmax(p, {n, fabs(idata[n])});
   }

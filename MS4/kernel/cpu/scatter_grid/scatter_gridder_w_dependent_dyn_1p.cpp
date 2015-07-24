@@ -1,5 +1,5 @@
 #include <cstring>
-#ifdef __clang__
+#if defined __clang__ || defined _MSC_VER
 #include <vector>
 #endif
 
@@ -88,11 +88,15 @@ void gridKernel_scatter(
       uvw = _uvw[bl];
 
       // VLA requires "--std=gnu..." extension
+#ifndef _MSC_VER
       Pregridded pa[ts_ch];
+#else
+      std::vector<Pregridded> pa(ts_ch);
+#endif
 #ifndef __DEGRID
       // Clang doesn't allow non-POD types in VLAs,
       //  thus we use much more heavyweight vector here.
-      #ifndef __clang__
+      #ifdef __GNUC__
       complexd vis[ts_ch];
       #else
       std::vector<complexd> vis(ts_ch);

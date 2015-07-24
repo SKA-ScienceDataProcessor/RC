@@ -3,6 +3,9 @@
 #include <cmath>
 #include <cstring>
 #include <fftw3.h>
+#ifdef _MSC_VER
+#include <vector>
+#endif
 
 #include "common.h"
 #include "metrix.h"
@@ -167,9 +170,15 @@ void calcAccums(
   memset(sums, 0, sizeof(double) * numOfWPlanes);
   memset(npts, 0, sizeof(int) * numOfWPlanes);
 
+#ifndef _MSC_VER
   // VLAs. Requires GNU extension.
   double tmpsums[nthreads-1][numOfWPlanes];
   int tmpnpts[nthreads-1][numOfWPlanes];
+#else
+  using namespace std;
+  vector<vector<double>> tmpsums(nthreads-1, vector<double>(numOfWPlanes));
+  vector<vector<int>> tmpnpts(nthreads-1, vector<int>(numOfWPlanes));
+#endif
 
   #pragma omp parallel
   {
@@ -180,8 +189,13 @@ void calcAccums(
       _sums = sums;
       _npts = npts;
     } else {
+#ifndef _MSC_VER
       _sums = tmpsums[_thread - 1];
       _npts = tmpnpts[_thread - 1];
+#else
+      _sums = tmpsums[_thread - 1].data();
+      _npts = tmpnpts[_thread - 1].data();
+#endif
     }
     memset(_sums, 0, sizeof(double) * numOfWPlanes);
     memset(_npts, 0, sizeof(int) * numOfWPlanes);
