@@ -20,7 +20,7 @@ inline void fft_center(complexd * data, int size, int pitch){
 }
 
 // Very simple. Only for even sizes.
-// And for even sizes fftshift and ifftshift coinside.
+// And for even sizes fftshift and ifftshift coincide.
 inline void fftshift_even(complexd * data, int size, int pitch){
   complexd tmp;
   int
