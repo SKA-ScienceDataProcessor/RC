@@ -58,7 +58,7 @@ gridWrapper gfun (Vis vmin vmax tsteps bls (CVector _ uwpptr) (CVector _ ampptr)
       withArray uvws $ \uvwp -> 
         withArray amps $ \ampp -> do
           withArray gcfSupps $ \gcfsp -> do
-            gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp) gcfsp
+            gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp) (advancePtr gcfsp maxWPlane)
   where
     fi = fromIntegral
     grWidth = gridWidth gp
