@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-fftw_plan fft_inplace_even(fftw_plan p, int sign, complexd * data, int size, int pitch);
+fftw_plan fft_inplace_even(fftw_plan p, int sign, void * data, int size, int pitch);
 void fftInitThreading();
 
 #ifdef __cplusplus

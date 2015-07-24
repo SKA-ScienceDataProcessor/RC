@@ -5,7 +5,6 @@ module Kernel.CPU.FFT where
 import Data.IORef
 import Foreign.C
 import Foreign.Ptr
-import Data.Complex
 
 import Data
 import Vector
@@ -16,10 +15,10 @@ type FftPlan = Ptr FftPlanOpaque
 foreign import ccall unsafe fftInitThreading :: IO ()
 foreign import ccall "fft_inplace_even" fftInplaceEven ::
      FftPlan
-  -> CInt                  -- Sign: -1 direct, +1 inverse
-  -> Ptr (Complex Double)  -- Data ptr
-  -> CInt                  -- Size. Should be even!
-  -> CInt                  -- Pitch.
+  -> CInt    -- Sign: -1 direct C2C, 0 - R2C, +1 inverse C2C, +2 C2R
+  -> Ptr ()  -- Data ptr
+  -> CInt    -- Size. Should be even!
+  -> CInt    -- Pitch.
   -> IO FftPlan
 foreign import ccall "fftw_destroy_plan" fftDestroyPlan :: FftPlan -> IO ()
 
@@ -41,20 +40,26 @@ dftClean plans = do
 type Proj = DftPlans -> FftPlan
 type Inj = DftPlans -> FftPlan -> DftPlans
 
-dftGeneral :: CInt -> Proj -> Inj -> IORef DftPlans -> UVGrid -> IO UVGrid
-dftGeneral sign prj inj plans g@(UVGrid ip _ (CVector _ datap)) = do
+dftGeneral :: CInt -> Proj -> Inj -> IORef DftPlans -> GridPar -> Ptr () -> IO ()
+dftGeneral sign prj inj plans gp datap = do
     plns <- readIORef plans
     plan' <- fftInplaceEven (prj plns) sign datap (fi height) (fi pitch)
     writeIORef plans (inj plns plan')
-    return g
   where
     fi = fromIntegral
-    height = gridHeight ip
-    pitch = gridPitch ip
-dftGeneral _ _ _ _ _ = error "Wrong grid location in CPU FFT."
+    height = gridHeight gp
+    pitch = gridPitch gp
 
-dftKernel :: IORef DftPlans -> UVGrid -> IO UVGrid
-dftKernel = dftGeneral (-1) dftPlan (\plns p -> plns {dftPlan = p})
+fromVec :: Vector a -> Ptr ()
+fromVec (CVector _ p) = castPtr p
+fromVec _ = error "Wrong CPU FFT vector location."
 
-dftIKernel :: IORef DftPlans -> UVGrid -> IO UVGrid
-dftIKernel = dftGeneral 1 dftIPlan (\plns p -> plns {dftIPlan = p})
+dftKernel :: IORef DftPlans -> Image -> IO UVGrid
+dftKernel pref (Image par pad d) = do
+  dftGeneral 0 dftPlan (\plns p -> plns {dftPlan = p}) pref par (fromVec d)
+  return (UVGrid par pad $ castVector d)
+
+dftIKernel :: IORef DftPlans -> UVGrid -> IO Image
+dftIKernel pref (UVGrid par pad d) = do
+  dftGeneral 2 dftIPlan (\plns p -> plns {dftIPlan = p}) pref par (fromVec d)
+  return (Image par pad $ castVector d)
