@@ -3,7 +3,7 @@
 #endif
 #include <fftw3.h>
 #ifdef INTEL_MKL_VERSION
-#include "fftw3_mkl.h"
+#include <fftw3_mkl.h>
 #endif
 
 #include "common.h"
@@ -81,7 +81,7 @@ void fftInitThreading() {
 #ifdef INTEL_MKL_VERSION
 // NOTE: Using Intel MKL (and threading particularly)
 //   could require a lot of additional setup
-fftw3_mkl.number_of_user_threads = omp_get_max_threads();
+  fftw3_mkl.number_of_user_threads = omp_get_max_threads();
 #else
   fftw_init_threads();
   fftw_plan_with_nthreads(omp_get_max_threads());
