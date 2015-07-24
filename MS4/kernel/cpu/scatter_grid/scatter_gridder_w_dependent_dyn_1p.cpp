@@ -192,7 +192,7 @@ void gridKernel_scatter_full(
     , is_half_gcf
     >(scale, wstep, baselines, bl_supps, tmpgrids, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);
   addGrids(grid, tmpgrids, nthreads, grid_pitch, grid_size);
-  free(tmpgrids);
+  _aligned_free(tmpgrids);
 #else
   gridKernel_scatter<
       over
