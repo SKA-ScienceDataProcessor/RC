@@ -120,7 +120,6 @@ static void pregridPoint(double scale, double wstep, Double3 uvw, int max_supp, 
     // uvw.w *= scale;
     short
         w_plane = short(round (uvw.w / wstep))
-      , max_supp = short(get_supp(w_plane))
       , u = short(floor(uvw.u))
       , v = short(floor(uvw.v))
       , over_u = short(floor(over * (uvw.u - u)))
