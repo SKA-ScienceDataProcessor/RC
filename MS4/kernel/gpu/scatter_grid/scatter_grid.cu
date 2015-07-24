@@ -14,8 +14,7 @@ const short over = 8;
 struct Pregridded
 {
     short u, v;
-    short x, y;
-    short conj;
+    char x, y;
     short gcf_supp;
     const complexd *gcf;
 };
@@ -74,10 +73,13 @@ extern "C" __global__ void scatter_grid_pregrid_kern
     short w_plane = short(round(fabs(uvw[i].z / wstep)))
         , supp = gcf_supp[w_plane]
         , gcf_off = (supp - max_supp) / 2;
-    uvo[i].conj = short(copysign(1.0, uvw[i].z));
     uvo[i].gcf = gcfs[w_plane] + (over_u * over + over_v)*supp*supp
                                + gcf_off*supp + gcf_off;
-    uvo[i].gcf_supp = supp;
+
+    // gcf_supp carries both the GCF size as well as the sign for the
+    // imaginary part. If it's negative, we are meant to use the
+    // conjugate of the GCF pixel.
+    uvo[i].gcf_supp = short(copysign(double(supp), uvw[i].z));
   }
 }
 
@@ -133,9 +135,9 @@ void scatter_grid_point
     }
 
     // Load GCF pixel
-    short supp = uvo[i].gcf_supp;
+    short supp = abs(uvo[i].gcf_supp);
     complexd px = uvo[i].gcf[myConvU * supp + myConvV];
-    px.y = copysign(px.y, double(uvo[i].conj));
+    px.y = copysign(px.y, double(uvo[i].gcf_supp));
 
     // Sum up
     sum = cuCfma(px, vis[i], sum);
