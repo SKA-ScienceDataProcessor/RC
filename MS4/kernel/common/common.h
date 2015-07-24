@@ -3,6 +3,17 @@
 
 #if defined __AVX__
 #include <immintrin.h>
+#define __MMSIZE 32
+typedef __m256d __mdType;
+#define asMdp(p) (reinterpret_cast<__m256d*>(p))
+#define asMdpc(p) (reinterpret_cast<const __m256d*>(p))
+#define _mm_add_pd _mm256_add_pd
+#else
+#include <smmintrin.h>
+#define __MMSIZE 16
+typedef __m128d __mdType;
+#define asMdp(p) (reinterpret_cast<__m128d*>(p))
+#define asMdpc(p) (reinterpret_cast<const __m128d*>(p))
 #endif
 
 #ifdef __CUDACC__

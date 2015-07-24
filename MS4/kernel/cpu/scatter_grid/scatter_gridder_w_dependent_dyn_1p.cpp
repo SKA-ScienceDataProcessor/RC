@@ -34,14 +34,14 @@ void addGrids(
 {
   int siz = grid_size*grid_pitch;
 #pragma omp parallel for
-  for (unsigned int i = 0; i < siz*sizeof(complexd)/(256/8); i++) {
-    __m256d sum = as256pc(srcs)[i];
+  for (int i = 0; size_t(i) < siz*sizeof(complexd)/__MMSIZE; i++) {
+    __mdType sum = asMdpc(srcs)[i];
     // __m256d sum = _mm256_loadu_pd(reinterpret_cast<const double*>(as256pc(srcs)+i));
 
     for (int g = 1; g < nthreads; g ++)
-      sum = _mm256_add_pd(sum, as256pc(srcs + g * siz)[i]);
+      sum = _mm_add_pd(sum, asMdpc(srcs + g * siz)[i]);
 
-    as256p(dst)[i] = sum;
+    asMdp(dst)[i] = sum;
   }
 }
 #else
