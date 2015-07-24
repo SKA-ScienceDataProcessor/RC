@@ -77,14 +77,14 @@ void subtractPSF(
     , psfxy = lldiv(peak_psf_pos, (lli)pitch)
     ;
   int
-      stopx = pitch - abs (psfxy.rem - resxy.rem)
-    , stopy = pitch - abs (psfxy.quot - resxy.quot)
+      stopx = pitch - int (abs (psfxy.rem - resxy.rem))
+    , stopy = pitch - int (abs (psfxy.quot - resxy.quot))
     ;
 
   if (diff >= 0)
-    subtract_psf_kernel(res_p, psf_p + diff, stopx, stopy, diff, pitch, peak_x_gain);
+    subtract_psf_kernel(res_p, psf_p + diff, stopx, stopy, int(diff), pitch, peak_x_gain);
   else
-    subtract_psf_kernel(res_p - diff, psf_p, stopx, stopy, diff, pitch, peak_x_gain);
+    subtract_psf_kernel(res_p - diff, psf_p, stopx, stopy, int(diff), pitch, peak_x_gain);
 }
 
 extern "C"

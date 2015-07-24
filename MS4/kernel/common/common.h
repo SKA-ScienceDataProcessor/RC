@@ -122,8 +122,8 @@ static void pregridPoint(double scale, double wstep, Double3 uvw, Pregridded & r
       ;
     // We additionally translate these u v by -max_supp/2
     // because gridding procedure translates them back
-    u += grid_size / 2 - max_supp / 2;
-    v += grid_size / 2 - max_supp / 2;
+    u += short(grid_size / 2 - max_supp / 2);
+    v += short(grid_size / 2 - max_supp / 2);
 #ifndef __CUDACC__
     res.u = u;
     res.v = v;
