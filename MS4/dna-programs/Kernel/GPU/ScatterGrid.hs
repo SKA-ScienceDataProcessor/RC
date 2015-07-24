@@ -18,9 +18,10 @@ import qualified Kernel.GPU.NvidiaDegrid as Nvidia
 import Vector
 
 pregriddedSize :: Int
-pregriddedSize = shortSize * 5 + ptrSize
-  where shortSize = 16
-        ptrSize = 64
+pregriddedSize = shortSize * 3 + charSize * 2 + ptrSize
+  where charSize = 1
+        shortSize = 2
+        ptrSize = 8
 
 foreign import ccall unsafe "&" scatter_grid_phaseRotate_kern :: CUDA.Fun
 foreign import ccall unsafe "&" scatter_grid_pregrid_kern :: CUDA.Fun
@@ -117,19 +118,19 @@ pregrid gridp vis gcfSet (gcfv, gcf_suppv) = do
     let wplane = baselineMinWPlane wstep $ snd $ head bls
         Just gcf = findGCF gcfSet (fromIntegral wplane * wstep)
         max_supp = gcfSize gcf
+        points = vblPoints $ snd $ head bls
 
     -- Marshal vector of pointers into positions & pregridded
     uvov' <- toDeviceVector =<< makeVector allocHostVector
        [ uvop | (i,_) <- bls
-              , let DeviceVector _ uvop = pregridded `offsetVector` (pregriddedSize * i) ]
+              , let DeviceVector _ uvop = pregridded `offsetVector` (pregriddedSize * points * i) ]
     posv' <- toDeviceVector =<< makeVector allocHostVector
        [ posp | (_,bl) <- bls
               , let DeviceVector _ posp = visPositions vis `offsetVector` vblOffset bl ]
 
-    -- Lauch pregridding kernel. Blocks are baselines, and threads
+    -- Launch pregridding kernel. Blocks are baselines, and threads
     -- will process individual baselines points.
-    let points = vblPoints $ snd $ head bls
-        baselines = length bls
+    let baselines = length bls
     CUDA.launchKernel scatter_grid_pregrid_kern
       (baselines,1,1) (min 1024 points,1,1) 0 Nothing $
       mapArgs scale wstep posv' gcfv gcf_suppv uvov' max_supp points grid_size
@@ -159,9 +160,10 @@ grid vis gcfSet uvgrid = do
   -- Make vectors of pointers into positions & pregridded
   let pregridded = castVector (visPregridded vis) :: Vector Word8
   vs <- forM groupedBls $ \bls -> do
+    let points = vblPoints $ snd $ head bls
     uvov <- toDeviceVector =<< makeVector allocHostVector
         [ uvop | (i,_) <- bls
-               , let DeviceVector _ uvop = pregridded `offsetVector` (pregriddedSize * i) ]
+               , let DeviceVector _ uvop = pregridded `offsetVector` (pregriddedSize * points * i) ]
     datv <- toDeviceVector =<< makeVector allocHostVector
         [ datp | (_,bl) <- bls
                , let DeviceVector _ datp = visData vis `offsetVector` vblOffset bl ]
