@@ -110,7 +110,7 @@ static void pregridPoint(double scale, double wstep, Double3 uvw, Pregridded & r
   ){
     uvw.u *= scale;
     uvw.v *= scale;
-    // Since we use unscaled wstep, we shouln't scale uvw.w either
+    // Since we use unscaled wstep, we shouldn't scale uvw.w either
     // uvw.w *= scale;
     short
         w_plane = short(round (uvw.w / wstep))
