@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "hogbom.h"
+
 struct place {
   size_t pos;
   double val;
@@ -89,7 +91,6 @@ void subtractPSF(
     subtract_psf_kernel(res_p - diff, psf_p, stopx, stopy, int(diff), pitch, peak_x_gain);
 }
 
-extern "C"
 void deconvolve(
     double * mod_p
   , double * res_p

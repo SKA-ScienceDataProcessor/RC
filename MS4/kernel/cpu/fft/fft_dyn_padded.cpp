@@ -1,12 +1,11 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
-#include <fftw3.h>
 #ifdef INTEL_MKL_VERSION
 #include <fftw3_mkl.h>
 #endif
 
-#include "common.h"
+#include "fft_dyn_padded.h"
 
 template <bool oddSize>
 inline void fft_center(complexd * data, int size, int pitch){
@@ -70,8 +69,6 @@ fftw_plan __fft_inplace(fftw_plan p, int sign, complexd * data, int size, int pi
   return p;
 }
 
-extern "C" {
-
 fftw_plan fft_inplace_even(fftw_plan p, int sign, complexd * data, int size, int pitch){
   return __fft_inplace(p, sign, data, size, pitch);
 }
@@ -87,6 +84,4 @@ void fftInitThreading() {
   fftw_plan_with_nthreads(omp_get_max_threads());
 #endif
 #endif
-}
-
 }

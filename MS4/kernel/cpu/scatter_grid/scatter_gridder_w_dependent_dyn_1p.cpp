@@ -13,12 +13,11 @@
 #pragma warning(disable:4127)
 #endif
 #define __DYN_GRID_SIZE
-#include "common.h"
+
 #include "metrix.h"
 #include "aligned_malloc.h"
 
-#define as256p(p) (reinterpret_cast<__m256d*>(p))
-#define as256pc(p) (reinterpret_cast<const __m256d*>(p))
+#include "scatter_gridder_w_dependent_dyn_1p.h"
 
 #ifndef __DEGRID
 #define GRID_MOD
@@ -206,7 +205,6 @@ void gridKernel_scatter_full(
 }
 
 #define gridKernelCPU(hgcfSuff, isHgcf)                   \
-extern "C"                                                \
 void gridKernelCPU##hgcfSuff(                             \
     double scale                                          \
   , double wstep                                          \
@@ -229,7 +227,6 @@ gridKernelCPU(HalfGCF, true)
 gridKernelCPU(FullGCF, false)
 
 // Normalization is done inplace!
-extern "C"
 void normalize(
     complexd src[]
   , int grid_pitch
@@ -247,7 +244,6 @@ void normalize(
 #else
 
 #define deGridKernelCPU(hgcfSuff, isHgcf)                 \
-extern "C"                                                \
 void deGridKernelCPU##hgcfSuff(                           \
     double scale                                          \
   , double wstep                                          \

@@ -1,14 +1,15 @@
+#include "GCF.h"
+
 #include <omp.h>
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <cstring>
-#include <fftw3.h>
 #ifdef _MSC_VER
 #include <vector>
 #endif
 
-#include "common.h"
 #include "metrix.h"
+#include "fft_dyn_padded.h"
 
 using namespace std;
 
@@ -49,10 +50,6 @@ void __transpose_and_normalize_and_extract(
     }
   }
 }
-
-// FIXME: Make a prototype in a header as it should be!
-extern "C"
-fftw_plan fft_inplace_even(fftw_plan p, int sign, complexd * data, int size, int pitch);
 
 // In principle, we can calculate 1 - (t2/r)^2 separately
 //   because it does not depend on w and can be reused for
@@ -120,7 +117,6 @@ fftw_plan __mkGCFLayer(
 }
 
 // Inst
-extern "C"
 fftw_plan mkGCFLayer(
     fftw_plan p
   , complexd dst[] // should have [OVER][OVER][support][support] size
@@ -145,7 +141,6 @@ fftw_plan mkGCFLayer(
       );
 }
 
-extern "C"
 // This function is required to
 //   correctly calculate GCF, namely we
 //   need to know the correct w's mean value
