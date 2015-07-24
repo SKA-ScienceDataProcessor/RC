@@ -55,17 +55,19 @@ fftw_plan fft_plan_cc(
 }
 
 template <int dir> struct plan_traits{};
-#define __plan_trait(dir, fun, st, dt)  \
+#define __plan_trait(dir, fun, sta, dta, st, dt) \
 template <> struct plan_traits<dir>{    \
-  static constexpr auto fft_plan = fun; \
+  static fftw_plan_s* fft_plan(int a, const fftw_iodim *b, int c, const fftw_iodim* d, sta *e, dta *f, unsigned int g) { \
+      return fun(a, b, c, d, e, f, g);  \
+  }                                     \
   typedef st srcTy;                     \
   typedef dt dstTy;                     \
 }
 
-__plan_trait(-1, fft_plan_cc<-1>       , complexd, complexd);
-__plan_trait( 0, fftw_plan_guru_dft_r2c, double  , complexd);
-__plan_trait( 1, fft_plan_cc< 1>       , complexd, complexd);
-__plan_trait( 2, fftw_plan_guru_dft_c2r, complexd,   double);
+__plan_trait(-1, fft_plan_cc<-1>       , fftw_complex, fftw_complex, complexd, complexd);
+__plan_trait( 0, fftw_plan_guru_dft_r2c, double,       fftw_complex, double  , complexd);
+__plan_trait( 1, fft_plan_cc<1>        , fftw_complex, fftw_complex, complexd, complexd);
+__plan_trait( 2, fftw_plan_guru_dft_c2r, fftw_complex, double,       complexd,   double);
 
 inline fftw_complex * fftw_cast(complexd * const & p){return reinterpret_cast<fftw_complex *>(p);}
 inline double * fftw_cast(double * const & p){return p;}

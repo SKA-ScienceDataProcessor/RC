@@ -154,4 +154,4 @@ executable imaging-dataflow
     kernel/cpu/scatter_grid/degridder.cpp
   include-dirs:  kernel/common
   extra-libraries:     stdc++ gomp fftw3 fftw3_omp
-  cc-options:          -Wall --std=gnu++11 -ffast-math -mavx -fopenmp
+  cc-options:          -Wall --std=gnu++0x -ffast-math -mavx -fopenmp
