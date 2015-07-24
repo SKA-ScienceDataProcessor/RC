@@ -32,7 +32,7 @@ gridKernelCPUDecl(HalfGCF, true)
 gridKernelCPUDecl(FullGCF, false)
 
 EXTERNC
-void normalize(
+void normalizeCPU(
     complexd src[]
   , int grid_pitch
   , int grid_size

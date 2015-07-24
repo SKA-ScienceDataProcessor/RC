@@ -241,7 +241,7 @@ gridKernelCPU(HalfGCF, true)
 gridKernelCPU(FullGCF, false)
 
 // Normalization is done inplace!
-void normalize(
+void normalizeCPU(
     complexd src[]
   , int grid_pitch
   , int grid_size

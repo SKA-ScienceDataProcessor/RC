@@ -149,6 +149,9 @@ executable imaging-dataflow
   c-sources:
     kernel/cpu/fft/fft_dyn_padded.cpp
     kernel/cpu/gcf/GCF.cpp
+    kernel/cpu/hogbom/hogbom.cpp
+    kernel/cpu/scatter_grid/scatter_gridder_w_dependent_dyn_1p.cpp
+    kernel/cpu/scatter_grid/degridder.cpp
   include-dirs:  kernel/common
   extra-libraries:     stdc++ gomp fftw3 fftw3_omp
-  cc-options:          -Wall --std=gnu++0x -ffast-math -mavx -fopenmp
+  cc-options:          -Wall --std=gnu++11 -ffast-math -mavx -fopenmp

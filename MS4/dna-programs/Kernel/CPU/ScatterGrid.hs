@@ -37,7 +37,7 @@ foreign import ccall "dynamic" mkCPUGridderFun :: FunPtr CPUGridderType -> CPUGr
 foreign import ccall gridKernelCPUFullGCF :: CPUGridderType
 foreign import ccall deGridKernelCPUFullGCF :: CPUGridderType
 
-foreign import ccall normalize :: PCD -> CInt -> CInt -> IO ()
+foreign import ccall "normalizeCPU" normalize :: PCD -> CInt -> CInt -> IO ()
 
 -- trivial
 -- we make all additional things (pregridding and rotation) inside the gridder
@@ -58,7 +58,7 @@ gridWrapper gfun (Vis vmin vmax tsteps bls (CVector _ uwpptr) (CVector _ ampptr)
       withArray uvws $ \uvwp -> 
         withArray amps $ \ampp -> do
           withArray gcfSupps $ \gcfsp -> do
-          gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp) gcfsp
+            gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp) gcfsp
   where
     fi = fromIntegral
     grWidth = gridWidth gp
