@@ -84,11 +84,6 @@ struct Pregridded
   short gcf_layer_supp;
 };
 
-__HOST __NATIVE int get_supp(int w) {
-    if (w < 0) w = -w;
-    return w * 8 + 17;
-  }
-
 __NATIVE complexd rotw(complexd v, double w){
   double s, c;
   sincos(2.0 * __PI * w, &s, &c);
@@ -114,7 +109,7 @@ inline
 #define w z
 __inline__ __device__
 #endif
-static void pregridPoint(double scale, double wstep, Double3 uvw, Pregridded & res
+static void pregridPoint(double scale, double wstep, Double3 uvw, int max_supp, Pregridded & res
 #ifdef __DYN_GRID_SIZE
     , int grid_size
 #endif

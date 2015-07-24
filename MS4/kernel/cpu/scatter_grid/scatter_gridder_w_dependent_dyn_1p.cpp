@@ -111,7 +111,7 @@ void gridKernel_scatter(
 #else
         vis[n] = {0.0, 0.0};
 #endif
-        pregridPoint<over, is_half_gcf>(scale, wstep, uvw[n], pa[n], grid_size);
+        pregridPoint<over, is_half_gcf>(scale, wstep, uvw[n], max_supp_here, pa[n], grid_size);
       }
       for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
