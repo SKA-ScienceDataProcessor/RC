@@ -6,10 +6,11 @@
 
 // We 
 typedef struct binTable_tag {
-  void * data; // this should be freed
-  char * visTable[DIVIDERS][DIVIDERS];
-  char * preTable[DIVIDERS][DIVIDERS];
-  int    lenTable[DIVIDERS][DIVIDERS];
+  void * data;         // this should be freed
+  int dataSizeInBytes; // device allocator must know this
+  int visOffs[DIVIDERS][DIVIDERS];
+  int preOffs[DIVIDERS][DIVIDERS];
+  int nOfItems[DIVIDERS][DIVIDERS];
 } binTable;
 
 extern "C" {

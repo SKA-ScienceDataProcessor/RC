@@ -32,32 +32,32 @@ struct streamset {
 
     cudaError_t res = cudaHostAlloc(&tp->data, totsiz, 0);
     if (res != CUDA_SUCCESS) return res;
+    tp->dataSizeInBytes = totsiz;
     
-    char
-        * visdatap = reinterpret_cast<char*>(tp->data)
-      , * predatap = visdatap + vissiz
+    int
+        visoff = 0
+      , preoff = vissiz
       ;
-
+    #define predatap reinterpret_cast<char*>(tp->data)+preoff
+    #define visdatap reinterpret_cast<char*>(tp->data)+visoff
     for(int i = 0; i < divs; i++) {
       for(int j = 0; j < divs; j++) {
         int plen, n, vlen;
         plen = pre_streams[i][j].tellp();
         if (plen > 0) {
-           tp->preTable[i][j] = predatap;
+           tp->preOffs[i][j] = preoff;
            pre_streams[i][j].read(predatap, plen);
-           predatap += plen;
+           preoff += plen;
            //
            n = plen / sizeof(Pregridded);
-           tp->lenTable[i][j] = n;
+           tp->nOfItems[i][j] = n;
            //
            vlen = n * sizeof(complexd);
-           tp->visTable[i][j] = visdatap;
+           tp->visOffs[i][j] = visoff;
            vis_streams[i][j].read(visdatap, vlen);
-           visdatap += vlen;
+           visoff += vlen;
         } else {
-           tp->preTable[i][j] = nullptr;
-           tp->visTable[i][j] = nullptr;
-           tp->lenTable[i][j] = 0;
+           tp->nOfItems[i][j] = 0;
         }
       }
     }
