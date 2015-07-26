@@ -30,7 +30,7 @@ struct streamset {
       , totsiz = presiz + vissiz;
       ;
 
-    cudaError_t res = cudaHostAlloc(&tp->data, totsiz, 0);
+    int res = cudaHostAlloc(&tp->data, totsiz, 0);
     if (res != CUDA_SUCCESS) return res;
     tp->dataSizeInBytes = totsiz;
     
