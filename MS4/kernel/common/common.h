@@ -81,10 +81,10 @@ struct Pregridded
   short u;
   short v;
   short gcf_layer_index;
-  // Don't need it
-  // short gcf_layer_supp;
-  // Cache w-plane here
-  short w_plane;
+  union {
+    short w_plane;
+    short gcf_layer_supp;
+  };
 };
 
 __NATIVE complexd rotw(complexd v, double w){
@@ -112,8 +112,12 @@ inline
 #define w z
 __inline__ __device__
 #endif
-static void pregridPoint(double scale, double wstep, Double3 uvw, int max_supp, Pregridded & res
-#ifdef __DYN_GRID_SIZE
+static void pregridPoint(double scale, double wstep, Double3 uvw
+#ifndef __BINNER
+    , int max_supp
+#endif
+    , Pregridded & res
+#if defined __DYN_GRID_SIZE && !defined __BINNER
     , int grid_size
 #endif
   ){
@@ -130,8 +134,11 @@ static void pregridPoint(double scale, double wstep, Double3 uvw, int max_supp, 
       ;
     // We additionally translate these u v by -max_supp/2
     // because gridding procedure translates them back
+    // Binner makes this separately.
+#ifndef __BINNER
     u += short(grid_size / 2 - max_supp / 2);
     v += short(grid_size / 2 - max_supp / 2);
+#endif
 #ifndef __CUDACC__
     res.u = u;
     res.v = v;
@@ -157,8 +164,8 @@ static void pregridPoint(double scale, double wstep, Double3 uvw, int max_supp, 
     } else {
       res.gcf_layer_index = (w_plane * over + over_u) * over + over_v;
     }
-    // Don't need this anymore for CPU
-    // res.gcf_layer_supp = short(max_supp);
+    // Binner replaces
+    // w_plane with gcf_layer_supp
     res.w_plane = w_plane;
 }
 #endif
