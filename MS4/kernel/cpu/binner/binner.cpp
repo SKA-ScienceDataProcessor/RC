@@ -41,15 +41,15 @@ struct streamset {
     size_t
         num_of_pts = presiz / sizeof(Pregridded)
       , vissiz = num_of_pts * sizeof(complexd)
-      , datsiz = vissiz + presiz
+      , totsiz = dataoff + vissiz + presiz
       ;
 
     void * datap0 = NULL;
-    int res = cudaHostAlloc(&datap0, dataoff + datsiz, 0);
+    int res = cudaHostAlloc(&datap0, totsiz, 0);
     if (res != CUDA_SUCCESS) return NULL;
 
     binTable *tp = reinterpret_cast<binTable*>(datap0);
-    tp->dataSizeInBytes = datsiz;
+    tp->dataSizeInBytes = totsiz;
 
     int
         visoff = 0
