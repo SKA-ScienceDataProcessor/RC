@@ -60,7 +60,8 @@ createGrid gp _ = do
    memset p (fromIntegral $ vectorByteSize dat) 0
    return $ UVGrid gp 0 dat
 
-foreign import ccall unsafe "&" gridKernelGatherFullGCF :: Fun
+-- foreign import ccall unsafe "&" gridKernelGatherFullGCF :: Fun
+foreign import ccall unsafe "&" gridKernelGatherHalfGCF :: Fun
 
 grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
 grid vis gcfSet uvgrid = do
@@ -89,8 +90,10 @@ grid vis gcfSet uvgrid = do
           then do
                  viso <- peekVisOff up vp
                  preo <- peekPreOff up vp
-                 launchKernel gridKernelGatherFullGCF (grLin, grLin, 1) (trLin, trLin, 1) 0 Nothing
-                   $ mapArgs (plusDevPtr dp preo) (plusDevPtr dp viso) (advanceDevPtr gcftp maxWPlane) (uvgData uvgrid) n up vp grSize bstep
+                 -- launchKernel gridKernelGatherFullGCF (grLin, grLin, 1) (trLin, trLin, 1) 0 Nothing
+                 --   $ mapArgs (plusDevPtr dp preo) (plusDevPtr dp viso) (advanceDevPtr gcftp maxWPlane) (uvgData uvgrid) n up vp grSize bstep
+                 launchKernel gridKernelGatherHalfGCF (grLin, grLin, 1) (trLin, trLin, 1) 0 Nothing
+                   $ mapArgs (plusDevPtr dp preo) (plusDevPtr dp viso) gcftp (uvgData uvgrid) n up vp grSize bstep
           else return ()
     sequence_ [processBin up vp | up <- [0 .. numOfDivs - 1], vp <- [0 .. numOfDivs - 1]]
     sync
@@ -108,8 +111,8 @@ grid vis gcfSet uvgrid = do
     bstep = grSize `div` numOfDivs
     trLin = 16 -- 16x16 threads in block
     grLin = bstep `div` trLin
-    DeviceVector wplanes gcftp = gcfTable gcfSet
-    maxWPlane = wplanes `div` 2
+    DeviceVector _wplanes gcftp = gcfTable gcfSet
+    -- maxWPlane = _wplanes `div` 2
 
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
 degrid = Nvidia.degrid
