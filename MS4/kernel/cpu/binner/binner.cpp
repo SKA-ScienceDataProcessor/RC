@@ -17,16 +17,14 @@ typedef unsigned int uint;
 
 struct binTable {
   int dataSizeInBytes; // device allocator must know this
+  int dataOff;
   int visOffs[DIVIDERS][DIVIDERS];
   int preOffs[DIVIDERS][DIVIDERS];
   int nOfItems[DIVIDERS][DIVIDERS];
 };
 
 // Not sure if I need this alignment but still ...
-// Make it a real variable, for gridders could read it ...
-// Not particularly nice but should work ...
-// const
-int dataoff = (sizeof(binTable)+31)/32*32;
+const int dataoff = (sizeof(binTable)+31)/32*32;
 
 template <int divs>
 struct streamset {
@@ -50,6 +48,7 @@ struct streamset {
 
     binTable *tp = reinterpret_cast<binTable*>(datap0);
     tp->dataSizeInBytes = totsiz;
+    tp->dataOff = dataoff;
 
     int
         visoff = 0
