@@ -17,20 +17,6 @@ import Vector
 
 import qualified Kernel.GPU.NvidiaDegrid as Nvidia
 
-
-{-
-import Control.Monad
-import Data.Function ( on )
-import Data.List
-import Data.Word
-import Foreign.Storable ( sizeOf )
-
-import Data
-import Kernel.GPU.Common as CUDA
-import qualified Kernel.GPU.NvidiaDegrid as Nvidia
-import Vector
--}
-
 foreign import ccall bin ::
      CInt         -- # of points
   -> Double       -- scale
