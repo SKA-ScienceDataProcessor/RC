@@ -27,7 +27,7 @@ foreign import ccall unsafe "&" scatter_grid_phaseRotate_kern :: CUDA.Fun
 foreign import ccall unsafe "&" scatter_grid_pregrid_kern :: CUDA.Fun
 foreign import ccall unsafe "&" scatter_grid_kern :: CUDA.Fun
 
-type GCFMap = (Vector (DevicePtr CxDouble), Vector Int)
+type GCFMap = (Vector (DevicePtr CxDouble), Vector Word32)
 
 -- | Does the (rather involved) preparation step for the scatter
 -- gridder. This arranges things so that we:
@@ -66,7 +66,7 @@ prepareGCFs gcfSet = do
   gcfs' <- forM (zip [0..] gcfs0) $ \(i,gcf) -> do
     data'@(DeviceVector _ p) <- toDeviceVector (gcfData gcf)
     pokeVector gcfv i p
-    pokeVector gcf_suppv i (gcfSize gcf)
+    pokeVector gcf_suppv i $ fromIntegral $ gcfSize gcf
     return gcf{gcfData = data'}
   gcfv' <- toDeviceVector gcfv
   gcf_suppv' <- toDeviceVector gcf_suppv

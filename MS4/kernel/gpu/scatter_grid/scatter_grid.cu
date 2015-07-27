@@ -2,6 +2,7 @@
 #include <math_functions.h>
 #include <math_constants.h>
 #include <cuComplex.h>
+#include <stdint.h>
 
 typedef cuDoubleComplex complexd;
 
@@ -13,9 +14,9 @@ const short over = 8;
 // Pre-gridded visibility positions
 struct Pregridded
 {
-    short u, v;
-    char x, y;
-    short gcf_supp;
+    int16_t u, v;
+    uint8_t x, y;
+    int16_t gcf_supp;
     const complexd *gcf;
 };
 
@@ -57,29 +58,32 @@ extern "C" __global__ void scatter_grid_pregrid_kern
 
     // Scale and round uv so it gives us the top-left corner of the
     // where a GCF of the given size would get applied.
-    short u = short(floor(uvw[i].x * scale))
-        , v = short(floor(uvw[i].y * scale))
-        , over_u = short(floor(over * (uvw[i].x * scale - u)))
-        , over_v = short(floor(over * (uvw[i].y * scale - v)));
+    uint16_t u = short(floor(uvw[i].x * scale))
+           , v = short(floor(uvw[i].y * scale))
+           , over_u = short(floor(over * (uvw[i].x * scale - u)))
+           , over_v = short(floor(over * (uvw[i].y * scale - v)));
     uvo[i].u = u + grid_size/2 - max_supp/2;
     uvo[i].v = v + grid_size/2 - max_supp/2;
-    uvo[i].x = uvo[i].u % max_supp;
-    uvo[i].y = uvo[i].v % max_supp;
+    uvo[i].x = ((unsigned int) uvo[i].u) % max_supp;
+    uvo[i].y = ((unsigned int) uvo[i].v) % max_supp;
 
     // Determine GCF to use by w-plane and oversampling point. Note
     // that we need to re-centre the GCF if it is larger than
     // max_supp, as the gridder itself will only ever access a
     // max_supp*max_supp window of it.
-    short w_plane = short(round(fabs(uvw[i].z / wstep)))
-        , supp = gcf_supp[w_plane]
-        , gcf_off = (supp - max_supp) / 2;
+    uint16_t w_plane = short(round(fabs(uvw[i].z / wstep)))
+           , supp = gcf_supp[w_plane]
+           , gcf_off = (supp - max_supp) / 2;
     uvo[i].gcf = gcfs[w_plane] + (over_u * over + over_v)*supp*supp
                                + gcf_off*supp + gcf_off;
 
     // gcf_supp carries both the GCF size as well as the sign for the
     // imaginary part. If it's negative, we are meant to use the
     // conjugate of the GCF pixel.
-    uvo[i].gcf_supp = short(copysign(double(supp), uvw[i].z));
+    if (uvw[i].z > 0.0)
+      uvo[i].gcf_supp = supp;
+    else
+      uvo[i].gcf_supp = -supp;
   }
 }
 
