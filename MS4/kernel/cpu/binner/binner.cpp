@@ -28,7 +28,7 @@ const int dataoff = (sizeof(binTable)+31)/32*32;
 template <int divs>
 struct streamset {
 
-  int flush(void ** datapp) {
+  void * flush() {
     // CUDA host alloc/free is very expensive, thus we made a single allocation.
     // hence count elements first.
     size_t presiz = 0;
@@ -38,21 +38,22 @@ struct streamset {
     size_t
         num_of_pts = presiz / sizeof(Pregridded)
       , vissiz = num_of_pts * sizeof(complexd)
-      , totsiz = dataoff + vissiz + presiz;
+      , totsiz = dataoff + vissiz + presiz
       ;
 
-    int res = cudaHostAlloc(datapp, totsiz, 0);
-    if (res != CUDA_SUCCESS) return res;
+    void * datap = NULL;
+    int res = cudaHostAlloc(&datap, totsiz, 0);
+    if (res != CUDA_SUCCESS) return NULL;
 
-    binTable *tp = reinterpret_cast<binTable*>(*datapp);
+    binTable *tp = reinterpret_cast<binTable*>(datap);
     tp->dataSizeInBytes = totsiz;
 
     int
         visoff = dataoff
       , preoff = visoff + vissiz
       ;
-    #define predatap reinterpret_cast<char*>(*datapp)+preoff
-    #define visdatap reinterpret_cast<char*>(*datapp)+visoff
+    #define predatap reinterpret_cast<char*>(datap)+preoff
+    #define visdatap reinterpret_cast<char*>(datap)+visoff
     for(int i = 0; i < divs; i++) {
       for(int j = 0; j < divs; j++) {
         int plen, n, vlen;
@@ -74,7 +75,7 @@ struct streamset {
         }
       }
     }
-    return 0;
+    return datap;
   }
 
   void put_point(uint x, uint y, const Pregridded & p, const complexd & vis){
@@ -95,7 +96,7 @@ template <
 // We perform no baselines sorting yet.
 // But it is not so hard to implement it.
 // We assume we have the data for a single channel laid continuously in memory!
-inline int doit(void ** datapp, int num_points, double scale, double wstep, complexd* amps, Double3 * uvws, int gcfsupps[], int grid_size) {
+inline void * doit(int num_points, double scale, double wstep, complexd* amps, Double3 * uvws, int gcfsupps[], int grid_size) {
   const int div_size = grid_size / divs;
 
   streamset<divs> streams;
@@ -175,13 +176,13 @@ inline int doit(void ** datapp, int num_points, double scale, double wstep, comp
     amp_curr++;
     uvw_curr++;
   }
-  return streams.flush(datapp);
+  return streams.flush();
 }
 
-int bin(void ** datapp, int num_points, double scale, double wstep, complexd* amps, Double3 * uvws, int gcfsupps[], int grid_size){
-  return doit<OVER, DIVIDERS, false>(datapp, num_points, scale, wstep, amps, uvws, gcfsupps, grid_size);
+void * bin(int num_points, double scale, double wstep, complexd* amps, Double3 * uvws, int gcfsupps[], int grid_size){
+  return doit<OVER, DIVIDERS, false>(num_points, scale, wstep, amps, uvws, gcfsupps, grid_size);
 }
 
-int binm(void ** datapp, int num_points, double scale, double wstep, complexd* amps, Double3 * uvws, int gcfsupps[], int grid_size){
-  return doit<OVER, DIVIDERS, true>(datapp, num_points, scale, wstep, amps, uvws, gcfsupps, grid_size);
+void * binm(int num_points, double scale, double wstep, complexd* amps, Double3 * uvws, int gcfsupps[], int grid_size){
+  return doit<OVER, DIVIDERS, true>(num_points, scale, wstep, amps, uvws, gcfsupps, grid_size);
 }
