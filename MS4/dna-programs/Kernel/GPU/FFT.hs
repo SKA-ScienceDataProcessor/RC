@@ -1,5 +1,3 @@
-{-# LANGUAGE CPP #-}
-
 module Kernel.GPU.FFT
   ( DftPlans
   , dftPrepare
@@ -51,6 +49,8 @@ foreign import ccall unsafe "&" fftshift_kernel_cx :: Fun
 foreign import ccall unsafe "&" ifftshift_kernel_r :: Fun
 foreign import ccall unsafe "&" fftshift_kernel_r :: Fun
 
+foreign import ccall unsafe "&" fft_make_hermitian_kernel :: Fun
+
 -- | Shift (0/0) to either the top-left corner or the center of the
 -- image. Normally, we treat buffers as centered, but for FFT we need
 -- to convert data so our (0/0) point is, in fact, at the beginning of
@@ -74,6 +74,23 @@ fftShiftGen fun mbstream size pitch inoutp =
     blocks_per_dim0 = (size + threads_per_dim - 1) `div` threads_per_dim
     blocks_per_dim1 = (size - 1) `div` (threads_per_dim * 2) + 1
 
+-- | Updates the upper half of the matrix so that
+--
+--   A[x][y] = A[x][y] + conj(A[-x][-y])
+--
+-- This is required as our input to the complex-to-real FFT is, in
+-- fact, not actually hermitian. This function restores that property
+-- for the half of the matrix that cuFFT will actually read.
+fftMakeHermitian :: Maybe Stream -> Int -> Int -> CxDoubleDevPtr -> IO ()
+fftMakeHermitian mbstream size pitch inoutp =
+    launchKernel fft_make_hermitian_kernel
+                 (blocks_x, blocks_y, 1) (threads_per_dim, threads_per_dim, 1)
+                 0 mbstream $ mapArgs inoutp size pitch
+  where
+    threads_per_dim = min size 16
+    blocks_x = (size + threads_per_dim - 1) `div` threads_per_dim
+    blocks_y = ((size `div` 2) + threads_per_dim - 1) `div` threads_per_dim
+
 -- | DFT plans. These are used to communicate the plan data between
 -- the DFT kernels.
 data DftPlans = DftPlans
@@ -85,11 +102,14 @@ dftPrepare :: IORef DftPlans -> GridPar -> IO ()
 dftPrepare plans gridp = do
 
   -- Memory layouts for image and uv-grid data. We do this mainly so
-  -- cuFFT knows about the pitch. The third "distance" parameter is
-  -- only used for batching, which will not actually do.
+  -- cuFFT knows about the pitch. Note that we only use half of the
+  -- grid because of the nature of real-to-complex/complex-to-real
+  -- FFT. The third "distance" parameter is only used for batching,
+  -- which we do not actually do.
   let width = gridWidth gridp; height = gridHeight gridp; pitch = gridPitch gridp
-      imgLayout = ([height, pitch], 1, pitch * height)
-      uvgLayout = ([height, pitch], 1, pitch * height)
+      hheight = (height `div` 2) + 1
+      imgLayout = ([height, pitch], 1, 2 * pitch * hheight)
+      uvgLayout = ([hheight, pitch], 1, pitch * hheight)
   when (width /= height) $
     fail "DFT kernel assumes that the grid is quadratic!"
 
@@ -130,6 +150,7 @@ dftKernel plans img = do
   fftShiftR False Nothing  height pitch padptr
   execD2Z plan padptr (castDevPtr padptr')
   fftShiftCx False Nothing  height pitch padptr'
+  -- TODO: Make hermitian (inverse)
   sync
 
   let pad' = padptr' `minusDevPtr` ptr'
@@ -155,6 +176,7 @@ dftIKernel plans uvg = do
 
   -- Perform in-place fourier transformation
   fftShiftCx False Nothing  height pitch padptr
+  fftMakeHermitian Nothing height pitch padptr
   execZ2D iplan (castDevPtr padptr) padptr'
   fftShiftR False Nothing  height pitch padptr'
   sync
