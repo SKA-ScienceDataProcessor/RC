@@ -23,7 +23,10 @@ struct binTable {
 };
 
 // Not sure if I need this alignment but still ...
-const int dataoff = (sizeof(binTable)+31)/32*32;
+// Make it a real variable, for gridders could read it ...
+// Not particularly nice but should work ...
+// const
+int dataoff = (sizeof(binTable)+31)/32*32;
 
 template <int divs>
 struct streamset {
@@ -38,29 +41,28 @@ struct streamset {
     size_t
         num_of_pts = presiz / sizeof(Pregridded)
       , vissiz = num_of_pts * sizeof(complexd)
-      , totsiz = dataoff + vissiz + presiz
+      , datsiz = vissiz + presiz
       ;
 
-    void * datap = NULL;
-    int res = cudaHostAlloc(&datap, totsiz, 0);
+    void * datap0 = NULL;
+    int res = cudaHostAlloc(&datap0, dataoff + datsiz, 0);
     if (res != CUDA_SUCCESS) return NULL;
 
-    binTable *tp = reinterpret_cast<binTable*>(datap);
-    tp->dataSizeInBytes = totsiz;
+    binTable *tp = reinterpret_cast<binTable*>(datap0);
+    tp->dataSizeInBytes = datsiz;
 
     int
-        visoff = dataoff
-      , preoff = visoff + vissiz
+        visoff = 0
+      , preoff = vissiz
       ;
-    #define predatap reinterpret_cast<char*>(datap)+preoff
-    #define visdatap reinterpret_cast<char*>(datap)+visoff
+    char * datap = reinterpret_cast<char*>(datap0) + dataoff;
     for(int i = 0; i < divs; i++) {
       for(int j = 0; j < divs; j++) {
         int plen, n, vlen;
         plen = pre_streams[i][j].tellp();
         if (plen > 0) {
            tp->preOffs[i][j] = preoff;
-           pre_streams[i][j].read(predatap, plen);
+           pre_streams[i][j].read(datap+preoff, plen);
            preoff += plen;
            //
            n = plen / sizeof(Pregridded);
@@ -68,7 +70,7 @@ struct streamset {
            //
            vlen = n * sizeof(complexd);
            tp->visOffs[i][j] = visoff;
-           vis_streams[i][j].read(visdatap, vlen);
+           vis_streams[i][j].read(datap+visoff, vlen);
            visoff += vlen;
         } else {
            tp->nOfItems[i][j] = 0;
