@@ -353,7 +353,7 @@ findSlaves nRetry backend = do
    -- FIXME: how should we treat not found nodes?
    if (length pids /= length nodes) && (nRetry > 0)
        then do eventMessage $ "Retrying findSlaves (" ++ show (nRetry-1) ++ ") left"
-               liftIO $ threadDelay (500*1000)
+               liftIO $ threadDelay (1000*1000)
                findSlaves (nRetry-1) backend
        else return pids
 
@@ -387,7 +387,7 @@ startMaster :: Backend -> ([NodeId] -> Process ()) -> IO ()
 startMaster backend proc = do
   node <- newLocalNode backend
   Node.runProcess node $ do
-    slaves <- findSlaves 1 backend
+    slaves <- findSlaves 2 backend
     redirectLogsHere backend slaves
     proc (map processNodeId slaves) `finally` shutdownLogger
 
