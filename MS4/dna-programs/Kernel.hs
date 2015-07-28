@@ -26,6 +26,8 @@ data GridKernel = GridKernel
     -- required binning data.
   , gridkCreateGrid :: GridPar -> GCFPar -> IO UVGrid
     -- ^ Produce a new UV grid suitable for gridding
+  , gridkPhaseRotate :: Vis -> IO Vis
+    -- ^ Produce a new UV grid suitable for gridding
   , gridkGrid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
     -- ^ Grid the visibilities to the "UVGrid" using the given set of
     -- grid convolution functions.
@@ -84,17 +86,19 @@ data CleanKernel = CleanKernel
 -- | The supported gridding kernels
 gridKernels :: [(String, IO GridKernel)]
 gridKernels =
-  [ ("dummy", return $ GridKernel Dummy.prepare Dummy.createGrid
+  [ ("dummy", return $ GridKernel Dummy.prepare Dummy.createGrid Dummy.phaseRotate
                                   Dummy.grid Dummy.degrid)
   , ("gpu_scatter",
       return $ GridKernel GPU_ScatterGrid.prepare
                           GPU_ScatterGrid.createGrid
+                          GPU_ScatterGrid.phaseRotate
                           GPU_ScatterGrid.grid
                           GPU_ScatterGrid.degrid
     )
   , ("cpu_scatter",
       return $ GridKernel CPU_ScatterGrid.prepare
                           CPU_ScatterGrid.createGrid
+                          (error "TODO: CPU phase rotate!")
                           CPU_ScatterGrid.grid
                           CPU_ScatterGrid.degrid
     )

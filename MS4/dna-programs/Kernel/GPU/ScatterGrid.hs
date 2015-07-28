@@ -2,6 +2,7 @@
 module Kernel.GPU.ScatterGrid
   ( prepare
   , createGrid
+  , phaseRotate
   , grid
   , degrid
   ) where
@@ -45,16 +46,13 @@ prepare gridp vis gcfSet = do
   -- Prepare GCFS
   (gcfSet', gcfMap) <- prepareGCFs gcfSet
 
-  -- Phase rotation / visibilities transfer
-  vis' <- phaseRotate vis
-
   -- Pregridding
-  vis'' <- pregrid gridp vis' gcfSet' gcfMap
+  vis' <- pregrid gridp vis gcfSet' gcfMap
 
   -- Free map
   freeVector (fst gcfMap)
   freeVector (snd gcfMap)
-  return (vis'', gcfSet')
+  return (vis', gcfSet')
 
 -- | Transfer all GCFs to GPU and generates the GCF pointer and size
 -- lookup maps
@@ -75,8 +73,6 @@ prepareGCFs gcfSet = do
 
 -- | Do the phase rotation. This transfers visibilities and positions
 -- into GPU memory as a side-effect.
---
--- TODO: This should probably be a separate step in the top-level program?
 phaseRotate :: Vis -> IO Vis
 phaseRotate vis = do
 
@@ -112,6 +108,8 @@ pregrid gridp vis gcfSet (gcfv, gcf_suppv) = do
   let visibilities = vectorSize (visData vis)
       totalPregridSize = pregriddedSize * visibilities
   pregridded <- allocDeviceVector totalPregridSize :: IO (Vector Word8)
+  visPos' <- toDeviceVector (visPositions vis)
+  visData' <- toDeviceVector (visData vis)
   forM_ groupedBls $ \bls -> do
 
     -- Parameters of this baseline group
@@ -126,7 +124,7 @@ pregrid gridp vis gcfSet (gcfv, gcf_suppv) = do
               , let DeviceVector _ uvop = pregridded `offsetVector` (pregriddedSize * points * i) ]
     posv' <- toDeviceVector =<< makeVector allocHostVector
        [ posp | (_,bl) <- bls
-              , let DeviceVector _ posp = visPositions vis `offsetVector` vblOffset bl ]
+              , let DeviceVector _ posp = visPos' `offsetVector` vblOffset bl ]
 
     -- Launch pregridding kernel. Blocks are baselines, and threads
     -- will process individual baselines points.
@@ -139,7 +137,9 @@ pregrid gridp vis gcfSet (gcfv, gcf_suppv) = do
     freeVector uvov'
     freeVector posv'
 
-  return vis{ visBaselines = sortedBls
+  return vis{ visData = visData'
+            , visPositions  = visPos'
+            , visBaselines  = sortedBls
             , visPregridded = castVector pregridded}
 
 createGrid :: GridPar -> GCFPar -> IO UVGrid
