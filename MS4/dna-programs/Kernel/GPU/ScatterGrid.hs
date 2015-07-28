@@ -105,7 +105,7 @@ pregrid gridp vis gcfSet (gcfv, gcf_suppv) = do
 
   -- Pregrid parameters
   let scale :: Double
-      scale = fromIntegral (gridWidth gridp) / gridLambda gridp
+      scale = gridTheta gridp
       grid_size = gridWidth gridp
 
   -- Pregrid baselines

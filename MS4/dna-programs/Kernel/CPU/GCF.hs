@@ -86,4 +86,4 @@ kernel gp gcfp vis =
     pad = 4
     pitch = l + pad
     arenaSize = l * pitch
-    scale = fromIntegral (gridWidth gp) / gridLambda gp
+    scale = gridTheta gp

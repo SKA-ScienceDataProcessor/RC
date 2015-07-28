@@ -62,7 +62,7 @@ gridWrapper gfun (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) 
   where
     fi = fromIntegral
     grWidth = gridWidth gp
-    scale = fromIntegral grWidth / gridLambda gp
+    scale = gridTheta gp
     wstep = gcfpStepW gcfp
     size i = min (gcfpMaxSize gcfp) (gcfpMinSize gcfp + gcfpGrowth gcfp * abs i)
     supps = map (fi . size . baselineMinWPlane wstep) bls

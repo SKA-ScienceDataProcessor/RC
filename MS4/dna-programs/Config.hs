@@ -75,13 +75,12 @@ instance Binary DataSet
 -- | Grid parameters. This defines how big our grid is going to be,
 -- and how it is going to be stored.
 data GridPar = GridPar
-  { gridWidth :: !Int  -- ^ Width of the grid in pixels
-  , gridHeight :: !Int -- ^ Neight of the grid in pixels
+  { gridWidth :: !Int  -- ^ Width of the uv-grid/image in pixels
+  , gridHeight :: !Int -- ^ Neight of the uv-grid/image in pixels
   , gridPitch :: !Int  -- ^ Distance between rows in grid storage. Can
                        -- be larger than width if data is meant to be
                        -- padded.
-  , gridTheta :: !Double  -- ^ Size of the field of view
-  , gridLambda :: !Double -- ^ Size of the uv-grid
+  , gridTheta :: !Double  -- ^ Size of the field of view in radians
   }
   deriving (Show,Typeable,Generic,Eq)
 instance Binary GridPar
@@ -89,8 +88,12 @@ instance FromJSON GridPar where
   parseJSON (Object v)
     = GridPar <$> v .: "width" <*> v .: "height"
               <*> v .: "pitch" <*> v .: "theta"
-              <*> v .: "lambda"
   parseJSON _ = mzero
+
+-- | Size of the uv-grid in wavelengths / pixel size of a radian in
+-- images
+gridLambda :: GridPar -> Double
+gridLambda gp = fromIntegral (gridWidth gp) / gridTheta gp
 
 -- | Minimum number of rows we need to allocate for the grid in order
 -- to run a complex-to-real FFT. This is generally less than the full
