@@ -102,7 +102,7 @@ fftw_plan __fft_inplace_even(fftw_plan p, void * data, int size, int pitch){
 }
 
 fftw_plan fft_inplace_even(fftw_plan p, int sign, void * data, int size, int pitch){
-  #define __sw(d) case d: __fft_inplace_even<d>(p, data, size, pitch)
+  #define __sw(d) case d: __fft_inplace_even<d>(p, data, size, pitch); return p;
   switch(sign){
     __sw(-1);
     __sw( 0);
