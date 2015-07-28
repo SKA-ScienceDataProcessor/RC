@@ -114,8 +114,11 @@ dftPrepare plans gridp = do
     fail "DFT kernel assumes that the grid is quadratic!"
 
   -- Create plans
-  plan <- planMany [height, width] (Just imgLayout) (Just uvgLayout) D2Z 1
-  iplan <- planMany [height, width] (Just uvgLayout) (Just imgLayout) Z2D 1
+  -- TODO: Why do we have to increase width by 1 in order to not get
+  -- skews? This is very strange indeed... Note that it does introduce
+  -- slight errors, but this is he best workaround I could come up with...
+  plan <- planMany [height, width+1] (Just imgLayout) (Just uvgLayout) D2Z 1
+  iplan <- planMany [height, width+1] (Just uvgLayout) (Just imgLayout) Z2D 1
   writeIORef plans $ DftPlans plan iplan
 
 dftClean :: IORef DftPlans -> IO ()
