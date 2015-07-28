@@ -6,6 +6,7 @@
 #endif
 
 #include "fft_dyn_padded.h"
+#include "common.h"
 
 template <bool oddSize, typename T>
 inline void fft_center(T * data, int size, int pitch){

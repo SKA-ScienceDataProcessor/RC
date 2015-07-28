@@ -2,7 +2,6 @@
 #define __FFT_DYN_PADDED_H
 
 #include <fftw3.h>
-#include "common.h"
 
 #ifdef __cplusplus
 extern "C" {
