@@ -38,6 +38,16 @@ void normalizeCPU(
   , int grid_size
   );
 
+EXTERNC
+void reweight(
+    const Double3 * uvw[]
+  ,       complexd * vis[]
+  , double scale
+  , int baselines
+  , int ts_ch
+  , int grid_size
+  );
+
 #else
 
 #define deGridKernelCPUDecl(hgcfSuff, isHgcf)             \
@@ -56,7 +66,7 @@ void deGridKernelCPU##hgcfSuff(                           \
   , int grid_size                                         \
   , int gcf_supps[]                                       \
   );
-  
+
 deGridKernelCPUDecl(HalfGCF, true)
 deGridKernelCPUDecl(FullGCF, false)
 
