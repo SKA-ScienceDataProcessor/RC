@@ -317,7 +317,7 @@ int readAndReshuffle(const VisData * vdp, double * amps, double * uvws, Metrix *
 
     double cfreq;
     cfreq = freq_start_inc[0];
-    for (c = 0; c < vdp->num_channels; c++, cfreq +=freq_start_inc[0]) {
+    for (c = 0; c < vdp->num_channels; c++, cfreq += freq_start_inc[1]) {
       inv_lambdas[c] = cfreq / SPEED_OF_LIGHT;
     }
 
