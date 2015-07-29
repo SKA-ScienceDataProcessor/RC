@@ -8,7 +8,7 @@ import Foreign.Marshal.Array
 import Data
 import Vector
 
-type PD = Ptr Double
+type PUVW = Ptr UVW
 type PCD = Ptr (Complex Double)
 
 type CPUGridderType =
@@ -19,7 +19,7 @@ type CPUGridderType =
   -> Ptr CInt  -- baselines supports vector
   -> PCD       -- grid
   -> Ptr PCD   -- GCF layers pointer
-  -> Ptr PD    -- baselines' uvw data
+  -> Ptr PUVW  -- baselines' uvw data
   -> Ptr PCD   -- baselines' vis data
   -> CInt      -- length of baselines vectors
   -> CInt      -- grid pitch
@@ -58,7 +58,7 @@ gridWrapper gfun (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) 
       withArray uvws $ \uvwp -> 
         withArray amps $ \ampp -> do
           withArray gcfSupps $ \gcfsp -> do
-            gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp) (advancePtr gcfsp maxWPlane)
+            gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) uvwp ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp) (advancePtr gcfsp maxWPlane)
   where
     fi = fromIntegral
     grWidth = gridWidth gp
