@@ -47,6 +47,14 @@ void reweight(
   , int grid_size
   );
 
+EXTERNC
+void rotateCPU(
+    const Double3 uvw[]
+  ,       complexd vis[]
+  , int baselines_ts_ch
+  , double scale
+  );
+
 #else
 
 #define deGridKernelCPUDecl(hgcfSuff, isHgcf)             \

@@ -73,8 +73,8 @@ prepareGCFs gcfSet = do
 
 -- | Do the phase rotation. This transfers visibilities and positions
 -- into GPU memory as a side-effect.
-phaseRotate :: Vis -> IO Vis
-phaseRotate vis = do
+phaseRotate :: GridPar -> Vis -> IO Vis
+phaseRotate _ vis = do
 
   let visibilities = vectorSize (visData vis)
   visData' <- toDeviceVector (visData vis)

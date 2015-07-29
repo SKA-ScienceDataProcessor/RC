@@ -1,4 +1,10 @@
-module Kernel.CPU.ScatterGrid where
+module Kernel.CPU.ScatterGrid
+  ( prepare
+  , createGrid
+  , phaseRotate
+  , grid
+  , degrid
+  ) where
 
 import Data.Complex
 import Foreign.C
@@ -71,6 +77,15 @@ gridWrapper gfun (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) 
     maxWPlane = tsiz `div` 2
     gcfSupps = map (fi . size) [-maxWPlane .. maxWPlane]
 gridWrapper _ _ _ _ = error "Wrong Vis or GCF or Grid location for CPU."
+
+foreign import ccall rotateCPU :: PUVW -> PCD -> CInt -> Double -> IO ()
+
+phaseRotate :: GridPar -> Vis -> IO Vis
+phaseRotate gp vis = rotateCPU uvwp visp (fromIntegral n) scale >> return vis
+  where
+    CVector n uvwp = visPositions vis
+    CVector _ visp = visData vis
+    scale = gridTheta gp
 
 grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
 grid vis gcfset uvg = do

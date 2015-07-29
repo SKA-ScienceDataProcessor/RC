@@ -110,7 +110,9 @@ void gridKernel_scatter(
       for(int n=0; n<ts_ch; n++){
 #ifndef __DEGRID
         // We use scaled w for GCF hence scale w here too.
-        vis[n] = rotw(_vis[bl][n], uvw[n].w * scale);
+        // Rotation is factored out as a separate kernel
+        // vis[n] = rotw(_vis[bl][n], uvw[n].w * scale);
+        vis[n] = _vis[bl][n];
 #else
         vis[n] = {0.0, 0.0};
 #endif
@@ -160,8 +162,9 @@ void gridKernel_scatter(
       }
 #ifdef __DEGRID
       // We use scaled w for GCF hence scale w here too.
-      for(int n=0; n<ts_ch; n++)
-        vis[n] = rotw(vis[n], uvw[n].w * scale);
+      // Rotation is factored out as a separate kernel
+      // for(int n=0; n<ts_ch; n++)
+      //   vis[n] = rotw(vis[n], uvw[n].w * scale);
 #endif
     }
   }
@@ -286,6 +289,17 @@ void reweight(
     *visp /= double(count_grid[p.first*grid_size+p.second]);
   }
 }
+
+void rotateCPU(
+    const Double3 uvw[]
+  ,       complexd vis[]
+  , int baselines_ts_ch
+  , double scale
+  ){
+  for(int i=0; i < baselines_ts_ch; i++, uvw++, vis++)
+     *vis = rotw(*vis, uvw->w * scale);
+}
+
 
 #else
 

@@ -26,7 +26,7 @@ data GridKernel = GridKernel
     -- required binning data.
   , gridkCreateGrid :: GridPar -> GCFPar -> IO UVGrid
     -- ^ Produce a new UV grid suitable for gridding
-  , gridkPhaseRotate :: Vis -> IO Vis
+  , gridkPhaseRotate :: GridPar -> Vis -> IO Vis
     -- ^ Produce a new UV grid suitable for gridding
   , gridkGrid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
     -- ^ Grid the visibilities to the "UVGrid" using the given set of

@@ -21,8 +21,8 @@ createGrid gp _ = do
    dat <- allocCVector (gridHalfSize gp)
    return $ UVGrid gp 0 dat
 
-phaseRotate :: Vis -> IO Vis
-phaseRotate = return
+phaseRotate :: GridPar -> Vis -> IO Vis
+phaseRotate _ = return
 
 grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
 grid _ _ = return
