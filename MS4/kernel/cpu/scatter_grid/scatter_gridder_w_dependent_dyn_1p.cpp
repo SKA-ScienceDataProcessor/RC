@@ -266,7 +266,8 @@ void reweight(
   , int baselines_ts_ch
   , int grid_size
   ){
-  std::vector<int> count_grid(grid_size * grid_size, 0);
+  std::vector<int> count_grid_vec(grid_size * grid_size, 0);
+  int * count_grid = count_grid_vec.data() + grid_size/2*(grid_size+1);
   // We cache rounded values here, not sure it is better than
   //   recalculating them during the second pass ...
   typedef std::pair<int, int> ipair;
