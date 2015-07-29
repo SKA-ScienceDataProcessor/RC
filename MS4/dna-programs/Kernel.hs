@@ -98,7 +98,7 @@ gridKernels =
   , ("cpu_scatter",
       return $ GridKernel CPU_ScatterGrid.prepare
                           CPU_ScatterGrid.createGrid
-                          (error "TODO: CPU phase rotate!")
+                          CPU_ScatterGrid.phaseRotate
                           CPU_ScatterGrid.grid
                           CPU_ScatterGrid.degrid
     )
