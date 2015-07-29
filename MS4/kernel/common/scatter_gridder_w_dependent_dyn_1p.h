@@ -40,11 +40,10 @@ void normalizeCPU(
 
 EXTERNC
 void reweight(
-    const Double3 * uvw[]
-  ,       complexd * vis[]
+    const Double3 uvw[]
+  ,       complexd vis[]
   , double scale
-  , int baselines
-  , int ts_ch
+  , int baselines_ts_ch
   , int grid_size
   );
 

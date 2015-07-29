@@ -1,7 +1,5 @@
 #include <cstring>
-#if defined __clang__ || defined _MSC_VER
 #include <vector>
-#endif
 
 #if defined _OPENMP
 #include <omp.h>
@@ -259,45 +257,34 @@ void normalizeCPU(
 //  the gridder thus we have to perform
 //  some duplicate work ...
 void reweight(
-    const Double3 * uvw[]
-  ,       complexd * vis[]
+    const Double3 uvw[]
+  ,       complexd vis[]
   , double scale
-  , int baselines
-  , int ts_ch
+  , int baselines_ts_ch
   , int grid_size
   ){
   std::vector<int> count_grid(grid_size * grid_size, 0);
   // We cache rounded values here, not sure it is better than
   //   recalculating them during the second pass ...
   typedef std::pair<int, int> ipair;
-  std::vector<ipair> pregrid(baselines * ts_ch);
+  std::vector<ipair> pregrid(baselines_ts_ch);
 
   ipair * pp = pregrid.data();
-  const Double3 ** uvwrp = uvw;
-  complexd ** visrp = vis;
-  for(int i = 0; i < baselines; i++, uvwrp++, visrp++) {
-    const Double3 * uvwcp;
-    complexd * viscp;
-    uvwcp = *uvwrp;
-    viscp = *visrp;
-    for(int tch = 0; tch < ts_ch; tch++, uvwcp++, viscp++) {
-      int u, v;
-      u = int(round(uvwcp->u * scale));
-      v = int(round(uvwcp->v * scale));
-      count_grid[u*grid_size+v]++;
-      *pp++ = ipair(u, v);
-    }
+  const Double3 * uvwp = uvw;
+  complexd * visp = vis;
+  for(int i = 0; i < baselines_ts_ch; i++, uvwp++, visp++) {
+    int u, v;
+    u = int(round(uvwp->u * scale));
+    v = int(round(uvwp->v * scale));
+    count_grid[u*grid_size+v]++;
+    *pp++ = ipair(u, v);
   }
-  visrp = vis;
+  visp = vis;
   pp = pregrid.data();
-  for(int i = 0; i < baselines; i++, visrp++) {
-    complexd * viscp;
-    viscp = *visrp;
-    for(int tch = 0; tch < ts_ch; tch++, viscp++) {
-      ipair p;
-      p = *pp++;
-      *viscp /= double(count_grid[p.first*grid_size+p.second]);
-    }
+  for(int i = 0; i < baselines_ts_ch; i++, visp++) {
+    ipair p;
+    p = *pp++;
+    *visp /= double(count_grid[p.first*grid_size+p.second]);
   }
 }
 
