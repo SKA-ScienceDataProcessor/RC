@@ -271,15 +271,14 @@ void reweight(
 
   ipair * pp = pregrid.data();
   const Double3 * uvwp = uvw;
-  complexd * visp = vis;
-  for(int i = 0; i < baselines_ts_ch; i++, uvwp++, visp++) {
+  for(int i = 0; i < baselines_ts_ch; i++, uvwp++) {
     int u, v;
     u = int(round(uvwp->u * scale));
     v = int(round(uvwp->v * scale));
     count_grid[u*grid_size+v]++;
     *pp++ = ipair(u, v);
   }
-  visp = vis;
+  complexd * visp = vis;
   pp = pregrid.data();
   for(int i = 0; i < baselines_ts_ch; i++, visp++) {
     ipair p;
