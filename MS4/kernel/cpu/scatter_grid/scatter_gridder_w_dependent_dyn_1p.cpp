@@ -140,6 +140,7 @@ void gridKernel_scatter(
             int gsu, gsv;
             gsu = p.u + su;
             gsv = p.v + sv;
+            if (gsu < 0 || gsu >= grid_size || gsv < 0 || gsv >= grid_size) continue;
 
             complexd supportPixel;
             #define __layeroff su * gcfsupp[i] + sv
