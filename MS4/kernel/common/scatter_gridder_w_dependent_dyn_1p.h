@@ -32,6 +32,16 @@ gridKernelCPUDecl(HalfGCF, true)
 gridKernelCPUDecl(FullGCF, false)
 
 EXTERNC
+void grid0(
+    const Double3 uvw[]
+  , const complexd vis[]
+  , complexd grid[]
+  , double scale
+  , int baselines_ts_ch
+  , int grid_size
+  );
+
+EXTERNC
 void normalizeCPU(
     complexd src[]
   , int grid_pitch

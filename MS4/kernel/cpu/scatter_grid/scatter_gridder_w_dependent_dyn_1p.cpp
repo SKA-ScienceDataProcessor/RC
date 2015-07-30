@@ -242,6 +242,30 @@ void gridKernelCPU##hgcfSuff(                             \
 gridKernelCPU(HalfGCF, true)
 gridKernelCPU(FullGCF, false)
 
+void grid0(
+    const Double3 uvw[]
+  , const complexd vis[]
+  , complexd grid[]
+  , double scale
+  , int baselines_ts_ch
+  , int grid_size
+  ){
+  int
+      last = grid_size * grid_size
+    , trans = grid_size / 2 * (grid_size + 1)
+    ;
+  for(int i = 0; i < baselines_ts_ch; i++, uvw++, vis++) {
+    int u, v;
+    u = int(round(uvw->u * scale));
+    v = int(round(uvw->v * scale));
+    int n, ng;
+    n = u*grid_size+v;
+	ng = n + trans;
+    if (ng >= 0 && ng < last)
+      grid[n] += *vis;
+  }
+}
+
 // Normalization is done inplace!
 void normalizeCPU(
     complexd src[]
