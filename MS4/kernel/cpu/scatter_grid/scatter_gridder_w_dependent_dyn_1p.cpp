@@ -260,7 +260,7 @@ void grid0(
     v = int(round(uvw->v * scale));
     int n, ng;
     n = u*grid_size+v;
-	ng = n + trans;
+    ng = n + trans;
     if (ng >= 0 && ng < last)
       grid[n] += *vis;
   }
@@ -310,7 +310,7 @@ void reweight(
     v = int(round(uvwp->v * scale));
     int n, ng;
     n = u*grid_size+v;
-	ng = n + trans;
+    ng = n + trans;
     if (ng >= 0 && ng < last)
       count_grid[u*grid_size+v]++;
     *pp = ipair(u, v);
@@ -322,7 +322,7 @@ void reweight(
     p = *pp++;
     int n, ng;
     n = p.first*grid_size+p.second;
-	ng = n + trans;
+    ng = n + trans;
     if (ng >= 0 && ng < last)
       *visp /= double(count_grid[p.first*grid_size+p.second]);
   }
