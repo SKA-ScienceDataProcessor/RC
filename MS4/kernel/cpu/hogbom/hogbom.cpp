@@ -113,7 +113,7 @@ void deconvolve(
   for (unsigned int i = 0; i < niters; ++i) {
     findPeak(res_p, &found_place_res, siz, pitch);
 
-    if (abs(found_place_res.val) < threshold) break;
+    if (fabs(found_place_res.val) < threshold) break;
 
     subtractPSF(res_p, psf_p, found_place_res.pos, found_place_psf.pos, pitch, found_place_res.val * gain);
     mod_p[found_place_res.pos] += found_place_res.val * gain;
