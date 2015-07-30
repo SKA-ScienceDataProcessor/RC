@@ -139,7 +139,7 @@ void scatter_grid_point
     }
 
     // Load GCF pixel
-    short supp = abs(uvo[i].gcf_supp);
+    short supp = short(abs(int(uvo[i].gcf_supp))); // CUDA has no overloadeed abs(short) for device.
     complexd px = uvo[i].gcf[myConvU * supp + myConvV];
     px.y = copysign(px.y, double(uvo[i].gcf_supp));
 
