@@ -342,7 +342,8 @@ getRecvAddress aid = do
     case (act,st) of
       -- 1-process actor
       (SimpleActor  , Running p) -> return $ p^.pinfoRecvAddr
-    
+      (GroupMember{}, Running p) -> return $ p^.pinfoRecvAddr
+      -- Tree collector
       (ActorTree  as, GrpRunning{}) -> do
           ms <- forM as $ \a -> do
               getRecvAddress a >>= \case
@@ -356,7 +357,7 @@ getRecvAddress aid = do
                 RcvSimple m -> return m
                 _           -> panic "Bad subordinate actor for group"
           return $ RcvGrp ms
-      _ -> fail "getRecvAddress"
+      _ -> fail $ "getRecvAddress: " ++ show (act,st)
 
 -- | Execute action for each sub actor in compound actor
 traverseActor
