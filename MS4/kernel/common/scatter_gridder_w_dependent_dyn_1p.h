@@ -48,12 +48,6 @@ void normalizeCPU(
   , int grid_size
   );
 
-/*
-   Don't use it ATM (29.07.2015).
-   It is not quarded against points
-     missing the grid area.
-   And we now want to have such points.
- */
 EXTERNC
 void reweight(
     const Double3 uvw[]

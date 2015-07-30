@@ -291,8 +291,12 @@ void reweight(
   , int baselines_ts_ch
   , int grid_size
   ){
-  std::vector<int> count_grid_vec(grid_size * grid_size, 0);
-  int * count_grid = count_grid_vec.data() + grid_size/2*(grid_size+1);
+  int
+      last = grid_size * grid_size
+    , trans = grid_size / 2 * (grid_size + 1)
+    ;
+  std::vector<int> count_grid_vec(last, 0);
+  int * count_grid = count_grid_vec.data() + trans;
   // We cache rounded values here, not sure it is better than
   //   recalculating them during the second pass ...
   typedef std::pair<int, int> ipair;
@@ -304,7 +308,11 @@ void reweight(
     int u, v;
     u = int(round(uvwp->u * scale));
     v = int(round(uvwp->v * scale));
-    count_grid[u*grid_size+v]++;
+    int n, ng;
+    n = u*grid_size+v;
+	ng = n + trans;
+    if (ng >= 0 && ng < last)
+      count_grid[u*grid_size+v]++;
     *pp = ipair(u, v);
   }
   complexd * visp = vis;
@@ -312,7 +320,11 @@ void reweight(
   for(int i = 0; i < baselines_ts_ch; i++, visp++) {
     ipair p;
     p = *pp++;
-    *visp /= double(count_grid[p.first*grid_size+p.second]);
+    int n, ng;
+    n = p.first*grid_size+p.second;
+	ng = n + trans;
+    if (ng >= 0 && ng < last)
+      *visp /= double(count_grid[p.first*grid_size+p.second]);
   }
 }
 
