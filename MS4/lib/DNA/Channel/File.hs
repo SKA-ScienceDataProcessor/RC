@@ -56,7 +56,7 @@ createFileChanImp workDir loc name = do
           Remote -> [workDir]
 
     -- Use first directory that actually exists
-    edirs <- filterM doesDirectoryExist dirs
+    edirs <- filterM (fmap writable . getPermissions) =<< filterM doesDirectoryExist dirs
     if null edirs then return Nothing else do
 
       -- Generate temporary directory
