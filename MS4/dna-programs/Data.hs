@@ -14,6 +14,7 @@ module Data
   , imageSize
   , freeImage
   , constImage
+  , memImage
   , addImage
   , readImage
   , writeImage
@@ -106,6 +107,13 @@ constImage gp v = do
    img <- allocCVector (imageSize gp)
    forM_ [0..imageSize gp-1] $ \i -> pokeVector img i v
    return $ Image gp 0 img
+
+-- | Transfer image into CPU memory. This is used when we are done
+-- working on it and would like to free more precious (say, GPU) memory.
+memImage :: Image -> IO Image
+memImage img = do
+   dat' <- toCVector $ imgData img
+   return img{imgData = dat'}
 
 -- | Add two images together. Assumed to consume both images.
 addImage :: Image -> Image -> IO Image

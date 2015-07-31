@@ -122,16 +122,14 @@ imagingActor cfg = actor $ \dataSet -> do
     -- result of this actor
     res <- majorLoop 1 vis1
 
-    -- Free GCFs & PSF
-    kernel "clean cleanup" [] $ liftIO $ do
+    kernel "imaging cleanup" [] $ liftIO $ do
+      -- Give kernels a chance to free their data
+      dftClean dftk
+      -- Free GCFs & PSF
       freeGCFSet gcfSet1
       freeImage psf
-      dftClean dftk
-
-    -- More Cleanup? Eventually kernels will probably want to do
-    -- something here...
-
-    return res
+      -- Transfer result into memory, done
+      memImage res
 
 ----------------------------------------------------------------
 -- High level dataflow
