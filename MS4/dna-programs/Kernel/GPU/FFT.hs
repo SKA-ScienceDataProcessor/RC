@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Kernel.GPU.FFT
   ( DftPlans
   , dftPrepare
@@ -10,11 +11,13 @@ module Kernel.GPU.FFT
   , fft2dComplexDSqInplaceCentered
   ) where
 
-import Control.Monad (when)
+import Control.Monad (when, void)
 import Data.Complex
 import Data.IORef
 import Foreign.CUDA.FFT
+import Foreign.Storable
 import Foreign.Storable.Complex ()
+import Foreign.C.Types
 
 import Data
 import Kernel.GPU.Common
@@ -98,6 +101,14 @@ data DftPlans = DftPlans
   , dftIPlan :: Handle
   }
 
+foreign import ccall unsafe cufftSetCompatibilityMode :: CInt -> CInt -> IO CInt
+
+-- | Gives difference between two device pointers in numer of
+-- elements. Equivalent to "advanceDevPtr".
+diffDevPtr :: forall a. Storable a => DevicePtr a -> DevicePtr a -> Int
+diffDevPtr p1 p0 = (p1 `minusDevPtr` p0) `div` elSize
+  where elSize = sizeOf (undefined :: a)
+
 dftPrepare :: IORef DftPlans -> GridPar -> IO ()
 dftPrepare plans gridp = do
 
@@ -107,18 +118,18 @@ dftPrepare plans gridp = do
   -- FFT. The third "distance" parameter is only used for batching,
   -- which we do not actually do.
   let width = gridWidth gridp; height = gridHeight gridp; pitch = gridPitch gridp
-      hheight = (height `div` 2) + 1
-      imgLayout = ([height, pitch], 1, 2 * pitch * hheight)
-      uvgLayout = ([hheight, pitch], 1, pitch * hheight)
+      imgLayout = ([height, pitch], 1, 2 * pitch * height)
+      uvgLayout = ([height, pitch], 1, pitch * height)
   when (width /= height) $
     fail "DFT kernel assumes that the grid is quadratic!"
 
-  -- Create plans
-  -- TODO: Why do we have to increase width by 1 in order to not get
-  -- skews? This is very strange indeed... Note that it does introduce
-  -- slight errors, but this is he best workaround I could come up with...
-  plan <- planMany [height, width+1] (Just imgLayout) (Just uvgLayout) D2Z 1
-  iplan <- planMany [height, width+1] (Just uvgLayout) (Just imgLayout) Z2D 1
+  -- Create plans. We have to set compatability mode to "native",
+  -- otherwise we get skews due to cuFFT trying to emulate FFTW's data
+  -- layouts.
+  plan <- planMany [height, width] (Just imgLayout) (Just uvgLayout) D2Z 1
+  void $ cufftSetCompatibilityMode (useHandle plan) 0
+  iplan <- planMany [height, width] (Just uvgLayout) (Just imgLayout) Z2D 1
+  void $ cufftSetCompatibilityMode (useHandle iplan) 0
   writeIORef plans $ DftPlans plan iplan
 
 dftClean :: IORef DftPlans -> IO ()
@@ -137,8 +148,8 @@ dftKernel plans img = do
 
   -- Get image data
   DeviceVector n ptr <- toDeviceVector (imgData img)
-  let padptr = ptr `plusDevPtr` imgPadding img
-      endptr = ptr `plusDevPtr` n
+  let padptr = ptr `advanceDevPtr` imgPadding img
+      endptr = ptr `advanceDevPtr` n
 
   -- Cast pointers
   let ptr' = castDevPtr ptr       :: DevicePtr (Complex Double)
@@ -156,8 +167,8 @@ dftKernel plans img = do
   -- TODO: Make hermitian (inverse)
   sync
 
-  let pad' = padptr' `minusDevPtr` ptr'
-      n' = endptr' `minusDevPtr` ptr'
+  let pad' = padptr' `diffDevPtr` ptr'
+      n' = endptr' `diffDevPtr` ptr'
   return $ UVGrid (imgPar img) pad' (DeviceVector n' ptr')
 
 dftIKernel :: IORef DftPlans -> UVGrid -> IO Image
@@ -169,8 +180,8 @@ dftIKernel plans uvg = do
 
   -- Get grid data
   DeviceVector n ptr <- toDeviceVector (uvgData uvg)
-  let padptr = ptr `plusDevPtr` uvgPadding uvg
-      endptr = ptr `plusDevPtr` n
+  let padptr = ptr `advanceDevPtr` uvgPadding uvg
+      endptr = ptr `advanceDevPtr` n
 
   -- Cast pointers
   let ptr' = castDevPtr ptr       :: DevicePtr Double
@@ -184,6 +195,6 @@ dftIKernel plans uvg = do
   fftShiftR False Nothing  height pitch padptr'
   sync
 
-  let pad' = padptr' `minusDevPtr` ptr'
-      n' = endptr' `minusDevPtr` ptr'
+  let pad' = padptr' `diffDevPtr` ptr'
+      n' = endptr' `diffDevPtr` ptr'
   return $ Image (uvgPar uvg) pad' (DeviceVector n' ptr')
