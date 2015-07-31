@@ -248,18 +248,19 @@ void grid0(
   , complexd grid[]
   , double scale
   , int baselines_ts_ch
+  , int grid_pitch
   , int grid_size
   ){
   int
-      last = grid_size * grid_size
-    , trans = grid_size / 2 * (grid_size + 1)
+      last = grid_size * grid_pitch
+    , trans = grid_size / 2 * (grid_pitch + 1)
     ;
   for(int i = 0; i < baselines_ts_ch; i++, uvw++, vis++) {
     int u, v;
     u = int(round(uvw->u * scale));
     v = int(round(uvw->v * scale));
     int n, ng;
-    n = u*grid_size+v;
+    n = u*grid_pitch+v;
     ng = n + trans;
     if (ng >= 0 && ng < last)
       grid[n] += *vis;

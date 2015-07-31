@@ -38,6 +38,7 @@ void grid0(
   , complexd grid[]
   , double scale
   , int baselines_ts_ch
+  , int grid_pitch
   , int grid_size
   );
 
