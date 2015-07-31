@@ -144,20 +144,32 @@ handleProcessCrash msg pid = do
             , Just (SrcActor aidSrc) <- msrc
             -> do Just stSrc <- use $ stActorState . at aidSrc
                   case stSrc of
+                    -- Upstream is done, cannot respawn since we won't get input data
                     Completed -> handleFail aid
                     Failed    -> handleFail aid
+                    -- Upstream is still running simply respawn
                     Running{} -> do lift $ spawnSingleActor aid (pinfo^.pinfoNodes) restart
                                     sendDestinationAddr aid
                                     sendDestinationAddr aidSrc
+                    -- Upstream is running but could be completed partially
                     GrpRunning nFail -> do
-                        -- FIXME: check if logic is correct?
+                        -- Respawn
+                        lift $ spawnSingleActor aid (pinfo^.pinfoNodes) restart
+                        sendDestinationAddr aid
+                        sendDestinationAddr aidSrc
+                        -- All completed processes now must marked as
+                        -- failed since their output is lost.
                         children <- getCompundActorSubordinates aidSrc
+                        forM_ children $ \case
+                            (a,Completed) -> stActorState . at a .= Just Failed
+                            _             -> return ()
                         let nDone = sum [ 1 | (_,Completed) <- children ]
-                        if nDone > nFail
-                           then do error "FIXME: source actor failed!"
-                           else do error "FIXME: do respawn!"
-                                   error "FIXME: mark all source done actors as failed"
-                                   error "FIXME: send destination to source"
+                        -- If we marked any of completed processes as
+                        -- failed we have to handle failure
+                        --
+                        -- (+1 is needed since handleFail will subtract one)
+                        when (nDone > 0) $ do
+                            handleFail aidSrc
             --  * Otherwise we don't try to restart actor
             | otherwise -> handleFail aid
 
