@@ -7,6 +7,7 @@ module Data
   , gridHalfHeight
   , gridHalfSize
   , gridFullSize
+  , dumpGrid
 
     -- * Image
   , Image(..)
@@ -16,6 +17,7 @@ module Data
   , addImage
   , readImage
   , writeImage
+  , dumpImage
 
     -- * Visibilities
   , Vis(..)
@@ -71,6 +73,10 @@ data UVGrid = UVGrid
   deriving (Show,Typeable,Generic)
 instance Binary UVGrid
 
+-- | Dump grid to a file. Useful for debugging.
+dumpGrid :: UVGrid -> FilePath -> IO ()
+dumpGrid uvg = dumpVector' (uvgData uvg) (uvgPadding uvg) (gridFullSize (uvgPar uvg))
+
 -- | Images correspond to real-valued sky brightness data. They can be transformed
 -- to and from the @UVGrid@ using a fourier transformation.
 data Image = Image
@@ -122,7 +128,7 @@ addImage img1 img2 = do
 -- | Read image from a file channel
 readImage :: GridPar -> FileChan Image -> String -> IO Image
 readImage gridp chan file = do
-  let size = gridFullSize gridp
+  let size = imageSize gridp
   dat@(CVector _ ptr) <- allocCVector size
   n <- withFileChan chan file ReadMode $ \h ->
     hGetBuf h ptr size
@@ -134,7 +140,11 @@ readImage gridp chan file = do
 writeImage :: Image -> FileChan Image -> String -> IO ()
 writeImage img chan file =
   withFileChan chan file WriteMode $ \h ->
-    BS.hPut h =<< unsafeToByteString (imgData img)
+    BS.hPut h =<< unsafeToByteString' (imgData img) (imgPadding img) (imageSize (imgPar img))
+
+-- | Dump image to file name
+dumpImage :: Image -> FilePath -> IO ()
+dumpImage img = dumpVector' (imgData img) (imgPadding img) (imageSize (imgPar img))
 
 -- | Visibilities are a list of correlator outputs from a dataset
 -- concerning the same frequency band and polarisation.
