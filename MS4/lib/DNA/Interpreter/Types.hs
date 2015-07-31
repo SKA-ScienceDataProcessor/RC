@@ -379,7 +379,7 @@ sendToActor
     => AID -> a -> m ()
 sendToActor aid x = flip traverseActor aid $ \a -> do
     use (stActorState . at aid) >>= \case
-        Just (Running p) -> liftP $ send (p^.pinfoPID) a
+        Just (Running p) -> liftP $ send (p^.pinfoPID) x
         _                -> return ()
 
 -- | Terminate actor forcefully. This only kill actors' processes and
