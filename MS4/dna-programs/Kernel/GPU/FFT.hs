@@ -91,8 +91,8 @@ fftMakeHermitian mbstream size pitch inoutp =
                  0 mbstream $ mapArgs inoutp size pitch
   where
     threads_per_dim = min size 16
-    blocks_x = (size + threads_per_dim - 1) `div` threads_per_dim
-    blocks_y = ((size `div` 2) + threads_per_dim - 1) `div` threads_per_dim
+    blocks_x = ((size `div` 2) + threads_per_dim - 1) `div` threads_per_dim
+    blocks_y = (size + threads_per_dim - 1) `div` threads_per_dim
 
 -- | DFT plans. These are used to communicate the plan data between
 -- the DFT kernels.

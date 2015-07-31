@@ -35,7 +35,7 @@ __global__
 void fft_make_hermitian_kernel(cuDoubleComplex* data, int N, int pitch) {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
-  if (x >= N || y >= N/2) return;
+  if (x >= N/2 || y >= N) return;
   // Add conjugated value from other side
   int i = x+y*pitch,
       i1 = (N-1)*(pitch+1)-i; // (N-x-1)+(N-y-1)*pitch;
@@ -43,9 +43,9 @@ void fft_make_hermitian_kernel(cuDoubleComplex* data, int N, int pitch) {
   data[i].y -= data[i1].y;
   // cuFFT wants floor(N/2)+1 valid lines. So for the last line we
   // actually need to update the other side of the grid, too.
-  if (y+1 >= N/2) {
-      data[i1].x = data[i].x;
-      data[i1].y = -data[i].y;
+  if (x+1 >= N/2) {
+    data[i1].x = data[i].x;
+    data[i1].y = -data[i].y;
   }
 }
 
