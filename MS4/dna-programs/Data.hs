@@ -130,9 +130,10 @@ readImage :: GridPar -> FileChan Image -> String -> IO Image
 readImage gridp chan file = do
   let size = imageSize gridp
   dat@(CVector _ ptr) <- allocCVector size
+  let byteSize = size * sizeOf (undefined :: Double)
   n <- withFileChan chan file ReadMode $ \h ->
-    hGetBuf h ptr size
-  when (n /= size) $
+    hGetBuf h ptr byteSize
+  when (n /= byteSize) $
     freeVector dat >> fail "readImage: File not large enough!"
   return (Image gridp 0 dat)
 
