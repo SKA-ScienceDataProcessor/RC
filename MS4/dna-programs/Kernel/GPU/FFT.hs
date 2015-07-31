@@ -190,11 +190,9 @@ dftIKernel plans uvg = do
       endptr' = castDevPtr endptr :: DevicePtr Double
 
   -- Perform in-place fourier transformation
-  dumpGrid uvg "/tmp/imgs/fft0.grid"
   fftShiftHermitian Nothing height pitch padptr
   execZ2D iplan (castDevPtr padptr) padptr'
   fftShiftR False Nothing  height pitch padptr'
-  --dumpVector' (uvgData uvg) 0 (gridFullSize (uvgPar uvg)) "/tmp/imgs/fft1.img"
   sync
 
   let pad' = padptr' `diffDevPtr` ptr'
