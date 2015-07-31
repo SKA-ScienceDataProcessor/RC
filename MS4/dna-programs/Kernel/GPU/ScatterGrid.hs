@@ -78,7 +78,7 @@ phaseRotate _ vis = do
 
   let visibilities = vectorSize (visData vis)
   visData' <- toDeviceVector (visData vis)
-  visPos' <- dupDeviceVector (visPositions vis)
+  visPos' <- toDeviceVector (visPositions vis)
   CUDA.launchKernel scatter_grid_phaseRotate_kern
     (1,1,1) (min 1024 visibilities,1,1) 0 Nothing $
     mapArgs visData' visPos' visibilities
