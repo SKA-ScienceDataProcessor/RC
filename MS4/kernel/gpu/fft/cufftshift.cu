@@ -32,21 +32,24 @@ void fftshift_kernel_common(T* data, int shift, int N, int pitch){
 
 extern "C" {
 __global__
-void fft_make_hermitian_kernel(cuDoubleComplex* data, int N, int pitch) {
+void fftshift_half_hermitian(cuDoubleComplex* data, int N, int pitch) {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
-  if (x >= N/2 || y >= N) return;
-  // Add conjugated value from other side
+  if (x >= N/4 || y >= N) return;
+  // shift+mirror
+  int x1 = N/2 - x - 1; // N - (N + N/2) - 1
+  int y1 = N/2 - y - 1; // N - (N + N/2) - 1
+  if (y1 < 0) y1 += N;
+  // offsets
   int i = x+y*pitch,
-      i1 = (N-1)*(pitch+1)-i; // (N-x-1)+(N-y-1)*pitch;
-  data[i].x += data[i1].x;
-  data[i].y -= data[i1].y;
-  // cuFFT wants floor(N/2)+1 valid lines. So for the last line we
-  // actually need to update the other side of the grid, too.
-  if (x+1 >= N/2) {
-    data[i1].x = data[i].x;
-    data[i1].y = -data[i].y;
-  }
+      i1 = x1+y1*pitch;
+  // Swap + conjugate (note that x == N/2-x1-1!)
+  cuDoubleComplex tmp;
+  tmp = data[i];
+  data[i].x = data[i1].x;
+  data[i].y = -data[i1].y;
+  data[i1].x = tmp.x;
+  data[i1].y = -tmp.y;
 }
 
 __global__

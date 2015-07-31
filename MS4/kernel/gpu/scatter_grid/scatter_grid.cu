@@ -87,6 +87,31 @@ extern "C" __global__ void scatter_grid_pregrid_kern
   }
 }
 
+static __inline__ __device__ void scatter_grid_add
+  ( complexd grid[]
+  , int grid_size
+  , int grid_pitch
+  , int grid_point_u
+  , int grid_point_v
+  , complexd sum
+  )
+{
+
+  // Atomically add to grid. This is the bottleneck of this kernel.
+  if (grid_point_u < 0 || grid_point_u >= grid_size ||
+      grid_point_v < 0 || grid_point_v >= grid_size)
+    return;
+
+  // Bottom half? Mirror
+  if (grid_point_u >= grid_size / 2) {
+    grid_point_v = grid_size - grid_point_v - 1;
+    grid_point_u = grid_size - grid_point_u - 1;
+  }
+
+  // Add to grid. This is the bottleneck of the entire kernel
+  atomicAdd(&grid[grid_point_u + grid_pitch*grid_point_v], sum);
+}
+
 static __inline__ __device__
 void scatter_grid_point
   ( int max_supp
@@ -128,10 +153,7 @@ void scatter_grid_point
     // Grid point changed?
     if (myGridU != grid_point_u || myGridV != grid_point_v) {
       // Atomically add to grid. This is the bottleneck of this kernel.
-      if (grid_point_u >= 0 && grid_point_u < grid_size &&
-          grid_point_v >= 0 && grid_point_v < grid_size) {
-        atomicAdd(&grid[grid_point_u + grid_pitch*grid_point_v], sum);
-      }
+      scatter_grid_add(grid, grid_size, grid_pitch, grid_point_u, grid_point_v, sum);
       // Switch to new point
       sum = make_cuDoubleComplex(0.0, 0.0);
       grid_point_u = myGridU;
@@ -144,14 +166,14 @@ void scatter_grid_point
     px.y = copysign(px.y, double(uvo[i].gcf_supp));
 
     // Sum up
-    sum = cuCfma(px, vis[i], sum);
+    complexd vi = vis[i];
+    if (grid_point_u >= grid_size / 2)
+      vi.y = -vi.y;
+    sum = cuCfma(px, vi, sum);
   }
 
   // Add remaining sum to grid
-  if (grid_point_u >= 0 && grid_point_u < grid_size &&
-      grid_point_v >= 0 && grid_point_v < grid_size) {
-    atomicAdd(&grid[grid_point_u + grid_pitch*grid_point_v], sum);
-  }
+  scatter_grid_add(grid, grid_size, grid_pitch, grid_point_u, grid_point_v, sum);
 }
 
 extern __shared__ __device__ complexd shared[];

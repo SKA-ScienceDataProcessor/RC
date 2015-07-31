@@ -52,7 +52,7 @@ foreign import ccall unsafe "&" fftshift_kernel_cx :: Fun
 foreign import ccall unsafe "&" ifftshift_kernel_r :: Fun
 foreign import ccall unsafe "&" fftshift_kernel_r :: Fun
 
-foreign import ccall unsafe "&" fft_make_hermitian_kernel :: Fun
+foreign import ccall unsafe "&" fftshift_half_hermitian :: Fun
 
 -- | Shift (0/0) to either the top-left corner or the center of the
 -- image. Normally, we treat buffers as centered, but for FFT we need
@@ -84,14 +84,14 @@ fftShiftGen fun mbstream size pitch inoutp =
 -- This is required as our input to the complex-to-real FFT is, in
 -- fact, not actually hermitian. This function restores that property
 -- for the half of the matrix that cuFFT will actually read.
-fftMakeHermitian :: Maybe Stream -> Int -> Int -> CxDoubleDevPtr -> IO ()
-fftMakeHermitian mbstream size pitch inoutp =
-    launchKernel fft_make_hermitian_kernel
+fftShiftHermitian :: Maybe Stream -> Int -> Int -> CxDoubleDevPtr -> IO ()
+fftShiftHermitian mbstream size pitch inoutp =
+    launchKernel fftshift_half_hermitian
                  (blocks_x, blocks_y, 1) (threads_per_dim, threads_per_dim, 1)
-                 0 mbstream $ mapArgs inoutp size pitch
+                 0 mbstream $ mapArgs inoutp size ((pitch `div` 2) + 1)
   where
     threads_per_dim = min size 16
-    blocks_x = ((size `div` 2) + threads_per_dim - 1) `div` threads_per_dim
+    blocks_x = ((size `div` 4) + threads_per_dim - 1) `div` threads_per_dim
     blocks_y = (size + threads_per_dim - 1) `div` threads_per_dim
 
 -- | DFT plans. These are used to communicate the plan data between
@@ -118,8 +118,9 @@ dftPrepare plans gridp = do
   -- FFT. The third "distance" parameter is only used for batching,
   -- which we do not actually do.
   let width = gridWidth gridp; height = gridHeight gridp; pitch = gridPitch gridp
-      imgLayout = ([height, pitch], 1, 2 * pitch * height)
-      uvgLayout = ([height, pitch], 1, pitch * height)
+      hpitch = (pitch `div` 2) + 1
+      imgLayout = ([height, pitch], 1, 2 * hpitch * height)
+      uvgLayout = ([height, hpitch], 1, hpitch * height)
   when (width /= height) $
     fail "DFT kernel assumes that the grid is quadratic!"
 
@@ -189,10 +190,11 @@ dftIKernel plans uvg = do
       endptr' = castDevPtr endptr :: DevicePtr Double
 
   -- Perform in-place fourier transformation
-  fftShiftCx False Nothing  height pitch padptr
-  fftMakeHermitian Nothing height pitch padptr
+  dumpGrid uvg "/tmp/imgs/fft0.grid"
+  fftShiftHermitian Nothing height pitch padptr
   execZ2D iplan (castDevPtr padptr) padptr'
   fftShiftR False Nothing  height pitch padptr'
+  --dumpVector' (uvgData uvg) 0 (gridFullSize (uvgPar uvg)) "/tmp/imgs/fft1.img"
   sync
 
   let pad' = padptr' `diffDevPtr` ptr'

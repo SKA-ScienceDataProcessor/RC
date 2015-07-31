@@ -144,7 +144,7 @@ pregrid gridp vis gcfSet (gcfv, gcf_suppv) = do
 
 createGrid :: GridPar -> GCFPar -> IO UVGrid
 createGrid gp _ = do
-   dat@(DeviceVector _ p) <- allocDeviceVector (gridFullSize gp)
+   dat@(DeviceVector _ p) <- allocDeviceVector (gridHalfSize gp)
    memset p (fromIntegral $ vectorByteSize dat) 0
    return $ UVGrid gp 0 dat
 
@@ -189,7 +189,7 @@ grid vis gcfSet uvgrid = do
         shared_mem = fromIntegral $ points * (sizeOf (undefined :: CxDouble) + pregriddedSize)
     CUDA.launchKernel scatter_grid_kern
       (baselines,1,1) (min 1024 (max_supp*max_supp),1,1) shared_mem Nothing $
-      mapArgs (uvgData uvgrid) uvov datv max_supp points grid_size grid_pitch
+      mapArgs (uvgData uvgrid) uvov datv max_supp points grid_size ((grid_pitch `div` 2) + 1)
   CUDA.sync
 
   -- Free temporary arrays

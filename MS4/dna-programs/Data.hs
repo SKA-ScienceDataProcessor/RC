@@ -75,7 +75,7 @@ instance Binary UVGrid
 
 -- | Dump grid to a file. Useful for debugging.
 dumpGrid :: UVGrid -> FilePath -> IO ()
-dumpGrid uvg = dumpVector' (uvgData uvg) (uvgPadding uvg) (gridFullSize (uvgPar uvg))
+dumpGrid uvg = dumpVector' (uvgData uvg) (uvgPadding uvg) (gridHalfSize (uvgPar uvg))
 
 -- | Images correspond to real-valued sky brightness data. They can be transformed
 -- to and from the @UVGrid@ using a fourier transformation.
