@@ -308,7 +308,6 @@ executeDNA logopt workDir dna nodes = do
               , actorGroupSize   = GroupSize 1
               , actorNodes       = VirtualCAD (NodeInfo nid) (map NodeInfo nodes)
               , actorDebugFlags  = []
-              , actorAID         = AID 0
               , actorSendBack    = undefined
               , actorLogOpt      = logopt
               , actorWorkDir     = workDir

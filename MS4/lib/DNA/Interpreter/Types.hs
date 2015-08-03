@@ -37,6 +37,9 @@ import DNA.Logging
 
 ----------------------------------------------------------------
 -- Extra functions for matching on messages
+--
+-- FIXME: should be greatly simplified by Functor instance for
+--        Match. We could get rid of MatchS altogether
 ----------------------------------------------------------------
 
 -- | Handlers for events which could be used with State monad with state s
@@ -95,7 +98,6 @@ instance Monad DnaMonad where
     return           = DnaMonad . return
     DnaMonad m >>= f = DnaMonad $ m >>= fmap unDnaMonad f
     fail             = doPanic
-
 
 instance MonadLog DnaMonad where
     logSource    = liftP logSource
@@ -165,7 +167,6 @@ runDnaParam p action = do
     env = Env { envRank        = case actorRank      p of Rank      i -> i
               , envGroupSize   = case actorGroupSize p of GroupSize i -> i
               , envInterpreter = actorInterpreter p
-              , envAID         = actorAID p
               , envWorkDir     = actorWorkDir p
               }
     s0 = StateDNA
@@ -210,8 +211,6 @@ data ActorParam = ActorParam
       -- ^ Extra flags for debugging
     , actorSendBack    :: SendPort (RecvAddr Recv)
       -- ^ Send receive address and list of port ID's back to the parent process
-    , actorAID         :: AID
-      -- ^ AID of an actor as viewed by parent
     , actorLogOpt      :: LoggerOpt
       -- ^ Logging preferences
     , actorWorkDir     :: FilePath
@@ -225,7 +224,6 @@ data Env = Env
     { envRank        :: !Int
     , envGroupSize   :: !Int
     , envInterpreter :: !(Closure DnaInterpreter)
-    , envAID         :: !AID
     , envWorkDir     :: !FilePath
     }
 

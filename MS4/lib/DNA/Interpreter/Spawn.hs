@@ -329,7 +329,6 @@ sendActorParam pid aid rnk g cad ch flags = do
             , actorNodes       = cad
             , actorDebugFlags  = flags
             , actorSendBack    = ch
-            , actorAID         = aid
             , actorLogOpt      = logopt'
             , actorWorkDir     = workDir
             }
