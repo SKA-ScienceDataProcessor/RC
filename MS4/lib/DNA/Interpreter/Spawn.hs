@@ -25,7 +25,6 @@ import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
 import Data.Monoid
-import Data.Either
 import qualified Data.Foldable as T
 import qualified Data.Set as Set
 import Text.Printf
@@ -42,9 +41,6 @@ import DNA.Interpreter.Run
 ----------------------------------------------------------------
 -- Functions for spawning actors
 ----------------------------------------------------------------
-
--- FIXME: One problem that should be addressed is need to restart
---        processes when they fail.
 
 -- | Spawn simple actor on remote node
 execSpawnActor
@@ -77,7 +73,6 @@ execSpawnCollector res actorCmd = do
     spawnSingleActor aid cad 
       $ SpawnSingle act (Rank 0) (GroupSize 1) SimpleActor RcvTyReduce flags
     return $ Shell aid
-
 
 -- | Spawn group of normal processes
 execSpawnGroup
@@ -175,9 +170,9 @@ spawnSingleActor aid cad cmd@(SpawnSingle act rnk grp actDescr addrTy flags) = d
     (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) act
     (chSend,chRecv) <- liftP newChan
     _       <- sendActorParam
-                 pid aid rnk grp
+                 pid rnk grp
                  cad chSend (concat [fs | UseDebug fs <- flags])
-    maddr   <- receiveShell chRecv aid pid $ \dst -> case (dst,addrTy) of
+    maddr   <- receiveShell chRecv pid $ \dst -> case (dst,addrTy) of
         (RcvSimple{},RcvTySimple) -> return ()
         (RcvReduce{},RcvTyReduce) -> return ()
         (RcvGrp{}   ,RcvTyGrp   ) -> return ()
@@ -264,11 +259,10 @@ waitForShell ch p = receiveWait
 -- failure or success in the dataflow graph
 receiveShell
     :: ReceivePort (RecvAddr Recv)
-    -> AID
     -> ProcessId
     -> (RecvAddr Recv -> DnaMonad ())
     -> DnaMonad (Maybe (RecvAddr Recv))
-receiveShell ch aid pid handler = do
+receiveShell ch pid handler = do
     -- We obtain shell or notification that process is dead
     r <- liftP $ waitForShell ch (==pid)
     case r of
@@ -298,14 +292,13 @@ getTimeoutInterval = getLast . T.foldMap (Last . go)
 -- Send auxiliary parameters to an actor
 sendActorParam
     :: ProcessId
-    -> AID
     -> Rank
     -> GroupSize
     -> VirtualCAD
     -> SendPort (RecvAddr Recv)
     -> [DebugFlag]
     -> DnaMonad ActorParam
-sendActorParam pid aid rnk g cad ch flags = do
+sendActorParam pid rnk g cad ch flags = do
     me      <- liftP getSelfPid
     interp  <- envInterpreter <$> ask
     workDir <- envWorkDir <$> ask
