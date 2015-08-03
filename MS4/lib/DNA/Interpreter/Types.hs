@@ -378,7 +378,7 @@ sendToActor
     :: (MonadProcess m, MonadState StateDNA m, Serializable a)
     => AID -> a -> m ()
 sendToActor aid x = flip traverseActor aid $ \a -> do
-    use (stActorState . at aid) >>= \case
+    use (stActorState . at a) >>= \case
         Just (Running p) -> liftP $ send (p^.pinfoPID) x
         _                -> return ()
 
