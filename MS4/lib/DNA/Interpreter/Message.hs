@@ -36,16 +36,13 @@ import Control.Distributed.Process
 -- import Control.Distributed.Process.Serializable
 -- import qualified Data.Map as Map
 import Data.List   (isPrefixOf)
-import qualified Data.Set as Set
 import qualified Data.Foldable as T
 import Text.Printf
 
--- import DNA.CH
 import DNA.Lens
 import DNA.Types
 import DNA.Interpreter.Types
 import DNA.Interpreter.Spawn
-import DNA.Interpreter.Run
 import DNA.Logging
 
 
@@ -62,7 +59,6 @@ messageHandlers =
     , MatchS handleTimeout
       --
     -- , MatchS handleReady
-    -- , MatchS handleDone
     ]
 
 
@@ -104,7 +100,7 @@ handleProcessTermination (ProcessMonitorNotification _ pid reason) =
 -- Monitored process crashed or was disconnected
 handleProcessCrash :: String -> ProcessId -> Controller ()
 handleProcessCrash msg pid = do
-    errorMsg $ printf "Child %s crash: %s" (show pid) msg
+    errorMsg $ printf "Child %s crashed: %s" (show pid) msg
     -- We can receive notifications from unknown processes. When we
     -- terminate actor forcefully we remove it from registry at the
     -- same time
@@ -169,6 +165,7 @@ handleProcessCrash msg pid = do
                         --
                         -- (+1 is needed since handleFail will subtract one)
                         when (nDone > 0) $ do
+                            stActorState . at aidSrc .= Just (GrpRunning (nFail - nDone + 1))
                             handleFail aidSrc
             --  * Otherwise we don't try to restart actor
             | otherwise -> handleFail aid
@@ -210,7 +207,7 @@ handleFail aid = do
                  terminateDependencies aid
 
 
--- Terminate all actor which cannot continue anymore
+-- Terminate all actors which cannot continue anymore
 terminateDependencies :: AID -> Controller ()
 terminateDependencies aid = do
     use (stActorSrc . at aid) >>= \case 
@@ -256,7 +253,7 @@ checkIfGroupDone aid = do
       RcvReduce ps -> liftP $ forM_ ps $ \(_,p) -> sendChan p n
       _            -> panic "Cannot send group of values to simple address"
 
-
+-- Get list of worker actors in compound actor
 getCompundActorSubordinates :: AID -> Controller [(AID,ActorState)]
 getCompundActorSubordinates aid = do
     children <- use (stActors . at aid) >>= \case
@@ -276,11 +273,11 @@ handleDataSent (SentTo pid dst) = do
     T.forM_ maid $ \aid -> do
         Just d <- use $ stActorDst . at aid
         case d of
-          DstParent vid    -> sendAck aid
+          DstParent {}     -> sendAck aid
           DstActor  aidDst -> do
               ok <- checkDestination dst aidDst
               if ok then sendAck aid
-                    else error "FIXME!"
+                    else error "FIXME: send correct destination"
   where
     -- Send confirmation to the actor and remove it from registry
     sendAck aid = do
