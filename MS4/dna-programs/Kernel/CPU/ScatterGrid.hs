@@ -1,4 +1,10 @@
-module Kernel.CPU.ScatterGrid where
+module Kernel.CPU.ScatterGrid
+  ( prepare
+  , createGrid
+  , phaseRotate
+  , grid
+  , degrid
+  ) where
 
 import Data.Complex
 import Foreign.C
@@ -8,7 +14,7 @@ import Foreign.Marshal.Array
 import Data
 import Vector
 
-type PD = Ptr Double
+type PUVW = Ptr UVW
 type PCD = Ptr (Complex Double)
 
 type CPUGridderType =
@@ -19,11 +25,12 @@ type CPUGridderType =
   -> Ptr CInt  -- baselines supports vector
   -> PCD       -- grid
   -> Ptr PCD   -- GCF layers pointer
-  -> Ptr PD    -- baselines' uvw data
+  -> Ptr PUVW  -- baselines' uvw data
   -> Ptr PCD   -- baselines' vis data
   -> CInt      -- length of baselines vectors
   -> CInt      -- grid pitch
   -> CInt      -- grid size
+  -> Ptr CInt  -- GCF supports vector
   -> IO ()
 
 {-
@@ -36,7 +43,7 @@ foreign import ccall "dynamic" mkCPUGridderFun :: FunPtr CPUGridderType -> CPUGr
 foreign import ccall gridKernelCPUFullGCF :: CPUGridderType
 foreign import ccall deGridKernelCPUFullGCF :: CPUGridderType
 
-foreign import ccall normalize :: PCD -> CInt -> CInt -> IO ()
+foreign import ccall "normalizeCPU" normalize :: PCD -> CInt -> CInt -> IO ()
 
 -- trivial
 -- we make all additional things (pregridding and rotation) inside the gridder
@@ -56,17 +63,29 @@ gridWrapper gfun (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) 
     withArray supps $ \suppp -> 
       withArray uvws $ \uvwp -> 
         withArray amps $ \ampp -> do
-          gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) (castPtr uvwp) ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp)
+          withArray gcfSupps $ \gcfsp -> do
+            gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) uvwp ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp) (advancePtr gcfsp maxWPlane)
   where
     fi = fromIntegral
     grWidth = gridWidth gp
-    scale = fromIntegral grWidth / gridLambda gp
+    scale = gridTheta gp
     wstep = gcfpStepW gcfp
-    size i = min (gcfpMaxSize gcfp) (gcfpMinSize gcfp + gcfpGrowth gcfp * i)
+    size i = min (gcfpMaxSize gcfp) (gcfpMinSize gcfp + gcfpGrowth gcfp * abs i)
     supps = map (fi . size . baselineMinWPlane wstep) bls
     uvws = map (advancePtr uwpptr . vblOffset) bls
     amps = map (advancePtr ampptr . vblOffset) bls
+    maxWPlane = tsiz `div` 2
+    gcfSupps = map (fi . size) [-maxWPlane .. maxWPlane]
 gridWrapper _ _ _ _ = error "Wrong Vis or GCF or Grid location for CPU."
+
+foreign import ccall rotateCPU :: PUVW -> PCD -> CInt -> Double -> IO ()
+
+phaseRotate :: GridPar -> Vis -> IO Vis
+phaseRotate gp vis = rotateCPU uvwp visp (fromIntegral n) scale >> return vis
+  where
+    CVector n uvwp = visPositions vis
+    CVector _ visp = visData vis
+    scale = gridTheta gp
 
 grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
 grid vis gcfset uvg = do

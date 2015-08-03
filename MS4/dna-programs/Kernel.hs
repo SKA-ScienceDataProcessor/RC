@@ -11,9 +11,10 @@ import qualified Kernel.GPU.ScatterGrid as GPU_ScatterGrid
 import qualified Kernel.GPU.FFT as GPU_FFT
 import qualified Kernel.GPU.Hogbom as GPU_Hogbom
 
--- Dummy imports only to make them compile
-import Kernel.CPU.FFT ()
-import Kernel.CPU.GCF ()
+import qualified Kernel.CPU.GCF as CPU_GCF
+import qualified Kernel.CPU.ScatterGrid as CPU_ScatterGrid
+import qualified Kernel.CPU.FFT as CPU_FFT
+import qualified Kernel.CPU.Hogbom as CPU_Hogbom
 
 
 -- | Gridding kernels deal with adding or extracting visibilities
@@ -24,6 +25,8 @@ data GridKernel = GridKernel
     -- the visibility data into another memory region and/or calculate
     -- required binning data.
   , gridkCreateGrid :: GridPar -> GCFPar -> IO UVGrid
+    -- ^ Produce a new UV grid suitable for gridding
+  , gridkPhaseRotate :: GridPar -> Vis -> IO Vis
     -- ^ Produce a new UV grid suitable for gridding
   , gridkGrid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
     -- ^ Grid the visibilities to the "UVGrid" using the given set of
@@ -83,21 +86,21 @@ data CleanKernel = CleanKernel
 -- | The supported gridding kernels
 gridKernels :: [(String, IO GridKernel)]
 gridKernels =
-  [ ("dummy", return $ GridKernel Dummy.prepare Dummy.createGrid
+  [ ("dummy", return $ GridKernel Dummy.prepare Dummy.createGrid Dummy.phaseRotate
                                   Dummy.grid Dummy.degrid)
   , ("gpu_scatter",
       return $ GridKernel GPU_ScatterGrid.prepare
                           GPU_ScatterGrid.createGrid
+                          GPU_ScatterGrid.phaseRotate
                           GPU_ScatterGrid.grid
                           GPU_ScatterGrid.degrid
     )
-  , ("cpu", do
-        -- ...
-        let prepare = undefined
-            createGrid = undefined
-            grid = undefined
-            degrid = undefined
-        return (GridKernel prepare createGrid grid degrid)
+  , ("cpu_scatter",
+      return $ GridKernel CPU_ScatterGrid.prepare
+                          CPU_ScatterGrid.createGrid
+                          CPU_ScatterGrid.phaseRotate
+                          CPU_ScatterGrid.grid
+                          CPU_ScatterGrid.degrid
     )
   ]
 
@@ -111,20 +114,31 @@ dftKernels =
                          (GPU_FFT.dftClean plans)
                          (GPU_FFT.dftKernel plans)
                          (GPU_FFT.dftIKernel plans))
+  , ("fftw3", do
+      plans <- newIORef (error "DFT kernel called without dftPrepare!")
+      return $ DFTKernel (CPU_FFT.dftPrepare plans)
+                         (CPU_FFT.dftClean plans)
+                         (CPU_FFT.dftKernel plans)
+                         (CPU_FFT.dftIKernel plans))
   ]
 
 -- The supported discrete fourier transformation kernels
 gcfKernels :: [(String, IO GCFKernel)]
 gcfKernels =
   [ ("dummy", return $ GCFKernel Dummy.gcf)
-  , ("gpu", return $ GCFKernel GPU_GCF.kernel) ]
+  , ("gpu", return $ GCFKernel GPU_GCF.kernel)
+  , ("cpu", return $ GCFKernel CPU_GCF.kernel)
+  ]
 
 -- The supported discrete fourier transformation kernels
 cleanKernels :: [(String, IO CleanKernel)]
 cleanKernels =
   [ ("dummy", return $ CleanKernel Dummy.cleanPrepare Dummy.clean)
   , ("gpu_hogbom", return $ CleanKernel GPU_Hogbom.cleanPrepare
-                                        GPU_Hogbom.cleanKernel) ]
+                                        GPU_Hogbom.cleanKernel)
+  , ("cpu_hogbom", return $ CleanKernel CPU_Hogbom.cleanPrepare
+                                        CPU_Hogbom.cleanKernel)
+  ]
 
 initKernel :: [(String, IO a)] -> String -> IO a
 initKernel kernels name = case lookup name kernels of

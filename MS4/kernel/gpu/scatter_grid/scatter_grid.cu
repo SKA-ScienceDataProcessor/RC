@@ -2,6 +2,7 @@
 #include <math_functions.h>
 #include <math_constants.h>
 #include <cuComplex.h>
+#include <stdint.h>
 
 typedef cuDoubleComplex complexd;
 
@@ -13,10 +14,9 @@ const short over = 8;
 // Pre-gridded visibility positions
 struct Pregridded
 {
-    short u, v;
-    short x, y;
-    short conj;
-    short gcf_supp;
+    int16_t u, v;
+    uint8_t x, y;
+    int16_t gcf_supp;
     const complexd *gcf;
 };
 
@@ -58,27 +58,58 @@ extern "C" __global__ void scatter_grid_pregrid_kern
 
     // Scale and round uv so it gives us the top-left corner of the
     // where a GCF of the given size would get applied.
-    short u = short(floor(uvw[i].x * scale))
-        , v = short(floor(uvw[i].y * scale))
-        , over_u = short(floor(over * (uvw[i].x * scale - u)))
-        , over_v = short(floor(over * (uvw[i].y * scale - v)));
+    uint16_t u = short(floor(uvw[i].x * scale))
+           , v = short(floor(uvw[i].y * scale))
+           , over_u = short(floor(over * (uvw[i].x * scale - u)))
+           , over_v = short(floor(over * (uvw[i].y * scale - v)));
     uvo[i].u = u + grid_size/2 - max_supp/2;
     uvo[i].v = v + grid_size/2 - max_supp/2;
-    uvo[i].x = uvo[i].u % max_supp;
-    uvo[i].y = uvo[i].v % max_supp;
+    uvo[i].x = ((unsigned int) uvo[i].u) % max_supp;
+    uvo[i].y = ((unsigned int) uvo[i].v) % max_supp;
 
     // Determine GCF to use by w-plane and oversampling point. Note
     // that we need to re-centre the GCF if it is larger than
     // max_supp, as the gridder itself will only ever access a
     // max_supp*max_supp window of it.
-    short w_plane = short(round(fabs(uvw[i].z / wstep)))
-        , supp = gcf_supp[w_plane]
-        , gcf_off = (supp - max_supp) / 2;
-    uvo[i].conj = short(copysign(1.0, uvw[i].z));
+    uint16_t w_plane = short(round(fabs(uvw[i].z / wstep)))
+           , supp = gcf_supp[w_plane]
+           , gcf_off = (supp - max_supp) / 2;
     uvo[i].gcf = gcfs[w_plane] + (over_u * over + over_v)*supp*supp
                                + gcf_off*supp + gcf_off;
-    uvo[i].gcf_supp = supp;
+
+    // gcf_supp carries both the GCF size as well as the sign for the
+    // imaginary part. If it's negative, we are meant to use the
+    // conjugate of the GCF pixel.
+    if (uvw[i].z > 0.0)
+      uvo[i].gcf_supp = supp;
+    else
+      uvo[i].gcf_supp = -supp;
   }
+}
+
+static __inline__ __device__ void scatter_grid_add
+  ( complexd grid[]
+  , int grid_size
+  , int grid_pitch
+  , int grid_point_u
+  , int grid_point_v
+  , complexd sum
+  )
+{
+
+  // Atomically add to grid. This is the bottleneck of this kernel.
+  if (grid_point_u < 0 || grid_point_u >= grid_size ||
+      grid_point_v < 0 || grid_point_v >= grid_size)
+    return;
+
+  // Bottom half? Mirror
+  if (grid_point_u >= grid_size / 2) {
+    grid_point_v = grid_size - grid_point_v - 1;
+    grid_point_u = grid_size - grid_point_u - 1;
+  }
+
+  // Add to grid. This is the bottleneck of the entire kernel
+  atomicAdd(&grid[grid_point_u + grid_pitch*grid_point_v], sum);
 }
 
 static __inline__ __device__
@@ -122,10 +153,7 @@ void scatter_grid_point
     // Grid point changed?
     if (myGridU != grid_point_u || myGridV != grid_point_v) {
       // Atomically add to grid. This is the bottleneck of this kernel.
-      if (grid_point_u >= 0 && grid_point_u < grid_size &&
-          grid_point_v >= 0 && grid_point_v < grid_size) {
-        atomicAdd(&grid[grid_point_u + grid_pitch*grid_point_v], sum);
-      }
+      scatter_grid_add(grid, grid_size, grid_pitch, grid_point_u, grid_point_v, sum);
       // Switch to new point
       sum = make_cuDoubleComplex(0.0, 0.0);
       grid_point_u = myGridU;
@@ -133,19 +161,19 @@ void scatter_grid_point
     }
 
     // Load GCF pixel
-    short supp = uvo[i].gcf_supp;
+    short supp = short(abs(int(uvo[i].gcf_supp))); // CUDA has no overloadeed abs(short) for device.
     complexd px = uvo[i].gcf[myConvU * supp + myConvV];
-    px.y = copysign(px.y, double(uvo[i].conj));
+    px.y = copysign(px.y, double(uvo[i].gcf_supp));
 
     // Sum up
-    sum = cuCfma(px, vis[i], sum);
+    complexd vi = vis[i];
+    if (grid_point_u >= grid_size / 2)
+      vi.y = -vi.y;
+    sum = cuCfma(px, vi, sum);
   }
 
   // Add remaining sum to grid
-  if (grid_point_u >= 0 && grid_point_u < grid_size &&
-      grid_point_v >= 0 && grid_point_v < grid_size) {
-    atomicAdd(&grid[grid_point_u + grid_pitch*grid_point_v], sum);
-  }
+  scatter_grid_add(grid, grid_size, grid_pitch, grid_point_u, grid_point_v, sum);
 }
 
 extern __shared__ __device__ complexd shared[];

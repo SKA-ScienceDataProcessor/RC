@@ -9,6 +9,7 @@
 extern "C"
 #endif
 void * _aligned_malloc(size_t size, size_t alignment);
+#define _aligned_free free
 
 #else
 

@@ -127,10 +127,10 @@ degrid_kernel_small_gcf(CmplxType* out, PosType* in, CmplxType* img, CmplxType* 
          //               gcf_dim*b+a]);
          //auto r2 = this_gcf.x;
          //auto i2 = this_gcf.y;
-         double r2 = 0.0; __ldg(&gcf[gcf_dim*gcf_dim*(GCF_GRID*sub_y+sub_x) +
-                                     gcf_dim*b+a].x);
-         double i2 = 0.0; __ldg(&gcf[gcf_dim*gcf_dim*(GCF_GRID*sub_y+sub_x) +
-                                     gcf_dim*b+a].y);
+         double r2 = __ldg(&gcf[gcf_dim*gcf_dim*(GCF_GRID*sub_y+sub_x) +
+                                gcf_dim*b+a].x);
+         double i2 = __ldg(&gcf[gcf_dim*gcf_dim*(GCF_GRID*sub_y+sub_x) +
+                                gcf_dim*b+a].y);
          sum_r += r1*r2 - i1*i2;
          sum_i += r1*i2 + r2*i1;
       }

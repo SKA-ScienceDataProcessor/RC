@@ -1,11 +1,15 @@
+#include "GCF.h"
+
 #include <omp.h>
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <cstring>
-#include <fftw3.h>
+#ifdef _MSC_VER
+#include <vector>
+#endif
 
-#include "common.h"
 #include "metrix.h"
+#include "fft_dyn_padded.h"
 
 using namespace std;
 
@@ -32,6 +36,7 @@ void __transpose_and_normalize_and_extract(
     , src_pitch = src_size + src_pad
     ;
 
+  src += (max_support / 2 - support / 2) * over * (src_pitch + 1);
   for (int overu = 0; overu < over; overu++, src+=src_pitch) {
     const complexd * srcp1; srcp1 = src;
     for (int overv = 0; overv < over; overv++, srcp1++) {
@@ -45,10 +50,6 @@ void __transpose_and_normalize_and_extract(
     }
   }
 }
-
-// FIXME: Make a prototype in a header as it should be!
-extern "C"
-fftw_plan fft_inplace_even(fftw_plan p, int sign, complexd * data, int size, int pitch);
 
 // In principle, we can calculate 1 - (t2/r)^2 separately
 //   because it does not depend on w and can be reused for
@@ -116,7 +117,6 @@ fftw_plan __mkGCFLayer(
 }
 
 // Inst
-extern "C"
 fftw_plan mkGCFLayer(
     fftw_plan p
   , complexd dst[] // should have [OVER][OVER][support][support] size
@@ -141,7 +141,6 @@ fftw_plan mkGCFLayer(
       );
 }
 
-extern "C"
 // This function is required to
 //   correctly calculate GCF, namely we
 //   need to know the correct w's mean value
@@ -166,9 +165,15 @@ void calcAccums(
   memset(sums, 0, sizeof(double) * numOfWPlanes);
   memset(npts, 0, sizeof(int) * numOfWPlanes);
 
+#ifndef _MSC_VER
   // VLAs. Requires GNU extension.
   double tmpsums[nthreads-1][numOfWPlanes];
   int tmpnpts[nthreads-1][numOfWPlanes];
+#else
+  using namespace std;
+  vector<vector<double>> tmpsums(nthreads-1, vector<double>(numOfWPlanes));
+  vector<vector<int>> tmpnpts(nthreads-1, vector<int>(numOfWPlanes));
+#endif
 
   #pragma omp parallel
   {
@@ -179,8 +184,13 @@ void calcAccums(
       _sums = sums;
       _npts = npts;
     } else {
+#ifndef _MSC_VER
       _sums = tmpsums[_thread - 1];
       _npts = tmpnpts[_thread - 1];
+#else
+      _sums = tmpsums[_thread - 1].data();
+      _npts = tmpnpts[_thread - 1].data();
+#endif
     }
     memset(_sums, 0, sizeof(double) * numOfWPlanes);
     memset(_npts, 0, sizeof(int) * numOfWPlanes);

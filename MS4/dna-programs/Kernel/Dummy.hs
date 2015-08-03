@@ -1,7 +1,7 @@
 
 -- | This module implements dummy kernels, which implements kernel
 -- functions in the easiest fashion possible. In most cases, this is
--- simply about returning an uninitiailised grid, or returning buffers
+-- simply about returning an uninitialised grid, or returning buffers
 -- unchanged.
 module Kernel.Dummy where
 
@@ -20,6 +20,9 @@ createGrid :: GridPar -> GCFPar -> IO UVGrid
 createGrid gp _ = do
    dat <- allocCVector (gridHalfSize gp)
    return $ UVGrid gp 0 dat
+
+phaseRotate :: GridPar -> Vis -> IO Vis
+phaseRotate _ = return
 
 grid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
 grid _ _ = return

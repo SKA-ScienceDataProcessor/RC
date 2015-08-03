@@ -51,14 +51,16 @@ kernel gp gcfp vis =
     -- Usually this generates much better code.
     -- OTOH, higher-order functions could potentially be fused.
     let
-      mkLayers !p0 !destPtr !dTabPtr (s:ss) wsumpc npc = do
+      mkLayers !p0 !destPtr !dTabPtr (s:ss) wsumpc npc wmid = do
         wsumc <- peek wsumpc
         nc <- peek npc
-        !p <- mkGCFLayer p0 destPtr dTabPtr arenap (f s) (f gcfMaxSize) (f pad) t2 (wsumc / fromIntegral nc)
-        mkLayers p (advancePtr destPtr $ over2 * s * s) (advancePtr dTabPtr over2) ss (advancePtr wsumpc 1) (advancePtr npc 1)
-      mkLayers _ _ _ [] _ _ = return ()
+        let avg = if nc > 0 then wsumc/fromIntegral nc else wmid
+        -- Use scaled w's for GCF computation
+        !p <- mkGCFLayer p0 destPtr dTabPtr arenap (f s) (f gcfMaxSize) (f pad) t2 (avg * scale)
+        mkLayers p (advancePtr destPtr $ over2 * s * s) (advancePtr dTabPtr over2) ss (advancePtr wsumpc 1) (advancePtr npc 1) (wmid + wstep)
+      mkLayers _ _ _ [] _ _ _ = return ()
     --
-    mkLayers nullPtr gcfDataPtr gcfTablePtr layerSizes wsump np
+    mkLayers nullPtr gcfDataPtr gcfTablePtr layerSupps wsump np (- wstep * fromIntegral maxWPlane)
     -- FIXME!!!: Change all data types in such a way
     --   that they would bring their own finalizers with them !!!
     -- ATM we hack freeGCFSet slightly (see Data.hs)
@@ -73,14 +75,15 @@ kernel gp gcfp vis =
     over = gcfpOver gcfp
     over2 = over * over
     gcfMaxSize = gcfpMaxSize gcfp
-    size i = min gcfMaxSize
+    supp i = min gcfMaxSize
                (gcfpMinSize gcfp + gcfpGrowth gcfp * abs i)
     maxWPlane = max (round (visMaxW vis / wstep)) (round (-visMinW vis / wstep))
     numOfPlanes = 2*maxWPlane+1
-    layerSizes = map size [-maxWPlane .. maxWPlane]
-    gcfDataSize = over2 * sum layerSizes
+    layerSupps = map supp [-maxWPlane .. maxWPlane]
+    gcfDataSize = over2 * sum (map (\s -> s * s) layerSupps)
     gcfTableSize = over2 * (1 + 2 * maxWPlane)
     l = over * gcfMaxSize
     pad = 4
     pitch = l + pad
     arenaSize = l * pitch
+    scale = gridTheta gp

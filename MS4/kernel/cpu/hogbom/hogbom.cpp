@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "hogbom.h"
+
 struct place {
   size_t pos;
   double val;
@@ -34,8 +36,10 @@ void findPeak(double *idata, place * odata, int siz, int pitch) {
   zeroPad(idata, siz, pitch);
   unsigned int n = siz * pitch;
 
+#if 0
   #pragma omp declare reduction (maxer: place : omp_out = pmax(omp_out, omp_in))
   #pragma omp parallel for reduction(maxer: p)
+#endif
   for (unsigned int i = 0; i<n; i++) {
     p = pmax(p, {n, fabs(idata[n])});
   }
@@ -77,17 +81,16 @@ void subtractPSF(
     , psfxy = lldiv(peak_psf_pos, (lli)pitch)
     ;
   int
-      stopx = pitch - abs (psfxy.rem - resxy.rem)
-    , stopy = pitch - abs (psfxy.quot - resxy.quot)
+      stopx = pitch - int (abs (psfxy.rem - resxy.rem))
+    , stopy = pitch - int (abs (psfxy.quot - resxy.quot))
     ;
 
   if (diff >= 0)
-    subtract_psf_kernel(res_p, psf_p + diff, stopx, stopy, diff, pitch, peak_x_gain);
+    subtract_psf_kernel(res_p, psf_p + diff, stopx, stopy, int(diff), pitch, peak_x_gain);
   else
-    subtract_psf_kernel(res_p - diff, psf_p, stopx, stopy, diff, pitch, peak_x_gain);
+    subtract_psf_kernel(res_p - diff, psf_p, stopx, stopy, int(diff), pitch, peak_x_gain);
 }
 
-extern "C"
 void deconvolve(
     double * mod_p
   , double * res_p
@@ -110,7 +113,7 @@ void deconvolve(
   for (unsigned int i = 0; i < niters; ++i) {
     findPeak(res_p, &found_place_res, siz, pitch);
 
-    if (abs(found_place_res.val) < threshold) break;
+    if (fabs(found_place_res.val) < threshold) break;
 
     subtractPSF(res_p, psf_p, found_place_res.pos, found_place_psf.pos, pitch, found_place_res.val * gain);
     mod_p[found_place_res.pos] += found_place_res.val * gain;

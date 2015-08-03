@@ -1,7 +1,5 @@
 #include <cstring>
-#ifdef __clang__
 #include <vector>
-#endif
 
 #if defined _OPENMP
 #include <omp.h>
@@ -13,12 +11,11 @@
 #pragma warning(disable:4127)
 #endif
 #define __DYN_GRID_SIZE
-#include "common.h"
+
 #include "metrix.h"
 #include "aligned_malloc.h"
 
-#define as256p(p) (reinterpret_cast<__m256d*>(p))
-#define as256pc(p) (reinterpret_cast<const __m256d*>(p))
+#include "scatter_gridder_w_dependent_dyn_1p.h"
 
 #ifndef __DEGRID
 #define GRID_MOD
@@ -34,14 +31,14 @@ void addGrids(
 {
   int siz = grid_size*grid_pitch;
 #pragma omp parallel for
-  for (unsigned int i = 0; i < siz*sizeof(complexd)/(256/8); i++) {
-    __m256d sum = as256pc(srcs)[i];
+  for (int i = 0; size_t(i) < siz*sizeof(complexd)/__MMSIZE; i++) {
+    __mdType sum = asMdpc(srcs)[i];
     // __m256d sum = _mm256_loadu_pd(reinterpret_cast<const double*>(as256pc(srcs)+i));
 
     for (int g = 1; g < nthreads; g ++)
-      sum = _mm256_add_pd(sum, as256pc(srcs + g * siz)[i]);
+      sum = _mm_add_pd(sum, asMdpc(srcs + g * siz)[i]);
 
-    as256p(dst)[i] = sum;
+    asMdp(dst)[i] = sum;
   }
 }
 #else
@@ -69,6 +66,7 @@ void gridKernel_scatter(
   , int ts_ch
   , int grid_pitch
   , int grid_size
+  , int gcf_supps[]
   ) {
   int siz = grid_size*grid_pitch;
 #pragma omp parallel
@@ -88,11 +86,19 @@ void gridKernel_scatter(
       uvw = _uvw[bl];
 
       // VLA requires "--std=gnu..." extension
+#ifndef _MSC_VER
       Pregridded pa[ts_ch];
+      complexd * gcflp[ts_ch];
+      int gcfsupp[ts_ch];
+#else
+      std::vector<Pregridded> pa(ts_ch);
+      std::vector<complexd*> gcflp(ts_ch);
+      std::vector<int> gcfsupp(ts_ch);
+#endif
 #ifndef __DEGRID
       // Clang doesn't allow non-POD types in VLAs,
       //  thus we use much more heavyweight vector here.
-      #ifndef __clang__
+      #ifdef __GNUC__
       complexd vis[ts_ch];
       #else
       std::vector<complexd> vis(ts_ch);
@@ -103,11 +109,27 @@ void gridKernel_scatter(
 #endif
       for(int n=0; n<ts_ch; n++){
 #ifndef __DEGRID
-        vis[n] = rotw(_vis[bl][n], uvw[n].w);
+        // We use scaled w for GCF hence scale w here too.
+        // Rotation is factored out as a separate kernel
+        // vis[n] = rotw(_vis[bl][n], uvw[n].w * scale);
+        vis[n] = _vis[bl][n];
 #else
         vis[n] = {0.0, 0.0};
 #endif
-        pregridPoint<over, is_half_gcf>(scale, wstep, uvw[n], pa[n], grid_size);
+        pregridPoint<over, is_half_gcf>(scale, wstep, uvw[n], max_supp_here, pa[n], grid_size);
+        int index;
+        index = pa[n].gcf_layer_index;
+        if (is_half_gcf) {
+          if (index < 0)
+            gcflp[n] = const_cast<complexd *>(gcf[-index]);
+          else
+            gcflp[n] = const_cast<complexd *>(gcf[index]);
+        } else {
+            gcflp[n] = const_cast<complexd *>(gcf[index]);
+        }
+        // Correction
+        gcfsupp[n] = gcf_supps[pa[n].w_plane];
+        gcflp[n] += (gcfsupp[n] - max_supp_here) / 2 * (gcfsupp[n] + 1);
       }
       for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
@@ -118,31 +140,33 @@ void gridKernel_scatter(
             int gsu, gsv;
             gsu = p.u + su;
             gsv = p.v + sv;
+            if (gsu < 0 || gsu >= grid_size || gsv < 0 || gsv >= grid_size) continue;
 
             complexd supportPixel;
-            #define __layeroff su * max_supp_here + sv
+            #define __layeroff su * gcfsupp[i] + sv
             if (is_half_gcf) {
-              int index;
-              index = p.gcf_layer_index;
-              // Negative index indicates that original w was mirrored
-              // and we shall negate the index to obtain correct
-              // offset *and* conjugate the result.
-              if (index < 0) {
-                supportPixel = conj(gcf[-index][__layeroff]);
+              if (p.gcf_layer_index < 0) {
+                supportPixel = conj(gcflp[i][__layeroff]);
               } else {
-                supportPixel = gcf[index][__layeroff];
+                supportPixel = gcflp[i][__layeroff];
               }
             } else {
-                supportPixel = gcf[p.gcf_layer_index][__layeroff];
+                supportPixel = gcflp[i][__layeroff];
             }
 #ifndef __DEGRID
             grid[gsu][gsv] += vis[i] * supportPixel;
 #else
-            vis[i] += rotw(grid[gsu][gsv] * supportPixel, uvw[i].w);
+            vis[i] += grid[gsu][gsv] * supportPixel;
 #endif
           }
         }
       }
+#ifdef __DEGRID
+      // We use scaled w for GCF hence scale w here too.
+      // Rotation is factored out as a separate kernel
+      // for(int n=0; n<ts_ch; n++)
+      //   vis[n] = rotw(vis[n], uvw[n].w * scale);
+#endif
     }
   }
 }
@@ -168,6 +192,7 @@ void gridKernel_scatter_full(
   , int ts_ch
   , int grid_pitch
   , int grid_size
+  , int gcf_supps[]
   ) {
 #if defined _OPENMP
   int siz = grid_size*grid_pitch;
@@ -180,23 +205,21 @@ void gridKernel_scatter_full(
   // Nullify incoming grid, allocate thread-local grids
   memset(grid, 0, sizeof(complexd) * siz);
   complexd * tmpgrids = alignedMallocArray<complexd>(siz * nthreads, 32);
-  
   gridKernel_scatter<
       over
     , is_half_gcf
-    >(scale, wstep, baselines, bl_supps, tmpgrids, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);
+    >(scale, wstep, baselines, bl_supps, tmpgrids, gcf, uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps);
   addGrids(grid, tmpgrids, nthreads, grid_pitch, grid_size);
-  free(tmpgrids);
+  _aligned_free(tmpgrids);
 #else
   gridKernel_scatter<
       over
     , is_half_gcf
-    >(scale, wstep, baselines, bl_supps, grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size);
+    >(scale, wstep, baselines, bl_supps, grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps);
 #endif
 }
 
 #define gridKernelCPU(hgcfSuff, isHgcf)                   \
-extern "C"                                                \
 void gridKernelCPU##hgcfSuff(                             \
     double scale                                          \
   , double wstep                                          \
@@ -209,18 +232,43 @@ void gridKernelCPU##hgcfSuff(                             \
   , int ts_ch                                             \
   , int grid_pitch                                        \
   , int grid_size                                         \
+  , int gcf_supps[]                                       \
   ){                                                      \
   gridKernel_scatter_full<OVER, isHgcf>                   \
-    ( scale, wstep, baselines, bl_supps                   \
-    , grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size); \
+    ( scale, wstep, baselines, bl_supps, grid, gcf        \
+    , uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps); \
 }
 
 gridKernelCPU(HalfGCF, true)
 gridKernelCPU(FullGCF, false)
 
+void grid0(
+    const Double3 uvw[]
+  , const complexd vis[]
+  , complexd grid[]
+  , double scale
+  , int baselines_ts_ch
+  , int grid_pitch
+  , int grid_size
+  ){
+  int
+      last = grid_size * grid_pitch
+    , trans = grid_size / 2 * (grid_pitch + 1)
+    ;
+  for(int i = 0; i < baselines_ts_ch; i++, uvw++, vis++) {
+    int u, v;
+    u = int(round(uvw->u * scale));
+    v = int(round(uvw->v * scale));
+    int n, ng;
+    n = u*grid_pitch+v;
+    ng = n + trans;
+    if (ng >= 0 && ng < last)
+      grid[n] += *vis;
+  }
+}
+
 // Normalization is done inplace!
-extern "C"
-void normalize(
+void normalizeCPU(
     complexd src[]
   , int grid_pitch
   , int grid_size
@@ -234,10 +282,67 @@ void normalize(
   }
 }
 
+// Sadly our pregridder is combined with
+//  the gridder thus we have to perform
+//  some duplicate work ...
+void reweight(
+    const Double3 uvw[]
+  ,       complexd vis[]
+  , double scale
+  , int baselines_ts_ch
+  , int grid_size
+  ){
+  int
+      last = grid_size * grid_size
+    , trans = grid_size / 2 * (grid_size + 1)
+    ;
+  std::vector<int> count_grid_vec(last, 0);
+  int * count_grid = count_grid_vec.data() + trans;
+  // We cache rounded values here, not sure it is better than
+  //   recalculating them during the second pass ...
+  typedef std::pair<int, int> ipair;
+  std::vector<ipair> pregrid(baselines_ts_ch);
+
+  ipair * pp = pregrid.data();
+  const Double3 * uvwp = uvw;
+  for(int i = 0; i < baselines_ts_ch; i++, uvwp++, pp++) {
+    int u, v;
+    u = int(round(uvwp->u * scale));
+    v = int(round(uvwp->v * scale));
+    int n, ng;
+    n = u*grid_size+v;
+    ng = n + trans;
+    if (ng >= 0 && ng < last)
+      count_grid[u*grid_size+v]++;
+    *pp = ipair(u, v);
+  }
+  complexd * visp = vis;
+  pp = pregrid.data();
+  for(int i = 0; i < baselines_ts_ch; i++, visp++) {
+    ipair p;
+    p = *pp++;
+    int n, ng;
+    n = p.first*grid_size+p.second;
+    ng = n + trans;
+    if (ng >= 0 && ng < last)
+      *visp /= double(count_grid[p.first*grid_size+p.second]);
+  }
+}
+
+void rotateCPU(
+    const Double3 uvw[]
+  ,       complexd vis[]
+  , int baselines_ts_ch
+  , double scale
+  ){
+  for(int i=0; i < baselines_ts_ch; i++, uvw++, vis++)
+     *vis = rotw(*vis, uvw->w * scale);
+}
+
+
 #else
 
 #define deGridKernelCPU(hgcfSuff, isHgcf)                 \
-extern "C"                                                \
 void deGridKernelCPU##hgcfSuff(                           \
     double scale                                          \
   , double wstep                                          \
@@ -250,10 +355,11 @@ void deGridKernelCPU##hgcfSuff(                           \
   , int ts_ch                                             \
   , int grid_pitch                                        \
   , int grid_size                                         \
+  , int gcf_supps[]                                       \
   ){                                                      \
   gridKernel_scatter<OVER, isHgcf>                        \
-    ( scale, wstep, baselines, bl_supps                   \
-    , grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size); \
+    ( scale, wstep, baselines, bl_supps, grid, gcf        \
+    , uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps); \
 }
 
 deGridKernelCPU(HalfGCF, true)

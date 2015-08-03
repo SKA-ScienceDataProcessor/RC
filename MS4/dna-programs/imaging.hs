@@ -71,7 +71,8 @@ imagingActor cfg = actor $ \dataSet -> do
 
     -- Read input data from Oskar
     (vis0, psfVis0) <-  kernel "read visibilities" [] $ liftIO $ do
-      vis0 <- readOskar (dsData dataSet) "data.vis" (dsChannel dataSet) (dsPolar dataSet)
+      vis0 <- readOskar (fromJust $ dsData dataSet) "data.vis"
+                        (dsChannel dataSet) (dsPolar dataSet)
       psfVis0 <- constVis 1 vis0
       return (vis0, psfVis0)
 
@@ -122,16 +123,14 @@ imagingActor cfg = actor $ \dataSet -> do
     -- result of this actor
     res <- majorLoop 1 vis1
 
-    -- Free GCFs & PSF
-    kernel "clean cleanup" [] $ liftIO $ do
+    kernel "imaging cleanup" [] $ liftIO $ do
+      -- Give kernels a chance to free their data
+      dftClean dftk
+      -- Free GCFs & PSF
       freeGCFSet gcfSet1
       freeImage psf
-      dftClean dftk
-
-    -- More Cleanup? Eventually kernels will probably want to do
-    -- something here...
-
-    return res
+      -- Transfer result into memory, done
+      memImage res
 
 ----------------------------------------------------------------
 -- High level dataflow
@@ -144,14 +143,14 @@ workerActor = actor $ \(cfg, dataSet) -> do
     -- Create input file channel & transfer data
     oskarChan <- createFileChan Local "oskar"
     unboundKernel "transfer" [] $ liftIO $
-        transferFileChan (dsData dataSet) oskarChan "data.vis"
+        transferFileChan (fromJust $ dsData dataSet) oskarChan "data.vis"
+    let dataSet' = dataSet{ dsData = Just oskarChan }
 
     -- Initialise image sum
     img0 <- kernel "init image" [] $ liftIO $ constImage (cfgGridPar cfg) 0
     let loop i img | i >= dsRepeats dataSet  = return img
                    | otherwise = do
            -- Generate image, sum up
-           let dataSet' = dataSet{ dsData = oskarChan }
            img' <- eval (imagingActor cfg) dataSet'
            img'' <- unboundKernel "addImage" [] $ liftIO $ do
              putStrLn $ "addImage " ++ show i
@@ -204,10 +203,10 @@ estimateActor = actor $ \(cfg, dataSet) -> do
     -- Create input file channel & transfer data
     oskarChan <- createFileChan Local "oskar"
     unboundKernel "transfer" [] $ liftIO $
-        transferFileChan (dsData dataSet) oskarChan "data.vis"
+        transferFileChan (fromJust $ dsData dataSet) oskarChan "data.vis"
 
     -- Generate image, measuring time
-    let dataSet' = dataSet{ dsData = oskarChan }
+    let dataSet' = dataSet{ dsData = Just oskarChan }
     start <- unboundKernel "estimate start" [] $ liftIO getCurrentTime
     void $ eval (imagingActor cfg) dataSet'
     end <- unboundKernel "estimate end" [] $ liftIO getCurrentTime
@@ -265,6 +264,7 @@ mainActor = actor $ \(cfg, dataSets) -> do
     -- Now start worker actors
     waitForResources estimateWorkers
     workers <- startGroup (N avail) (NNodes 1) $ do
+        useLocal
         return $(mkStaticClosure 'workerActor)
     distributeWork
         (map fst weightedDataSets)
@@ -272,7 +272,8 @@ mainActor = actor $ \(cfg, dataSets) -> do
         workers
 
     -- Spawn tree collector
-    leaves <- startCollectorTreeGroup (N 1) $ do
+    leaves <- startCollectorTreeGroup (N 0) $ do
+        useLocal
         return $(mkStaticClosure 'imageCollector)
     -- Top level collector
     topLevel <- startCollectorTree $ do
@@ -286,42 +287,35 @@ main :: IO ()
 main = dnaRun rtable $ do
 
     -- We expect configuration in our working directory
-    (datafiles, config) <- unboundKernel "configure" [] $ liftIO $ do
-        !datafiles <- fmap decode $ LBS.readFile "data.cfg" :: IO (Maybe [(String, Polar, Int)])
-        !config    <- fmap decode $ LBS.readFile "imaging.cfg" :: IO (Maybe Config)
-        return (datafiles, config)
+    (dataSets, config) <- unboundKernel "configure" [] $ liftIO $ do
+        !dataSets <- fmap decode' $ LBS.readFile "data.cfg" :: IO (Maybe [DataSet])
+        !config   <- fmap decode' $ LBS.readFile "imaging.cfg" :: IO (Maybe Config)
+        return (dataSets, config)
 
     -- Make sure parsing of configuration files worked
     when (isNothing config) $
         fail "Failed to parse configuration file 'imaging.cfg'. Make sure it exists and matches program version!"
-    when (isNothing datafiles) $
+    when (isNothing dataSets) $
         fail "Failed to parse dataset file 'data.cfg'. Make sure it exists and matches program version!"
 
     -- Create Oskar file channels
-    dataSets <- fmap concat $ forM (fromJust datafiles) $ \(file, polar, repeats) -> do
+    dataSets' <- forM (fromJust dataSets) $ \ds -> do
         chan <- createFileChan Remote "oskar"
-
-        -- Import file, and determine the used frequency channels and
-        -- polarisations
-        (_polars, freqs) <- unboundKernel "import oskar" [] $ liftIO $ do
-            importToFileChan chan "data.vis" file
+        (polars, freqs) <- unboundKernel "import oskar" [] $ liftIO $ do
+            importToFileChan chan "data.vis" (dsFile ds)
             readOskarHeader chan "data.vis"
-
-        -- Interpret every combination as a data set
-        return [ DataSet { dsName    = file ++ "/" ++ show freq ++ "/" ++ show polar
-                         , dsData    = chan
-                         , dsChannel = freq
-                         , dsPolar   = polar
-                         , dsRepeats = repeats
-                         }
-               | freq <- freqs ]
+        when (dsPolar ds `notElem` polars || dsChannel ds `notElem` freqs) $ do
+            fail $ "Data set " ++ dsName ds ++ " does not exist in the visibilities file!"
+        return ds { dsData = Just chan }
 
     -- Execute main actor
-    chan <- eval mainActor (fromJust config, dataSets)
+    chan <- eval mainActor (fromJust config, dataSets')
 
-    -- Copy result image to working directory
     unboundKernel "export image" [] $ liftIO $ do
+        -- Copy result image to working directory
         exportFromFileChan chan "data.img" "output.img"
+        -- Clean file channels
+        forM_ dataSets' $ deleteFileChan . fromJust . dsData
         deleteFileChan chan
   where
     rtable = __remoteTable

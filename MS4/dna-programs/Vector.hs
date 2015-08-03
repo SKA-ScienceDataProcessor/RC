@@ -10,15 +10,15 @@ module Vector
   , castVector
   , offsetVector
   , peekVector, pokeVector
-  , makeVector
+  , makeVector, unmakeVector
   -- * Memory Management
   , allocCVector, allocHostVector, allocDeviceVector
   , freeVector
   -- * Conversion
   , toCVector, toHostVector, toDeviceVector
   , dupCVector, dupHostVector, dupDeviceVector
-  , unsafeToByteString
-  , dumpVector
+  , unsafeToByteString, unsafeToByteString'
+  , dumpVector, dumpVector'
   ) where
 
 import Control.Monad (when, forM_)
@@ -26,6 +26,7 @@ import Data.Binary   (Binary(..))
 import Data.Typeable (Typeable)
 import Data.ByteString (ByteString, hPut)
 import Data.ByteString.Unsafe (unsafePackAddressLen)
+import qualified Data.ByteString.Internal as BSI
 import Foreign.Ptr
 import Foreign.C
 import Foreign.Marshal.Alloc
@@ -106,6 +107,17 @@ makeVector alloc vs = do
   vec <- alloc len
   forM_ (zip [0..len-1] vs) $ uncurry (pokeVector vec)
   return vec
+
+-- | Show vector contents
+unmakeVector :: (Show a, Storable a) => Vector a -> Int -> Int -> IO [a]
+unmakeVector (DeviceVector _ p) off len = do
+  v' <- dupCVector (DeviceVector len (p `advanceDevPtr` off))
+  r <- unmakeVector v' 0 len
+  freeVector v'
+  return r
+unmakeVector v off len = do
+  (CVector _ p) <- toCVector v
+  mapM (peekElemOff p) [off..off+len-1]
 
 -- | Allocate a C vector using @malloc@ that is large enough for the
 -- given number of elements. The returned vector will be aligned
@@ -225,17 +237,29 @@ dupDeviceVector (DeviceVector n p) = do
 -- is unsafe insofar that changes to the vector might change the
 -- bytestring, and freeing it might cause crashes.
 unsafeToByteString :: Storable a => Vector a -> IO ByteString
-unsafeToByteString v@(CVector _ (Ptr addr)) =
-  unsafePackAddressLen (vectorByteSize v) addr
-unsafeToByteString v@(HostVector _ (HostPtr (Ptr addr))) =
-  unsafePackAddressLen (vectorByteSize v) addr
-unsafeToByteString DeviceVector{} =
-  error "unsafeToByteString: Device vector!"
+unsafeToByteString v = unsafeToByteString' v 0 (vectorSize v)
+
+-- | As @unsafeByteString@, but allows specifying the vector's offset
+-- and size.
+unsafeToByteString' :: forall a. Storable a => Vector a -> Int -> Int -> IO ByteString
+unsafeToByteString' (CVector _ p) off size =
+  case p `advancePtr` off of
+    Ptr addr -> unsafePackAddressLen (size * sizeOf (undefined :: a)) addr
+unsafeToByteString' (HostVector _ (HostPtr p)) off size =
+  case p `advancePtr` off of
+    Ptr addr -> unsafePackAddressLen (size * sizeOf (undefined :: a)) addr
+unsafeToByteString' (DeviceVector _ p) off size =
+  BSI.create (size * sizeOf (undefined :: a)) $ \p' ->
+    CUDA.sync >> peekArray size (p `advanceDevPtr` off) (castPtr p')
 
 -- | Write vector to a file (raw)
 dumpVector :: Storable a => Vector a -> FilePath ->  IO ()
-dumpVector v file = do
-  v' <- dupCVector v
+dumpVector v file =
   withFile file WriteMode $ \h ->
-    hPut h =<< unsafeToByteString v'
-  freeVector v'
+    hPut h =<< unsafeToByteString v
+
+-- | Write vector to a file (raw)
+dumpVector' :: Storable a => Vector a -> Int -> Int -> FilePath ->  IO ()
+dumpVector' v off size file = do
+  withFile file WriteMode $ \h ->
+    hPut h =<< unsafeToByteString' v off size

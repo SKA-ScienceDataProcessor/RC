@@ -7,15 +7,18 @@ module Data
   , gridHalfHeight
   , gridHalfSize
   , gridFullSize
+  , dumpGrid
 
     -- * Image
   , Image(..)
   , imageSize
   , freeImage
   , constImage
+  , memImage
   , addImage
   , readImage
   , writeImage
+  , dumpImage
 
     -- * Visibilities
   , Vis(..)
@@ -71,6 +74,10 @@ data UVGrid = UVGrid
   deriving (Show,Typeable,Generic)
 instance Binary UVGrid
 
+-- | Dump grid to a file. Useful for debugging.
+dumpGrid :: UVGrid -> FilePath -> IO ()
+dumpGrid uvg = dumpVector' (uvgData uvg) (uvgPadding uvg) (gridHalfSize (uvgPar uvg))
+
 -- | Images correspond to real-valued sky brightness data. They can be transformed
 -- to and from the @UVGrid@ using a fourier transformation.
 data Image = Image
@@ -101,6 +108,13 @@ constImage gp v = do
    forM_ [0..imageSize gp-1] $ \i -> pokeVector img i v
    return $ Image gp 0 img
 
+-- | Transfer image into CPU memory. This is used when we are done
+-- working on it and would like to free more precious (say, GPU) memory.
+memImage :: Image -> IO Image
+memImage img = do
+   dat' <- toCVector $ imgData img
+   return img{imgData = dat'}
+
 -- | Add two images together. Assumed to consume both images.
 addImage :: Image -> Image -> IO Image
 addImage img1 img2 = do
@@ -122,11 +136,12 @@ addImage img1 img2 = do
 -- | Read image from a file channel
 readImage :: GridPar -> FileChan Image -> String -> IO Image
 readImage gridp chan file = do
-  let size = gridFullSize gridp
+  let size = imageSize gridp
   dat@(CVector _ ptr) <- allocCVector size
+  let byteSize = size * sizeOf (undefined :: Double)
   n <- withFileChan chan file ReadMode $ \h ->
-    hGetBuf h ptr size
-  when (n /= size) $
+    hGetBuf h ptr byteSize
+  when (n /= byteSize) $
     freeVector dat >> fail "readImage: File not large enough!"
   return (Image gridp 0 dat)
 
@@ -134,7 +149,11 @@ readImage gridp chan file = do
 writeImage :: Image -> FileChan Image -> String -> IO ()
 writeImage img chan file =
   withFileChan chan file WriteMode $ \h ->
-    BS.hPut h =<< unsafeToByteString (imgData img)
+    BS.hPut h =<< unsafeToByteString' (imgData img) (imgPadding img) (imageSize (imgPar img))
+
+-- | Dump image to file name
+dumpImage :: Image -> FilePath -> IO ()
+dumpImage img = dumpVector' (imgData img) (imgPadding img) (imageSize (imgPar img))
 
 -- | Visibilities are a list of correlator outputs from a dataset
 -- concerning the same frequency band and polarisation.

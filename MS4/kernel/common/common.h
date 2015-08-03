@@ -3,6 +3,17 @@
 
 #if defined __AVX__
 #include <immintrin.h>
+#define __MMSIZE 32
+typedef __m256d __mdType;
+#define asMdp(p) (reinterpret_cast<__m256d*>(p))
+#define asMdpc(p) (reinterpret_cast<const __m256d*>(p))
+#define _mm_add_pd _mm256_add_pd
+#else
+#include <smmintrin.h>
+#define __MMSIZE 16
+typedef __m128d __mdType;
+#define asMdp(p) (reinterpret_cast<__m128d*>(p))
+#define asMdpc(p) (reinterpret_cast<const __m128d*>(p))
 #endif
 
 #ifdef __CUDACC__
@@ -70,13 +81,11 @@ struct Pregridded
   short u;
   short v;
   short gcf_layer_index;
-  short gcf_layer_supp;
+  union {
+    short w_plane;
+    short gcf_layer_supp;
+  };
 };
-
-__HOST __NATIVE int get_supp(int w) {
-    if (w < 0) w = -w;
-    return w * 8 + 17;
-  }
 
 __NATIVE complexd rotw(complexd v, double w){
   double s, c;
@@ -103,17 +112,21 @@ inline
 #define w z
 __inline__ __device__
 #endif
-static void pregridPoint(double scale, double wstep, Double3 uvw, Pregridded & res
-#ifdef __DYN_GRID_SIZE
+static void pregridPoint(double scale, double wstep, Double3 uvw
+#ifndef __BINNER
+    , int max_supp
+#endif
+    , Pregridded & res
+#if defined __DYN_GRID_SIZE && !defined __BINNER
     , int grid_size
 #endif
   ){
     uvw.u *= scale;
     uvw.v *= scale;
-    uvw.w *= scale;
+    // Since we use unscaled wstep, we shouldn't scale uvw.w either
+    // uvw.w *= scale;
     short
         w_plane = short(round (uvw.w / wstep))
-      , max_supp = short(get_supp(w_plane))
       , u = short(floor(uvw.u))
       , v = short(floor(uvw.v))
       , over_u = short(floor(over * (uvw.u - u)))
@@ -121,8 +134,11 @@ static void pregridPoint(double scale, double wstep, Double3 uvw, Pregridded & r
       ;
     // We additionally translate these u v by -max_supp/2
     // because gridding procedure translates them back
-    u += grid_size / 2 - max_supp / 2;
-    v += grid_size / 2 - max_supp / 2;
+    // Binner makes this separately.
+#ifndef __BINNER
+    u += short(grid_size / 2 - max_supp / 2);
+    v += short(grid_size / 2 - max_supp / 2);
+#endif
 #ifndef __CUDACC__
     res.u = u;
     res.v = v;
@@ -148,7 +164,9 @@ static void pregridPoint(double scale, double wstep, Double3 uvw, Pregridded & r
     } else {
       res.gcf_layer_index = (w_plane * over + over_u) * over + over_v;
     }
-    res.gcf_layer_supp = max_supp;
+    // Binner replaces
+    // w_plane with gcf_layer_supp
+    res.w_plane = w_plane;
 }
 #endif
 

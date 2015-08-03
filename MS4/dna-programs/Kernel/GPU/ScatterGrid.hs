@@ -2,6 +2,7 @@
 module Kernel.GPU.ScatterGrid
   ( prepare
   , createGrid
+  , phaseRotate
   , grid
   , degrid
   ) where
@@ -18,15 +19,16 @@ import qualified Kernel.GPU.NvidiaDegrid as Nvidia
 import Vector
 
 pregriddedSize :: Int
-pregriddedSize = shortSize * 5 + ptrSize
-  where shortSize = 16
-        ptrSize = 64
+pregriddedSize = shortSize * 3 + charSize * 2 + ptrSize
+  where charSize = 1
+        shortSize = 2
+        ptrSize = 8
 
 foreign import ccall unsafe "&" scatter_grid_phaseRotate_kern :: CUDA.Fun
 foreign import ccall unsafe "&" scatter_grid_pregrid_kern :: CUDA.Fun
 foreign import ccall unsafe "&" scatter_grid_kern :: CUDA.Fun
 
-type GCFMap = (Vector (DevicePtr CxDouble), Vector Int)
+type GCFMap = (Vector (DevicePtr CxDouble), Vector Word32)
 
 -- | Does the (rather involved) preparation step for the scatter
 -- gridder. This arranges things so that we:
@@ -44,16 +46,13 @@ prepare gridp vis gcfSet = do
   -- Prepare GCFS
   (gcfSet', gcfMap) <- prepareGCFs gcfSet
 
-  -- Phase rotation / visibilities transfer
-  vis' <- phaseRotate vis
-
   -- Pregridding
-  vis'' <- pregrid gridp vis' gcfSet' gcfMap
+  vis' <- pregrid gridp vis gcfSet' gcfMap
 
   -- Free map
   freeVector (fst gcfMap)
   freeVector (snd gcfMap)
-  return (vis'', gcfSet')
+  return (vis', gcfSet')
 
 -- | Transfer all GCFs to GPU and generates the GCF pointer and size
 -- lookup maps
@@ -65,7 +64,7 @@ prepareGCFs gcfSet = do
   gcfs' <- forM (zip [0..] gcfs0) $ \(i,gcf) -> do
     data'@(DeviceVector _ p) <- toDeviceVector (gcfData gcf)
     pokeVector gcfv i p
-    pokeVector gcf_suppv i (gcfSize gcf)
+    pokeVector gcf_suppv i $ fromIntegral $ gcfSize gcf
     return gcf{gcfData = data'}
   gcfv' <- toDeviceVector gcfv
   gcf_suppv' <- toDeviceVector gcf_suppv
@@ -74,14 +73,12 @@ prepareGCFs gcfSet = do
 
 -- | Do the phase rotation. This transfers visibilities and positions
 -- into GPU memory as a side-effect.
---
--- TODO: This should probably be a separate step in the top-level program?
-phaseRotate :: Vis -> IO Vis
-phaseRotate vis = do
+phaseRotate :: GridPar -> Vis -> IO Vis
+phaseRotate _ vis = do
 
   let visibilities = vectorSize (visData vis)
   visData' <- toDeviceVector (visData vis)
-  visPos' <- dupDeviceVector (visPositions vis)
+  visPos' <- toDeviceVector (visPositions vis)
   CUDA.launchKernel scatter_grid_phaseRotate_kern
     (1,1,1) (min 1024 visibilities,1,1) 0 Nothing $
     mapArgs visData' visPos' visibilities
@@ -104,32 +101,34 @@ pregrid gridp vis gcfSet (gcfv, gcf_suppv) = do
 
   -- Pregrid parameters
   let scale :: Double
-      scale = fromIntegral (gridWidth gridp) / gridLambda gridp
+      scale = gridTheta gridp
       grid_size = gridWidth gridp
 
   -- Pregrid baselines
   let visibilities = vectorSize (visData vis)
       totalPregridSize = pregriddedSize * visibilities
   pregridded <- allocDeviceVector totalPregridSize :: IO (Vector Word8)
+  visPos' <- toDeviceVector (visPositions vis)
+  visData' <- toDeviceVector (visData vis)
   forM_ groupedBls $ \bls -> do
 
     -- Parameters of this baseline group
     let wplane = baselineMinWPlane wstep $ snd $ head bls
         Just gcf = findGCF gcfSet (fromIntegral wplane * wstep)
         max_supp = gcfSize gcf
+        points = vblPoints $ snd $ head bls
 
     -- Marshal vector of pointers into positions & pregridded
     uvov' <- toDeviceVector =<< makeVector allocHostVector
        [ uvop | (i,_) <- bls
-              , let DeviceVector _ uvop = pregridded `offsetVector` (pregriddedSize * i) ]
+              , let DeviceVector _ uvop = pregridded `offsetVector` (pregriddedSize * points * i) ]
     posv' <- toDeviceVector =<< makeVector allocHostVector
        [ posp | (_,bl) <- bls
-              , let DeviceVector _ posp = visPositions vis `offsetVector` vblOffset bl ]
+              , let DeviceVector _ posp = visPos' `offsetVector` vblOffset bl ]
 
-    -- Lauch pregridding kernel. Blocks are baselines, and threads
+    -- Launch pregridding kernel. Blocks are baselines, and threads
     -- will process individual baselines points.
-    let points = vblPoints $ snd $ head bls
-        baselines = length bls
+    let baselines = length bls
     CUDA.launchKernel scatter_grid_pregrid_kern
       (baselines,1,1) (min 1024 points,1,1) 0 Nothing $
       mapArgs scale wstep posv' gcfv gcf_suppv uvov' max_supp points grid_size
@@ -138,12 +137,14 @@ pregrid gridp vis gcfSet (gcfv, gcf_suppv) = do
     freeVector uvov'
     freeVector posv'
 
-  return vis{ visBaselines = sortedBls
+  return vis{ visData = visData'
+            , visPositions  = visPos'
+            , visBaselines  = sortedBls
             , visPregridded = castVector pregridded}
 
 createGrid :: GridPar -> GCFPar -> IO UVGrid
 createGrid gp _ = do
-   dat@(DeviceVector _ p) <- allocDeviceVector (gridFullSize gp)
+   dat@(DeviceVector _ p) <- allocDeviceVector (gridHalfSize gp)
    memset p (fromIntegral $ vectorByteSize dat) 0
    return $ UVGrid gp 0 dat
 
@@ -159,9 +160,10 @@ grid vis gcfSet uvgrid = do
   -- Make vectors of pointers into positions & pregridded
   let pregridded = castVector (visPregridded vis) :: Vector Word8
   vs <- forM groupedBls $ \bls -> do
+    let points = vblPoints $ snd $ head bls
     uvov <- toDeviceVector =<< makeVector allocHostVector
         [ uvop | (i,_) <- bls
-               , let DeviceVector _ uvop = pregridded `offsetVector` (pregriddedSize * i) ]
+               , let DeviceVector _ uvop = pregridded `offsetVector` (pregriddedSize * points * i) ]
     datv <- toDeviceVector =<< makeVector allocHostVector
         [ datp | (_,bl) <- bls
                , let DeviceVector _ datp = visData vis `offsetVector` vblOffset bl ]
@@ -187,7 +189,7 @@ grid vis gcfSet uvgrid = do
         shared_mem = fromIntegral $ points * (sizeOf (undefined :: CxDouble) + pregriddedSize)
     CUDA.launchKernel scatter_grid_kern
       (baselines,1,1) (min 1024 (max_supp*max_supp),1,1) shared_mem Nothing $
-      mapArgs (uvgData uvgrid) uvov datv max_supp points grid_size grid_pitch
+      mapArgs (uvgData uvgrid) uvov datv max_supp points grid_size ((grid_pitch `div` 2) + 1)
   CUDA.sync
 
   -- Free temporary arrays
