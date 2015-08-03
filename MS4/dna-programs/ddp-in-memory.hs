@@ -32,7 +32,7 @@ main =  dnaRun rtable $ do
     --
     -- > 100e4 doubles per node = 800 MB per node
     -- > 4 nodes
-    let n        = 400*1000*1000
+    let n        = 4*1000*1000
         expected = fromIntegral n*(fromIntegral n-1)/2 * 0.1
     -- Run it
     b <- eval ddpDotProduct n
