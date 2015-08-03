@@ -1,8 +1,9 @@
-{-# LANGUAGE BangPatterns               #-}
-{-# LANGUAGE DeriveDataTypeable         #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE GADTs                      #-}
-{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE BangPatterns       #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE TemplateHaskell    #-}
 -- | Module for interpreting
 module DNA.Interpreter (
       interpretDNA
@@ -133,18 +134,21 @@ execDelay _loc (Shell aid) = do
     return $ Promise recvB
 
 execDelayGroup :: Serializable b => Shell a (Grp b) -> DnaMonad (Group b)
+-- IMMEDIATE
 execDelayGroup (Shell aid) = do
     -- Create local variable
     (sendB,recvB) <- liftP newChan
     (sendN,recvN) <- liftP newChan
     (var,dst)     <- newVar $ RcvReduce [(makeRecv sendB, sendN)]
-    stActorDst . at aid .= Just (DstParent var)
+    flip traverseActor aid $ \a ->
+        stActorDst . at a .= Just (DstParent var)
     -- Send destination to an actor
     sendToActor aid dst
     logConnect (Just aid) Nothing
     return $ Group recvB recvN
 
 execGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> DnaMonad b
+-- BLOCKING
 execGatherM = doGatherDna messageHandlers
 
 
@@ -226,8 +230,11 @@ execConnect (Shell aidSrc) (Shell aidDst) = do
          Just  _ -> doFatal "Double connect!"
          Nothing -> return ()
     -- Record connection
-    stActorDst . at aidSrc .= Just (DstActor aidDst)
-    stActorSrc . at aidDst .= Just (SrcActor aidSrc)
+    flip traverseActor aidSrc $ \a ->
+        stActorDst . at a .= Just (DstActor aidDst)
+    flip traverseActor aidDst $ \case
+        a | a == aidDst -> stActorSrc . at a .= Just SrcSubordinate
+          | otherwise   -> stActorSrc . at a .= Just (SrcActor aidSrc)
     -- Check that neither actor failed and terminate other one if this is the case
     Just stSrc <- use $ stActorState . at aidSrc
     Just stDst <- use $ stActorState . at aidDst
