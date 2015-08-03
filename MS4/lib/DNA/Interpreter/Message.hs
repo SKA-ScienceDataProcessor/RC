@@ -242,12 +242,13 @@ checkIfGroupDone aid = do
                          (_,Failed   ) -> True
                          _             -> False
                      | s <- states ]
-   -- Send notification is 
+    -- Send notification is
     when isDone $ do
         stActorState . at aid .= Just Completed
         use (stActorDst . at aid) >>= \case
           Nothing -> return ()
-          Just (DstParent v) -> undefined
+          Just (DstParent v) -> do Just addr <- use $ stVars . at v
+                                   sendNItems nDone addr
           Just (DstActor  a) -> sendNItems nDone =<< getRecvAddress a
   where
     sendNItems n addr = case addr of
@@ -286,6 +287,8 @@ handleDataSent (SentTo pid dst) = do
         liftP $ send pid AckSend
         freeActor aid
         stActorState . at aid .= Just Completed
+        top <- topLevelActor aid
+        when (aid /= top) $ checkIfGroupDone top
 
 -- | Check if data was sent to correct destination
 checkDestination :: RecvAddr Recv -> AID -> Controller Bool
