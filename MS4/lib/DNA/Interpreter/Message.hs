@@ -330,44 +330,6 @@ checkDestination rcv aid = do
                            _ -> False
                        | (m,s) <- ms `zip` sts
                        ]
-          
-
--- Perform action on actor. If no actor is associated with PID then do
--- nothing
-withAID :: ProcessId -> (AID -> Controller ()) -> Controller ()
-withAID pid action = do
-    undefined
-    -- maid <- use $ stPid2Aid . at pid
-    -- T.forM_ maid $ \(_,_,aid) -> action aid
-
--- Remove PID from mapping
-dropPID
-    :: ProcessId
-    -> AID
-    -> Controller ()            -- ^ Call if last process from actor is done
-    -> Controller ()            -- ^ Call if actor is still working
-    -> Controller ()
-dropPID pid aid actionDone actionGoing = do
-    undefined
-    -- Just pids <- use $ stAid2Pid . at aid
-    -- let  pids' = Set.delete pid pids
-    -- stPid2Aid . at pid .= Nothing
-    -- case Set.null pids' of
-    --   True -> do
-    --       stAid2Pid       . at aid .= Nothing
-    --       stActorRecvAddr . at aid .= Just Nothing
-    --       actionDone
-    --   False -> do
-    --       stAid2Pid  . at aid .= Just pids'
-    --       actionGoing
-
-
-
-----------------------------------------------------------------
--- Handle restarts
-----------------------------------------------------------------
-
-
 
 
 {-
@@ -385,23 +347,6 @@ handleReady (pid,chRnk) = do
        | otherwise -> do
           liftP $ sendChan chRnk (Just $ Rank n)
           stCountRank . at gid .= Just (n+1,nMax)
-
-
--- Increment number of completed tasks for group of many-rank
--- processes.
---
--- FIXME: we will increase number of completed tasks when process exit
---        normally so we will have too many completed tasks
-handleDone :: (ProcessId,DoneTask) -> Controller ()
-handleDone (pid,_) =
-    handlePidEvent pid
-        (fatal "Shell: unknown process")
-        (\_ -> fatal "Shell: must be group")
-        (\g _ -> case g of
-           GrConnected ty (nR,nD) ch acps ->
-               return $ Just $ GrConnected ty (nR,nD+1) ch acps
-           _ -> fatal "Invalid shell for group is received"
-        )
 -}
 
 -- Some process timed out
