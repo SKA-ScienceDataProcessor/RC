@@ -243,18 +243,6 @@ spawnActorGroup res resG addrTy actDescr spwn = do
 -- Helpers
 ----------------------------------------------------------------
 
--- Receive either value from process or termination notification
-waitForShell
-    :: Serializable a
-    => ReceivePort a
-    -> (ProcessId -> Bool)
-    -> Process (Either ProcessMonitorNotification a)
-waitForShell ch p = receiveWait
-    [ matchChan ch                                             (return . Right)
-    , matchIf (\(ProcessMonitorNotification _ pid _) -> p pid) (return . Left)
-    ]
-
-
 -- Receive shell process for single process actor and either record
 -- failure or success in the dataflow graph
 receiveShell
@@ -264,7 +252,10 @@ receiveShell
     -> DnaMonad (Maybe (RecvAddr Recv))
 receiveShell ch pid handler = do
     -- We obtain shell or notification that process is dead
-    r <- liftP $ waitForShell ch (==pid)
+    r <- liftP $ receiveWait
+       [ matchChan ch                                              (return . Right)
+       , matchIf (\(ProcessMonitorNotification _ p _) -> p == pid) (return . Left)
+       ]
     case r of
       Left err -> do
         errorMsg (show err)
@@ -273,8 +264,9 @@ receiveShell ch pid handler = do
         handler dst
         return (Just dst)
 
-
--- Create process for forcing timeout when process
+-- Create process for sending timeout message
+--
+-- FIXME: it interacts poorly with respawn
 setTimeout :: [SpawnFlag] -> AID -> Process ()
 setTimeout flags aid = do
     me <- getSelfPid
