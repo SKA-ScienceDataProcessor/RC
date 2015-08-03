@@ -71,9 +71,11 @@ void gridKernel_scatter(
   int siz = grid_size*grid_pitch;
 #pragma omp parallel
   {
-    GRID_MOD complexd * _grid = grids + omp_get_thread_num() * siz;
 #ifndef __DEGRID
+    GRID_MOD complexd * _grid = grids + omp_get_thread_num() * siz;
     memset(_grid, 0, sizeof(complexd) * siz);
+#else
+    GRID_MOD complexd * _grid = grids;
 #endif
     __ACC(complexd, grid, grid_pitch);
 
