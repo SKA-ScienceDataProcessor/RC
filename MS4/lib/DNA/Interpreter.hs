@@ -21,14 +21,9 @@ import Control.Concurrent.Async
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Process.Closure
-import Data.Maybe
 import Data.Monoid
--- import Data.Binary   (Binary)
-import Data.Typeable (Typeable {-,typeOf-})
---import qualified Data.Map as Map
-import qualified Data.Set as Set
-import qualified Data.Foldable as T
-
+import Data.Typeable (Typeable)
+import qualified Data.Set      as Set
 
 import DNA.CH
 import DNA.Types
