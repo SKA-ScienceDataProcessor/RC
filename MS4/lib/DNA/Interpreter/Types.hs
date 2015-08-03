@@ -20,7 +20,6 @@ import Control.Distributed.Process.Serializable
 import Data.Monoid
 import Data.Binary   (Binary)
 import Data.Typeable (Typeable)
-import qualified Data.Foldable as T
 import qualified Data.Map as Map
 import           Data.Map   (Map)
 import qualified Data.Set as Set
@@ -111,17 +110,20 @@ type Controller = ExceptT DnaError DnaMonad
 data DnaError
     = FatalErr String              -- ^ Fatal error
     | PanicErr String              -- ^ Internal error
-    | Except SomeException         -- ^ Uncaught exception
+    | Except   SomeException       -- ^ Uncaught exception
 
+-- | Unrecoverable error. Could only occur due to bug in DNA
+--   implementation.
 data PanicException = PanicException String
              deriving (Show,Typeable)
 instance Exception PanicException
 
+-- | Unrecoverable error. Actor must immediately stop execution
 data FatalException = FatalException String
              deriving (Show,Typeable)
 instance Exception FatalException
 
--- | Fatal error
+-- | Raise fatal error.
 fatal :: MonadError DnaError m => String -> m a
 fatal = throwError . FatalErr
 
@@ -182,13 +184,12 @@ runDnaParam p action = do
            , _stPid2Aid       = Map.empty
            }
 
-
-
 -- | Evaluator for DNA monad. We have to pass closure with function
 --   for interpreting DNA monad manually since we have to break
 --   dependency loop. We also want to wrap function into
 newtype DnaInterpreter = DnaInterpreter { dnaInterpreter :: forall a. DNA a -> DnaMonad a }
                        deriving Typeable
+
 
 
 ----------------------------------------------------------------
@@ -216,7 +217,7 @@ data ActorParam = ActorParam
     , actorWorkDir     :: FilePath
       -- ^ Actor working directory
     }
-    deriving (Typeable,Generic)
+    deriving (Show,Typeable,Generic)
 instance Binary ActorParam
 
 -- | Parameters of an actor which are constant during its execution
@@ -262,47 +263,51 @@ data StateDNA = StateDNA
     , _stVars       :: !(Map VID (RecvAddr Recv))
       -- ^ All local variables
       
-      -- Mapping ProcessID <-> AID
     , _stPid2Aid    :: !(Map ProcessId AID)
+      -- ^ Mapping from PIDs to AIDs
     }
 
--- | Hierarchy of actors
+-- | Description of actor. It's persistent and doesn't change after
+--   creation.
 data ActorHier
     = SimpleActor               -- ^ Simple 1-process actor
     | GroupMember AID           -- ^ Actor which is member of a group
-    | ActorGroup [AID]          -- 
-    | ActorTree  [AID]          -- 
-    deriving (Show,Eq)
+    | ActorGroup [AID]          -- ^ Group of actors
+    | ActorTree  [AID]          -- ^ Tree actors
+    deriving (Show,Eq,Typeable,Generic)
 
--- | State of leaf actor.
+-- | State of actor.
 data ActorState
     = Completed              -- ^ Actor completed execution successfully
     | Failed                 -- ^ Actor failed
     | Running    ProcInfo    -- ^ Actor is running
     | GrpRunning Int         -- ^ Group of actor is still running 
-    deriving (Show)
+    deriving (Show,Typeable,Generic)
 
 -- | Data source of an actor
 data ActorSrc
-    = SrcParent (RecvAddr Recv -> Process ()) -- ^ Actor receive data from parent
-    | SrcActor  AID                      -- ^ Actor receive data from another actor
-    | SrcSubordinate                     -- ^ Actor is member of group of actors
+    = SrcParent (RecvAddr Recv -> Process ())
+      -- ^ Actor receive data from parent
+    | SrcActor  AID
+      -- ^ Actor receive data from another actor
+    | SrcSubordinate
+      -- ^ Actor is member of group of actors
 
 -- | Destination of an actor
 data ActorDst
     = DstParent VID -- ^ Actor sends data back to parent
     | DstActor  AID -- ^ Actor sends data to another actor
-    deriving (Show,Eq)
+    deriving (Show,Eq,Typeable,Generic)
 
 
--- | Data about actor which corresponds to single
+-- | Data about actor which corresponds to single CH process.
 data ProcInfo = ProcInfo
-  { _pinfoPID      :: ProcessId
-  , _pinfoRecvAddr :: RecvAddr Recv
-  , _pinfoNodes    :: VirtualCAD
-  , _pinfoClosure  :: Maybe SpawnCmd
+  { _pinfoPID      :: ProcessId      -- ^ PID of actor
+  , _pinfoRecvAddr :: RecvAddr Recv  -- ^ Address for receiving data
+  , _pinfoNodes    :: VirtualCAD     -- ^ Allocated nodes
+  , _pinfoClosure  :: Maybe SpawnCmd -- ^ Optional command for restart of process
   }
-  deriving (Show)
+  deriving (Show,Typeable,Generic)
 
 -- | Command for spawning actor
 data SpawnCmd
@@ -318,17 +323,20 @@ data SpawnCmd
 $(makeLenses ''StateDNA)
 $(makeLenses ''ProcInfo)
 
+
 ----------------------------------------------------------------
 -- Helpers
 ----------------------------------------------------------------
 
--- | Get ID of top-level actor in group
-topLevelActor :: MonadState StateDNA m => AID -> m AID
+-- | Get ID of top-level actor in group, maybe this is same ID
+topLevelActor :: (MonadState StateDNA m, MonadError DnaError m) => AID -> m AID
 topLevelActor aid = do
     mst <- use $ stActors . at aid
     case mst of
       Just (GroupMember a) -> return a
       Just  _              -> return aid
+      Nothing              -> panic "Unknown AID"
+
 
 -- | Obtain receive address for an actor
 getRecvAddress
@@ -362,16 +370,16 @@ traverseActor
     :: (MonadState StateDNA m, Monoid r)
     => (AID -> m r) -> AID -> m r
 traverseActor action aid = do
-    action aid
+    r0  <- action aid
     mst <- use $ stActors . at aid
     case mst of
       Just (ActorGroup as) -> do r <- forM as $ traverseActor action
-                                 return $ mconcat r
+                                 return $ r0 <> mconcat r
       Just (ActorTree  as) -> do r <- forM as $ traverseActor action
-                                 return $ mconcat r
-      _                    -> return mempty
+                                 return $ r0 <> mconcat r
+      _                    -> return r0
 
--- | Send same message to all processes in actor
+-- | Send same message to all live processes in actor
 sendToActor
     :: (MonadProcess m, MonadState StateDNA m, Serializable a)
     => AID -> a -> m ()
