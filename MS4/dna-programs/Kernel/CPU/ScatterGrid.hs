@@ -99,4 +99,7 @@ grid vis gcfset uvg = do
 
 -- What about the normalization here?
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
-degrid uvg gcfset vis = gridWrapper deGridKernelCPUFullGCF vis gcfset uvg >> return vis
+degrid uvg gcfset vis = do
+  gridWrapper deGridKernelCPUFullGCF vis gcfset uvg
+  freeVector (uvgData uvg)
+  return vis
