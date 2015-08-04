@@ -363,7 +363,7 @@ getRecvAddress aid = do
                 RcvSimple m -> return m
                 _           -> panic "Bad subordinate actor for group"
           return $ RcvGrp ms
-      _ -> fail $ "getRecvAddress: " ++ show (act,st)
+      _ -> panic $ "getRecvAddress: " ++ show (act,st)
 
 -- | Execute action for each sub actor in compound actor
 traverseActor

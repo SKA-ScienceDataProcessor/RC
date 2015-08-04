@@ -226,6 +226,7 @@ sendDestinationAddr aid =
       Just (DstParent v) -> do Just addr <- use $ stVars . at v
                                sendToActor aid addr
       Just (DstActor  a) -> sendToActor aid =<< getRecvAddress a
+      Nothing            -> panic "No destination address!"
 
 -- Check if group actor completed is execution
 checkIfGroupDone :: AID -> Controller ()
@@ -287,7 +288,7 @@ handleDataSent (SentTo pid dst) = do
         top <- topLevelActor aid
         when (aid /= top) $ checkIfGroupDone top
 
--- | Check if data was sent to correct destination
+-- Check if data was sent to correct destination
 checkDestination :: RecvAddr Recv -> AID -> Controller Bool
 checkDestination rcv aid = do
     Just act <- use $ stActors   . at aid
@@ -302,7 +303,7 @@ checkDestination rcv aid = do
       -- FIXME: groups of collectors are omitted
       --
       -- FIXME: safe zip
-      (GrpRunning as, RcvTree ms) -> do
+      (GrpRunning _, RcvTree ms) -> do
           aids <- case act of
                     ActorTree as -> return as
                     _            -> panic "Bad actor type"
