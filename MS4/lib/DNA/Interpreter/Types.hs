@@ -353,8 +353,8 @@ getRecvAddress aid = do
       (ActorTree  as, GrpRunning{}) -> do
           ms <- forM as $ \a -> do
               getRecvAddress a >>= \case
-                RcvReduce m -> return m
-                _           -> panic "Bad subordinate actor for tree"
+                RcvTree m -> return m
+                _         -> panic "Bad subordinate actor for tree"
           return $ RcvTree $ concat ms
       -- Group of worker processes
       (ActorGroup as, GrpRunning{}) -> do

@@ -117,7 +117,7 @@ runCollectActor (CollectActor step start fini) = do
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
     sendChan (actorSendBack p)
-        $ RcvReduce [(makeRecv chSendParam, chSendN)]
+        $ RcvReduce (makeRecv chSendParam) chSendN
     -- Start execution of an actor
     !b <- runDnaParam p $ do
            case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
@@ -161,7 +161,7 @@ sendResult p !a =
         -- Send data to destination
         case dst of
           RcvSimple msg  -> trySend msg
-          RcvReduce msgs -> forM_ msgs $ \(m,_) -> trySend m
+          RcvReduce m _  -> trySend m
           RcvTree   msgs -> do
               let nReducers           = length msgs
                   GroupSize nResults  = actorGroupSize p

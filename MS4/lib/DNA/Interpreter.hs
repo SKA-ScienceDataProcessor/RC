@@ -133,7 +133,7 @@ execDelayGroup (Shell aid) = do
     -- Create local variable
     (sendB,recvB) <- liftP newChan
     (sendN,recvN) <- liftP newChan
-    (var,dst)     <- newVar $ RcvReduce [(makeRecv sendB, sendN)]
+    (var,dst)     <- newVar $ RcvReduce (makeRecv sendB) sendN
     flip traverseActor aid $ \a ->
         stActorDst . at a .= Just (DstParent var)
     -- Send destination to an actor

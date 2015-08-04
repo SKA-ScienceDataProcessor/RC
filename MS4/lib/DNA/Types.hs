@@ -180,7 +180,7 @@ makeRecv ch = Recv (sendPortId ch) (wrapMessage ch)
 data RecvAddr m
     = RcvSimple m
       -- ^ Actor/variable that receive single value
-    | RcvReduce [(m,SendPort Int)]
+    | RcvReduce m (SendPort Int)
       -- ^ Reduce actor or actors. It's list of ports to send data to
       --   and channels for sending number of values to expect
     | RcvTree   [(m,SendPort Int)]

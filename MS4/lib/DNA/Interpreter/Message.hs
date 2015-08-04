@@ -250,9 +250,9 @@ checkIfGroupDone aid = do
           Just (DstActor  a) -> sendNItems nDone =<< getRecvAddress a
   where
     sendNItems n addr = case addr of
-      RcvTree   ps -> liftP $ forM_ ps $ \(_,p) -> sendChan p n
-      RcvReduce ps -> liftP $ forM_ ps $ \(_,p) -> sendChan p n
-      _            -> panic "Cannot send group of values to simple address"
+      RcvTree   ps  -> liftP $ forM_ ps $ \(_,p) -> sendChan p n
+      RcvReduce _ p -> liftP $ sendChan p n
+      _             -> panic "Cannot send group of values to simple address"
 
 -- Get list of worker actors in compound actor
 getCompundActorSubordinates :: AID -> Controller [(AID,ActorState)]
