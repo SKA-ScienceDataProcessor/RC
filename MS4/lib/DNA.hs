@@ -165,8 +165,6 @@ module DNA (
       -- * Spawning
     , eval
     , evalClosure
-    -- , startCollectorGroupMR
-    -- , startMappers
     , Spawn
     , startActor
     , startCollector
@@ -183,7 +181,6 @@ module DNA (
     , availableNodes
     , waitForResources
     -- , startGroupN
-    , startCollectorGroup
     , startCollectorTree
     , startCollectorTreeGroup
     , useLocal

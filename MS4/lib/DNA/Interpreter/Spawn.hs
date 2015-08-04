@@ -8,7 +8,6 @@ module DNA.Interpreter.Spawn (
     , execSpawnCollector
     , execSpawnGroup
     -- , execSpawnGroupN
-    , execSpawnCollectorGroup
     , execSpawnCollectorTree
     , execSpawnCollectorTreeGroup
       -- * Workers
@@ -107,19 +106,6 @@ execSpawnGroupN res resG _n act = do
     stPooledProcs . at gid .= Just chN
     return $ broadcast $ assembleShellGroup gid shells
 -}
-
--- |
-execSpawnCollectorGroup
-    :: (Serializable a, Serializable b)
-    => Res
-    -> ResGroup
-    -> Spawn (Closure (CollectActor a b))
-    -> DnaMonad (Shell (Grp a) (Grp b))
-execSpawnCollectorGroup res resG act = do
-    -- Spawn actors
-    aid <- spawnActorGroup res resG RcvTyReduce ActorGroup
-         $ closureApply $(mkStaticClosure 'runCollectActor) <$> act
-    return $ Shell aid
 
 
 execSpawnCollectorTree
