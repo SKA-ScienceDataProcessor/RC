@@ -79,7 +79,7 @@ void gridKernel_scatter(
 #endif
     __ACC(complexd, grid, grid_pitch);
 
-#pragma omp for schedule(dynamic)
+#pragma omp for schedule(dynamic,23)
     for(int bl = 0; bl < baselines; bl++) {
       int max_supp_here;
       max_supp_here = bl_supps[bl];
