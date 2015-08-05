@@ -100,7 +100,7 @@ static void CUPTIAPI bufferCompleted(CUcontext ctx, uint32_t streamId, uint8_t *
             break;
         case CUPTI_ACTIVITY_KIND_KERNEL:
             {
-                CUpti_ActivityKernel *activity = (CUpti_ActivityKernel *)record;
+                CUpti_ActivityKernel3 *activity = (CUpti_ActivityKernel3 *)record;
                 kernelTime += activity->end - activity->start;
             }
             break;
