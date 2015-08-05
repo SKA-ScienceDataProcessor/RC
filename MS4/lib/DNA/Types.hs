@@ -183,15 +183,20 @@ data RecvAddr m
     | RcvReduce m (SendPort Int)
       -- ^ Reduce actor or actors. It's list of ports to send data to
       --   and channels for sending number of values to expect
-    | RcvTree   [(m,SendPort Int)]
+    | RcvTree [RecvAddr m]
       -- ^ Ports of tree reducer. They have subtly different meaning.
       --   In ordinary collector data is send to each collector. In
       --   tree collector destination is determined by rank.
-    | RcvGrp [m]
+    | RcvGrp [RecvAddr m]
       -- ^ Group of simple actors
+    | RcvCompleted
+      -- ^ Address of completed actor
+    | RcvFailed
+      -- ^ Address of failed actor
     deriving (Show,Eq,Functor,Typeable,Generic)
 instance Binary m => Binary (RecvAddr m)
 
+-- | Type of address of actor. It only covers 
 data RecvAddrType
     = RcvTySimple
       -- ^ Actor/variable that receive single value
@@ -199,8 +204,6 @@ data RecvAddrType
       -- ^ Reduce actor or actors
     | RcvTyTree
       -- ^ Tree reduction actor
-    | RcvTyGrp
-      -- ^ Group of simple actors
     deriving (Show,Eq,Typeable,Generic)
 instance Binary RecvAddrType
 

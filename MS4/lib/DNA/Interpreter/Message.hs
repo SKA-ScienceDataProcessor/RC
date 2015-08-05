@@ -250,7 +250,9 @@ checkIfGroupDone aid = do
           Just (DstActor  a) -> sendNItems nDone =<< getRecvAddress a
   where
     sendNItems n addr = case addr of
-      RcvTree   ps  -> liftP $ forM_ ps $ \(_,p) -> sendChan p n
+      RcvTree   ps  -> forM_ ps $ \case
+        RcvReduce _ ch -> liftP $ sendChan ch n
+        _              -> panic "checkIfGroupDone: bad address"
       RcvReduce _ p -> liftP $ sendChan p n
       _             -> panic "Cannot send group of values to simple address"
 
@@ -276,7 +278,7 @@ handleDataSent (SentTo pid dst) = do
         case d of
           DstParent {}     -> sendAck aid
           DstActor  aidDst -> do
-              ok <- checkDestination dst aidDst
+              ok <- checkDestination dst =<< getRecvAddress aidDst
               if ok then sendAck aid
                     else error "FIXME: send correct destination"
   where
@@ -289,45 +291,27 @@ handleDataSent (SentTo pid dst) = do
         when (aid /= top) $ checkIfGroupDone top
 
 -- Check if data was sent to correct destination
-checkDestination :: RecvAddr Recv -> AID -> Controller Bool
-checkDestination rcv aid = do
-    Just act <- use $ stActors   . at aid
-    Just st  <- use $ stActorState . at aid
-    case (st,rcv) of
-      -- FIXME: Is this correct?
-      (Completed,_) -> panic "Cannot send data to completed actor!"
-      -- Could happen in failout mode
-      (Failed,   _) -> return True
-      --
-      (Running p, r) -> return $ (p^.pinfoRecvAddr) == r
-      -- FIXME: groups of collectors are omitted
-      --
-      -- FIXME: safe zip
-      (GrpRunning _, RcvTree ms) -> do
-          aids <- case act of
-                    ActorTree as -> return as
-                    _            -> panic "Bad actor type"
-          sts <- forM aids $ \a -> use $ stActorState . at a
-          return $ and [ case (m,s) of
-                           (r1,Just (Running p)) -> case p^.pinfoRecvAddr of
-                               RcvTree [r2] -> r1 == r2
-                               _            -> False
-                           _ -> False
-                       | (m,s) <- ms `zip` sts
-                       ]
-          --              ]
-      (GrpRunning _, RcvGrp  ms) -> do
-          aids <- case act of
-                    ActorGroup as -> return as
-                    _             -> panic "Bad actor type"
-          sts <- forM aids $ \a -> use $ stActorState . at a
-          return $ and [ case (m,s) of
-                           (r1,Just (Running p)) -> case p^.pinfoRecvAddr of
-                               RcvSimple r2 -> r1 == r2
-                               _            -> False
-                           _ -> False
-                       | (m,s) <- ms `zip` sts
-                       ]
+checkDestination :: RecvAddr Recv -> RecvAddr Recv -> Controller Bool
+checkDestination = check
+  where
+    check _ RcvFailed    = return True
+    check _ RcvCompleted = return True
+    -- Grp
+    check (RcvGrp []) (RcvGrp []) = return True
+    check (RcvGrp (x:xs)) (RcvGrp (y:ys)) = do
+      a <- check x y
+      b <- check (RcvGrp xs) (RcvGrp ys)
+      return (a && b)
+    check RcvGrp{} RcvGrp{} = return False
+    -- Tree
+    check (RcvTree []) (RcvTree []) = return True
+    check (RcvTree (x:xs)) (RcvTree (y:ys)) = do
+      a <- check x y
+      b <- check (RcvTree xs) (RcvTree ys)
+      return (a && b)
+    check RcvTree{} RcvTree{} = return False
+    -- Rest
+    check a b = return $ a == b
 
 
 {-

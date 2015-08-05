@@ -347,22 +347,17 @@ getRecvAddress aid = do
     Just st  <- use $ stActorState . at aid
     case (act,st) of
       -- 1-process actor
+      (_            , Completed) -> return RcvCompleted
+      (_            , Failed   ) -> return RcvFailed
       (SimpleActor  , Running p) -> return $ p^.pinfoRecvAddr
       (GroupMember{}, Running p) -> return $ p^.pinfoRecvAddr
       -- Tree collector
       (ActorTree  as, GrpRunning{}) -> do
-          ms <- forM as $ \a -> do
-              getRecvAddress a >>= \case
-                RcvTree m -> return m
-                _         -> panic "Bad subordinate actor for tree"
-          return $ RcvTree $ concat ms
+          RcvTree `liftM` forM as getRecvAddress
       -- Group of worker processes
       (ActorGroup as, GrpRunning{}) -> do
-          ms <- forM as $ \a -> do
-              getRecvAddress a >>= \case
-                RcvSimple m -> return m
-                _           -> panic "Bad subordinate actor for group"
-          return $ RcvGrp ms
+          RcvGrp `liftM` forM as getRecvAddress
+      -- Impossible
       _ -> panic $ "getRecvAddress: " ++ show (act,st)
 
 -- | Execute action for each sub actor in compound actor

@@ -4,6 +4,7 @@
 {-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
@@ -138,7 +139,7 @@ runTreeActor (TreeCollector step start fini) = do
     (chSendN,    chRecvN    ) <- newChan
     -- Send shell process description back
     sendChan (actorSendBack p)
-        $ RcvTree [(makeRecv chSendParam, chSendN)]
+        $ RcvReduce (makeRecv chSendParam) chSendN
     -- Start execution of an actor
     !a <- runDnaParam p $ do
            s0 <- kernel "tree collector init" [] (Kern start)
@@ -166,9 +167,12 @@ sendResult p !a =
               let nReducers           = length msgs
                   GroupSize nResults  = actorGroupSize p
                   Rank      rnk       = actorRank p
-                  (ch,_) = msgs !! findIndexInSplittedList nResults nReducers rnk
-              trySend ch
-          RcvGrp    msgs -> mapM_ trySend msgs
+              case msgs !! findIndexInSplittedList nResults nReducers rnk of
+                RcvReduce ch _ -> trySend ch
+                _              -> doPanic "sendResult: bad tree actor!"
+          RcvGrp msgs -> forM_ msgs $ \case
+            RcvSimple m -> trySend m
+            _           -> doPanic "sendResult: bad group actor!"
         -- Send confirmation to parent and wait for 
         T.forM_ (actorParent p) $ \pid -> do
             me <- getSelfPid

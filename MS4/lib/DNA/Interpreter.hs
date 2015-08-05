@@ -170,6 +170,7 @@ execSendParam a (Shell aid) = do
     trySend RcvGrp{}    = doPanic "execSendParam: destination type mismatch, expect single, got group"
     trySend RcvReduce{} = doPanic "execSendParam: destination type mismatch, expect single, got reducer"
     trySend RcvTree{}   = doPanic "execSendParam: destination type mismatch, expect single, got tree"
+    trySend _           = doPanic "execSendParam: destination type mismatch."
 
 -- Send parameter
 execBroadcast :: Serializable a => a -> Shell (Scatter a) b -> DnaMonad ()
@@ -181,7 +182,9 @@ execBroadcast a (Shell aid) = do
     logConnect Nothing (Just aid)
   where
     trySend (RcvGrp dsts) = do
-        mch <- forM dsts $ \(Recv _ d) -> unwrapMessage d
+        mch <- forM dsts $ \case
+          RcvSimple (Recv _ d) -> unwrapMessage d
+          _                    -> doPanic "execBroadcast: bad address"
         case sequence mch of
           Nothing  -> doPanic "execBroadcast: type error"
           Just chs -> forM_ chs $ \ch -> sendChan ch a
@@ -202,7 +205,9 @@ execDistributeWork a f (Shell aid) = do
             bs = f n a
         when (length bs /= n) $
             doFatal "Bad work distribution function"
-        mch <- forM dsts $ \(Recv _ m) -> unwrapMessage m
+        mch <- forM dsts $ \case
+          RcvSimple (Recv _ m) -> unwrapMessage m
+          _                    -> doPanic "execDistributeWork: bad address"
         case sequence mch of
           Nothing  -> doPanic "execBroadcast: type error"
           Just chs -> forM_ (zip chs bs) $ uncurry sendChan

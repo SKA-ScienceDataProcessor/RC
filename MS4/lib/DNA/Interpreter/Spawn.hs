@@ -161,7 +161,6 @@ spawnSingleActor aid cad cmd@(SpawnSingle act rnk grp actDescr addrTy flags) = d
     maddr   <- receiveShell chRecv pid $ \dst -> case (dst,addrTy) of
         (RcvSimple{},RcvTySimple) -> return ()
         (RcvReduce{},RcvTyReduce) -> return ()
-        (RcvGrp{}   ,RcvTyGrp   ) -> return ()
         (RcvTree{}  ,RcvTyTree  ) -> return ()
         _           -> doPanic "Invalid RecvAddr in execSpawnGroup"
     -- Add timeout for actor
