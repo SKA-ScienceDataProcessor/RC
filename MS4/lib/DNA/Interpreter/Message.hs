@@ -278,9 +278,10 @@ handleDataSent (SentTo pid dst) = do
         case d of
           DstParent {}     -> sendAck aid
           DstActor  aidDst -> do
-              ok <- checkDestination dst =<< getRecvAddress aidDst
+              trueDst <- getRecvAddress aidDst
+              ok      <- checkDestination dst trueDst
               if ok then sendAck aid
-                    else error "FIXME: send correct destination"
+                    else sendToActor aid trueDst
   where
     -- Send confirmation to the actor and remove it from registry
     sendAck aid = do

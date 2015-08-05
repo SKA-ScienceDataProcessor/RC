@@ -169,10 +169,16 @@ sendResult p !a =
                   Rank      rnk       = actorRank p
               case msgs !! findIndexInSplittedList nResults nReducers rnk of
                 RcvReduce ch _ -> trySend ch
+                RcvFailed      -> return ()
+                RcvCompleted   -> return ()
                 _              -> doPanic "sendResult: bad tree actor!"
           RcvGrp msgs -> forM_ msgs $ \case
-            RcvSimple m -> trySend m
-            _           -> doPanic "sendResult: bad group actor!"
+            RcvSimple m  -> trySend m
+            RcvFailed    -> return ()
+            RcvCompleted -> return ()
+            _            -> doPanic "sendResult: bad group actor!"
+          RcvFailed    -> return ()
+          RcvCompleted -> return ()
         -- Send confirmation to parent and wait for 
         T.forM_ (actorParent p) $ \pid -> do
             me <- getSelfPid
