@@ -37,7 +37,7 @@ gridderActor :: GridPar -> GCFPar -> GridKernel -> DFTKernel
              -> Actor (Vis, GCFSet) Image
 gridderActor gpar gcfpar gridk dftk = actor $ \(vis,gcfSet) -> do
     -- Grid visibilities to a fresh uv-grid
-    grid <- kernel "grid" [] $ liftIO $ do
+    grid <- kernel "grid" (gridkGridHints gridk gpar vis gcfSet) $ liftIO $ do
       grid <- gridkCreateGrid gridk gpar gcfpar
       gridkGrid gridk vis gcfSet grid
 
@@ -55,7 +55,7 @@ degridderActor gridk dftk = actor $ \(model,vis,gcfSet) -> do
       dftKernel dftk model
 
     -- Degrid to obtain new visibilitities for the positions in "vis"
-    kernel "degrid" [] $ liftIO $ do
+    kernel "degrid" (gridkDegridHints gridk (imgPar model) vis gcfSet) $ liftIO $
       gridkDegrid gridk grid gcfSet vis
 
 imagingActor :: Config -> Actor DataSet Image
@@ -82,11 +82,13 @@ imagingActor cfg = actor $ \dataSet -> do
 
     -- Let kernels prepare for processing GCF and visibilities
     -- (transfer buffers, do binning, plan FFTs etc.)
-    (vis1, psfVis1, gcfSet1) <- kernel "prepare" [] $ liftIO $ do
-      (vis', gcfSet') <- gridkPrepare gridk (cfgGridPar cfg) vis0 gcfSet0
-      (psfVis', gcfSet'') <- gridkPrepare gridk (cfgGridPar cfg) psfVis0 gcfSet'
+    let prepHints = gridkPrepareHints gridk (cfgGridPar cfg) vis0 gcfSet0
+    (vis1, gcfSet') <- kernel "prepare" prepHints $ liftIO $
+      gridkPrepare gridk (cfgGridPar cfg) vis0 gcfSet0
+    (psfVis1, gcfSet1) <- kernel "prepare" prepHints $ liftIO $
+      gridkPrepare gridk (cfgGridPar cfg) psfVis0 gcfSet'
+    kernel "prepare" prepHints $ liftIO $
       dftPrepare dftk (cfgGridPar cfg)
-      return (vis', psfVis', gcfSet'')
 
     -- Calculate PSF
     let gridAct = gridderActor (cfgGridPar cfg) (cfgGCFPar cfg) gridk dftk

@@ -16,6 +16,7 @@ import qualified Kernel.CPU.ScatterGrid as CPU_ScatterGrid
 import qualified Kernel.CPU.FFT as CPU_FFT
 import qualified Kernel.CPU.Hogbom as CPU_Hogbom
 
+import DNA ( ProfileHint )
 
 -- | Gridding kernels deal with adding or extracting visibilities
 -- to/from an "UVGrid"
@@ -27,7 +28,8 @@ data GridKernel = GridKernel
   , gridkCreateGrid :: GridPar -> GCFPar -> IO UVGrid
     -- ^ Produce a new UV grid suitable for gridding
   , gridkPhaseRotate :: GridPar -> Vis -> IO Vis
-    -- ^ Produce a new UV grid suitable for gridding
+    -- ^ Do phase rotation for the given visibilities. Visibilites are
+    -- assumed to get consumed by the kernel. [currently unused]
   , gridkGrid :: Vis -> GCFSet -> UVGrid -> IO UVGrid
     -- ^ Grid the visibilities to the "UVGrid" using the given set of
     -- grid convolution functions.
@@ -39,7 +41,15 @@ data GridKernel = GridKernel
   , gridkDegrid :: UVGrid -> GCFSet -> Vis -> IO Vis
     -- ^ Extract visibilities from the grid using the set of grid
     -- convolution functions, and subtract them from the given
-    -- visibility data.
+    -- visibility data. *Both* the grid as well as the
+    -- visibilities are assumed to get consumed by the function.
+
+  , gridkPrepareHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
+    -- ^ Performance hints for calling "gridkPrepare"
+  , gridkGridHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
+    -- ^ Performance hints for calling "gridkGrid"
+  , gridkDegridHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
+    -- ^ Performance hints for calling "gridkDegrid"
   }
 
 -- | Fourier transformation kernels. These allow us to obtain "Image"
@@ -85,15 +95,19 @@ data CleanKernel = CleanKernel
 
 -- | The supported gridding kernels
 gridKernels :: [(String, IO GridKernel)]
-gridKernels =
+gridKernels = let noHints _ _ _ = [] in
   [ ("dummy", return $ GridKernel Dummy.prepare Dummy.createGrid Dummy.phaseRotate
-                                  Dummy.grid Dummy.degrid)
+                                  Dummy.grid Dummy.degrid
+                                  noHints noHints noHints)
   , ("gpu_scatter",
       return $ GridKernel GPU_ScatterGrid.prepare
                           GPU_ScatterGrid.createGrid
                           GPU_ScatterGrid.phaseRotate
                           GPU_ScatterGrid.grid
                           GPU_ScatterGrid.degrid
+                          GPU_ScatterGrid.prepareHints
+                          GPU_ScatterGrid.gridHints
+                          GPU_ScatterGrid.degridHints
     )
   , ("cpu_scatter",
       return $ GridKernel CPU_ScatterGrid.prepare
@@ -101,6 +115,7 @@ gridKernels =
                           CPU_ScatterGrid.phaseRotate
                           CPU_ScatterGrid.grid
                           CPU_ScatterGrid.degrid
+                          noHints noHints noHints
     )
   ]
 

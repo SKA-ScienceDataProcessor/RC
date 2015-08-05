@@ -1,10 +1,13 @@
 
 module Kernel.GPU.ScatterGrid
   ( prepare
+  , prepareHints
   , createGrid
   , phaseRotate
   , grid
+  , gridHints
   , degrid
+  , degridHints
   ) where
 
 import Control.Monad
@@ -17,6 +20,8 @@ import Data
 import Kernel.GPU.Common as CUDA
 import qualified Kernel.GPU.NvidiaDegrid as Nvidia
 import Vector
+
+import DNA ( ProfileHint(..) )
 
 pregriddedSize :: Int
 pregriddedSize = shortSize * 3 + charSize * 2 + ptrSize
@@ -53,6 +58,23 @@ prepare gridp vis gcfSet = do
   freeVector (fst gcfMap)
   freeVector (snd gcfMap)
   return (vis', gcfSet')
+
+-- | Performance hints for the preparation step
+prepareHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
+prepareHints gpar vis gcfSet =
+  [ CUDAHint { hintCopyBytesHost = 0
+             , hintCopyBytesDevice =
+                 sum [ vectorByteSize (visPositions vis)
+                     , vectorByteSize (visData vis)
+                     , sum $ map gcfCost (gcfs gcfSet)
+                     ]
+             , hintCudaFloatOps = 0
+             , hintCudaDoubleOps = 2 * vectorSize (visData vis)
+             }
+  ]
+ where gcfCost gcf | DeviceVector{} <- gcfData gcf
+                               = 0
+                   | otherwise = vectorByteSize (gcfData gcf)
 
 -- | Transfer all GCFs to GPU and generates the GCF pointer and size
 -- lookup maps
@@ -198,5 +220,21 @@ grid vis gcfSet uvgrid = do
     freeVector datv
   return uvgrid
 
+gridHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
+gridHints gpar vis gcfSet =
+  [ CUDAHint { hintCopyBytesHost = 0
+             , hintCopyBytesDevice = 0
+             , hintCudaFloatOps = 0
+             , hintCudaDoubleOps = sum $ map baselineCost (visBaselines vis)
+             }
+  ]
+  where wstep = gcfpStepW $ gcfsPar gcfSet
+        baselineCost bl = vblPoints bl * (gcfSize gcf * gcfSize gcf)
+          where wplane = baselineMinWPlane wstep bl
+                Just gcf = findGCF gcfSet (fromIntegral wplane * wstep)
+
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
 degrid = Nvidia.degrid
+
+degridHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
+degridHints gpar vis gcfSet = []
