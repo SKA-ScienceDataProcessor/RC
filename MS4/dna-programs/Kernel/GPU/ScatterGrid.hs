@@ -61,7 +61,7 @@ prepare gridp vis gcfSet = do
 
 -- | Performance hints for the preparation step
 prepareHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
-prepareHints gpar vis gcfSet =
+prepareHints _ vis gcfSet =
   [ CUDAHint { hintCopyBytesHost = 0
              , hintCopyBytesDevice =
                  sum [ vectorByteSize (visPositions vis)
@@ -221,7 +221,7 @@ grid vis gcfSet uvgrid = do
   return uvgrid
 
 gridHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
-gridHints gpar vis gcfSet =
+gridHints _ vis gcfSet =
   [ CUDAHint { hintCopyBytesHost = 0
              , hintCopyBytesDevice = 0
              , hintCudaFloatOps = 0
@@ -237,4 +237,4 @@ degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
 degrid = Nvidia.degrid
 
 degridHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
-degridHints gpar vis gcfSet = []
+degridHints _ _ _ = []
