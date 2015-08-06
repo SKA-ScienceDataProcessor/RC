@@ -304,12 +304,12 @@ static void cupti_callback_launch_kernel(cupti_user_t *user, CUpti_CallbackData 
             fprintf(stderr, "CUPTI warning: Could not find context for kernel start!\n");
             // Simply generate it. Use user data as a cheap way to
             // prevent an infinite loop.
-            if (user) {
+            if (!user) {
                 CUpti_ResourceData rdata;
                 memset(&rdata, 0, sizeof(rdata));
                 rdata.context = cbdata->context;
                 cupti_callback_context_created(user, &rdata);
-                cupti_callback_launch_kernel(NULL, cbdata);
+                cupti_callback_launch_kernel(&user, cbdata);
             }
         }
         return;
