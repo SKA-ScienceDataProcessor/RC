@@ -113,7 +113,6 @@ import DNA.Types          (AID,VirtualCAD)
 class MonadIO m => MonadLog m where
     -- | Who created log message. It could be process ID, actor name etc.
     logSource :: m String
-    logSource = return ""
     -- | Logger options
     --
     --   Verbosity of logging:
@@ -123,11 +122,10 @@ class MonadIO m => MonadLog m where
     --    * 0  - warnings and more severe events logged
     --    * 1  - everything is logged
     logLoggerOpt :: m LoggerOpt
-    logLoggerOpt = return $ LoggerOpt 0 NoDebugPrint ""
-    
-instance MonadLog IO
+
 instance MonadLog Process where
     logSource = show <$> getSelfPid
+    logLoggerOpt = return $ LoggerOpt 0 NoDebugPrint ""
 instance MonadLog m => MonadLog (ExceptT e m) where
     logSource     = lift logSource
     logLoggerOpt  = lift logLoggerOpt
@@ -447,20 +445,21 @@ cudaHint = CUDAHint 0 0 0 0
 -- better. However, also note that more hints generally means that we
 -- are going to safe more information, so keep in mind that every hint
 -- means a certain (constant) profiling overhead.
-logProfile :: String           -- ^ Message. Will be used in profile view
+logProfile :: (Functor m, MonadLog m)
+           => String           -- ^ Message. Will be used in profile view
                                -- to identify costs, so short and
                                -- recognisable names are preferred.
            -> [ProfileHint]    -- ^ Hints about the code's complexity.
            -> [Attr]           -- ^ Extra attributes to add to profile messages
-           -> IO a             -- ^ The code to profile
-           -> IO a
-logProfile msg hints attrs = measurement (liftIO . sample) msg attrs
+           -> m a              -- ^ The code to profile
+           -> m a
+logProfile msg hints attrs = measurement sample msg attrs
     where sample pt = concat `liftM` mapM (hintToSample pt) hints
 
 
 
 -- | Takes a sample according to the given hint
-hintToSample :: SamplePoint -> ProfileHint -> IO [Attr]
+hintToSample :: (Functor m, MonadLog m) => SamplePoint -> ProfileHint -> m [Attr]
 hintToSample pt fh@FloatHint{}
     = consHint pt "hint:float-ops" (hintFloatOps fh)
     . consHint pt "hint:double-ops" (hintDoubleOps fh)
@@ -510,24 +509,26 @@ consAttrNZT n v t = ((n, show v ++ "/" ++ show t):)
 -- ought to be reusing bound threads at some level. Still, I can't
 -- think of a good solution to make sure that perf_events handles
 -- wouldn't leak, so let's do this for now.
-samplePerfEvents :: IORef (Map.Map ThreadId PerfStatGroup) -> [PerfStatDesc]
+samplePerfEvents :: MonadLog m
+                 => IORef (Map.Map ThreadId PerfStatGroup) -> [PerfStatDesc]
                  -> SamplePoint
-                 -> IO [PerfStatCount]
+                 -> m [PerfStatCount]
 samplePerfEvents countersVar countersDesc StartSample = do
     -- Check that the thread is actually bound
-    isBound <- isCurrentThreadBound
+    isBound <- liftIO $ isCurrentThreadBound
     when (not isBound) $ warningMsg "perf_events not running in bound thread!"
-    -- Open the counters
-    counters <- perfEventOpen countersDesc
-    -- Store them as thread-local state
-    tid <- myThreadId
-    atomicModifyIORef' countersVar $ flip (,) () . Map.insert tid counters
-    -- Read values, then enable
-    vals <- perfEventRead counters
-    perfEventEnable counters
-    return vals
+    liftIO $ do
+      -- Open the counters
+      counters <- perfEventOpen countersDesc
+      -- Store them as thread-local state
+      tid <- myThreadId
+      atomicModifyIORef' countersVar $ flip (,) () . Map.insert tid counters
+      -- Read values, then enable
+      vals <- perfEventRead counters
+      perfEventEnable counters
+      return vals
 
-samplePerfEvents countersVar _            EndSample = do
+samplePerfEvents countersVar _            EndSample = liftIO $ do
     tid <- myThreadId
     Just counters <- atomicModifyIORef' countersVar $
                      swap . Map.updateLookupWithKey (\_ _ -> Nothing) tid
@@ -566,7 +567,7 @@ floatCounterDescs
     ]
 
 -- | Generate message attributes from current floating point counter values
-floatCounterAttrs :: SamplePoint -> IO [Attr]
+floatCounterAttrs :: MonadLog m => SamplePoint -> m [Attr]
 floatCounterAttrs pt = do
     -- Get counters from perf_event
     vals <- samplePerfEvents loggerFloatCounters (map snd floatCounterDescs) pt
@@ -582,7 +583,7 @@ cacheCounterDescs
     ]
 
 -- | Generate message attributes from current cache performance counter values
-cacheCounterAttrs :: SamplePoint -> IO [Attr]
+cacheCounterAttrs :: MonadLog m => SamplePoint -> m [Attr]
 cacheCounterAttrs pt = do
     -- Get counters from perf_event
     vals <- samplePerfEvents loggerCacheCounters (map snd cacheCounterDescs) pt
@@ -599,8 +600,8 @@ cacheCounterAttrs pt = do
 ----------------------------------------------------------------
 
 -- | Generate message attributes for procces I/O statistics
-ioAttrs :: IO [Attr]
-ioAttrs = do
+ioAttrs :: MonadLog m => m [Attr]
+ioAttrs = liftIO $ do
 
     -- Read /proc/self/io - not the full story by any means, especially
     -- when consindering mmap I/O (TODO!), but it's easy.
@@ -615,8 +616,8 @@ ioAttrs = do
 ----------------------------------------------------------------
 
 -- | Generate message attributes for procces I/O statistics
-haskellAttrs :: IO [Attr]
-haskellAttrs = do
+haskellAttrs :: MonadLog m => m [Attr]
+haskellAttrs = liftIO $ do
 
     -- This might be slightly controversial: This forces a GC so we get
     -- statistics about the *true* memory residency.
@@ -709,7 +710,7 @@ cudaAttrs pt = do
                $ metricAttrs
 
 #else
-cudaAttrs :: SamplePoint -> IO [Attr]
+cudaAttrs :: MonadLog m => SamplePoint -> m [Attr]
 cudaAttrs _ = return []
 #endif
 

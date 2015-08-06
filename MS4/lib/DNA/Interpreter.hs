@@ -104,7 +104,8 @@ execKernel msg mode hints kern = do
     --
     -- IO code to run. Process atributes are derived before the spawn.
     profAttrs <- processAttributes
-    let code = logProfile msg hints profAttrs $ runKern kern
+    runK <- mkKernRunner
+    let code = runK $ logProfile msg hints profAttrs kern
     message 1 $ msg ++ " starting..."
     -- Run according to requested mode
     a <- case mode of
@@ -149,7 +150,7 @@ execDelayGroup (Shell aid) = do
     logConnect (Just aid) Nothing
     return $ Group recvB recvN
 
-execGatherM :: Serializable a => Group a -> (b -> a -> IO b) -> b -> DnaMonad b
+execGatherM :: Serializable a => Group a -> (b -> a -> Kern b) -> b -> DnaMonad b
 execGatherM = doGatherDna messageHandlers
 
 

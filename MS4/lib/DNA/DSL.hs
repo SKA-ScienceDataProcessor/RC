@@ -39,6 +39,7 @@ module DNA.DSL (
     , kernel
     , unboundKernel
     , KernelMode(..)
+    , mkKernRunner
       -- ** Actor spawning
     , eval
     , evalClosure
@@ -71,6 +72,7 @@ module DNA.DSL (
 import Control.Applicative
 import Control.Monad.Operational
 import Control.Monad.IO.Class
+import Control.Monad.Reader
 import Control.Monad.Writer.Strict
 import Control.Distributed.Process
 import Control.Distributed.Process.Serializable
@@ -79,7 +81,7 @@ import Data.Typeable (Typeable)
 import GHC.Generics  (Generic)
 
 import DNA.Types
-import DNA.Logging (ProfileHint(..))
+import DNA.Logging (MonadLog(..), LoggerOpt, ProfileHint(..))
 import DNA.Channel.File (FileChan)
 
 ----------------------------------------------------------------
@@ -96,7 +98,7 @@ newtype DNA a = DNA (Program DnaF a)
 -- work of the cluster application to be encapsulated in this
 -- monad. The 'MonadIO' instance is also our only way to execute
 -- arbitrary 'IO' actions.
-newtype Kern a = Kern { runKern :: IO a }
+newtype Kern a = Kern { runKern :: ReaderT (String, LoggerOpt) IO a }
                deriving (Functor,Applicative,Monad)
 
 data KernelMode
@@ -104,7 +106,16 @@ data KernelMode
     | BoundKernel   -- ^ Kernel relies on being bound to a single OS thread.
 
 instance MonadIO Kern where
-    liftIO = Kern
+    liftIO = Kern . lift
+instance MonadLog Kern where
+    logSource = Kern (fst <$> ask)
+    logLoggerOpt = Kern (snd <$> ask)
+
+mkKernRunner :: (MonadLog m, MonadIO m2) => m (Kern a -> m2 a)
+mkKernRunner = do
+  logSrc <- logSource
+  logOpt <- logLoggerOpt
+  return (liftIO . flip runReaderT (logSrc, logOpt) . runKern)
 
 -- | GADT which describe operations supported by DNA DSL
 data DnaF a where
@@ -212,7 +223,7 @@ data DnaF a where
     GatherM
       :: Serializable a
       => Group a
-      -> (b -> a -> IO b)
+      -> (b -> a -> Kern b)
       -> b
       -> DnaF b
     CrashMaybe
@@ -308,9 +319,9 @@ actor = Actor
 --   messages into an aggregate output value.
 data CollectActor a b where
     CollectActor :: (Serializable a, Serializable b)
-                 => (s -> a -> IO s)
-                 -> IO s
-                 -> (s -> IO b)
+                 => (s -> a -> Kern s)
+                 -> Kern s
+                 -> (s -> Kern b)
                  -> CollectActor a b
     deriving (Typeable)
 
@@ -322,27 +333,27 @@ data CollectActor a b where
 -- overall result value of the actor.
 collectActor
     :: (Serializable a, Serializable b, Serializable s)
-    => (s -> a -> IO s) -- ^ stepper function
-    -> IO s             -- ^ start value
-    -> (s -> IO b)      -- ^ termination function
+    => (s -> a -> Kern s) -- ^ stepper function
+    -> Kern s             -- ^ start value
+    -> (s -> Kern b)      -- ^ termination function
     -> CollectActor a b
 collectActor = CollectActor
 
 -- | Collector which could collect data in tree-like fashion
 data TreeCollector a where
     TreeCollector :: (Serializable a)
-                  => (s -> a -> IO s)
-                  -> IO s
-                  -> (s -> IO a)   
+                  => (s -> a -> Kern s)
+                  -> Kern s
+                  -> (s -> Kern a)
                   -> TreeCollector a
     deriving (Typeable)
 
 -- | Smart constructor for tree collector.
 treeCollector
     :: Serializable a
-    => (s -> a -> IO s)
-    -> IO s
-    -> (s -> IO a)
+    => (s -> a -> Kern s)
+    -> Kern s
+    -> (s -> Kern a)
     -> TreeCollector a
 treeCollector = TreeCollector
 
@@ -416,7 +427,7 @@ gather g f = gatherM g (\b a -> return $ f b a)
 gatherM
     :: Serializable a
     => Group a
-    -> (b -> a -> IO b)
+    -> (b -> a -> Kern b)
     -> b
     -> DNA b
 gatherM g f b = DNA $ singleton $ GatherM g f b

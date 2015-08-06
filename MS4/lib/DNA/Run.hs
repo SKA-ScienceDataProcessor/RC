@@ -124,8 +124,8 @@ slurmHosts :: IO [(String,Int)]
 slurmHosts = do
     nodeListStr <- getEnv "SLURM_NODELIST"
     numNodesStr <- getEnv "SLURM_TASKS_PER_NODE"
-    eventMessage $ "SLURM_NODELIST=" ++ nodeListStr
-    eventMessage $ "SLURM_TASKS_PER_NODE=" ++ numNodesStr
+    --eventMessage $ "SLURM_NODELIST=" ++ nodeListStr
+    --eventMessage $ "SLURM_TASKS_PER_NODE=" ++ numNodesStr
     let nodeList = runReadP parseNodeList nodeListStr
         numNodes = runReadP parseNumNode  =<< split ','numNodesStr
     when (length nodeList /= length numNodes) $

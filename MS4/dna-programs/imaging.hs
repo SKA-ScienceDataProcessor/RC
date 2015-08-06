@@ -178,7 +178,7 @@ workerActor = actor $ \(cfg, dataSet) -> do
 imageCollector :: TreeCollector (GridPar, FileChan Image)
 imageCollector = treeCollector collect start finish
   where start = return Nothing
-        collect mimg (gridp, imgCh) = do
+        collect mimg (gridp, imgCh) = liftIO $ do
           img' <- readImage gridp imgCh "data.img"
           img'' <- case mimg of
             Nothing -> return img'
@@ -186,7 +186,7 @@ imageCollector = treeCollector collect start finish
               deleteFileChan chan
               addImage img img'
           return $ Just (img'', imgCh)
-        finish (Just (img, ch)) = do
+        finish (Just (img, ch)) = liftIO $ do
           writeImage img ch "data.img"
           return (imgPar img, ch)
         finish Nothing = fail "No images to reduce!"
