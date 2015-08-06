@@ -5,6 +5,8 @@ module Kernel.GPU.FFT
   , dftClean
   , dftIKernel
   , dftKernel
+  , dftIKernelHints
+  , dftKernelHints
     -- * For use by other kernels
   , Mode(..)
   , fft2dComplexDSqInplace
@@ -22,6 +24,8 @@ import Foreign.C.Types
 import Data
 import Kernel.GPU.Common
 import Vector
+
+import DNA.Logging ( ProfileHint(..), cudaHint )
 
 data Mode =
     Forward
@@ -198,3 +202,13 @@ dftIKernel plans uvg = do
   let pad' = padptr' `diffDevPtr` ptr'
       n' = endptr' `diffDevPtr` ptr'
   return $ Image (uvgPar uvg) pad' (DeviceVector n' ptr')
+
+dftIKernelHints :: GridPar -> [ProfileHint]
+dftIKernelHints gpar = [ cudaHint { hintCudaDoubleOps = floor (4.6 * cpx) } ]
+  where n = fromIntegral (gridHeight gpar * gridWidth gpar)
+        cpx = n * log n
+
+dftKernelHints :: GridPar -> [ProfileHint]
+dftKernelHints gpar = [ cudaHint { hintCudaDoubleOps = floor (4.6 * cpx) } ]
+  where n = fromIntegral (gridHeight gpar * gridWidth gpar)
+        cpx = n * log n

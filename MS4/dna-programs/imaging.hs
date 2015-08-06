@@ -42,7 +42,7 @@ gridderActor gpar gcfpar gridk dftk = actor $ \(vis,gcfSet) -> do
       gridkGrid gridk vis gcfSet grid
 
     -- Transform uv-grid into an (possibly dirty) image
-    kernel "ifft" [] $ liftIO $ do
+    kernel "ifft" (dftIKernelHints dftk gpar) $ liftIO $ do
       dftIKernel dftk grid
 
 -- | Compound degridding actor.
@@ -51,11 +51,12 @@ degridderActor :: GridKernel -> DFTKernel
 degridderActor gridk dftk = actor $ \(model,vis,gcfSet) -> do
 
     -- Transform image into a uv-grid
-    grid <- kernel "fft" [] $ liftIO $ do
+    let gpar = imgPar model
+    grid <- kernel "fft" (dftKernelHints dftk gpar) $ liftIO $ do
       dftKernel dftk model
 
     -- Degrid to obtain new visibilitities for the positions in "vis"
-    kernel "degrid" (gridkDegridHints gridk (imgPar model) vis gcfSet) $ liftIO $
+    kernel "degrid" (gridkDegridHints gridk gpar vis gcfSet) $ liftIO $
       gridkDegrid gridk grid gcfSet vis
 
 imagingActor :: Config -> Actor DataSet Image

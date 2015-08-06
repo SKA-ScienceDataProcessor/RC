@@ -21,7 +21,7 @@ import Kernel.GPU.Common as CUDA
 import qualified Kernel.GPU.NvidiaDegrid as Nvidia
 import Vector
 
-import DNA ( ProfileHint(..) )
+import DNA ( ProfileHint(..), cudaHint )
 
 pregriddedSize :: Int
 pregriddedSize = shortSize * 3 + charSize * 2 + ptrSize
@@ -62,14 +62,12 @@ prepare gridp vis gcfSet = do
 -- | Performance hints for the preparation step
 prepareHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
 prepareHints _ vis gcfSet =
-  [ CUDAHint { hintCopyBytesHost = 0
-             , hintCopyBytesDevice =
+  [ cudaHint { hintCopyBytesDevice =
                  sum [ vectorByteSize (visPositions vis)
                      , vectorByteSize (visData vis)
                      , sum $ map gcfCost (gcfs gcfSet)
                      ]
-             , hintCudaFloatOps = 0
-             , hintCudaDoubleOps = 2 * vectorSize (visData vis)
+             , hintCudaDoubleOps = 15 * vectorSize (visPositions vis)
              }
   ]
  where gcfCost gcf | DeviceVector{} <- gcfData gcf
@@ -222,12 +220,12 @@ grid vis gcfSet uvgrid = do
 
 gridHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
 gridHints _ vis gcfSet =
-  [ CUDAHint { hintCopyBytesHost = 0
-             , hintCopyBytesDevice = 0
-             , hintCudaFloatOps = 0
-             , hintCudaDoubleOps = sum $ map baselineCost (visBaselines vis)
-             }
-  ]
+  [ cudaHint { hintCudaDoubleOps = 8 * pixelDepCount vis gcfSet } ]
+
+-- | Number of pixels that need to get updated / read for doing
+-- gridding / degridding.
+pixelDepCount :: Vis -> GCFSet -> Int
+pixelDepCount vis gcfSet = sum $ map baselineCost (visBaselines vis)
   where wstep = gcfpStepW $ gcfsPar gcfSet
         baselineCost bl = vblPoints bl * (gcfSize gcf * gcfSize gcf)
           where wplane = baselineMinWPlane wstep bl
@@ -237,4 +235,5 @@ degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
 degrid = Nvidia.degrid
 
 degridHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
-degridHints _ _ _ = []
+degridHints _ vis gcfSet =
+  [ cudaHint { hintCudaDoubleOps = 8 * pixelDepCount vis gcfSet } ]

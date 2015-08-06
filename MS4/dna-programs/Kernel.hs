@@ -67,6 +67,11 @@ data DFTKernel = DFTKernel
     -- an inverse discrete fourier transformation. We assume that the
     -- grid is freed by the kernel.
   , dftIKernel :: UVGrid -> IO Image
+
+  , dftKernelHints :: GridPar -> [ProfileHint]
+    -- ^ Performance hints for calling "dftKernel"
+  , dftIKernelHints :: GridPar -> [ProfileHint]
+    -- ^ Performance hints for calling "dftIKernel"
   }
 
 -- | Grid convolution generator kernel.
@@ -121,20 +126,27 @@ gridKernels = let noHints _ _ _ = [] in
 
 -- The supported discrete fourier transformation kernels
 dftKernels :: [(String, IO DFTKernel)]
-dftKernels =
-  [ ("dummy", return $ DFTKernel (\_ -> return ()) (return ()) Dummy.dft Dummy.dfti)
+dftKernels = let noHints _ = [] in
+  [ ("dummy", return $ DFTKernel (\_ -> return ()) (return ())
+                                 Dummy.dft Dummy.dfti
+                                 noHints noHints)
   , ("cufft", do
       plans <- newIORef (error "DFT kernel called without dftPrepare!")
       return $ DFTKernel (GPU_FFT.dftPrepare plans)
                          (GPU_FFT.dftClean plans)
                          (GPU_FFT.dftKernel plans)
-                         (GPU_FFT.dftIKernel plans))
+                         (GPU_FFT.dftIKernel plans)
+                         GPU_FFT.dftKernelHints
+                         GPU_FFT.dftIKernelHints
+  )
   , ("fftw3", do
       plans <- newIORef (error "DFT kernel called without dftPrepare!")
       return $ DFTKernel (CPU_FFT.dftPrepare plans)
                          (CPU_FFT.dftClean plans)
                          (CPU_FFT.dftKernel plans)
-                         (CPU_FFT.dftIKernel plans))
+                         (CPU_FFT.dftIKernel plans)
+                         noHints
+                         noHints)
   ]
 
 -- The supported discrete fourier transformation kernels
