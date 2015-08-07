@@ -120,7 +120,9 @@ gridKernels = let noHints _ _ _ = [] in
                           CPU_ScatterGrid.phaseRotate
                           CPU_ScatterGrid.grid
                           CPU_ScatterGrid.degrid
-                          noHints noHints noHints
+                          noHints
+                          CPU_ScatterGrid.trivHints
+                          CPU_ScatterGrid.trivHints
     )
   ]
 

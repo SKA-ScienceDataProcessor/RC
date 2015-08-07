@@ -4,6 +4,7 @@ module Kernel.CPU.ScatterGrid
   , phaseRotate
   , grid
   , degrid
+  , trivHints
   ) where
 
 import Data.Complex
@@ -13,6 +14,8 @@ import Foreign.Marshal.Array
 
 import Data
 import Vector
+
+import DNA ( ProfileHint, floatHint )
 
 type PUVW = Ptr UVW
 type PCD = Ptr (Complex Double)
@@ -103,3 +106,6 @@ degrid uvg gcfset vis = do
   gridWrapper deGridKernelCPUFullGCF vis gcfset uvg
   freeVector (uvgData uvg)
   return vis
+
+trivHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
+trivHints _ _ _ = [floatHint]
