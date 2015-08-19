@@ -71,7 +71,11 @@ static void CUPTIAPI bufferCompleted(CUcontext ctx, uint32_t streamId, uint8_t *
             break;
         case CUPTI_ACTIVITY_KIND_MEMCPY:
             {
+#elif CUPTI_API_VERSION >= 4
+                CUpti_ActivityMemcpy2 *activity = (CUpti_ActivityMemcpy2 *)record;
+#else
                 CUpti_ActivityMemcpy *activity = (CUpti_ActivityMemcpy *)record;
+#endif
                 int from = HOST, to = HOST;
                 switch (activity->copyKind) {
                 case CUPTI_ACTIVITY_MEMCPY_KIND_HTOD: from = HOST; to = DEVICE; break;
@@ -100,7 +104,13 @@ static void CUPTIAPI bufferCompleted(CUcontext ctx, uint32_t streamId, uint8_t *
             break;
         case CUPTI_ACTIVITY_KIND_KERNEL:
             {
+#if CUPTI_API_VERSION >= 7
                 CUpti_ActivityKernel3 *activity = (CUpti_ActivityKernel3 *)record;
+#elif CUPTI_API_VERSION >= 4
+                CUpti_ActivityKernel2 *activity = (CUpti_ActivityKernel2 *)record;
+#else
+                CUpti_ActivityKernel *activity = (CUpti_ActivityKernel *)record;
+#endif
                 kernelTime += activity->end - activity->start;
             }
             break;
