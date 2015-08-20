@@ -1,0 +1,55 @@
+name:                dna-ms4-programs
+version:             0.1
+synopsis:            DSL constructions for radio astronomy imaging with a focus on data movement and optimization
+homepage:            https://github.com/SKA-ScienceDataProcessor/RC
+license:             Apache-2.0
+license-file:        LICENSE
+author:              Peter Braam
+maintainer:          peter.braam@peterbraam.com
+-- copyright:
+category:            Concurrency
+build-type:          Simple
+cabal-version:       >=1.16
+description:
+  .
+  The @imaging-dataflow@ program implements a simple clean algorithm based on
+  <https://github.com/SKA-ScienceDataProcessor/crocodile crocodile> code. It
+  support the input format of the Oskar SKA simulator, and can run on SLURM
+  cluster setups using either CUDA GPU or OpenMP CPU kernels.
+  .
+  See "Main" for a high-level overview of the program.
+
+----------------------------------------------------------------
+-- Programs
+executable ddp-in-memory-hierachical
+  default-language:    Haskell2010
+  main-is:             ddp-in-memory-hierarchical.hs
+  build-depends:
+    base >=4.6,
+    dna-ms4,
+    binary,
+    bytestring,
+    data-binary-ieee754,
+    vector >= 0.10
+  other-modules:
+    DDP
+    DDP_Slice
+
+----------------------------------------------------------------
+executable imaging-dataflow
+  default-language:    Haskell2010
+  main-is:             imaging.hs
+  build-depends:
+    base >=4.6,
+    distributed-process,
+    dna-ms4,
+    oskar,
+    binary,
+    bytestring,
+    data-binary-ieee754,
+    vector >= 0.10,
+    directory,
+    time,
+    storable-complex,
+    aeson,
+    cuda, cufft

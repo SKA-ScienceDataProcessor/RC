@@ -71,7 +71,7 @@ static void CUPTIAPI bufferCompleted(CUcontext ctx, uint32_t streamId, uint8_t *
             break;
         case CUPTI_ACTIVITY_KIND_MEMCPY:
             {
-#elif CUPTI_API_VERSION >= 4
+#if CUPTI_API_VERSION >= 4
                 CUpti_ActivityMemcpy2 *activity = (CUpti_ActivityMemcpy2 *)record;
 #else
                 CUpti_ActivityMemcpy *activity = (CUpti_ActivityMemcpy *)record;
