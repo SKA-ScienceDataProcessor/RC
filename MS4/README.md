@@ -32,7 +32,7 @@ Check out the code and build:
 
      git clone https://github.com/SKA-ScienceDataProcessor/RC.git
      cd RC/MS4
-     sh init.sh
+     sh boot.sh
      cabal install
 
 Running
@@ -58,12 +58,15 @@ pipeline locally at this point:
     ../bin/imaging-dataflow --nprocs 1
 
 Make sure that both the configuration files as well as the required
-data files are present.
+data files are present. Note that running only one process you can
+only have one data set in `data.cfg`.
 
 For running on SLURM, make sure that one instance of
-`imaging-dataflow` is started per node (say, using `mpirun`). Make
-sure that the working directory is set up, then just run the
-executable without parameters:
+`imaging-dataflow` is started per node (say, using `mpirun`). The
+program will need at least one node per data set in `data.cfg`. Make
+sure that the working directory is set up so both configuration files
+and data can be found, then just run the executable without
+parameters:
 
     /absolute/path/to/RC/MS4/bin/imaging-dataflow
 
