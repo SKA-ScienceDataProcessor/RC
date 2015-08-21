@@ -14,12 +14,12 @@ different priorities as we learn more about the desirable
 characteristics of the pipeline implementation. They often share code,
 but will vary significantly in functionality.
 
-* *MS1:* First experiments with Erlang-inspired actor languages
+* [MS1:](https://github.com/SKA-ScienceDataProcessor/RC/tree/master/MS1) First experiments with Erlang-inspired actor languages
 
-* *MS2:* DNA library for distribution and resource allocation, first
+* [MS2:](https://github.com/SKA-ScienceDataProcessor/RC/tree/master/MS2) DNA library for distribution and resource allocation, first
   attempts at gridding
 
-* *MS3:* Systematic performance comparison of gridding implementation,
+* [MS3:](https://github.com/SKA-ScienceDataProcessor/RC/tree/master/MS3) Systematic performance comparison of gridding implementation,
   introduction of profiling
 
-* *MS4:* First complete imaging pipeline, abstraction over kernels
+* [MS4:](https://github.com/SKA-ScienceDataProcessor/RC/tree/master/MS4) First complete imaging pipeline, abstraction over kernels
