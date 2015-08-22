@@ -91,4 +91,3 @@ generator for the run, for example:
 
 Which should generate a [profiling report](http://people.ds.cam.ac.uk/pw410/out/hpc/1634160-s.html).
 
-For more information see:  http://ska-sciencedataprocessor.github.io/RC/
