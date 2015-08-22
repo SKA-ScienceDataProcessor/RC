@@ -35,5 +35,3 @@ A visualization is created with:
 
     use ghc-events to change binary event files into text files
     python logs2plot.py dir-with-events-txt-files
-
-For more information see:  http://ska-sciencedataprocessor.github.io/RC/
