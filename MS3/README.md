@@ -88,4 +88,3 @@ generator for the run, for example:
 
 Which should generate a profiling report.
 
-For more information see:  http://ska-sciencedataprocessor.github.io/RC/
