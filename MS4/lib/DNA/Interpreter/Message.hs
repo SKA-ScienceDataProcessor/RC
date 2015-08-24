@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- |
 -- Handling of message for CH interpreter
 --

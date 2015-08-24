@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 -- | Utilities for stress testing DNA code
 module DNA.Interpreter.Testing where
 

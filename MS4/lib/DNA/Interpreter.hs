@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- | Module for interpreting
 module DNA.Interpreter (
       interpretDNA

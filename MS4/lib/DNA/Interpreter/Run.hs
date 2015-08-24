@@ -7,6 +7,7 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- |
 -- Functions which execute DNA routines on remote nodes. Below is
 -- general algorithms:

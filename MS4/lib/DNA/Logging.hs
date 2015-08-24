@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP                #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- |
 -- Module    : DNA.Logging
 -- Copyright : (C) 2014-2015 Braam Research, LLC.

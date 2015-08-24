@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- | Code for starting remote actors
 module DNA.Interpreter.Spawn (
       -- * Spawning actors

@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 -- | Simple backend based on the TCP transport
 --
 -- To simplify getting started we provide special support for /master/ and
