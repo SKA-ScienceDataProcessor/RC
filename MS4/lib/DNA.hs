@@ -92,7 +92,9 @@
 -- actors. When a child actor finishes execution (either normally or abnormally),
 -- its resources are returned to parent actor's resource pool and can be reused.
 --
+--
 -- === High Availability
+--
 -- We must account for the fact that every actor could fail at any point. This could
 -- not only happen because of hardware failures, but also due to programming errors.
 -- In order to maintain the liveness of the data flow network, we must detect such
@@ -114,7 +116,10 @@
 --
 -- XXX Example - re-discovery of intermediate collector
 --
+--
+--
 -- === Profiling
+--
 -- For maintaing a robust system performance, we track
 -- the performance of all actors and channels. This should allow us
 -- to assess exactly how performance is shaped by not only scheduling
@@ -142,15 +147,8 @@
 -- whole system performance in a way that will hopefully allow for
 -- painless optimisation of the whole system.
 module DNA (
-      -- * Actors
-      Actor
-    , actor
-    , CollectActor
-    , collectActor
-    , TreeCollector
-    , treeCollector
       -- * DNA monad
-    , DNA
+      DNA
     , dnaRun
     , rank
     , groupSize
@@ -162,15 +160,44 @@ module DNA (
     , unboundKernel
     , ProfileHint(..)
     , floatHint, memHint, ioHint, haskellHint, cudaHint
+      -- * Actors
+    , Actor
+    , actor
+    , CollectActor
+    , collectActor
+    , TreeCollector
+    , treeCollector
       -- * Spawning
+      -- |
+      -- Actors could be spawned using start* functions. They spawn
+      -- new actors which are executed asynchronously and usually on
+      -- remote nodes. Nodes for newly spawned actor(s) are taken from
+      -- pool of free nodes. If there's not enough nodes it's runtime
+      -- error. eval* functions allows to execute actor synchronously. 
+      --
+      -- Here is example of spawning single actor on remote node. To
+      -- be able to create 'Closure' to execute actor on remote node
+      -- we need to make it \"remotable\". For details of 'remotable'
+      -- semantics refer to distributed-process documentation,. (This
+      -- could change in future version of @distributed-process@ when
+      -- it start use StaticPointers language extension)
+      --
+      -- > someActor :: Actor Int Int
+      -- > someActor = actor $ \i -> ...
+      -- >
+      -- > remotable [ 'someActor ]
+      --
+      -- Finally we start actor and allocate 3 nodes to it:
+      --
+      -- > do a <- startActor (N 3) (return $(mkStaticClosure 'someActor))
     , eval
     , evalClosure
-    -- , startCollectorGroupMR
-    -- , startMappers
     , Spawn
     , startActor
-    , startCollector
     , startGroup
+    , startCollector
+    , startCollectorTree
+    , startCollectorTreeGroup
     -- ** Shell
     , Shell
     , Val
@@ -183,9 +210,6 @@ module DNA (
     , availableNodes
     , waitForResources
     -- , startGroupN
-    , startCollectorGroup
-    , startCollectorTree
-    , startCollectorTreeGroup
     , useLocal
     , respawnOnFail
     , debugFlags

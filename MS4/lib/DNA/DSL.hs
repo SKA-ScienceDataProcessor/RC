@@ -97,8 +97,14 @@ newtype DNA a = DNA (Program DnaF a)
 
 -- | Monad for actual calculation code. We expect all significant
 -- work of the cluster application to be encapsulated in this
--- monad. The 'MonadIO' instance is also our only way to execute
--- arbitrary 'IO' actions.
+-- monad. Only way to perform arbitrary 'IO' action is @Kern@ monad
+-- using 'MonadIO' interface:
+--
+-- > kern = do
+-- >   liftIO someIoComputation
+--
+-- It's possible to lift pure computations in the @Kern@ monad too but
+-- all usual caveats about lazy evaluations apply.
 newtype Kern a = Kern { runKern :: ReaderT (String, LoggerOpt) IO a }
                deriving (Functor,Applicative,Monad)
 
@@ -298,7 +304,8 @@ data Group a = Group (ReceivePort a) (ReceivePort Int)
 ----------------------------------------------------------------
 
 -- | This is the simplest kind of actor. It receives exactly one
--- message of type @a@ and produce a result of type @b@.
+-- message of type @a@ and produce a result of type @b@. It could only
+-- be constructed using 'actor' function.
 data Actor a b where
     Actor :: (Serializable a, Serializable b) => (a -> DNA b) -> Actor a b
     deriving (Typeable)
@@ -375,8 +382,12 @@ rank = DNA $ singleton DnaRank
 groupSize :: DNA Int
 groupSize = DNA $ singleton DnaGroupSize
 
--- | Executes a kernel computation. A bound thread will be
--- allocated in order to perform the computation.
+-- | Executes a kernel computation. Computation will be performed in
+-- bound thread. (Bound threads are mapped to same OS thread).
+--
+-- > kernel "grid"
+-- >   [ floatHint { hintDoubleOps = 100*1000*1000 } ]
+-- >   someKernel
 kernel :: String        -- ^ Kernel name
        -> [ProfileHint] -- ^ Kernel performance characteristics
        -> Kern a        -- ^ Kernel code
@@ -384,16 +395,22 @@ kernel :: String        -- ^ Kernel name
 kernel msg hints = DNA . singleton . Kernel msg BoundKernel hints
 
 -- | A variant of 'kernel' that executes the kernel in an /unbound/
--- thread. This is generally faster, but less safe. Especially
--- profiling can be unreliable in this mode.
-unboundKernel :: String -> [ProfileHint] -> Kern a -> DNA a
+-- thread. Haskell runtime could migrate unbound haskell threads
+-- between OS threads. This is generally faster, but less
+-- safe. Especially profiling can be unreliable in this mode.
+unboundKernel
+    :: String        -- ^ Kernel name
+    -> [ProfileHint] -- ^ Kernel performance characteristics
+    -> Kern a        -- ^ Kernel code
+    -> DNA a
 unboundKernel msg hints = DNA . singleton . Kernel msg DefaultKernel hints
 
--- | Basic profiling for 'DNA' actions.
+-- | Basic profiling for 'DNA' actions. Start and stop time of
+-- computation will be written to the eventlog.
 duration :: String -> DNA a -> DNA a
 duration msg = DNA . singleton . Duration msg
 
--- | Outputs a message to the eventlog as well as 'stdout'. Useful for
+-- | Outputs a message to the eventlog as well as @stdout@. Useful for
 -- documenting progress.
 logMessage :: String -> DNA ()
 logMessage = DNA . singleton . LogMessage
@@ -468,16 +485,17 @@ availableNodes = DNA $ singleton AvailNodes
 -- | The simplest form of actor execution: The actor is executed in
 -- the same Cloud Haskell process, with no new processes spawned.
 eval :: (Serializable a, Serializable b)
-     => Actor a b
-     -> a
+     => Actor a b               -- ^ Actor to execute
+     -> a                       -- ^ Value which is passed to an actor as parameter
      -> DNA b
 eval (Actor act) = act
 
 -- | Like 'eval', but uses a 'Closure' of the actor code.
-evalClosure :: (Typeable a, Typeable b)
-            => Closure (Actor a b)
-            -> a
-            -> DNA b
+evalClosure
+    :: (Typeable a, Typeable b)
+    => Closure (Actor a b)      -- ^ Actor to execute
+    -> a                        -- ^ Value which is passed to an actor as parameter
+    -> DNA b
 evalClosure clos a = DNA $ singleton $ EvalClosure a clos
 
 -- | Starts a single actor as a new process, and returns the handle to
@@ -485,25 +503,37 @@ evalClosure clos a = DNA $ singleton $ EvalClosure a clos
 startActor
     :: (Serializable a, Serializable b)
     => Res
+       -- ^ How many nodes do we want to allocate for actor
     -> Spawn (Closure (Actor a b))
+       -- ^ Actor to spawn
     -> DNA (Shell (Val a) (Val b))
+       -- ^ Handle to spawned actor
 startActor r a =
     DNA $ singleton $ SpawnActor r a
 
 -- | As 'startActor', but starts a single collector actor.
-startCollector :: (Serializable a, Serializable b)
-               => Res
-               -> Spawn (Closure (CollectActor a b))
-               -> DNA (Shell (Grp a) (Val b))
+startCollector
+    :: (Serializable a, Serializable b)
+    => Res
+       -- ^ How many nodes do we want to allocate for actor
+    -> Spawn (Closure (CollectActor a b))
+       -- ^ Actor to spawn
+    -> DNA (Shell (Grp a) (Val b))
+       -- ^ Handle to spawned actor
 startCollector res child =
     DNA $ singleton $ SpawnCollector res child
 
 -- | Start a group of actor processes
-startGroup :: (Serializable a, Serializable b)
-           => Res
-           -> ResGroup
-           -> Spawn (Closure (Actor a b))
-           -> DNA (Shell (Scatter a) (Grp b))
+startGroup
+    :: (Serializable a, Serializable b)
+    => Res
+       -- ^ How many nodes do we want to allocate for actor
+    -> ResGroup
+       -- ^ How to divide nodes between actors in group
+    -> Spawn (Closure (Actor a b))
+       -- ^ Actor to spawn
+    -> DNA (Shell (Scatter a) (Grp b))
+       -- ^ Handle to spawned actor
 startGroup res resG child =
     DNA $ singleton $ SpawnGroup res resG child
 
@@ -525,26 +555,37 @@ startGroup res resG child =
 startCollectorGroup
     :: (Serializable a, Serializable b)
     => Res
+       -- ^ How many nodes do we want to allocate for actor
     -> ResGroup
+       -- ^ How to divide nodes between actors in group
     -> Spawn (Closure (CollectActor a b))
+       -- ^ Actor to spawn
     -> DNA (Shell (Grp a) (Grp b))
+       -- ^ Handle to spawned actor
 startCollectorGroup res resG child =
     DNA $ singleton $ SpawnCollectorGroup res resG child
 
--- | Start a group of collector actor processes
+-- | Start a group of collector actor processes. It always require one
+-- node.
 startCollectorTree
     :: (Serializable a)
     => Spawn (Closure (TreeCollector a))
+       -- ^ Actor to spawn
     -> DNA (Shell (Grp a) (Val a))
+       -- ^ Handle to spawned actor
 startCollectorTree child =
     DNA $ singleton $ SpawnCollectorTree child
 
--- | Start a group of collector actor processes
+-- | Start a group of collector actor processes. It always require one
+-- node per collector.
 startCollectorTreeGroup
     :: (Serializable a)
     => Res
+       -- ^ How many nodes do we want to allocate for group of actors
     -> Spawn (Closure (TreeCollector a))
+       -- ^ Actor to spawn
     -> DNA (Shell (Grp a) (Grp a))
+       -- ^ Handle to spawned actor
 startCollectorTreeGroup res child =
     DNA $ singleton $ SpawnCollectorTreeGroup res child
 
