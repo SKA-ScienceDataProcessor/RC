@@ -16,7 +16,7 @@ Getting Haskell
 
 Quickest way to get going is to install the Haskell Plattform
 (http://haskell.org/platform/). But you can also obtain a binary
-Haskell package from http://www.haskell.org/ghc/dist/7.8.3/
+Haskell package from http://www.haskell.org/ghc/dist/7.8.4/
 
      configure --prefix $HOME/opt
      make install
