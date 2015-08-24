@@ -143,7 +143,7 @@ executable imaging-dataflow
                   kernel/gpu/fft/cufftshift.cu
                   kernel/gpu/scatter_grid/scatter_grid.cu
                   kernel/gpu/hogbom/hogbom.cu
-                  kernel/gpu/nvidia_degrid/nvidia_degrid.cu
+--                  kernel/gpu/nvidia_degrid/nvidia_degrid.cu
   x-cuda-options:
     -gencode arch=compute_35,code=sm_35
   c-sources:

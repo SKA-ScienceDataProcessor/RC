@@ -236,7 +236,13 @@ data DnaF a where
       -> String
       -> DnaF (FileChan b)
 
--- | Monad for spawning new actor processes
+-- |
+-- Monad for accumulating optional parameters for spawning
+-- processes. It exists only to (ab)use do-notation and meant to be
+-- used as follows:
+--
+-- > do useLocal
+-- >    return $(mkStaticClosure 'actorName)
 newtype Spawn a = Spawn (Writer [SpawnFlag] a)
                   deriving (Functor,Applicative,Monad)
 
@@ -263,22 +269,32 @@ instance Binary DebugFlag
 runSpawn :: Spawn a -> (a,[SpawnFlag])
 runSpawn (Spawn m) = runWriter m
 
--- | Spawn the process on the local node
+-- | With this parameter new actor will be spawned on same node as
+-- parent actor. In case of group of actors one of newly spawned
+-- actors will run on local node. Otherwise it will be spawned on
+-- other node.
 useLocal :: Spawn ()
 useLocal = Spawn $ tell [UseLocal]
 
--- | Spawn the process using the "failout" model.
+-- | Spawn the process using the "failout" fault-tolerance model. Only
+-- valid for group of processes (it's ignored for spawning single
+-- process actors). If some actor in group fails group will still
+-- continue.
 failout :: Spawn ()
 failout = Spawn $ tell [UseFailout]
 
-timeout :: Double -> Spawn ()
+-- | Add timeout for actor. If actor doesn't complete execution in
+-- allocated time it will be terminated forcedly. Such termination is
+-- treated as crash for purposes of fault tolerance.
+timeout :: Double               -- ^ Timeout in seconds
+        -> Spawn ()
 timeout t = Spawn $ tell [UseTimeout t]
 
--- | Marks the processes to respawn after fail
+-- | Try to respawn actor in case of crash.
 respawnOnFail :: Spawn ()
 respawnOnFail = Spawn $ tell [UseRespawn]
 
--- | Modify actor spawn for debugging
+-- | Set debugging flags.
 debugFlags :: [DebugFlag] -> Spawn ()
 debugFlags fs = Spawn $ tell [UseDebug fs]
 
@@ -380,7 +396,10 @@ unboundKernel msg hints = DNA . singleton . Kernel msg DefaultKernel hints
 
 -- | Basic profiling for 'DNA' actions. Start and stop time of
 -- computation will be written to the eventlog.
-duration :: String -> DNA a -> DNA a
+duration
+    :: String                   -- ^ String for profiling
+    -> DNA a                    -- ^ Computation to profile
+    -> DNA a
 duration msg = DNA . singleton . Duration msg
 
 -- | Outputs a message to the eventlog as well as @stdout@. Useful for
@@ -556,6 +575,6 @@ createFileChan :: Location -> String -> DNA (FileChan a)
 createFileChan loc name = DNA $ singleton $ CreateFileChan loc name
 
 -- | Barrier that ensures that all resources associated with the given
--- shell have been returned and can be re-allocated.
+-- actor have been returned to pool and can be re-allocated.
 waitForResources :: Shell a b -> DNA ()
 waitForResources (Shell aid) = DNA $ singleton $ WaitForResources aid

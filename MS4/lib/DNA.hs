@@ -188,30 +188,37 @@ module DNA (
       -- Finally we start actor and allocate 3 nodes to it:
       --
       -- > do a <- startActor (N 3) (return $(mkStaticClosure 'someActor))
+
+      -- ** Eval
     , eval
     , evalClosure
+      -- ** Spawn parameters
     , Spawn
-    , startActor
-    , startGroup
-    , startCollector
-    , startCollectorTree
-    , startCollectorTreeGroup
-    -- ** Shell
-    , Shell
-    , Val
-    , Grp
-    , Scatter
-    -- ** Resources
+    , useLocal
+    , respawnOnFail
+    , debugFlags
+    , DebugFlag(..)
+      -- ** Resources
     , Res(..)
     , ResGroup(..)
     , Location(..)
     , availableNodes
     , waitForResources
-    -- , startGroupN
-    , useLocal
-    , respawnOnFail
-    , debugFlags
-    , DebugFlag(..)
+      -- ** Function to spawn new actors
+    , startActor
+    , startGroup
+    , startCollector
+    , startCollectorTree
+    , startCollectorTreeGroup
+      -- ** Shell
+    , Shell
+    , Val
+    , Grp
+    , Scatter
+      -- ** Resources
+
+      -- , startGroupN
+      
       -- * Connecting
 
       -- | Each actor must be connected to exactly one destination and

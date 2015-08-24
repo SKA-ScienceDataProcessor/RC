@@ -390,6 +390,12 @@ logDuration msg dna = do
 -- hint must only be a best-effort estimate. As a rule of thumb, it is
 -- better to use a more conservative estimate, as this will generally
 -- result in lower performance estimates.
+--
+-- Hints could be constructed either using constructors or by smart
+-- constructors: 'floatHint', 'memHint', 'ioHint', 'haskellHint' and
+-- 'cudaHint'
+--
+-- > floatHint { hintDoubleOps = 100*1000*1000 }
 data ProfileHint
     = FloatHint { hintFloatOps :: !Int
                 , hintDoubleOps :: !Int
@@ -424,18 +430,28 @@ data ProfileHint
       -- respectively. Note that this requires instrumentation, which
       -- will reduce overall performance!
 
+-- |
+-- > floatHint = FloatHint 0 0
 floatHint :: ProfileHint
 floatHint = FloatHint 0 0
 
+-- |
+-- > memHint = MemHint 0
 memHint :: ProfileHint
 memHint = MemHint 0
 
+-- |
+-- > ioHint = IOHint 0 0
 ioHint :: ProfileHint
 ioHint = IOHint 0 0
 
+-- |
+-- > haskellHint = HaskellHint 0
 haskellHint :: ProfileHint
 haskellHint = HaskellHint 0
 
+-- |
+-- > cudaHint = CUDAHint 0 0 0 0
 cudaHint :: ProfileHint
 cudaHint = CUDAHint 0 0 0 0
 
