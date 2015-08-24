@@ -21,8 +21,8 @@ import DNA.Channel.File
 
 data OskarData
 
--- | Main run configuration. This contains all parameters we need for
--- runnin the imaging pipeline.
+-- | Main configuration. This contains all parameters we need for
+-- running the imaging pipeline.
 data Config = Config
   { cfgGridPar :: GridPar    -- ^ Grid parameters to use. Must be compatible with used kernels!
   , cfgGCFPar :: GCFPar      -- ^ GCF parameters to use.
