@@ -165,8 +165,6 @@ module DNA (
     , actor
     , CollectActor
     , collectActor
-    , TreeCollector
-    , treeCollector
       -- * Spawning
       -- |
       -- Actors could be spawned using start* functions. They spawn

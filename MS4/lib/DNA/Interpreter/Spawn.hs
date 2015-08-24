@@ -118,7 +118,7 @@ execSpawnGroupN res resG _n act = do
 
 execSpawnCollectorTree
     :: (Serializable a)
-    => Spawn (Closure (TreeCollector a))
+    => Spawn (Closure (CollectActor a a))
     -> DnaMonad (Shell (Grp a) (Val a))
 execSpawnCollectorTree actorCmd = do
     let (act,flags) = runSpawn
@@ -132,7 +132,7 @@ execSpawnCollectorTree actorCmd = do
 execSpawnCollectorTreeGroup
     :: (Serializable a)
     => Res
-    -> Spawn (Closure (TreeCollector a))
+    -> Spawn (Closure (CollectActor a a))
     -> DnaMonad (Shell (Grp a) (Grp a))
 execSpawnCollectorTreeGroup res act = do
     -- Spawn actors

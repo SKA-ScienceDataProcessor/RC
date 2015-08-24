@@ -26,8 +26,6 @@ module DNA.DSL (
     , actor
     , CollectActor(..)
     , collectActor
-    , TreeCollector(..)
-    , treeCollector
       -- * Smart constructors
       -- ** Logging
     , logMessage
@@ -172,12 +170,12 @@ data DnaF a where
     --   -> DnaF (Shell (Val a) (Grp b))
     SpawnCollectorTree
       :: (Serializable a)
-      => Spawn (Closure (TreeCollector a))
+      => Spawn (Closure (CollectActor a a))
       -> DnaF (Shell (Grp a) (Val a))
     SpawnCollectorTreeGroup
       :: (Serializable a)
       => Res
-      -> Spawn (Closure (TreeCollector a))
+      -> Spawn (Closure (CollectActor a a))
       -> DnaF (Shell (Grp a) (Grp a))
 
     -- Connect running actors
@@ -339,24 +337,6 @@ collectActor
     -> (s -> Kern b)      -- ^ termination function
     -> CollectActor a b
 collectActor = CollectActor
-
--- | Collector which could collect data in tree-like fashion
-data TreeCollector a where
-    TreeCollector :: (Serializable a)
-                  => (s -> a -> Kern s)
-                  -> Kern s
-                  -> (s -> Kern a)
-                  -> TreeCollector a
-    deriving (Typeable)
-
--- | Smart constructor for tree collector.
-treeCollector
-    :: Serializable a
-    => (s -> a -> Kern s)
-    -> Kern s
-    -> (s -> Kern a)
-    -> TreeCollector a
-treeCollector = TreeCollector
 
 
 
@@ -548,7 +528,7 @@ startGroup res resG child =
 -- node.
 startCollectorTree
     :: (Serializable a)
-    => Spawn (Closure (TreeCollector a))
+    => Spawn (Closure (CollectActor a a))
        -- ^ Actor to spawn
     -> DNA (Shell (Grp a) (Val a))
        -- ^ Handle to spawned actor
@@ -561,7 +541,7 @@ startCollectorTreeGroup
     :: (Serializable a)
     => Res
        -- ^ How many nodes do we want to allocate for group of actors
-    -> Spawn (Closure (TreeCollector a))
+    -> Spawn (Closure (CollectActor a a))
        -- ^ Actor to spawn
     -> DNA (Shell (Grp a) (Grp a))
        -- ^ Handle to spawned actor

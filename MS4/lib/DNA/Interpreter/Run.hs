@@ -134,8 +134,8 @@ runCollectActor (CollectActor step start fini) = do
     sendResult p b
 
 -- | Start execution of collector actor
-runTreeActor :: TreeCollector a -> Process ()
-runTreeActor (TreeCollector step start fini) = do
+runTreeActor :: CollectActor a a -> Process ()
+runTreeActor (CollectActor step start fini) = do
     -- Obtain parameters
     p <- expect
     -- Create channels for communication
