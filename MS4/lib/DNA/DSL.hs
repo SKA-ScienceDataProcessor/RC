@@ -49,7 +49,6 @@ module DNA.DSL (
     , startCollector
     , startGroup
     -- , startGroupN
-    , startCollectorGroup
     , startCollectorTree
     , startCollectorTreeGroup
       -- ** Dataflow building
@@ -171,12 +170,6 @@ data DnaF a where
     --   -> Int
     --   -> Spawn (Closure (Actor a b))
     --   -> DnaF (Shell (Val a) (Grp b))
-    SpawnCollectorGroup
-      :: (Serializable a, Serializable b)
-      => Res
-      -> ResGroup
-      -> Spawn (Closure (CollectActor a b))
-      -> DnaF (Shell (Grp a) (Grp b))
     SpawnCollectorTree
       :: (Serializable a)
       => Spawn (Closure (TreeCollector a))
@@ -550,20 +543,6 @@ startGroup res resG child =
 --     -> DNA (Shell (Val a) (Grp b))
 -- startGroupN res resG nTasks child =
 --     DNA $ singleton $ SpawnGroupN res resG nTasks child
-
--- | Start a group of collector actor processes
-startCollectorGroup
-    :: (Serializable a, Serializable b)
-    => Res
-       -- ^ How many nodes do we want to allocate for actor
-    -> ResGroup
-       -- ^ How to divide nodes between actors in group
-    -> Spawn (Closure (CollectActor a b))
-       -- ^ Actor to spawn
-    -> DNA (Shell (Grp a) (Grp b))
-       -- ^ Handle to spawned actor
-startCollectorGroup res resG child =
-    DNA $ singleton $ SpawnCollectorGroup res resG child
 
 -- | Start a group of collector actor processes. It always require one
 -- node.
