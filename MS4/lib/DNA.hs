@@ -195,6 +195,7 @@ module DNA (
       -- ** Spawn parameters
     , Spawn
     , useLocal
+    , failout
     , respawnOnFail
     , debugFlags
     , DebugFlag(..)
