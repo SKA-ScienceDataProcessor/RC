@@ -446,7 +446,8 @@ groupSize :: DNA Int
 groupSize = DNA $ singleton DnaGroupSize
 
 -- | Executes a kernel computation. Computation will be performed in
--- bound thread. (Bound threads are mapped to same OS thread).
+-- bound thread. (Bound threads are mapped to same OS
+-- thread). Function will block until computation is done.
 --
 -- > kernel "grid"
 -- >   [ floatHint { hintDoubleOps = 100*1000*1000 } ]

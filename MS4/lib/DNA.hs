@@ -210,6 +210,10 @@ module DNA (
     , debugFlags
     , DebugFlag(..)
       -- ** Resources
+      -- |
+      -- These data types are used for describing how much resources
+      -- should be allocated to nodes and are passed as parameters to
+      -- start* functions.
     , Res(..)
     , ResGroup(..)
     , Location(..)
