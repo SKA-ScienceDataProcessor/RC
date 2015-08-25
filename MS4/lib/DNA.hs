@@ -32,7 +32,7 @@
 -- > ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
 -- >    -- Calculate offsets
 -- >    slices <- scatterSlice <$> groupSize
--- >    slice  <- (slices !!) <$> rank
+-- >    slice  <- (slices !!)  <$> rank
 -- >    -- First we need to generate files on tmpfs
 -- >    fname <- duration "generate" $ eval ddpGenerateVector n
 -- >    -- Start local processes
@@ -49,16 +49,19 @@
 -- >    -- Clean up, compute sum
 -- >    kernel "compute sum" [FloatHint 0 (2 * fromIntegral n)] $
 -- >      return (S.sum $ S.zipWith (*) va vb :: Double)
+-- >
 -- > -- Calculate dot product of full vector
 -- > ddpDotProduct :: Actor Int64 Double
 -- > ddpDotProduct = actor $ \size -> do
 -- >     -- Chunk & send out
--- >     res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
--- >     shell <- startGroup (Frac 1) (NNodes 1) $ useLocal >> return $(mkStaticClosure 'ddpProductSlice)
--- >     sendParam (Slice 0 size) (broadcast shell)
+-- >     shell <- startGroup (Frac 1) (NNodes 1) $ do
+-- >         useLocal
+-- >         return $(mkStaticClosure 'ddpProductSlice)
+-- >     broadcast (Slice 0 size) shell
 -- >     -- Collect results
 -- >     partials <- delayGroup shell
 -- >     duration "collecting vectors" $ gather partials (+) 0
+-- >
 -- > main :: IO ()
 -- > main = dnaRun (...) $
 -- >   liftIO . print =<<  eval ddpDotProduct (400*1000*1000)
@@ -73,24 +76,28 @@
 -- ddpComputeVector  ddpReadVector
 -- @
 --
--- Here 'ddpDotProduct' is a single actor, which takes exactly one parameter
--- 'size' and produces exactly the sum as its output. On the other hand,
--- 'ddpProductSlice' is an actor group, which sums up a portion of the full
--- dot-product. Finally, 'ddpComputeVector' and 'ddpReadVector' are two
--- child actor groups (TODO: correct?), which for our example are supposed
--- to generate or read the requested vector slice from the hard desk,
--- respectively.
+-- Here 'ddpDotProduct' is a single actor, which takes exactly one
+-- parameter 'size' and produces exactly the sum as its output. On the
+-- other hand, 'ddpProductSlice' is an actor group, which sums up a
+-- portion of the full dot-product. Each actor in group spawns two
+-- child actors: 'ddpComputeVector' and 'ddpReadVector' are two child
+-- actors, which for our example are supposed to generate or read the
+-- requested vector slice from the hard desk, respectively.
+--
 --
 -- === Scheduling data flow programs for execution.
+--
 -- Scheduling, spawning and generation of the runtime data flow graph are handled
 -- separately. The starting point for scheduling is the cluster architecture
 -- descriptor, which describes the resources available to the program.
 --
--- For DNA, we are using the following simple algorithm: First a control actor
--- starts the program.  This actor will be assigned exclusively all resources
--- available to the program, which it can then in turn allocate to it spawn child
--- actors. When a child actor finishes execution (either normally or abnormally),
--- its resources are returned to parent actor's resource pool and can be reused.
+-- For DNA, we are using the following simple algorithm: First a
+-- control actor starts the program. It's actor which passed to
+-- 'runDna' as parameter. This actor will be assigned exclusively all
+-- resources available to the program, which it can then in turn
+-- allocate to it spawn child actors. When a child actor finishes
+-- execution (either normally or abnormally), its resources are
+-- returned to parent actor's resource pool and can be reused.
 --
 --
 -- === High Availability
@@ -103,19 +110,38 @@
 -- on the failed actor. This approach is obviously problematic for achieving
 -- fault tolerance since we always have a single point of failure.
 --
--- To improve stability, we need to make use of special cases. For example, let us
--- assume that a single actor instance in large group fails. Then in some case it
--- makes sense to simply ignore the failure and discard the partial result. This
--- is the "failout" model. To use these semantics in the DNA program, all we
--- need to do is to specify 'failout' when spawning the actor with 'startGroup'.
+-- To improve stability, we need to make use of special cases. For
+-- example, let us assume that a single actor instance in large group
+-- fails. Then in some case it makes sense to simply ignore the
+-- failure and discard the partial result. This is the \"failout\"
+-- model. To use these semantics in the DNA program, all we need to do
+-- is to specify 'failout' when spawning the actor with
+-- 'startGroup'. To make use of failout example above should be changed to:
 --
--- Another important recovery technique is restarting failed processes. This
--- obviously loses the current state of the restarted process, so any accumulated
--- data is lost. In the current design, we only support this approach
--- for 'CollectActor's.
+-- >     ...
+-- >     shell <- startGroup (Frac 1) (NNodes 1) $ do
+-- >         useLocal
+-- >         failout
+-- >         return $(mkStaticClosure 'ddpProductSlice)
+-- >     ...
 --
--- XXX Example - re-discovery of intermediate collector
+-- Another important recovery technique is restarting failed
+-- processes. This obviously loses the current state of the restarted
+-- process, so any accumulated data is lost. In the current design, we
+-- only support this approach for 'CollectActor's. Similarly only
+-- change to program is addition of 'respawnOnFail' to parameters of
+-- actors.
 --
+--
+--
+-- === Logging
+--
+-- DNA programs write logs to directory
+-- @~\/_dna\/logs\/PID-u\/{N}\/program-name.eventlog@ if it was
+-- started using UNIX startup or
+-- @~\/_dna\/logs\/SLURM_JOB_ID-s\/{N}\/program-name.eventlog@ if it
+-- was started by SLURM (see 'runDna' for detail of starting DNA
+-- program). They're stored in GHC's eventlog format.
 --
 --
 -- === Profiling
