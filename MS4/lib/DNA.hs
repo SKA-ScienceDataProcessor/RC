@@ -172,22 +172,6 @@ module DNA (
       -- remote nodes. Nodes for newly spawned actor(s) are taken from
       -- pool of free nodes. If there's not enough nodes it's runtime
       -- error. eval* functions allows to execute actor synchronously. 
-      --
-      -- Here is example of spawning single actor on remote node. To
-      -- be able to create 'Closure' to execute actor on remote node
-      -- we need to make it \"remotable\". For details of 'remotable'
-      -- semantics refer to distributed-process documentation,. (This
-      -- could change in future version of @distributed-process@ when
-      -- it start use StaticPointers language extension)
-      --
-      -- > someActor :: Actor Int Int
-      -- > someActor = actor $ \i -> ...
-      -- >
-      -- > remotable [ 'someActor ]
-      --
-      -- Finally we start actor and allocate 3 nodes to it:
-      --
-      -- > do a <- startActor (N 3) (return $(mkStaticClosure 'someActor))
 
       -- ** Eval
     , eval
@@ -206,8 +190,33 @@ module DNA (
     , availableNodes
     , waitForResources
       -- ** Function to spawn new actors
+      -- |
+      -- All functions for starting new actors following same
+      -- pattern. They take parameter which describe how many nodes
+      -- should be allocated to actor(s) and 'Closure' to actor to be
+      -- spawned. They all return handle to running actor (see
+      -- documentation of 'Shell' for details).
+      --
+      -- Here is example of spawning single actor on remote node. To
+      -- be able to create 'Closure' to execute actor on remote node
+      -- we need to make it \"remotable\". For details of 'remotable'
+      -- semantics refer to distributed-process documentation,. (This
+      -- could change in future version of @distributed-process@ when
+      -- it start use StaticPointers language extension)
+      --
+      -- > someActor :: Actor Int Int
+      -- > someActor = actor $ \i -> ...
+      -- >
+      -- > remotable [ 'someActor ]
+      --
+      -- Finally we start actor and allocate 3 nodes to it:
+      --
+      -- > do a <- startActor (N 3) (return $(mkStaticClosure 'someActor))
+      -- >    ...
+     
     , startActor
     , startGroup
+      -- , startGroupN
     , startCollector
     , startCollectorTree
     , startCollectorTreeGroup
@@ -216,11 +225,8 @@ module DNA (
     , Val
     , Grp
     , Scatter
-      -- ** Resources
-
-      -- , startGroupN
       
-      -- * Connecting
+      -- * Connecting actors
 
       -- | Each actor must be connected to exactly one destination and
       -- consequently could only receive input from a single
@@ -234,11 +240,11 @@ module DNA (
     , createFileChan
       -- * Promises
     , Promise
-    , Group
-    , await
-    , gather
     , delay
+    , await
+    , Group
     , delayGroup
+    , gather
       -- * Reexports
     , MonadIO(..)
     , remotable

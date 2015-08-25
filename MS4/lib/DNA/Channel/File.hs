@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable, DeriveGeneric, BangPatterns,
              ScopedTypeVariables #-}
-
+{-# OPTIONS_HADDOCK hide #-}
 module DNA.Channel.File (
           FileChan
         , createFileChanImp
