@@ -288,7 +288,8 @@ mainActor = actor $ \(cfg, dataSets) -> do
       logMessage $ show (fromRational w :: Float) ++ " - " ++ show (dsName ds)
 
     -- Schedule work
-    let schedule = balancer (avail+1) (map (fromRational . snd) weightedDataSets)
+    let fullTime (ds, weight) = fromRational weight * fromIntegral (dsRepeats ds)
+        schedule = balancer (avail+1) (map fullTime weightedDataSets)
         splitData low high dataSet =
             let atRatio r = floor $ r * fromIntegral (dsRepeats dataSet)
             in dataSet { dsRepeats = atRatio high - atRatio low }
