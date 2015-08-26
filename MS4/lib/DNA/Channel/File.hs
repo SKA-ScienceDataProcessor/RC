@@ -37,7 +37,10 @@ import GHC.Generics (Generic)
 
 import DNA.Types ( Location(..) )
 
-
+-- | File channel for communication between actors. It uses file
+-- system to store data and it's assumed that different actors have
+-- access to same file. It could be either placed on network FS or all
+-- actors are running on same computer.
 data FileChan a = FileChan
   { fhPath     :: FilePath
   , fhLocation :: Location

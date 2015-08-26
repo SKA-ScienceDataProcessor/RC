@@ -627,7 +627,11 @@ crashMaybe :: Double -> DNA ()
 crashMaybe = DNA . singleton . CrashMaybe
 
 -- | Allocates a new file channel for sharing data between actors.
-createFileChan :: Location -> String -> DNA (FileChan a)
+createFileChan
+    :: Location   -- ^ If 'Local' will try to create channel in
+                  --   @/ramdisks@ or @/tmp@ if possible.
+    -> String     -- ^ Channel name
+    -> DNA (FileChan a)
 createFileChan loc name = DNA $ singleton $ CreateFileChan loc name
 
 -- | Barrier that ensures that all resources associated with the given
