@@ -151,16 +151,6 @@
 --
 --
 --
--- === Logging
---
--- DNA programs write logs to directory
--- @~\/_dna\/logs\/PID-u\/{N}\/program-name.eventlog@ if it was
--- started using UNIX startup or
--- @~\/_dna\/logs\/SLURM_JOB_ID-s\/{N}\/program-name.eventlog@ if it
--- was started by SLURM (see 'runDna' for detail of starting DNA
--- program). They're stored in GHC's eventlog format.
---
---
 -- === Profiling
 --
 -- For maintaing a robust system performance, we track
@@ -193,8 +183,26 @@ module DNA (
       -- * DNA monad
       DNA
     , dnaRun
+      -- ** Groups of actors
+      -- |
+      -- Actor could run in groups. These groups are treated as single
+      -- logical actor. Each actor in group is assigned rank from /0/
+      -- to /N-1/ where /N/ is group size. For uniformity single
+      -- actors are treated as members of group of size 1. Both group
+      -- size and rank could be accessed using 'rank' and 'groupSize'
     , rank
     , groupSize
+      -- ** Logging and profiling
+      -- |
+      -- DNA programs write logs in GHC's eventlog format for
+      -- recording execution progress and performance monitoring. Logs
+      -- are written in following locations:
+      -- @~\/_dna\/logs\/PID-u\/{N}\/program-name.eventlog@ if program
+      -- was started using UNIX startup or
+      -- @~\/_dna\/logs\/SLURM_JOB_ID-s\/{N}\/program-name.eventlog@
+      -- if it was started by SLURM (see 'runDna' for detail of
+      -- starting DNA program). They're stored in GHC's eventlog
+      -- format.
     , logMessage
     , duration
       -- * Kernels
@@ -260,7 +268,18 @@ module DNA (
       --
       -- > do a <- startActor (N 3) (return $(mkStaticClosure 'someActor))
       -- >    ...
-     
+      --
+      -- In next example we start group of actors, use half of
+      -- available nodes and local node in addition to that. These
+      -- nodes will be evenly divided between 4 actors:
+      --
+      -- > do a <- startGroup (Frac 0.5) (NWorkers 4) $ do
+      -- >           useLocal
+      -- >           return $(mkStaticClosure 'someActor)
+      -- >    ...
+      --
+      -- All other start* functions share same pattern and could be
+      -- used in similar manner.
     , startActor
     , startGroup
       -- , startGroupN

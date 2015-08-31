@@ -389,13 +389,17 @@ logDuration msg dna = do
 -- these numbers to the program's real performance.  Note that the
 -- hint must only be a best-effort estimate. As a rule of thumb, it is
 -- better to use a more conservative estimate, as this will generally
--- result in lower performance estimates.
+-- result in lower performance estimates. These hints are passed to
+-- 'DNA.kernel' or 'DNA.unboundKernel'.
 --
 -- Hints could be constructed either using constructors or by smart
 -- constructors: 'floatHint', 'memHint', 'ioHint', 'haskellHint' and
--- 'cudaHint'
+-- 'cudaHint'. For example:
 --
--- > floatHint { hintDoubleOps = 100*1000*1000 }
+-- > h1 = FloatHint { hintFloatOps  = 0
+-- >                , hintDoubleOps = 100*1000*1000
+-- >                }
+-- > h2 = floatHint { hintDoubleOps = 100*1000*1000 }
 data ProfileHint
     = FloatHint { hintFloatOps :: !Int
                 , hintDoubleOps :: !Int

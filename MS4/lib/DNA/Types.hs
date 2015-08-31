@@ -58,9 +58,10 @@ data NodeInfo = NodeInfo
   deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary NodeInfo
 
--- | Describes where actor should be spawned.
-data Location = Remote -- ^ Will be spawned on some other node
-              | Local  -- ^ Will be spawned on the same node
+-- | Describes whether some entity should be local to node or could be
+-- possibly on remote node.
+data Location = Remote
+              | Local
               deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary Location
 
@@ -87,9 +88,12 @@ instance Binary GroupType
 -- free nodes. If there isn't enough nodes in the pool to satisfy
 -- request it will cause runtime error.
 --
+-- For example @N 4@ requests exactly for nodes. And @Frac 0.5@
+-- requests half of all currently available nodes.
+--
 -- Local node (which could be added using 'DNA.useLocal') is added in
 -- addition to this. If in the end 0 nodes will be allocated it will
--- cause runtime error too.
+-- cause runtime error.
 data Res
     = N    Int                -- ^ Fixed number of nodes
     | Frac Double             -- ^ Fraction of nodes. Should lie in /(0,1]/ range.

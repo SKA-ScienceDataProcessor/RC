@@ -94,14 +94,18 @@ newtype DNA a = DNA (Program DnaF a)
 
 -- | Monad for actual calculation code. We expect all significant
 -- work of the cluster application to be encapsulated in this
--- monad. Only way to perform arbitrary 'IO' action is @Kern@ monad
--- using 'MonadIO' interface:
+-- monad. It allows to attach performance hints (see 'ProfileHint') to
+-- match expected and actual performance. Only way to perform
+-- arbitrary IO is using @Kern@ and its @MonadIO@ interface:
 --
 -- > kern = do
 -- >   liftIO someIoComputation
 --
 -- It's possible to lift pure computations in the @Kern@ monad too but
 -- all usual caveats about lazy evaluations apply.
+--
+-- @Kern@ computations could be lifted into 'DNA' context using either
+-- 'kernel' or 'unboundKernel'
 newtype Kern a = Kern { runKern :: ReaderT (String, LoggerOpt) IO a }
                deriving (Functor,Applicative,Monad)
 
@@ -436,12 +440,22 @@ collectActor = CollectActor
 
 -- | Obtains the rank of the current process in its group. Every
 -- process in a group of size /N/ has assigned a rank from /0/ to
--- /N-1/. Single processes always have rank /0/.
+-- /N-1/. Single processes always have rank /0/. It should be used as
+-- follows:
+--
+-- > do ...
+-- >    n <- rank
+-- >    ...
 rank :: DNA Int
 rank = DNA $ singleton DnaRank
 
 -- | Obtains the size of the group that the current process belongs
--- to. For single processes this is always /1/.
+-- to. For single processes this is always /1/. It should be used as
+-- follows:
+--
+-- > do ...
+-- >    n <- groupSize
+-- >    ...
 groupSize :: DNA Int
 groupSize = DNA $ singleton DnaGroupSize
 
@@ -474,6 +488,12 @@ unboundKernel msg hints = DNA . singleton . Kernel msg DefaultKernel hints
 --
 -- > duration "Some computation" $ do
 -- >   ...
+--
+-- It will result in following eventlog output:
+--
+-- > 941813583: cap 0: START [pid=pid://localhost:40000:0:12] Some computation
+-- > ...
+-- > 945372376: cap 0: END [pid=pid://localhost:40000:0:12] Some computation
 duration
     :: String                   -- ^ String for profiling
     -> DNA a                    -- ^ Computation to profile
@@ -481,7 +501,13 @@ duration
 duration msg = DNA . singleton . Duration msg
 
 -- | Outputs a message to the eventlog as well as @stdout@. Useful for
--- documenting progress.
+-- documenting progress. For example:
+--
+-- > logMessage "Some message"
+--
+-- It will result in following eventlog output:
+--
+-- > 713150762: cap 0: MSG [v=0] [pid=pid://localhost:40000:0:10] Some message
 logMessage :: String -> DNA ()
 logMessage = DNA . singleton . LogMessage
 
@@ -530,8 +556,12 @@ connect a b = DNA $ singleton $ Connect a b
 availableNodes :: DNA Int
 availableNodes = DNA $ singleton AvailNodes
 
--- | The simplest form of actor execution: The actor is executed in
--- the same Cloud Haskell process, with no new processes spawned.
+-- | If one don't want to create new actor it's possible to execute
+-- simple 'Actor' inside current actor. For example:
+-- 
+-- > do ...
+-- >    b <- eval someActor 42
+-- >    ...
 eval :: (Serializable a, Serializable b)
      => Actor a b               -- ^ Actor to execute
      -> a                       -- ^ Value which is passed to an actor as parameter
@@ -559,7 +589,7 @@ startActor
 startActor r a =
     DNA $ singleton $ SpawnActor r a
 
--- | As 'startActor', but starts a single collector actor.
+-- | As 'startActor', but starts collector actor.
 startCollector
     :: (Serializable a, Serializable b)
     => Res

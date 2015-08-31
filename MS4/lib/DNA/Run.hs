@@ -38,7 +38,10 @@ import DNA.Interpreter.Types
 
 -- |
 -- Execute DNA program. First parameter is list of remote tables. Each
--- invocation of 'remotable' generate
+-- invocation of 'remotable' generate @__remoteTable@ top level
+-- identifier with type @RemoteTable -> RemoteTable@. All such remote
+-- tables must composed using '.' and passed to @dnaRun@ as in
+-- following example:
 --
 -- > dnaRun (ModuleA.__remoteTable . ModuleB.__remoteTable) program
 --
