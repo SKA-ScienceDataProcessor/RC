@@ -552,7 +552,13 @@ duration msg = DNA . singleton . Duration msg
 logMessage :: String -> DNA ()
 logMessage = DNA . singleton . LogMessage
 
--- | Send a value to an actor.
+-- | Send input parameter to an actor. Calling this function twice
+-- will result in runtime error. 
+--
+--  > do ...
+--  >    a <- startActor (N 1) (return $(mkStaticClosure 'someActor))
+--  >    sendParam 100
+--  >    ...
 sendParam
     :: Serializable a
     => a                        -- ^ Parameter to send
@@ -560,7 +566,13 @@ sendParam
     -> DNA ()
 sendParam a sh = DNA $ singleton $ SendParam a sh
 
--- | Send same value to all actors in group.
+-- | Send same value to all actors in group. Essentially same as
+-- 'sendParam' but works for group of actors.
+--
+--  > do ...
+--  >    a <- startGroup (Frac 0.5) (NNodes 1) (return $(mkStaticClosure 'someActor))
+--  >    broadcast 100
+--  >    ...
 broadcast
     :: Serializable a
     => a                        -- ^ Parameter to send
@@ -584,7 +596,14 @@ distributeWork
     -> DNA ()
 distributeWork a f sh = DNA $ singleton $ DistributeWork a f sh
 
--- | Connect output of one actor to input of another actor.
+-- | Connect output of one actor to input of another actor. In example we connect
+-- output of group of actors to collect actor.
+--
+-- > do ...
+-- >    a <- startGroupN (N 10) (NNodes 1) (return $(mkStaticClosure 'worker))
+-- >    c <- startCollector (N 1) (return $(mkStaticClosure 'collector))
+-- >    connect a c
+-- >    ...
 connect
     :: (Serializable b, Typeable tag)
     => Shell a (tag b)          -- ^ Actor which produce message(s)
@@ -618,7 +637,8 @@ evalClosure
 evalClosure clos a = DNA $ singleton $ EvalClosure a clos
 
 -- | Starts a single actor as a new process, and returns the handle to
--- the running actor.
+-- the running actor. Spawned actor will receive single message and
+-- produce single result as described by 'Val' type tags.
 startActor
     :: (Serializable a, Serializable b)
     => Res
@@ -630,7 +650,8 @@ startActor
 startActor r a =
     DNA $ singleton $ SpawnActor r a
 
--- | As 'startActor', but starts collector actor.
+-- | As 'startActor', but starts collector actor. It receives groups
+-- of messages from group of actors and produces single result.
 startCollector
     :: (Serializable a, Serializable b)
     => Res
@@ -642,7 +663,9 @@ startCollector
 startCollector res child =
     DNA $ singleton $ SpawnCollector res child
 
--- | Start a group of actor processes
+-- | Start a group of actor processes. They receive set of values
+-- which could be sent to them using 'broadcast' or 'distributeWork'
+-- and produce group of values as result.
 startGroup
     :: (Serializable a, Serializable b)
     => Res
@@ -681,8 +704,13 @@ startCollectorTree
 startCollectorTree child =
     DNA $ singleton $ SpawnCollectorTree child
 
--- | Start a group of collector actor processes. It always require one
--- node per collector.
+-- | Start a group of collector actor processes to collect data in
+-- tree-like fashion. They collect data from group of actors and
+-- divide it between themselves. So if we have 12 worker actors in a
+-- group and 3 actor in group of collectors collector with rank 0 will
+-- collect results from workers with rank 0..3 etc. Collectors will
+-- produce 3 result which in turn should be aggregated by another
+-- collector.
 startCollectorTreeGroup
     :: (Serializable a)
     => Res
@@ -708,6 +736,13 @@ createFileChan loc name = DNA $ singleton $ CreateFileChan loc name
 -- | Barrier that ensures that all resources associated with the given
 -- actor have been returned to pool and can be re-allocated. It will
 -- block until resources are returned. 
+--
+-- > do a <- startActor ...
+-- >    ...
+-- >    waitForResources a
+--
+-- After @waitForResources a@ it's guaranteed that resources allocated
+-- to actor @a@ have been returned.
 --
 -- N.B. It only ensures that actor released resources. They could be
 -- taken by another start* function.

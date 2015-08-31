@@ -296,12 +296,15 @@ module DNA (
 
       -- | Each actor must be connected to exactly one destination and
       -- consequently could only receive input from a single
-      -- source. Trying to connect an actor twice will result in
-      -- a runtime error.
+      -- source. Trying to connect an actor twice will result in a
+      -- runtime error. Functions 'sendParam', 'broadcast',
+      -- 'distributeWork', 'connect', 'delay', and 'delayGroup' count
+      -- to this.
     , sendParam
     , broadcast
     , distributeWork
     , connect
+      -- ** File channels.
     , FileChan
     , createFileChan
       -- * Promises
