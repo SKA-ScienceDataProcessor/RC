@@ -94,18 +94,22 @@ newtype DNA a = DNA (Program DnaF a)
 
 -- | Monad for actual calculation code. We expect all significant
 -- work of the cluster application to be encapsulated in this
--- monad. It allows to attach performance hints (see 'ProfileHint') to
--- match expected and actual performance. Only way to perform
--- arbitrary IO is using @Kern@ and its @MonadIO@ interface:
+-- monad. In fact, the only way to perform arbitrary 'IO' actions from
+-- 'DNA' is to use 'kernel' or 'unboundKernel' and then 'liftIO' the
+-- desired code:
 --
--- > kern = do
--- >   liftIO someIoComputation
+-- >   kernel "do IO" $ liftIO $ do
+-- >     someIoComputation
 --
--- It's possible to lift pure computations in the @Kern@ monad too but
--- all usual caveats about lazy evaluations apply.
+-- Pure computations should be lifted into the 'Kern' monad as well
+-- whenever they are likely to require a significant amount of
+-- computation. However care needs to be taken that no thunks escape
+-- due to lazy evaluation. Ideally, the result should be fully
+-- evaluated:
 --
--- @Kern@ computations could be lifted into 'DNA' context using either
--- 'kernel' or 'unboundKernel'
+-- >   kernel "pure computation" $ do
+-- >     let pure = pureCode
+-- >     return $! pure `using` rdeepseq
 newtype Kern a = Kern { runKern :: ReaderT (String, LoggerOpt) IO a }
                deriving (Functor,Applicative,Monad)
 
@@ -459,16 +463,34 @@ rank = DNA $ singleton DnaRank
 groupSize :: DNA Int
 groupSize = DNA $ singleton DnaGroupSize
 
--- | Executes a kernel computation. Computation will be performed in
--- bound thread. (Bound threads are mapped to same OS
--- thread). Function will block until computation is done.
+-- | Executes a kernel computation. The computation will be bound to
+-- an operating system thread by default (see also 'unboundKernel').
+-- The function will block until computation is done. Profile hints
+-- can be used to request profiling where desired.
 --
--- > kernel "grid"
--- >   [ floatHint { hintDoubleOps = 100*1000*1000 } ]
--- >   someKernel
-kernel :: String        -- ^ Kernel name
-       -> [ProfileHint] -- ^ Kernel performance characteristics
-       -> Kern a        -- ^ Kernel code
+-- For example, we could define @ddpReadVector@ as used in the DNA
+-- example as follows:
+--
+-- >  ddpReadVector = actor $ \(fname, Slice off n) ->
+-- >    kernel "read vector" [iOHint{hintReadBytes = fromIntegral (n * 8)}] $
+-- >      liftIO $ readData n off fname
+--
+-- This "actor" reads a certain slice of a file from the disk, which
+-- is implemented using a "kernel" calling the @readData@ 'IO'
+-- action. As with most kernels, this could potentially become a
+-- bottleneck, therefore we supply DNA with a meaningful name (@read
+-- vector@) as well as a hint about how much I/O activity we
+-- expect. This will prompt the profiling framework to gather evidence
+-- about the actual I/O activity so we can compare it with our
+-- expectations.
+kernel :: String        -- ^ Kernel name. This name will be used in
+                        -- profile analysis to refer to profiling data
+                        -- collected about the contained code.
+       -> [ProfileHint] -- ^ Kernel performance characteristics. This
+                        -- will prompt the framework to track
+                        -- specialised performance metrics, allowing
+                        -- in-depth analysis later.
+       -> Kern a        -- ^ Th kernel code to execute.
        -> DNA a
 kernel msg hints = DNA . singleton . Kernel msg BoundKernel hints
 
@@ -476,6 +498,17 @@ kernel msg hints = DNA . singleton . Kernel msg BoundKernel hints
 -- thread. Haskell runtime could migrate unbound haskell threads
 -- between OS threads. This is generally faster, but less
 -- safe. Especially profiling can be unreliable in this mode.
+--
+-- The most likely use for this is cheap kernels that are unlikely to
+-- run for a significant time. For example, we could use an unbound
+-- kernel for cleaning up data:
+--
+-- >    unboundKernel "delete vector" [] $
+-- >      liftIO $ removeFile fname
+--
+-- Here we know that 'removeFile' is safe to be called from unbound
+-- kernels, and likely cheap enough that allocating a full operating
+-- system thread can be considered overkill.
 unboundKernel
     :: String        -- ^ Kernel name
     -> [ProfileHint] -- ^ Kernel performance characteristics
@@ -483,31 +516,39 @@ unboundKernel
     -> DNA a
 unboundKernel msg hints = DNA . singleton . Kernel msg DefaultKernel hints
 
--- | Basic profiling for 'DNA' actions. Start and stop time of
--- computation will be written to the eventlog.
+-- | Basic profiling for 'DNA' actions. Works basically the same way
+-- as 'kernel', but without the specialised profiling
+-- support. Instead, the profiling report will only contain the wall
+-- clock time the contained 'DNA' action took.
 --
--- > duration "Some computation" $ do
--- >   ...
+-- For example, in the DNA example we used 'duration' to profile how
+-- long a 'Promise' was 'await'ed:
 --
--- It will result in following eventlog output:
+-- >    va <- duration "receive compute" $ await futVA
 --
--- > 941813583: cap 0: START [pid=pid://localhost:40000:0:12] Some computation
+-- It will result in eventlog output similar to:
+--
+-- > 941813583: cap 0: START [pid=pid://localhost:40000:0:12] receive compute
 -- > ...
--- > 945372376: cap 0: END [pid=pid://localhost:40000:0:12] Some computation
+-- > 945372376: cap 0: END [pid=pid://localhost:40000:0:12] receive compute
 duration
-    :: String                   -- ^ String for profiling
-    -> DNA a                    -- ^ Computation to profile
+    :: String        -- ^ Computation name for profiling
+    -> DNA a         -- ^ 'DNA' code to profile
     -> DNA a
 duration msg = DNA . singleton . Duration msg
 
 -- | Outputs a message to the eventlog as well as @stdout@. Useful for
--- documenting progress. For example:
+-- documenting progress and providing debugging information.
 --
--- > logMessage "Some message"
+-- For example, we could have an actor log the amount of resource it
+-- has available:
 --
--- It will result in following eventlog output:
+-- > do avail <- availableNodes
+-- >    logMessage $ "Actor is running on " ++ show (avail+1) ++ " nodes."
 --
--- > 713150762: cap 0: MSG [v=0] [pid=pid://localhost:40000:0:10] Some message
+-- It will produce eventlog output similar to this
+--
+-- > 713150762: cap 0: MSG [pid=pid://localhost:40000:0:10] Actor is running on 8 node
 logMessage :: String -> DNA ()
 logMessage = DNA . singleton . LogMessage
 
