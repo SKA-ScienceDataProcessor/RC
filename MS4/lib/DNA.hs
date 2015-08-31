@@ -1,4 +1,21 @@
 -- |
+-- DNA is a data flow DSL aimed at expressing data movement and initiation of
+-- computational kernels for numerical calculations. We use the "actor/channel"
+-- paradigm, which allows for a descriptive approach that separates definition
+-- from execution strategy. Our target is data intensive high performance computing
+-- applications that employ hierarchical cluster scheduling techniques. Furthermore,
+-- we provide infrastructure for detailed profiling and high availability, allowing
+-- recovery for certain types of failures.
+--
+-- DNA is presently implemented as an embedded monadic DSL on top of the 
+-- well-established distributed programming framework "Cloud Haskell".
+-- This document describes the structure of the language at a high level,
+-- followed by detailed specifications and use cases for the introduced
+-- primitives. We will give examples at several points.
+--
+--
+-- === High level structure
+--
 -- DNA programs are composed of actors and channels. DNA provides means for
 -- defining an abstract data flow graph using programming language primitives.
 --
