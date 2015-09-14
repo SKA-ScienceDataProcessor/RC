@@ -10,7 +10,7 @@ import qualified Data.HashMap.Strict as HM
 import Data.List
 import Data.Ord
 
-import Debug.Trace
+import System.IO
 
 -- Stubs
 newtype Flow a = Flow FlowI
@@ -73,6 +73,11 @@ data FFlow a = FFlow FlowI StratMapEntry
 stratFresh :: Strategy KernelId
 stratFresh = state $ \ss -> (ssKernelId ss, ss {ssKernelId = 1 + ssKernelId ss})
 
+uniqKernel :: IsFlow fl => String -> fl -> Strategy (Flow a)
+uniqKernel name fls = state $ \ss ->
+  (kernel (name ++ "." ++ show (ssKernelId ss)) fls,
+   ss {ssKernelId = 1 + ssKernelId ss})
+
 prepareKernel :: Flow a -> Kernel a -> Strategy StratMapEntry
 prepareKernel (Flow fi) (Kernel ks) = do
 
@@ -90,8 +95,8 @@ prepareKernel (Flow fi) (Kernel ks) = do
 
   return $ StratMapEntry ki pki kis
 
-set :: Flow a -> Kernel a -> Strategy ()
-set (Flow fi) k = do
+bind :: Flow a -> Kernel a -> Strategy ()
+bind (Flow fi) k = do
   entry <- prepareKernel (Flow fi) k
   modify $ \ss -> ss{ ssMap = HM.insert fi entry (ssMap ss) }
 
@@ -113,6 +118,16 @@ assertEqual :: Flow a -> Flow a -> Strategy ()
 assertEqual (Flow f0) (Flow f1)
   | f0 == f1  = return ()
   | otherwise = fail $ "assertEqual: " ++ show f0 ++ " /= " ++ show f1
+
+implementing :: Flow a -> Strategy b -> Strategy b
+implementing (Flow fi) strat = do
+  -- Execute strategy
+  ret <- strat
+  -- Now verify that given flow was actually implemented
+  ss <- get
+  case HM.lookup fi (ssMap ss) of
+    Just{}  -> return ret
+    Nothing -> fail $ "Flow " ++ show fi ++ " was not implemented!"
 
 -- Program starts here...
 
@@ -197,75 +212,94 @@ clean dirty psf = (result, res, mod)
        res = kernel "clean/residual" (result)
        mod = kernel "clean/model" (result)
 
-majorLoop :: Int -> Flow () -> Flow Vis -> Flow GCFs
+majorLoop :: Int -> Flow () -> Flow Vis
          -> ( Flow Image  -- ^ residual
             , Flow Vis    -- ^ visibilities
             )
-majorLoop n tag vis gcfs = foldl go (initRes tag, vis) [1..n]
- where (_, _, psfImg) = psfGrid tag vis gcfs
+majorLoop n tag vis = foldl go (initRes tag, vis) [1..n]
+ where gcfs = gcf tag vis
+       (_, _, psfImg) = psfGrid tag vis gcfs
        go (_res, vis) _i = (res', vis')
          where (_, _, img) = gridder tag vis gcfs
                (_, res', mod) = clean img psfImg
                (_, vis') = degridder tag mod vis gcfs
 
-scatter_imaging :: Config -> Strategy ()
-scatter_imaging cfg = do
- let tag = kernel "tag" ()
- set tag $ dummy "tag"
+-- Strategy implementing a number of iterations of the major loop
+scatterImagingLoop :: Config -> Flow () -> Flow Vis -> Flow Image -> FFlow () -> Int -> Strategy ()
+scatterImagingLoop cfg tag orig_vis psf fftTag i =
+ implementing (snd $ majorLoop i tag orig_vis) $ do
 
- -- Read in visibilities
- let orig_vis = kernel "vis" ()
- set orig_vis oskarReader
+  -- Get references to intermediate data flow nodes
+  let (_, vis) = majorLoop (i-1) tag orig_vis
+      gcfs = gcf tag orig_vis
+      (create, grid, ifft) = gridder tag vis gcfs
+      gpar = cfgGrid cfg
 
- -- Generate GCF
- let gcfs = gcf tag orig_vis
- set gcfs $ halideWrapper "gcfGen"
+  -- Grid
+  bind create $ gridInit gpar
+  bind grid $ gridKernel gpar
+  use fftTag $ bind ifft $ ifftKern gpar
 
- -- Sort visibility data
- set orig_vis $ cWrapper sorter
+  -- Clean, split out model
+  let (cresult, _res, mod) = clean ifft psf
+  bind cresult $ halideWrapper "clean"
+  bind mod splitModel
 
- -- Initialise FFTs
- fftTag <- float tag $ cWrapper (fftCreatePlans $ cfgGrid cfg)
+  -- FFT and degrid
+  let (fft, new_vis) = degridder tag mod vis gcfs
+  use fftTag $ bind fft $ fftKern gpar
+  bind new_vis $ degridKernel gpar
 
- -- PSF
- let (psfCreate, psfGridK, psfImg) = psfGrid tag orig_vis gcfs
-     gpar = cfgGrid cfg
- set (psfVis orig_vis) $ cWrapper setOnes
- set psfCreate $ gridInit gpar
- set psfGridK $ gridKernel gpar
- use fftTag $ set psfImg (ifftKern gpar)
+scatterImaging :: Config -> Flow () -> Flow Vis -> Strategy ()
+scatterImaging cfg tag start_vis =
+ implementing (fst $ majorLoop (cfgMajorLoops cfg) tag start_vis) $ do
 
- -- Loop
- forM_ [1..cfgMajorLoops cfg-1] $ \i -> do
+  -- Sort visibility data
+  bind start_vis $ cWrapper sorter
 
-   let (_, vis) = majorLoop (i-1) tag orig_vis gcfs
-       (create, grid, ifft) = gridder tag vis gcfs
-   set create $ gridInit gpar
-   set grid $ gridKernel gpar
-   use fftTag $ set ifft $ ifftKern gpar
+  -- Initialise FFTs
+  fftTag <- float tag $ cWrapper (fftCreatePlans $ cfgGrid cfg)
 
-   let (cresult, _res, mod) = clean ifft psfImg
-   set cresult $ halideWrapper "clean"
-   set mod splitModel
+  -- Generate GCF
+  let gcfs = gcf tag start_vis
+  bind gcfs $ halideWrapper "gcfGen"
 
-   let (fft, new_vis) = degridder tag mod vis gcfs
-   use fftTag $ set fft $ fftKern gpar
-   set new_vis $ degridKernel gpar
+  -- PSF
+  let (psfCreate, psfGridK, psf) = psfGrid tag start_vis gcfs
+      gpar = cfgGrid cfg
+  implementing psf $ do
+    bind (psfVis start_vis) $ cWrapper setOnes
+    bind psfCreate $ gridInit gpar
+    bind psfGridK $ gridKernel gpar
+    use fftTag $ bind psf (ifftKern gpar)
 
- -- Last loop iteration
- let (_, vis) = majorLoop (cfgMajorLoops cfg-1) tag orig_vis gcfs
-     (create, grid, ifft) = gridder tag vis gcfs
- set create $ gridInit (cfgGrid cfg)
- set grid $ gridKernel (cfgGrid cfg)
- use fftTag $ set ifft $ ifftKern gpar
+  -- Loop
+  forM_ [1..cfgMajorLoops cfg-1] $ scatterImagingLoop cfg tag start_vis psf fftTag
 
- let (cresult, res, _mod) = clean ifft psfImg
- set cresult $ halideWrapper "clean"
- set res splitResidual
+  -- Last loop iteration
+  let (_, vis) = majorLoop (cfgMajorLoops cfg-1) tag start_vis
+      (create, grid, img) = gridder tag vis gcfs
+  implementing img $ do
+    bind create $ gridInit (cfgGrid cfg)
+    bind grid $ gridKernel (cfgGrid cfg)
+    use fftTag $ bind img $ ifftKern gpar
 
- -- Now "res" should be provably equivalent to the above. The check
- -- below is *expensive*!
- assertEqual res $ fst $ majorLoop (cfgMajorLoops cfg) tag orig_vis gcfs
+  let (cresult, res, _mod) = clean img psf
+  bind cresult $ halideWrapper "clean"
+  bind res splitResidual
+
+-- Strategy implements major loop for these visibilities
+scatterImagingMain :: Config -> Strategy ()
+scatterImagingMain cfg = do
+
+  tag <- uniqKernel "tag" ()
+  bind tag $ dummy "tag"
+
+  -- Read in visibilities
+  vis <- uniqKernel "vis" ()
+  bind vis oskarReader
+
+  scatterImaging cfg tag vis
 
 dumpStrategy :: Strategy () -> IO ()
 dumpStrategy strat = do
@@ -285,5 +319,31 @@ dumpStrategy strat = do
           , " using ", show deps ]
   forM_ kerns (uncurry dumpKern)
 
+dumpStrategyDOT :: FilePath -> Strategy () -> IO ()
+dumpStrategyDOT file strat = do
+
+  -- Construct strategy map
+  let sMap = ssMap $ execState strat initStratState
+
+  -- Generate sorted kernel
+  let kerns = sortBy (comparing (kernId . smeKernel . snd)) $ HM.toList sMap
+
+  -- Open output file
+  h <- openFile file WriteMode
+  hPutStrLn h "digraph strategy {"
+  let kernName kid = "kernel" ++ show kid
+  let dumpKern fl (StratMapEntry (KernelI kid kname) m_prev deps) = do
+        pkids <- case m_prev of
+         Just prev -> dumpKern fl prev >> return [kernId $ smeKernel prev]
+         Nothing   -> return []
+        hPutStrLn h $ concat
+          [ kernName kid, " [label=\"" ++ kname, " implementing ", flName fl, "\"]"]
+        forM_ (pkids ++ deps) $ \kid' ->
+          hPutStrLn h $ concat
+            [ kernName kid', " -> ", kernName kid]
+  forM_ kerns (uncurry dumpKern)
+  hPutStrLn h "}"
+  hClose h
+
 main :: IO ()
-main = dumpStrategy $ scatter_imaging (Config 10 GridPar)
+main = dumpStrategy $ scatterImagingMain (Config 10 GridPar)
