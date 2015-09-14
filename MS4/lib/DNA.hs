@@ -53,8 +53,10 @@
 -- >    -- First we need to generate files on tmpfs
 -- >    fname <- duration "generate" $ eval ddpGenerateVector n
 -- >    -- Start local processes
--- >    shellVA <- startActor (N 0) $ useLocal >> return $(mkStaticClosure 'ddpComputeVector)
--- >    shellVB <- startActor (N 0) $ useLocal >> return $(mkStaticClosure 'ddpReadVector)
+-- >    shellVA <- startActor (N 0) $
+-- >        useLocal >> return $(mkStaticClosure 'ddpComputeVector)
+-- >    shellVB <- startActor (N 0) $
+-- >        useLocal >> return $(mkStaticClosure 'ddpReadVector)
 -- >    -- Connect actors
 -- >    sendParam slice              shellVA
 -- >    sendParam (fname, Slice 0 n) shellVB

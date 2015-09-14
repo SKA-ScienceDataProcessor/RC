@@ -436,8 +436,8 @@ data ProfileHint
 -- For example, we can use this 'ProfileHint' to declare the amount of
 -- floating point operations involved in computing a sum:
 --
--- >    kernel "compute sum" [floatHint{hintDoubleOps = fromIntegral (2*n)} ] $
--- >      return $ (S.sum $ S.zipWith (*) va vb :: Double)
+-- > kernel "compute sum" [floatHint{hintDoubleOps = fromIntegral (2*n)} ] $
+-- >     return $ (S.sum $ S.zipWith (*) va vb :: Double)
 floatHint :: ProfileHint
 floatHint = FloatHint 0 0
 
@@ -448,9 +448,9 @@ floatHint = FloatHint 0 0
 -- This could be used to track the bandwidth involved in copying a
 -- large buffer:
 --
--- >    let size = Vec.length in * sizeOf (Vec.head in)
--- >    kernel "copy buffer" [memHint{hintMemoryReadBytes=size}] $ liftIO $
--- >      VecMut.copy in out
+-- > let size = Vec.length in * sizeOf (Vec.head in)
+-- > kernel "copy buffer" [memHint{hintMemoryReadBytes=size}] $ liftIO $
+-- >     VecMut.copy in out
 memHint :: ProfileHint
 memHint = MemHint 0
 
@@ -461,8 +461,8 @@ memHint = MemHint 0
 -- This can be used to document the amount of data that we expect to
 -- read from a hard drive:
 --
--- >    kernel "read vector" [iOHint{hintReadBytes = fromIntegral (n * 8)}] $
--- >      liftIO $ readData n off fname
+-- > kernel "read vector" [iOHint{hintReadBytes = fromIntegral (n * 8)}] $
+-- >     liftIO $ readData n off fname
 ioHint :: ProfileHint
 ioHint = IOHint 0 0
 
@@ -474,10 +474,10 @@ ioHint = IOHint 0 0
 -- certain computation. This can often be a good indicator for whether
 -- it has been compiled in an efficient way.
 --
--- >  unboundKernel "generate vector" [HaskellHint (fromIntegral $ n * 8)] $
--- >    liftIO $ withFileChan out "data" WriteMode $ \h ->
--- >      BS.hPut h $ runPut $
--- >        replicateM_ (fromIntegral n) $ putFloat64le 0.1
+-- > unboundKernel "generate vector" [HaskellHint (fromIntegral $ n * 8)] $
+-- >   liftIO $ withFileChan out "data" WriteMode $ \h ->
+-- >     BS.hPut h $ runPut $
+-- >       replicateM_ (fromIntegral n) $ putFloat64le 0.1
 --
 -- For example, this 'HaskellHint' specifies that Haskell is allowed
 -- to only heap-allocate one 'Double'-object per value written.
@@ -490,13 +490,13 @@ haskellHint = HaskellHint 0
 --
 -- For instance, we could wrap an @accelerate@ computation as follows:
 --
--- >      let size = S.length va
--- >      kernel "accelerate dot product" [cudaHint{hintCudaDoubleOps=size*2}] $ liftIO $ do
--- >        let sh = S.length va
--- >            va' = A.fromVectors (A.Z A.:. size) ((), va) :: A.Vector Double
--- >            vb' = A.fromVectors (A.Z A.:. size) ((), vb) :: A.Vector Double
--- >         return $ head $ A.toList $ CUDA.run $
--- >           A.fold (+) 0 $ A.zipWith (*) (A.use va') (A.use vb')
+-- > let size = S.length va
+-- > kernel "accelerate dot product" [cudaHint{hintCudaDoubleOps=size*2}] $ liftIO $ do
+-- >   let sh = S.length va
+-- >       va' = A.fromVectors (A.Z A.:. size) ((), va) :: A.Vector Double
+-- >       vb' = A.fromVectors (A.Z A.:. size) ((), vb) :: A.Vector Double
+-- >    return $ head $ A.toList $ CUDA.run $
+-- >      A.fold (+) 0 $ A.zipWith (*) (A.use va') (A.use vb')
 cudaHint :: ProfileHint
 cudaHint = CUDAHint 0 0 0 0
 
