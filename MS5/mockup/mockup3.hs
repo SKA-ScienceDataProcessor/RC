@@ -51,7 +51,7 @@ instance IsFlow (Flow pa a, Flow pb b, Flow pc c, Flow pd d) where
   type Pars (Flow pa a, Flow pb b, Flow pc c, Flow pd d) = (a, b, c, d)
   toFlowI (Flow f0, Flow f1, Flow f2, Flow f3) = [f0, f1, f2, f3]
 
-kernel :: IsFlow fs => String -> fs -> SFlow a
+kernel :: IsFlow fs => String -> fs -> Flow (Pars fs) a
 kernel name fs = Flow $ FlowI (hash (name, fis)) name fis
   where fis = toFlowI fs
 
@@ -84,7 +84,7 @@ data FFlow a = FFlow FlowI StratMapEntry
 stratFresh :: Strategy KernelId
 stratFresh = state $ \ss -> (ssKernelId ss, ss {ssKernelId = 1 + ssKernelId ss})
 
-uniqKernel :: IsFlow fl => String -> fl -> Strategy (Flow Tag a)
+uniqKernel :: IsFlow fl => String -> fl -> Strategy (Flow (Pars fl) a)
 uniqKernel name fls = state $ \ss ->
   (kernel (name ++ "." ++ show (ssKernelId ss)) fls,
    ss {ssKernelId = 1 + ssKernelId ss})
@@ -107,7 +107,8 @@ prepareKernel (Flow fi) (Kernel ks) = do
     case HM.lookup p (ssMap ss) of
       Just sme | kern <- smeKernel sme
               -> return $ kernId kern
-      Nothing -> fail $ "When binding kernel " ++ kernName ki ++ " to implement " ++ flName fi ++ ": Could not find a kernel calculating flow " ++ show p ++ "!"
+      Nothing -> fail $ "When binding kernel " ++ kernName ki ++ " to implement " ++
+                        flName fi ++ ": Could not find a kernel calculating flow " ++ show p ++ "!"
 
   -- Add to kernel list
   let kern = StratMapEntry ki kis
@@ -153,8 +154,6 @@ data UVGrid
 data Image
 data GCFs
 
-type SFlow a = forall pa. Flow pa a
-
 type GridFlow = ( Flow Tag UVGrid
                 , Flow (Tag, Vis, GCFs, UVGrid) UVGrid
                 , Flow (Tag, UVGrid) Image)
@@ -165,7 +164,7 @@ gridder tag vis gcfs = (create, grid, img)
        img = kernel "idft" (tag, grid)
 
 type DegridFlow = ( Flow (Tag, Image) UVGrid
-                  , Flow (Tag, Image, GCFs, Vis) Vis)
+                  , Flow (Tag, UVGrid, GCFs, Vis) Vis)
 degridder :: Flow a Tag -> Flow b Image -> Flow c Vis -> Flow d GCFs
           -> DegridFlow
 degridder tag img vis gcfs = (dft, degrid)
@@ -227,7 +226,7 @@ halideWrapper _ = dummy "halide"
 cWrapper :: a -> Kernel ps b
 cWrapper _ = dummy "c"
 
-oskarReader :: String -> Kernel Tag Vis
+oskarReader :: String -> Kernel () Vis
 oskarReader _ = dummy "oskar"
 sorter :: Kernel a Vis
 sorter = dummy "sorter"
@@ -248,7 +247,7 @@ gridInit :: GridPar -> Kernel Tag UVGrid
 gridInit _ = dummy "gridInit"
 gridKernel :: GridPar -> Kernel (Tag, Vis, GCFs, UVGrid) UVGrid
 gridKernel _ = dummy "gridKernel"
-degridKernel :: GridPar -> Kernel (Tag, Image, GCFs, Vis) Vis
+degridKernel :: GridPar -> Kernel (Tag, UVGrid, GCFs, Vis) Vis
 degridKernel _ = dummy "degridKernel"
 
 cleanKernel :: Kernel (Image, Image) CleanResult
