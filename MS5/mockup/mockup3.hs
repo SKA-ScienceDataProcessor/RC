@@ -10,12 +10,15 @@ import qualified Data.HashMap.Strict as HM
 import Data.List
 import Data.Ord
 
-import Debug.Trace
-
 import System.IO
 
 newtype Flow ps a = Flow FlowI
   deriving Show
+data Anon
+type AFlow a = Flow Anon a
+
+aflow :: Flow ps a -> AFlow a
+aflow (Flow fi) = Flow fi
 
 data FlowI = FlowI
   { flHash    :: {-# UNPACK #-} !Int
@@ -114,8 +117,7 @@ prepareKernel (Flow fi) (Kernel ks) = do
 bind :: Flow fs a -> Kernel fs a -> Strategy ()
 bind (Flow fi) k = do
   entry <- prepareKernel (Flow fi) k
-  trace ("bound " ++ show fi) $
-    modify $ \ss -> ss{ ssMap = HM.insert fi entry (ssMap ss) }
+  modify $ \ss -> ss{ ssMap = HM.insert fi entry (ssMap ss) }
 
 float :: Flow fs a -> Kernel fs a -> Strategy (FFlow a)
 float (Flow fi) k = do
@@ -131,7 +133,7 @@ use (FFlow fi entry) strat = state $ \ss ->
         Just en0 -> HM.insert fi en0 (ssMap ss'')
   in (r, ss''{ ssMap = ssMap' } )
 
-implementing :: Flow ps a -> Strategy () -> Strategy (Flow ps a)
+implementing :: Flow ps a -> Strategy () -> Strategy (AFlow a)
 implementing (Flow fi) strat = do
   -- Execute strategy
   strat
@@ -193,19 +195,16 @@ clean dirty psf = (result, res, mod)
        mod = kernel "clean/model" (result)
 
 majorLoop :: forall a b. Int -> Flow a Tag -> Flow b Vis
-         -> ( Flow CleanResult Image  -- ^ residual
-            , Flow (Tag, Image, GCFs, Vis) Vis -- ^ visibilities
+         -> ( AFlow Image  -- ^ residual
+            , AFlow Vis -- ^ visibilities
             )
-majorLoop n tag vis0 = (res', vis')
-  where gcfs = gcf tag vis0
-        (_, _, psfImg) = psfGrid tag vis0 gcfs
-        (_, _, img)
-          | n > 1     = gridder tag (snd $ majorLoop (n-1) tag vis0) gcfs
-          | otherwise = gridder tag vis0 gcfs
-        (_, res', mod) = clean img psfImg
-        (_, vis')
-          | n > 1     = degridder tag mod (snd $ majorLoop (n-1) tag vis0) gcfs
-          | otherwise = degridder tag mod vis0 gcfs
+majorLoop n tag vis = foldl go (aflow $ initRes tag, aflow $ vis) [1..n]
+ where gcfs = gcf tag vis
+       (_, _, psfImg) = psfGrid tag vis gcfs
+       go (_res, vis) _i = (aflow res', aflow vis')
+         where (_, _, img) = gridder tag vis gcfs
+               (_, res', mod) = clean img psfImg
+               (_, vis') = degridder tag mod vis gcfs
 
 -- ----------------------------------------------------------------------------
 -- ---                               Kernels                                ---
@@ -265,7 +264,7 @@ splitResidual = dummy "splitResidual"
 
 -- Strategy implementing gridding
 gridS :: Config -> Flow a Tag -> Flow b GCFs -> Flow c Vis -> FFlow Tag
-      -> Strategy (Flow (Tag, UVGrid) Image)
+      -> Strategy (AFlow Image)
 gridS cfg tag gcfs vis fftTag =
  let (create, grid, img) = gridder tag vis gcfs
      gpar = cfgGrid cfg
@@ -276,27 +275,7 @@ gridS cfg tag gcfs vis fftTag =
 
 -- Strategy implementing a number of iterations of the major loop
 scatterImagingLoop :: Config -> Flow a Tag -> Flow b Vis -> Flow c Image -> FFlow Tag -> Int
-                   -> Strategy (Flow (Tag, Image, GCFs, Vis) Vis)
-scatterImagingLoop cfg tag orig_vis psf fftTag 1 =
- implementing (snd $ majorLoop 1 tag orig_vis) $ do
-
-  -- Get references to intermediate data flow nodes
-  let vis = orig_vis
-      gcfs = gcf tag orig_vis
-      gpar = cfgGrid cfg
-
-  -- Grid
-  img <- gridS cfg tag gcfs vis fftTag
-  let (cresult, _res, mod) = clean img psf
-      (residual, new_vis) = degridder tag mod vis gcfs
-
-  -- Clean, split out model
-  bind cresult cleanKernel
-  bind mod splitModel
-
-  -- FFT and degrid
-  use fftTag $ bind residual (fftKern gpar)
-  bind new_vis (degridKernel gpar)
+                   -> Strategy (AFlow Vis)
 scatterImagingLoop cfg tag orig_vis psf fftTag i =
  implementing (snd $ majorLoop i tag orig_vis) $ do
 
@@ -318,7 +297,7 @@ scatterImagingLoop cfg tag orig_vis psf fftTag i =
   use fftTag $ bind residual (fftKern gpar)
   bind new_vis (degridKernel gpar)
 
-scatterImaging :: Config -> Flow a Tag -> Flow b Vis -> Strategy (Flow CleanResult Image)
+scatterImaging :: Config -> Flow a Tag -> Flow b Vis -> Strategy (AFlow Image)
 scatterImaging cfg tag start_vis =
  implementing (fst $ majorLoop (cfgMajorLoops cfg) tag start_vis) $ do
 
@@ -353,7 +332,7 @@ scatterImaging cfg tag start_vis =
   bind res splitResidual
 
 -- Strategy implements major loop for these visibilities
-scatterImagingMain :: Config -> Strategy (Flow CleanResult Image)
+scatterImagingMain :: Config -> Strategy (AFlow Image)
 scatterImagingMain cfg = do
 
   tag <- uniqKernel "tag" ()
