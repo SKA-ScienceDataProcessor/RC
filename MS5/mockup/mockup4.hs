@@ -384,23 +384,12 @@ splitResidual = dummy "splitResidual"
 -- ---                               Strategy                               ---
 -- ----------------------------------------------------------------------------
 
--- Strategy implementing a number of iterations of the major loop
-scatterImagingLoop :: Config -> Flow a Tag -> Flow b Vis -> Flow c Image -> FFlow Tag -> Int
-                   -> Strategy ()
-scatterImagingLoop cfg tag orig_vis psf fftTag i = do
-
-  -- Force grid calculation - we do not want to share this!
-  calculate $ kernel "create grid" tag
-
-  -- FFT and degrid
-  calculate $ snd $ majorLoop i tag orig_vis
-
 scatterImaging :: Config -> Flow a Tag -> Flow b Vis -> Strategy (AFlow Image)
-scatterImaging cfg tag start_vis =
- implementing (fst $ majorLoop (cfgMajorLoops cfg) tag start_vis) $ do
+scatterImaging cfg tag vis =
+ implementing (fst $ majorLoop (cfgMajorLoops cfg) tag vis) $ do
 
   -- Sort visibility data
-  bind start_vis sorter
+  bind vis sorter
 
   -- Initialise FFTs
   let gpar = cfgGrid cfg
@@ -425,20 +414,26 @@ scatterImaging cfg tag start_vis =
     bind (kernel "clean/model" inp) splitModel
 
   -- Generate GCF
-  let gcfs = gcf tag start_vis
+  let gcfs = gcf tag vis
   bind gcfs (gcfKernel gpar)
 
   -- PSF
-  let (psfCreate, psfGridK, psf) = psfGrid tag start_vis gcfs
-  bind (psfVis start_vis) (cWrapper setOnes)
+  let (psfCreate, psfGridK, psf) = psfGrid tag vis gcfs
+  bind (psfVis vis) (cWrapper setOnes)
   calculate psf
 
   -- Loop
-  forM_ [1..cfgMajorLoops cfg-1] $
-    scatterImagingLoop cfg tag start_vis psf fftTag
+  forM_ [1..cfgMajorLoops cfg-1] $ \i -> do
+
+    -- Force grid calculation - we do not want to share this between
+    -- loop iterations!
+    calculate $ kernel "create grid" tag
+
+    -- Generate new visibilities
+    calculate $ snd $ majorLoop i tag vis
 
   -- Calculate residual of last loop iteration
-  calculate $ fst $ majorLoop (cfgMajorLoops cfg) tag start_vis
+  calculate $ fst $ majorLoop (cfgMajorLoops cfg) tag vis
 
 -- Strategy implements major loop for these visibilities
 scatterImagingMain :: Config -> Strategy (AFlow Image)
