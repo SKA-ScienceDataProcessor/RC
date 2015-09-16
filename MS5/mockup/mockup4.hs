@@ -75,7 +75,8 @@ instance IsFlows (Flow pa a, Flow pb b, Flow pc c, Flow pd d) where
   wilds = (wildFlow 0, wildFlow 1, wildFlow 2, wildFlow 3)
   fromList [f0, f1, f2, f3] = (Flow f0, Flow f1, Flow f2, Flow f3)
 
-kernel :: IsFlows fs => String -> fs -> Flow (Pars fs) a
+type KernelFlow fs r = fs -> Flow (Pars fs) r
+kernel :: IsFlows fs => String -> KernelFlow fs r
 kernel name fs = Flow $ FlowI (hash (name, fis, noWild)) name fis noWild
   where fis = toList fs
         noWild = Nothing :: Maybe Int
@@ -271,62 +272,79 @@ implementing (Flow fi) strat = do
 -- ---                             Functional                               ---
 -- ----------------------------------------------------------------------------
 
-data Tag
-data Vis
-data UVGrid
-data Image
-data GCFs
+-- Data tags
+data Tag -- ^ Initialisation (e.g. FFT plans)
+data Vis -- ^ Visibilities (File name to OSKAR / raw visibilities / binned ...)
+data UVGrid -- ^ UV grid
+data Image -- ^ Image
+data GCFs -- ^ A set of GCFs
+data CleanResult -- ^ Result of cleaning (e.g. model + residual)
 
-type GridFlow = ( Flow Tag UVGrid
-                , Flow (Tag, Vis, GCFs, UVGrid) UVGrid
-                , Flow (Tag, UVGrid) Image)
-gridder :: Flow a Tag -> Flow b Vis -> Flow c GCFs -> GridFlow
-gridder tag vis gcfs = (create, grid, img)
- where create = kernel "create grid" tag
-       grid = kernel "grid" (tag, vis, gcfs, create)
-       img = kernel "idft" (tag, grid)
+-- Abstract kernel signatures.
+--
+-- TODO: The string we use here is somewhat important for keeping them
+-- apart - it would be more elegant if we could enforce them to be
+-- unique in some other way.
+--
+-- TODO 2: All this would look *way* nicer with currying.
+createGrid :: KernelFlow (Flow a Tag) UVGrid
+createGrid = kernel "create grid"
+grid :: KernelFlow (Flow a Tag, Flow b Vis, Flow c GCFs, Flow d UVGrid) UVGrid
+grid = kernel "grid"
+degrid :: KernelFlow (Flow a Tag, Flow b UVGrid, Flow c GCFs, Flow d Vis) Vis
+degrid = kernel "degrid"
+idft :: KernelFlow (Flow a Tag, Flow b UVGrid) Image
+idft = kernel "idft"
+dft :: KernelFlow (Flow a Tag, Flow b Image) UVGrid
+dft = kernel "dft"
+gcf :: KernelFlow (Flow a Tag, Flow b Vis) GCFs
+gcf = kernel "gcf"
+initRes :: KernelFlow (Flow a Tag) Image
+initRes = kernel "residual init"
+psfVis :: KernelFlow (Flow a Vis) Vis
+psfVis = kernel "prepare vis for PSF"
+clean :: KernelFlow (Flow a Image, Flow b Image) CleanResult
+clean = kernel "clean"
+cleanModel :: KernelFlow (Flow a CleanResult) Image
+cleanModel = kernel "clean/model"
+cleanResidual :: KernelFlow (Flow a CleanResult) Image
+cleanResidual = kernel "clean/residual"
 
-type DegridFlow = ( Flow (Tag, Image) UVGrid
-                  , Flow (Tag, UVGrid, GCFs, Vis) Vis)
+-- | Compound gridder actor
+gridder :: Flow a Tag -> Flow b Vis -> Flow c GCFs -> Flow (Tag, UVGrid) Image
+gridder tag vis gcfs = idft (tag, uvg)
+ where create = createGrid tag
+       uvg = grid (tag, vis, gcfs, create)
+
+-- | Compound degridder actor
 degridder :: Flow a Tag -> Flow b Image -> Flow c Vis -> Flow d GCFs
-          -> DegridFlow
-degridder tag img vis gcfs = (dft, degrid)
- where dft = kernel "dft" (tag, img)
-       degrid = kernel "degrid" (tag, dft, gcfs, vis)
+          -> Flow (Tag, UVGrid, GCFs, Vis) Vis
+degridder tag img vis gcfs = degrid (tag, uvg, gcfs, vis)
+ where uvg = dft (tag, img)
 
-gcf :: Flow a Tag -> Flow b Vis -> Flow (Tag, Vis) GCFs
-gcf tag vis = kernel "gcf" (tag,vis)
-
-initRes :: Flow a Tag -> Flow Tag Image
-initRes tag = kernel "residual init" (tag)
-
-psfVis :: Flow b Vis -> Flow Vis Vis
-psfVis vis = kernel "prepare vis for PSF" (vis)
-
-psfGrid :: Flow a Tag -> Flow b Vis -> Flow c GCFs -> GridFlow
+-- | Compound PSF gridder actor
+psfGrid :: Flow a Tag -> Flow b Vis -> Flow c GCFs -> Flow (Tag, UVGrid) Image
 psfGrid tag vis gcfs = gridder tag (psfVis vis) gcfs
 
-data CleanResult
-clean :: Flow a Image -> Flow b Image
-     -> ( Flow (Image, Image) CleanResult
-        , Flow CleanResult Image
+-- | Compound cleaning actor
+clean' :: Flow a Image -> Flow b Image
+     -> ( Flow CleanResult Image
         , Flow CleanResult Image)
-clean dirty psf = (result, res, mod)
- where result = kernel "clean" (dirty, psf)
-       res = kernel "clean/residual" (result)
-       mod = kernel "clean/model" (result)
+clean' dirty psf = (cleanResidual result, cleanModel result)
+ where result = clean (dirty, psf)
 
+-- | Compound major loop actor
 majorLoop :: Int -> Flow a Tag -> Flow b Vis
          -> ( AFlow Image  -- ^ residual
             , AFlow Vis -- ^ visibilities
             )
 majorLoop n tag vis = foldl go (aflow $ initRes tag, aflow $ vis) [1..n]
- where gcfs = gcf tag vis
-       (_, _, psfImg) = psfGrid tag vis gcfs
+ where gcfs = gcf (tag, vis)
+       psfImg = psfGrid tag vis gcfs
        go (_res, vis) _i = (aflow res', aflow vis')
-         where (_, _, img) = gridder tag vis gcfs
-               (_, res', mod) = clean img psfImg
-               (_, vis') = degridder tag mod vis gcfs
+         where img = gridder tag vis gcfs
+               (res', mod) = clean' img psfImg
+               vis' = degridder tag mod vis gcfs
 
 -- ----------------------------------------------------------------------------
 -- ---                               Kernels                                ---
@@ -396,29 +414,21 @@ scatterImaging cfg tag vis =
   fftTag <- float tag $ cWrapper $ fftCreatePlans gpar
 
   -- Make rules
-  rule (kernel "idft") $ \(inp  :: (AFlow Tag, AFlow UVGrid)) ->
-    use fftTag $ bind (kernel "idft" inp) (ifftKern gpar)
-  rule (kernel "dft") $ \(inp  :: (AFlow Tag, AFlow Image)) ->
-    use fftTag $ bind (kernel "dft" inp) (fftKern gpar)
-  rule (kernel "create grid") $ \(inp :: AFlow Tag) ->
-    bind (kernel "create grid" inp) (gridInit gpar)
-  rule (kernel "grid") $ \(inp :: (AFlow Tag, AFlow Vis, AFlow GCFs, AFlow UVGrid)) ->
-    bind (kernel "grid" inp) (gridKernel gpar)
-  rule (kernel "degrid") $ \(inp :: (AFlow Tag, AFlow UVGrid, AFlow GCFs, AFlow Vis)) ->
-    bind (kernel "degrid" inp) (degridKernel gpar)
-  rule (kernel "clean") $ \(inp :: (AFlow Image, AFlow Image)) ->
-    bind (kernel "clean" inp) cleanKernel
-  rule (kernel "clean/residual") $ \(inp :: (AFlow CleanResult)) ->
-    bind (kernel "clean/residual" inp) splitResidual
-  rule (kernel "clean/model") $ \(inp :: (AFlow CleanResult)) ->
-    bind (kernel "clean/model" inp) splitModel
+  rule idft       $ \inp -> use fftTag $ bind (idft inp) (ifftKern gpar)
+  rule dft        $ \inp -> use fftTag $ bind (dft inp) (fftKern gpar)
+  rule createGrid $ \inp -> bind (createGrid inp) (gridInit gpar)
+  rule grid       $ \inp -> bind (grid inp) (gridKernel gpar)
+  rule degrid     $ \inp -> bind (degrid inp) (degridKernel gpar)
+  rule clean      $ \inp -> bind (clean inp) cleanKernel
+  rule cleanResidual $ \inp -> bind (cleanResidual inp) splitResidual
+  rule cleanModel $ \inp -> bind (cleanModel inp) splitModel
 
   -- Generate GCF
-  let gcfs = gcf tag vis
+  let gcfs = gcf (tag, vis)
   bind gcfs (gcfKernel gpar)
 
   -- PSF
-  let (psfCreate, psfGridK, psf) = psfGrid tag vis gcfs
+  let psf = psfGrid tag vis gcfs
   bind (psfVis vis) (cWrapper setOnes)
   calculate psf
 
