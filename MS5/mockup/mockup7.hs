@@ -1,8 +1,14 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleInstances, TypeFamilies, ScopedTypeVariables, GADTs,
-             StandaloneDeriving, TypeOperators #-}
+{-# LANGUAGE DeriveDataTypeable,
+             RankNTypes,
+             StandaloneDeriving,
+             FlexibleInstances,
+             TypeFamilies,
+             ScopedTypeVariables,
+             GADTs,
+             TypeOperators #-}
+
+-- Workaround
+{-# LANGUAGE CPP, UndecidableInstances #-}
 
 module Main where
 
@@ -70,67 +76,29 @@ instance IsFlows fs => IsFlows (Flow pa a :. fs) where
   fromList (f:fs) = Flow f :. fromList fs
   wilds i = wildFlow i :. wilds (i+1)
 
-class Typeable r => DataRepr r where
-  type RPar r
-  -- | Does the representation contain no data? This means that we are
-  -- going to ignore it.
-  reprNop :: r -> Bool
-  reprNop _ = False
-  reprAccess :: r -> ReprAccess
-  reprCompatible :: r -> r -> Bool
-
-data NoRepr a = NoRepr
-  deriving Typeable
-instance Typeable a => DataRepr (NoRepr a) where
-  type RPar (NoRepr a) = a
-  reprNop _ = True
-  reprAccess _ = Read
-  reprCompatible _ _ = True
-
-data CBufRepr a = CBufRepr ReprAccess
-  deriving Typeable
-instance Typeable a => DataRepr (CBufRepr a) where
-  type RPar (CBufRepr a) = a
-  reprNop _ = False
-  reprAccess (CBufRepr acc) = acc
-  reprCompatible _ _ = True
-
--- | Who has ownership of the data representation?
-data ReprAccess
-  = Read  -- ^ Caller has ownership. Kernel should not change the buffer.
-  | Write -- ^ Callee has ownership. Kernel can change the buffer,
-          -- and must free it if it is not returned. Might require
-          -- framework to duplicate the buffer.
-
--- TODO: Merge with the above somehow?
-class IsReprs rs where
-  type RPars rs
-  toReprsI :: rs -> [ReprI]
-instance IsReprs HNil where
-  type RPars HNil = HNil
-  toReprsI _ = []
-instance (DataRepr r, IsReprs rs) => IsReprs (r :. rs) where
-  type RPars (r :. rs) = RPar r :. RPars rs
-  toReprsI (r:.rs) = ReprI r : toReprsI rs
-
 type KernelId = Int
 
 data Kernel ps a where
-  Kernel :: (IsReprs rs, DataRepr r)
-         => String -> rs -> r -> (FlowI -> Strategy KernelI)
+  Kernel :: (IsReprs rs, DataRepr r, DataRepr r1, RPar r ~ RPar r1)
+         => String -> rs -> r -> r1 -> (FlowI -> Strategy KernelI)
          -> Kernel (RPars rs) (RPar r)
 
 data ReprI where
-  ReprI :: forall a r. (Typeable r, DataRepr r) => r -> ReprI
+  ReprI :: forall r. DataRepr r => r -> ReprI
+instance Show ReprI where
+  showsPrec p (ReprI r) = showsPrec p r
 
 isNoReprI :: ReprI -> Bool
 isNoReprI (ReprI repr) = reprNop repr
 
 data KernelI = KernelI
-  { kernId :: KernelId
-  , kernFlow :: FlowI
-  , kernName :: String
-  , kernTypecheck :: ReprI -> Bool
+  { kernId :: KernelId -- ^ Unique number identifiying this kernel
+  , kernFlow :: FlowI  -- ^ Implemented flow
+  , kernName :: String -- ^ Name
+  , kernRepr :: ReprI  -- ^ Data representation produced
+  , kernReprCheck :: ReprI -> Bool
+    -- ^ Check whether a sink data representation is compatible with
+    -- the data we produce
   }
 
 -- | Resource scheduling policy
@@ -163,6 +131,7 @@ instance Show KernelBind where
   showsPrec _ (KernelBind ki deps)
     = showString "Kernel " . shows (kernId ki) . showString ":" . showString (kernName ki)
       . showString " implementing " . showString (flName (kernFlow ki))
+      . showString " producing " . shows (kernRepr ki)
       . showString " using " . shows deps
 
 -- | Schedule step
@@ -209,7 +178,7 @@ uniqKernel name fls = state $ \ss ->
    ss {ssKernelId = 1 + ssKernelId ss})
 
 prepareKernel :: forall a ps. Flow ps a -> [DomainId] -> Kernel ps a -> Strategy KernelBind
-prepareKernel (Flow fi) ds (Kernel _ parReprs _ ks) = do
+prepareKernel (Flow fi) ds (Kernel _ parReprs _ _ ks) = do
 
   -- Make kernel
   ki <- ks fi
@@ -219,7 +188,7 @@ prepareKernel (Flow fi) ds (Kernel _ parReprs _ ks) = do
   let parReprsI = toReprsI parReprs
       pars = zip (flDepends fi) parReprsI
       pars' = filter (not . isNoReprI . snd) pars
-  kis <- forM pars' $ \(p, prep) -> do
+  kis <- forM (zip [(1::Int)..] pars') $ \(parn, (p, prep)) -> do
 
     -- Parameter flows must all be input flows
     when (p /= fi && (p `notElem` flDepends fi)) $
@@ -228,9 +197,14 @@ prepareKernel (Flow fi) ds (Kernel _ parReprs _ ks) = do
     -- Look up latest kernel ID
     ss <- get
     let check kern
-          | kernTypecheck kern prep = return $ kernId kern
-          | otherwise = fail $ "When binding kernel " ++ kernName ki ++ " to implement " ++
-                               flName fi ++ ": Type check failed!"
+          | kernReprCheck kern prep = return $ kernId kern
+          | otherwise = fail $ concat
+              [ "Data representation mismatch when binding kernel "
+              , kernName ki, " to implement "
+              , flName fi, ": Expected ", show prep, " for parameter "
+              , show parn, ", but kernel ", kernName kern, " produced "
+              , show (kernRepr kern), "!"
+              ]
     case HM.lookup p (ssMap ss) of
       Just sme -> check (smeKernel sme)
       Nothing  -> do
@@ -440,6 +414,59 @@ distribute dh sched sub = modify $ \ ss0 ->
   in ss1{ ssSteps = splitStep : ssSteps ss0 }
 
 -- ----------------------------------------------------------------------------
+-- ---                        Data Representations                          ---
+-- ----------------------------------------------------------------------------
+
+class (Show r, Typeable r) => DataRepr r where
+  type RPar r
+  -- | Does the representation contain no data? This means that we are
+  -- going to ignore it.
+  reprNop :: r -> Bool
+  reprNop _ = False
+  reprAccess :: r -> ReprAccess
+  reprCompatible :: r -> r -> Bool
+  reprCompatible _ _ = True
+
+-- No representation: Either don't produce anything (= nobody can use
+-- result) or don't care about input (= accept any input).
+data NoRepr a = NoRepr
+  deriving Typeable
+instance Typeable a => Show (NoRepr a) where
+  show r = "nothing [" ++ show (typeOf (undefined :: a)) ++ "]"
+instance Typeable a => DataRepr (NoRepr a) where
+  type RPar (NoRepr a) = a
+  reprNop _ = True
+  reprAccess _ = Read
+  reprCompatible _ _ = True
+
+-- C buffer representation
+data CBufRepr a = CBufRepr ReprAccess
+  deriving Typeable
+instance Typeable a => Show (CBufRepr a) where
+  show r = "C buffer [" ++ show (typeOf (undefined :: a)) ++ "]"
+instance Typeable a => DataRepr (CBufRepr a) where
+  type RPar (CBufRepr a) = a
+  reprAccess (CBufRepr acc) = acc
+
+-- | Who has ownership of the data representation?
+data ReprAccess
+  = Read  -- ^ Caller has ownership. Kernel should not change the buffer.
+  | Write -- ^ Callee has ownership. Kernel can change the buffer,
+          -- and must free it if it is not returned. Might require
+          -- framework to duplicate the buffer.
+
+-- TODO: Merge with the above somehow?
+class IsReprs rs where
+  type RPars rs
+  toReprsI :: rs -> [ReprI]
+instance IsReprs HNil where
+  type RPars HNil = HNil
+  toReprsI _ = []
+instance (DataRepr r, IsReprs rs) => IsReprs (r :. rs) where
+  type RPars (r :. rs) = RPar r :. RPars rs
+  toReprsI (r:.rs) = ReprI r : toReprsI rs
+
+-- ----------------------------------------------------------------------------
 -- ---                             Functional                               ---
 -- ----------------------------------------------------------------------------
 
@@ -536,76 +563,101 @@ data Config = Config
 data GridPar = GridPar
 
 -- Stubs for kernels for now
-dummy :: (IsReprs rs, DataRepr r) => String -> rs -> r -> Kernel (RPars rs) (RPar r)
-dummy n ps r = Kernel n ps r $ \fl -> do
+dummy :: (IsReprs rs, DataRepr r, DataRepr r0, RPar r ~ RPar r0)
+      => String -> rs -> r -> r0 -> Kernel (RPars rs) (RPar r)
+dummy n ps r r0 = Kernel n ps r r0 $ \fl -> do
   i <- freshKernelId
-  let typeCheck (ReprI inR) = maybe False (reprCompatible r) (cast inR)
-  return $ KernelI i fl n typeCheck
+  let typeCheck (ReprI inR) = maybe False (reprCompatible r0) (cast inR)
+  return $ KernelI i fl n (ReprI r0) typeCheck
+
+-- Make data representations. Sadly, this can not be *quite* done with
+-- deriving yet (#8165). In the meantime, we use preprocessor
+#define DATAREPR_INSTANCE(NewRepr, Repr) \
+  instance DataRepr NewRepr where \
+    type RPar NewRepr = RPar (Repr); \
+    reprNop (NewRepr r) = reprNop r; \
+    reprAccess (NewRepr r) = reprAccess r; \
+    reprCompatible (NewRepr r1) (NewRepr r2) = reprCompatible r1 r2
+newtype ImageRepr = ImageRepr (CBufRepr Image)
+  deriving (Typeable, Show)
+DATAREPR_INSTANCE(ImageRepr, CBufRepr Image)
+newtype UVGridRepr = UVGridRepr (CBufRepr UVGrid)
+  deriving (Typeable, Show)
+DATAREPR_INSTANCE(UVGridRepr, CBufRepr UVGrid)
 
 -- By default images and grids are always consumed by the caller, as
 -- they are large objects with lots of write operations, and we don't
 -- want to duplicate them.
-imgRepr :: CBufRepr Image
-imgRepr = CBufRepr Write
-uvgRepr :: CBufRepr UVGrid
-uvgRepr = CBufRepr Write
+imgRepr :: ImageRepr
+imgRepr = ImageRepr $ CBufRepr Write
+uvgRepr :: UVGridRepr
+uvgRepr = UVGridRepr $ CBufRepr Write
 
 -- Plan representation is used by many kernels
 planRepr :: CBufRepr Tag
 planRepr = CBufRepr Read
 
+newtype RawVisRepr = RawVisRepr (CBufRepr Vis)
+  deriving (Typeable, Show)
+DATAREPR_INSTANCE(RawVisRepr, CBufRepr Vis)
+newtype SortedVisRepr = SortedVisRepr (CBufRepr Vis)
+  deriving (Typeable, Show)
+DATAREPR_INSTANCE(SortedVisRepr, CBufRepr Vis)
+
 -- Visibilities generally remain constant
-visRepr :: CBufRepr Vis
-visRepr = CBufRepr Read
-writeVisRepr :: CBufRepr Vis
-writeVisRepr = CBufRepr Write -- there are exceptions though
+rawVisRepr :: RawVisRepr
+rawVisRepr = RawVisRepr $ CBufRepr Read
+visRepr :: SortedVisRepr
+visRepr = SortedVisRepr $ CBufRepr Read
 
 -- GCFs too
 gcfsRepr :: CBufRepr GCFs
 gcfsRepr = CBufRepr Read
 
-halideWrapper :: (IsReprs rs, DataRepr r) => String -> rs -> r -> Kernel (RPars rs) (RPar r)
+halideWrapper :: (IsReprs rs, DataRepr r, DataRepr r0, RPar r ~ RPar r0)
+              => String -> rs -> r -> r0 -> Kernel (RPars rs) (RPar r)
 halideWrapper _ = dummy "halide"
-cWrapper :: (IsReprs rs, DataRepr r) => a -> rs -> r -> Kernel (RPars rs) (RPar r)
+cWrapper :: (IsReprs rs, DataRepr r, DataRepr r0, RPar r ~ RPar r0)
+            => a -> rs -> r -> r0 -> Kernel (RPars rs) (RPar r)
 cWrapper _ = dummy "c"
 
 oskarReader :: [(FilePath, Int)] -> Kernel HNil Vis
-oskarReader _ = dummy "oskar" HNil visRepr
+oskarReader _ = dummy "oskar" HNil NoRepr rawVisRepr
 sorter :: Kernel HNil Vis
-sorter = dummy "sorter" HNil visRepr
+sorter = dummy "sorter" HNil rawVisRepr visRepr
 setOnes :: Kernel (Vis :. HNil) Vis
-setOnes = dummy "ones" (writeVisRepr :. HNil) visRepr
+setOnes = dummy "ones" (visRepr :. HNil) NoRepr visRepr
 
 gcfKernel :: GridPar -> Kernel (Tag :. Vis :. HNil) GCFs
-gcfKernel _ = halideWrapper "gcfs" (planRepr :. visRepr :. HNil) gcfsRepr
+gcfKernel _ = halideWrapper "gcfs" (planRepr :. visRepr :. HNil) NoRepr gcfsRepr
 
 fftCreatePlans :: GridPar -> Kernel (() :. HNil) Tag
-fftCreatePlans _ = dummy "fftPlans" (NoRepr :. HNil) planRepr
+fftCreatePlans _ = dummy "fftPlans" (NoRepr :. HNil) NoRepr planRepr
 fftKern :: GridPar -> Kernel (Tag :. Image :. HNil) UVGrid
-fftKern _ = dummy "fftKern" (planRepr :. imgRepr :. HNil) uvgRepr
+fftKern _ = dummy "fftKern" (planRepr :. imgRepr :. HNil) NoRepr uvgRepr
 ifftKern :: GridPar -> Kernel (Tag :. UVGrid :. HNil) Image
-ifftKern _ = dummy "ifftKern" (planRepr :. uvgRepr :. HNil) imgRepr
+ifftKern _ = dummy "ifftKern" (planRepr :. uvgRepr :. HNil) NoRepr imgRepr
 
 gridInit :: GridPar -> Kernel HNil UVGrid
-gridInit _ = dummy "gridInit" HNil uvgRepr
+gridInit _ = dummy "gridInit" HNil NoRepr uvgRepr
 gridKernel :: GridPar -> Kernel (Vis :. GCFs :. UVGrid :. HNil) UVGrid
-gridKernel _ = dummy "gridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. HNil) uvgRepr
+gridKernel _ = dummy "gridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. HNil) NoRepr uvgRepr
 degridKernel :: GridPar -> Kernel (UVGrid :. GCFs :. Vis :. HNil) Vis
-degridKernel _ = dummy "degridKernel" (uvgRepr :. gcfsRepr :. writeVisRepr :. HNil) visRepr
+degridKernel _ = dummy "degridKernel" (uvgRepr :. gcfsRepr :. visRepr :. HNil) NoRepr visRepr
 
 cleanResRepr :: CBufRepr CleanResult
 cleanResRepr = CBufRepr Write
 cleanKernel :: Kernel (Image :. Image :. HNil) CleanResult
-cleanKernel = halideWrapper "clean" (imgRepr :. imgRepr :. HNil) cleanResRepr
+cleanKernel = halideWrapper "clean" (imgRepr :. imgRepr :. HNil) NoRepr cleanResRepr
 splitModel :: Kernel (CleanResult :. HNil) Image
-splitModel = dummy "splitModel" (cleanResRepr :. HNil) imgRepr
+splitModel = dummy "splitModel" (cleanResRepr :. HNil) NoRepr imgRepr
 splitResidual :: Kernel (CleanResult :. HNil) Image
-splitResidual = dummy "splitResidual" (cleanResRepr :. HNil) imgRepr
+splitResidual = dummy "splitResidual" (cleanResRepr :. HNil) NoRepr imgRepr
 
 imageSum :: IsReprs rs => rs -> Kernel (RPars rs) Image
-imageSum rs = dummy "image summation" rs imgRepr
+imageSum rs = dummy "image summation" rs imgRepr imgRepr
 imageWriter :: IsReprs rs => FilePath -> rs -> Kernel (RPars rs) Image
-imageWriter _ rs = dummy "image writer" rs imgRepr
+imageWriter _ rs = dummy "image writer" rs imgRepr NoRepr
 
 -- ----------------------------------------------------------------------------
 -- ---                               Strategy                               ---
@@ -621,7 +673,7 @@ scatterImaging cfg dh tag vis =
 
   -- Initialise FFTs
   let gpar = cfgGrid cfg
-  bind1D dh tag $ cWrapper (fftCreatePlans gpar) HNil planRepr
+  bind1D dh tag $ cWrapper (fftCreatePlans gpar) HNil NoRepr planRepr
 
   -- Generate GCF
   let gcfs = gcf (tag :. vis :. HNil)
@@ -638,8 +690,7 @@ scatterImaging cfg dh tag vis =
   rule cleanModel $ \inp -> bind1D dh (cleanModel inp) splitModel
 
   -- PSF
-  bind1D dh (psfVis (vis :. HNil)) $
-    cWrapper setOnes (visRepr :. HNil) visRepr
+  bind1D dh (psfVis (vis :. HNil)) setOnes
   calculate $ psfGrid tag vis gcfs
 
   -- Loop
@@ -705,10 +756,10 @@ dumpStrategy strat = do
   -- Generate sorted kernel
   let kerns' = sortBy (comparing (kernId . smeKernel)) kerns
 
-  let dumpKern (KernelBind (KernelI kid kfl kname _) deps) = do
+  let dumpKern (KernelBind (KernelI kid kfl kname repr _) deps) = do
         putStrLn $ concat
           [ "Kernel ", show kid, ":", kname, " implementing ", flName kfl
-          , " using ", show deps ]
+          , " producing ", show repr, " using ", show deps ]
   forM_ kerns' dumpKern
 
 dumpStrategyDOT :: FilePath -> Strategy a -> IO ()
@@ -724,9 +775,9 @@ dumpStrategyDOT file strat = do
   h <- openFile file WriteMode
   hPutStrLn h "digraph strategy {"
   let kernName kid = "kernel" ++ show kid
-  let dumpKern (KernelBind (KernelI kid kfl kname _) deps) = do
+  let dumpKern (KernelBind (KernelI kid kfl kname repr _) deps) = do
         hPutStrLn h $ concat
-          [ kernName kid, " [label=\"" ++ kname, " implementing ", flName kfl, "\"]"]
+          [ kernName kid, " [label=\"" ++ kname, " implementing ", flName kfl, " producing ", show repr, "\"]"]
         forM_ (deps) $ \kid' ->
           hPutStrLn h $ concat
             [ kernName kid', " -> ", kernName kid]
@@ -743,7 +794,7 @@ dumpSteps strat = do
         = do putStrLn $ ind ++ "Split Domain " ++ show (dhId dh) ++ " into " ++ show dh'
              forM_ steps (dump ("  " ++ ind))
       dump ind (KernelStep dids kb)
-        = putStrLn $ ind ++ "Kernel " ++ show dids ++ " " ++ show kb
+        = putStrLn $ ind ++ "Over " ++ show dids ++ " " ++ show kb
       dump ind (DistributeStep did sched steps)
         = do putStrLn $ ind ++ "Distribute " ++ show did ++ " using " ++ show sched
              forM_ steps (dump ("  " ++ ind))
