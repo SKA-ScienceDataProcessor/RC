@@ -3,10 +3,30 @@
 #include "kern_sum.h"
 #include <iostream>
 #include <string.h>
+#include <HalideRuntime.h>
+// #include <Argument.h>
+
+void dump_meta(const halide_filter_metadata_t& meta) {
+    int n = meta.num_arguments;
+    std::cout
+        << "META: "
+        << meta.name << '\t' << meta.target << "\n";
+        for(int i = 0; i<n; i++) {
+            const halide_filter_argument_t& arg = meta.arguments[i];
+            std::cout << "  ARG: " << arg.name << std::endl;
+            std::cout << "    kind      : " << arg.kind       << std::endl;
+            std::cout << "    dim       : " << arg.dimensions << std::endl;
+            std::cout << "    type code : " << arg.type_code  << std::endl;
+            std::cout << "    type bits : " << arg.type_bits  << std::endl;
+            std::cout << "    def       : " << (void*)arg.def << std::endl;
+            std::cout << "    min       : " << (void*)arg.min << std::endl;
+            std::cout << "    max       : " << (void*)arg.max << std::endl;
+        }
+}
 
 int main() {
     const int off = 0;
-    const int N   = 20;
+    const int N   = 10;
     // Allocate buffers for vector
     float buf_f[N]  = {0};
     float buf_g[N]  = {0};
@@ -62,5 +82,9 @@ int main() {
                   << buf_s[i] << '\t'
                   << std::endl;
     }
+    // Write metadata
+    dump_meta(kern_generate_f_metadata);
+    dump_meta(kern_dotp_metadata);
+    dump_meta(kern_sum_metadata);
     return 0;
 }

@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
     Param<int32_t> off;
     Param<int32_t> size;
 
-    RDom r(0,20);
+    RDom r(off,size);
     sum()  = cast<float>(0);
     sum() += vec(r);
 
