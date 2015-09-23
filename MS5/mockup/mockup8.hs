@@ -1,492 +1,18 @@
-{-# LANGUAGE DeriveDataTypeable,
-             RankNTypes,
-             StandaloneDeriving,
-             FlexibleInstances,
-             TypeFamilies,
-             ScopedTypeVariables,
-             GADTs,
-             TypeOperators #-}
+{-# LANGUAGE DeriveDataTypeable, TypeFamilies, TypeOperators, StandaloneDeriving #-}
 
 -- Workaround
 {-# LANGUAGE CPP, UndecidableInstances #-}
 
 module Main where
 
-import Control.Applicative
+import Strategy.Builder
+import Strategy.Domain
+import Strategy.Data
+import Strategy.Dump
+
 import Control.Monad
-import Control.Monad.State.Strict
 
-import Data.Hashable
-import qualified Data.HashMap.Strict as HM
-import Data.List
-import Data.Ord
-import Data.Maybe
 import Data.Typeable
-
-import Debug.Trace
-
-import System.IO
-
-newtype Flow a = Flow FlowI
-  deriving Show
-
--- | Tag used for streams where we do not know the input data. Think
--- of it as referring to the output value, but not the data flow node.
-type AFlow a = Flow a
-
-aflow :: Flow a -> AFlow a
-aflow (Flow fi) = Flow fi
-
-data FlowI = FlowI
-  { flHash    :: {-# UNPACK #-} !Int
-  , flName    :: String
-  , flDepends :: [FlowI]
-  , flWildcard :: Maybe Int
-  }
-  deriving (Eq)
-
-wildFlow :: Int -> Flow a
-wildFlow i = Flow $ FlowI i ("wild" ++ show i) [] (Just i)
-
-instance Hashable FlowI where
-  i `hashWithSalt` (FlowI h _ _ _) = i `hashWithSalt` h
-instance Show FlowI where
-  showsPrec _ (FlowI _ n ds (Just w)) = showString "*" . showString n
-  showsPrec _ (FlowI _ n ds Nothing)  = showString n . shows ds
-
-data HNil = HNil
-  deriving Show
-data (:.) a b = (:.) a b
-  deriving Show
-infixr :.
-
-class IsFlows fs where
-  type Pars fs
-  toList :: fs -> [FlowI]
-  wilds :: Int -> fs
-  fromList :: [FlowI] -> fs -- unsafe!
-instance IsFlows HNil where
-  type Pars HNil = HNil
-  toList HNil = []
-  fromList [] = HNil
-  wilds _ = HNil
-instance IsFlows fs => IsFlows (Flow a :. fs) where
-  type Pars (Flow a :. fs) = a :. Pars fs
-  toList (Flow f :. fs) = f : toList fs
-  fromList (f:fs) = Flow f :. fromList fs
-  wilds i = wildFlow i :. wilds (i+1)
-
-type KernelId = Int
-
-data Kernel ps a where
-  Kernel :: (IsReprs rs, DataRepr r)
-         => String -> rs -> r -> (FlowI -> Strategy KernelI)
-         -> Kernel (RPars rs) (RPar r)
-
-data ReprI where
-  ReprI :: forall r. DataRepr r => r -> ReprI
-instance Show ReprI where
-  showsPrec p (ReprI r) = showsPrec p r
-
-isNoReprI :: ReprI -> Bool
-isNoReprI (ReprI repr) = reprNop repr
-
-data KernelI = KernelI
-  { kernId :: KernelId -- ^ Unique number identifiying this kernel
-  , kernFlow :: FlowI  -- ^ Implemented flow
-  , kernName :: String -- ^ Name
-  , kernRepr :: ReprI  -- ^ Data representation produced
-  , kernReprCheck :: ReprI -> Bool
-    -- ^ Check whether a sink data representation is compatible with
-    -- the data we produce
-  }
-
--- | Resource scheduling policy
-data Schedule
-  = SeqSchedule
-  | ParSchedule
-  deriving Show
-
--- | State while constructing a strategy
-data StratState = StratState
-  { ssKernelId :: {-# UNPACK #-}!KernelId -- ^ Next fresh kernel ID
-  , ssDomainId :: {-# UNPACK #-}!DomainId -- ^ Next fresh domain ID
-  , ssMap      :: StratMap          -- ^ Kernels currently in scope
-  , ssRules    :: [StratRule]       -- ^ Currently active rules
-  , ssSteps    :: [Step]            -- ^ Scheduling steps in current scope so far
-  }
-initStratState :: StratState
-initStratState = StratState 0 0 HM.empty [] []
-
--- | A strategy rule, explaining how to implement certain data flow patterns
-newtype StratRule = StratRule (FlowI -> Maybe (Strategy ()))
-
--- | Kernel bindings
-data KernelBind = KernelBind
-  { smeKernel :: KernelI       -- ^ The kernel itself
-  , smeDeps   :: [KernelId]    -- ^ Data dependencies
-  }
-
-instance Show KernelBind where
-  showsPrec _ (KernelBind ki deps)
-    = showString "Kernel " . shows (kernId ki) . showString ":" . showString (kernName ki)
-      . showString " implementing " . showString (flName (kernFlow ki))
-      . showString " producing " . shows (kernRepr ki)
-      . showString " using " . shows deps
-
--- | Schedule step
-data Step where
-  DomainStep :: Show a => DomainHandle a -> Step
-    -- ^ Create a new domain
-  SplitStep :: Show a => DomainHandle a -> DomainHandle a -> [Step] -> Step
-    -- ^ Split a domain into regions
-  KernelStep :: [DomainId] -> KernelBind -> Step
-    -- ^ Execute a kernel for the given domain(s)
-  DistributeStep :: Show a => DomainHandle a -> Schedule -> [Step] -> Step
-    -- ^ Distribute steps across the given domain using the given
-    -- scheduling policy.
-
-deriving instance Show Step
-
--- | List all kernels used in schedule
-stepsToKernels :: [Step] -> [KernelBind]
-stepsToKernels = concatMap go
-  where go (KernelStep _ kb)          = [kb]
-        go (DistributeStep _ _ steps) = concatMap go steps
-        go _other                     = []
-
-type StratMap = HM.HashMap FlowI KernelBind
-type Strategy a = State StratState a
-
--- | Floating flow - a kernel binding with a non-memoised value that
--- we might explicitly re-introduce at another part of the stregy
--- using "use".
-data FFlow a = FFlow FlowI KernelBind
-
-freshKernelId :: Strategy KernelId
-freshKernelId = state $ \ss -> (ssKernelId ss, ss {ssKernelId = 1 + ssKernelId ss})
-
-freshDomainId :: Strategy DomainId
-freshDomainId = state $ \ss -> (ssDomainId ss, ss {ssDomainId = 1 + ssDomainId ss})
-
-addStep :: Step -> Strategy ()
-addStep step =  modify $ \ss -> ss { ssSteps = step : ssSteps ss }
-
-uniqKernel :: IsFlows fl => String -> fl -> Strategy (Flow a)
-uniqKernel name fls = state $ \ss ->
-  (kernel (name ++ "." ++ show (ssKernelId ss)) fls,
-   ss {ssKernelId = 1 + ssKernelId ss})
-
-prepareKernel :: forall ps a. IsFlows ps
-              => ps -> Flow a -> [DomainId] -> Kernel (Pars ps) a -> Strategy KernelBind
-prepareKernel ps (Flow fi) ds (Kernel _ parReprs _ ks) = do
-
-  -- Make kernel
-  ki <- ks fi
-
-  -- Get parameters + representation. Filter out the ones marked as
-  -- "don't care".
-  let parReprsI = toReprsI parReprs
-      pars = zip (toList ps) parReprsI
-      pars' = filter (not . isNoReprI . snd) pars
-
-  -- Look up dependencies
-  kis <- forM (zip [(1::Int)..] pars') $ \(parn, (p, prep)) -> do
-
-    -- Parameter flows must all be in the dependency tree of the flow
-    -- to calculate. Yes, this means that theoretically flows are
-    -- allowed to depend on very early flows. This is most likely not
-    -- a good idea though.
-    let hasDepend f
-          | p == f    = True
-          | otherwise = any hasDepend $ flDepends f
-    when (not $ hasDepend fi) $
-      fail $ "Parameter " ++ show p ++ " not a dependency of " ++ show fi ++ "!"
-
-    -- Look up latest kernel ID
-    ss <- get
-    let check kern
-          | kernReprCheck kern prep = return $ kernId kern
-          | otherwise = fail $ concat
-              [ "Data representation mismatch when binding kernel "
-              , kernName ki, " to implement "
-              , flName fi, ": Expected ", show prep, " for parameter "
-              , show parn, ", but kernel ", kernName kern, " produced "
-              , show (kernRepr kern), "!"
-              ]
-    case HM.lookup p (ssMap ss) of
-      Just sme -> check (smeKernel sme)
-      Nothing  -> do
-
-        -- Not defined yet? Attempt to match a rule to produce it
-        m_strat <- findRule (Flow p)
-        case m_strat of
-          Nothing -> fail $ "When binding kernel " ++ kernName ki ++ " to implement " ++
-                            flName fi ++ ": Could not find a kernel calculating flow " ++
-                            show p ++ "!"
-          Just strat -> do
-
-            -- Execute rule
-            strat
-
-            -- Lookup again. The rule should normaly guarantee that
-            -- this doesn't fail any more.
-            ss <- get
-            case HM.lookup p (ssMap ss) of
-              Just sme | kern <- smeKernel sme
-                       -> return $ kernId kern
-              Nothing  -> fail $ "When binding kernel " ++ kernName ki ++ " to implement " ++
-                            flName fi ++ ": Failed to apply rule to calculate " ++ show p ++ "! " ++
-                            "This should be impossible!"
-
-  -- Add to kernel list
-  let kern = KernelBind ki kis
-  addStep $ KernelStep ds kern
-  return kern
-
-type KernelFlow fs r = fs -> Flow r
-
--- | Create a new abstract kernel flow
-kernel :: IsFlows fs => String -> KernelFlow fs r
-kernel name fs = Flow $ FlowI (hash (name, fis, noWild)) name fis noWild
-  where fis = toList fs
-        noWild = Nothing :: Maybe Int
-
--- | Bind the given flow to a kernel. This is equivalent to first
--- setting a "rule" for the flow, then calling "calculate". More
--- efficient though.
-bind :: IsFlows fs => fs -> Flow a -> Kernel (Pars fs) a -> Strategy ()
-bind ps fl k = do
-  entry <- prepareKernel ps fl [] k
-  let fi = kernFlow $ smeKernel entry
-  modify $ \ss -> ss{ ssMap = HM.insert fi entry (ssMap ss)}
-
-bind1D :: IsFlows fs
-       => DomainHandle d -> fs -> Flow a -> Kernel (Pars fs) a
-       -> Strategy ()
-bind1D d ps fl k = do
-  entry <- prepareKernel ps fl [dhId d] k
-  let fi = kernFlow $ smeKernel entry
-  modify $ \ss -> ss{ ssMap = HM.insert fi entry (ssMap ss)}
-
-rebind :: Flow a -> Kernel (a :. HNil) a -> Strategy ()
-rebind fl = bind (fl :. HNil) fl
-
-rebind1D :: DomainHandle d -> Flow a -> Kernel (a :. HNil) a
-         -> Strategy ()
-rebind1D dh fl = bind1D dh (fl :. HNil) fl
-
-rule :: IsFlows fs => (fs -> Flow a) -> (fs -> Strategy ()) -> Strategy ()
-rule flf strat = do
-
-  -- Pass wildcard flows to function to get pattern
-  let (Flow pat) = flf (wilds 0)
-
-      -- Rule is now to match the given pattern, and if successful
-      -- execute strategy and check that it actually implements the
-      -- node.
-      --
-      -- TODO: We probably want to make a closure of the binds
-      rule = StratRule $ \fi ->
-        matchPattern fi pat >>=
-        return . void . implementing (Flow fi) . strat
-
-  modify $ \ss -> ss{ ssRules = rule : ssRules ss }
-
--- | Simple rule, binding a kernel to a pattern
-bindRule :: IsFlows fs => (fs -> Flow a) -> Kernel (Pars fs) a -> Strategy()
-bindRule flf kern = rule flf $ \inp -> bind inp (flf inp) kern
-
-bindRule1D :: IsFlows fs
-           => DomainHandle d -> (fs -> Flow a) -> Kernel (Pars fs) a -> Strategy()
-bindRule1D dh flf kern = rule flf $ \inp -> bind1D dh inp (flf inp) kern
-
--- | Check whether a flow matches a pattern.
-matchPattern :: forall fs. IsFlows fs => FlowI -> FlowI -> Maybe fs
-matchPattern fi pat
-  | fi == pat = Just (wilds 0)
-  | Just i <- flWildcard pat
-  = Just $ fromList $ set i fi $ toList (wilds 0 :: fs)
-  | flName fi == flName pat,
-    length (flDepends fi) == length (flDepends pat),
-    Just matches <- zipWithM matchPattern (flDepends fi) (flDepends pat)
-  = mergeMatches matches
-  | otherwise
-  = Nothing
- where -- Sets n-th element in list. Edward Kmett is probably hating me
-       -- now.
-       set :: Int -> b -> [b] -> [b]
-       set 0 x (_:ys) = x:ys
-       set i x (y:ys) = y:set (i-1) x ys
-
--- | Merges data flow pattern match results
-mergeMatches :: IsFlows fs => [fs] -> Maybe fs
-mergeMatches []   = Just (wilds 0)
-mergeMatches [fs] = Just fs
-mergeMatches (fs0:fs1:rest) = do
-  let merge :: FlowI -> FlowI -> Maybe FlowI
-      merge f0 f1
-        | Just{} <- flWildcard f0  = Just f1
-        | Just{} <- flWildcard f1  = Just f0
-        | f0 == f1                 = Just f0
-        | otherwise                = Nothing
-  fs' <- fromList <$> zipWithM merge (toList fs0) (toList fs1)
-  mergeMatches (fs':rest)
-
--- | Calculate a flow. This can only succeed if there is a rule in scope that
--- explains how to do this.
-calculate :: Flow a -> Strategy ()
-calculate fl = do
-  m_strat <- findRule fl
-  case m_strat of
-    Nothing -> fail $ "calculate: Could not find a rule matching " ++ show fl ++ "!"
-    Just strat -> strat
-
--- | Calculate a flow. This can only succeed if there is a rule in scope that
--- explains how to do this.
-findRule :: Flow a -> Strategy (Maybe (Strategy ()))
-findRule (Flow fi) = do
-
-  -- Find a matching rule
-  rules <- ssRules <$> get
-  let apply (StratRule r) = r fi
-  return $ listToMaybe $ mapMaybe apply rules
-    -- TODO: Warn about rule overlap?
-
-float :: IsFlows fs => fs -> Flow a -> Kernel (Pars fs) a -> Strategy (FFlow a)
-float ps (Flow fi) k = do
-  entry <- prepareKernel ps (Flow fi) [] k
-  return $ FFlow fi entry
-
-use :: FFlow a -> Strategy b -> Strategy b
-use (FFlow fi entry) strat = state $ \ss ->
-  let ss' = ss { ssMap = HM.insert fi entry (ssMap ss) }
-      (r, ss'') = flip runState ss' strat
-      ssMap' = case HM.lookup fi (ssMap ss) of
-        Nothing  -> HM.delete fi (ssMap ss'')
-        Just en0 -> HM.insert fi en0 (ssMap ss'')
-  in (r, ss''{ ssMap = ssMap' } )
-
-implementing :: Flow a -> Strategy () -> Strategy ()
-implementing (Flow fi) strat = do
-  -- Execute strategy
-  strat
-  -- Now verify that given flow was actually implemented
-  ss <- get
-  case HM.lookup fi (ssMap ss) of
-    Just{}  -> return ()
-    Nothing -> fail $ "Flow " ++ show fi ++ " was not implemented!"
-
--- ----------------------------------------------------------------------------
--- ---                             Domains                                  ---
--- ----------------------------------------------------------------------------
-
-type DomainId = Int
-data DomainHandle a = DomainHandle
-  { dhId    :: DomainId
-    -- | Number of regions this domain is split into
-  , dhSize  :: Int
-    -- | Get indexed region
-  , dhRegion :: Int -> a
-    -- | Produce a new domain handle that is split up @n@ times more
-  , dhSplit :: Int -> Strategy (DomainHandle a)
-  }
-
-data Range = Range Int Int
-  deriving Show
-
-instance Show a => Show (DomainHandle a) where
-  showsPrec _ dh = showString "Domain " . shows (dhId dh) . showString " [" .
-                   foldr (.) id (intersperse (showString ", ") $
-                                 map (shows . dhRegion dh) [0..dhSize dh-1]) .
-                   showString "]"
-
-rangeSize :: Range -> Int
-rangeSize (Range low high) = high-low
-
--- | Create a new range domain
-makeRangeDomain :: Range -> Strategy (DomainHandle Range)
-makeRangeDomain range = do
-  d <- mkDom []
-  addStep $ DomainStep d
-  return d
- where region []     _ = range
-       region (n:ns) i
-         | Range low high <- region ns (i `div` n)
-         = Range (low + (high-low) * (i `mod` n) `div` n)
-                 (low + (high-low) * ((i `mod` n)+1) `div` n)
-       mkDom ns = do
-         did' <- freshDomainId
-         return $ DomainHandle did' (product ns) (region ns) (mkDom . (:ns))
-
--- | Split a domain into sub-regions. This creates a new partitioned region, which
--- can be used to distribute both computation as well as data.
-split :: Show a => DomainHandle a -> Int -> (DomainHandle a -> Strategy ()) -> Strategy ()
-split dh parts sub = modify $ \ss0 ->
-  let (dh', ss1) = flip runState ss0 (dhSplit dh parts)
-      (r, ss2) = flip runState ss1{ ssSteps = [] } (sub dh')
-      splitStep = SplitStep dh' dh $ reverse $ ssSteps ss2
-  in ss2{ ssSteps = splitStep : ssSteps ss1 }
-
--- | Perform computation in a distributed fashion.
-distribute :: Show a => DomainHandle a -> Schedule -> Strategy () -> Strategy ()
-distribute dh sched sub = modify $ \ ss0 ->
-  let (r, ss1) = flip runState ss0{ ssSteps = [] } sub
-      splitStep = DistributeStep dh sched $ reverse $ ssSteps ss1
-  in ss1{ ssSteps = splitStep : ssSteps ss0 }
-
--- ----------------------------------------------------------------------------
--- ---                        Data Representations                          ---
--- ----------------------------------------------------------------------------
-
-class (Show r, Typeable r) => DataRepr r where
-  type RPar r
-  -- | Does the representation contain no data? This means that we are
-  -- going to ignore it.
-  reprNop :: r -> Bool
-  reprNop _ = False
-  reprAccess :: r -> ReprAccess
-  reprCompatible :: r -> r -> Bool
-  reprCompatible _ _ = True
-
--- No representation: Either don't produce anything (= nobody can use
--- result) or don't care about input (= accept any input).
-data NoRepr a = NoRepr
-  deriving Typeable
-instance Typeable a => Show (NoRepr a) where
-  show r = "nothing [" ++ show (typeOf (undefined :: a)) ++ "]"
-instance Typeable a => DataRepr (NoRepr a) where
-  type RPar (NoRepr a) = a
-  reprNop _ = True
-  reprAccess _ = Read
-  reprCompatible _ _ = True
-
--- C buffer representation
-data CBufRepr a = CBufRepr ReprAccess
-  deriving Typeable
-instance Typeable a => Show (CBufRepr a) where
-  show r = "C buffer [" ++ show (typeOf (undefined :: a)) ++ "]"
-instance Typeable a => DataRepr (CBufRepr a) where
-  type RPar (CBufRepr a) = a
-  reprAccess (CBufRepr acc) = acc
-
--- | Who has ownership of the data representation?
-data ReprAccess
-  = Read  -- ^ Caller has ownership. Kernel should not change the buffer.
-  | Write -- ^ Callee has ownership. Kernel can change the buffer,
-          -- and must free it if it is not returned. Might require
-          -- framework to duplicate the buffer.
-
--- TODO: Merge with the above somehow?
-class IsReprs rs where
-  type RPars rs
-  toReprsI :: rs -> [ReprI]
-instance IsReprs HNil where
-  type RPars HNil = HNil
-  toReprsI _ = []
-instance (DataRepr r, IsReprs rs) => IsReprs (r :. rs) where
-  type RPars (r :. rs) = RPar r :. RPars rs
-  toReprsI (r:.rs) = ReprI r : toReprsI rs
 
 -- ----------------------------------------------------------------------------
 -- ---                             Functional                               ---
@@ -514,28 +40,28 @@ deriving instance Typeable CleanResult
 -- unique in some other way.
 --
 -- TODO 2: All this would look *way* nicer with currying.
-createGrid :: KernelFlow HNil UVGrid
-createGrid = kernel "create grid"
-grid :: KernelFlow (Flow Vis :. Flow GCFs :. Flow UVGrid :. HNil) UVGrid
-grid = kernel "grid"
-degrid :: KernelFlow (Flow UVGrid :. Flow GCFs :. Flow Vis :. HNil) Vis
-degrid = kernel "degrid"
-idft :: KernelFlow (Flow Tag :. Flow UVGrid :. HNil) Image
-idft = kernel "idft"
-dft :: KernelFlow (Flow Tag :. Flow Image :. HNil) UVGrid
-dft = kernel "dft"
-gcf :: KernelFlow (Flow Tag :. Flow Vis :. HNil) GCFs
-gcf = kernel "gcf"
-initRes :: KernelFlow HNil Image
-initRes = kernel "residual init"
-psfVis :: KernelFlow (Flow Vis :. HNil) Vis
-psfVis = kernel "prepare vis for PSF"
-clean :: KernelFlow (Flow Image :. Flow Image :. HNil) CleanResult
-clean = kernel "clean"
-cleanModel :: KernelFlow (Flow CleanResult :. HNil) Image
-cleanModel = kernel "clean/model"
-cleanResidual :: KernelFlow (Flow CleanResult :. HNil) Image
-cleanResidual = kernel "clean/residual"
+createGrid :: HNil -> Flow UVGrid
+createGrid = flow "create grid"
+grid :: Flow Vis :. Flow GCFs :. Flow UVGrid :. HNil -> Flow UVGrid
+grid = flow "grid"
+degrid :: Flow UVGrid :. Flow GCFs :. Flow Vis :. HNil -> Flow Vis
+degrid = flow "degrid"
+idft :: Flow Tag :. Flow UVGrid :. HNil -> Flow Image
+idft = flow "idft"
+dft :: Flow Tag :. Flow Image :. HNil -> Flow UVGrid
+dft = flow "dft"
+gcf :: Flow Tag :. Flow Vis :. HNil -> Flow GCFs
+gcf = flow "gcf"
+initRes :: HNil -> Flow Image
+initRes = flow "residual init"
+psfVis :: Flow Vis :. HNil -> Flow  Vis
+psfVis = flow "prepare vis for PSF"
+clean :: Flow Image :. Flow Image :. HNil -> Flow CleanResult
+clean = flow "clean"
+cleanModel :: Flow CleanResult :. HNil -> Flow Image
+cleanModel = flow "clean/model"
+cleanResidual :: Flow CleanResult :. HNil -> Flow Image
+cleanResidual = flow "clean/residual"
 
 -- | Compound gridder actor
 gridder :: Flow Tag -> Flow Vis -> Flow GCFs -> Flow Image
@@ -558,16 +84,16 @@ cleaner dirty psf = (cleanResidual (result :. HNil), cleanModel (result :. HNil)
 
 -- | Compound major loop actor
 majorLoop :: Int -> Flow Tag -> Flow Vis
-         -> ( AFlow Image  -- ^ residual
-            , AFlow Vis -- ^ visibilities
+         -> ( Flow Image  -- ^ residual
+            , Flow Vis -- ^ visibilities
             )
-majorLoop n tag vis = foldl go (aflow $ initRes HNil, aflow $ vis) [1..n]
+majorLoop n tag vis = foldl go (initRes HNil, vis) [1..n]
  where gcfs = gcf (tag :. vis :. HNil)
        psf = psfGrid tag vis gcfs
-       go (_res, vis) _i = (aflow res', aflow vis')
-         where img = gridder tag vis gcfs
-               (res', mod) = cleaner img psf
-               vis' = degridder tag mod vis gcfs
+       go (_res, vis1) _i = (res', vis')
+         where img = gridder tag vis1 gcfs
+               (res', mod') = cleaner img psf
+               vis' = degridder tag mod' vis1 gcfs
 
 -- ----------------------------------------------------------------------------
 -- ---                               Kernels                                ---
@@ -584,10 +110,7 @@ data GridPar = GridPar
 -- Stubs for kernels for now
 dummy :: (IsReprs rs, DataRepr r)
       => String -> rs -> r -> Kernel (RPars rs) (RPar r)
-dummy n ps r = Kernel n ps r $ \fl -> do
-  i <- freshKernelId
-  let typeCheck (ReprI inR) = maybe False (reprCompatible r) (cast inR)
-  return $ KernelI i fl n (ReprI r) typeCheck
+dummy = Kernel
 
 -- Make data representations. Sadly, this can not be *quite* done with
 -- deriving yet (#8165). In the meantime, we use preprocessor
@@ -608,13 +131,13 @@ DATAREPR_INSTANCE(UVGridRepr, CBufRepr UVGrid)
 -- they are large objects with lots of write operations, and we don't
 -- want to duplicate them.
 imgRepr :: ImageRepr
-imgRepr = ImageRepr $ CBufRepr Write
+imgRepr = ImageRepr $ CBufRepr WriteAccess
 uvgRepr :: UVGridRepr
-uvgRepr = UVGridRepr $ CBufRepr Write
+uvgRepr = UVGridRepr $ CBufRepr WriteAccess
 
 -- Plan representation is used by many kernels
 planRepr :: CBufRepr Tag
-planRepr = CBufRepr Read
+planRepr = CBufRepr ReadAccess
 
 newtype RawVisRepr = RawVisRepr (CBufRepr Vis)
   deriving (Typeable, Show)
@@ -625,13 +148,13 @@ DATAREPR_INSTANCE(SortedVisRepr, CBufRepr Vis)
 
 -- Visibilities generally remain constant
 rawVisRepr :: RawVisRepr
-rawVisRepr = RawVisRepr $ CBufRepr Read
+rawVisRepr = RawVisRepr $ CBufRepr ReadAccess
 visRepr :: SortedVisRepr
-visRepr = SortedVisRepr $ CBufRepr Read
+visRepr = SortedVisRepr $ CBufRepr ReadAccess
 
 -- GCFs too
 gcfsRepr :: CBufRepr GCFs
-gcfsRepr = CBufRepr Read
+gcfsRepr = CBufRepr ReadAccess
 
 halideWrapper :: (IsReprs rs, DataRepr r)
               => String -> rs -> r -> Kernel (RPars rs) (RPar r)
@@ -667,7 +190,7 @@ degridKernel :: GridPar -> Kernel (UVGrid :. GCFs :. Vis :. HNil) Vis
 degridKernel _ = dummy "degridKernel" (uvgRepr :. gcfsRepr :. visRepr :. HNil) visRepr
 
 cleanResRepr :: CBufRepr CleanResult
-cleanResRepr = CBufRepr Write
+cleanResRepr = CBufRepr WriteAccess
 cleanKernel :: Kernel (Image :. Image :. HNil) CleanResult
 cleanKernel = halideWrapper "clean" (imgRepr :. imgRepr :. HNil) cleanResRepr
 splitModel :: Kernel (CleanResult :. HNil) Image
@@ -684,7 +207,7 @@ imageWriter _ = dummy "image writer" (imgRepr :. HNil) NoRepr
 -- ---                               Strategy                               ---
 -- ----------------------------------------------------------------------------
 
-scatterImaging :: Config -> DomainHandle d -> AFlow Tag -> AFlow Vis
+scatterImaging :: Config -> DomainHandle d -> Flow Tag -> Flow Vis
                -> Strategy ()
 scatterImaging cfg dh tag vis =
  implementing (fst $ majorLoop (cfgMajorLoops cfg) tag vis) $ do
@@ -742,8 +265,8 @@ scatterImagingMain cfg = do
 
   -- Create data flow for visibilities, build abstract data flow to do
   -- configured number of major loops over this input data
-  vis <- uniqKernel "vis" HNil
-  tag <- uniqKernel "tag" HNil
+  vis <- uniqFlow "vis" HNil
+  tag <- uniqFlow "tag" HNil
   let result = fst $ majorLoop (cfgMajorLoops cfg) tag vis
 
   -- Split by datasets
@@ -751,14 +274,14 @@ scatterImagingMain cfg = do
 
     -- Split by number of runs.
     -- TODO: Number of runs should depend on data set!
-    split ds 300 $ \repeat -> distribute repeat SeqSchedule $ void $ do
+    split ds 300 $ \rep -> distribute rep SeqSchedule $ void $ do
 
       -- Read in visibilities. The domain handle passed in tells the
       -- kernel which of the datasets to load.
       bind1D ds HNil vis $ oskarReader $ cfgInput cfg
 
       -- Implement this data flow
-      implementing result $ void $ scatterImaging cfg repeat tag vis
+      implementing result $ void $ scatterImaging cfg rep tag vis
 
     -- Sum up local images (TODO: accumulate?)
     rebind1D ds result imageSum
@@ -766,65 +289,6 @@ scatterImagingMain cfg = do
   -- Sum and write out the result
   rebind result imageSum
   rebind result $ imageWriter (cfgOutput cfg)
-
--- ----------------------------------------------------------------------------
--- ---                               Driver                                 ---
--- ----------------------------------------------------------------------------
-
-dumpStrategy :: Strategy a -> IO ()
-dumpStrategy strat = do
-
-  -- Construct strategy map
-  let kerns = stepsToKernels $ ssSteps $ execState strat initStratState
-
-  -- Generate sorted kernel
-  let kerns' = sortBy (comparing (kernId . smeKernel)) kerns
-
-  let dumpKern (KernelBind (KernelI kid kfl kname repr _) deps) = do
-        putStrLn $ concat
-          [ "Kernel ", show kid, ":", kname, " implementing ", flName kfl
-          , " producing ", show repr, " using ", show deps ]
-  forM_ kerns' dumpKern
-
-dumpStrategyDOT :: FilePath -> Strategy a -> IO ()
-dumpStrategyDOT file strat = do
-
-  -- Construct strategy map
-  let kerns = stepsToKernels $ ssSteps $ execState strat initStratState
-
-  -- Generate sorted kernel
-  let kerns' = sortBy (comparing (kernId . smeKernel)) kerns
-
-  -- Open output file
-  h <- openFile file WriteMode
-  hPutStrLn h "digraph strategy {"
-  let kernName kid = "kernel" ++ show kid
-  let dumpKern (KernelBind (KernelI kid kfl kname repr _) deps) = do
-        hPutStrLn h $ concat
-          [ kernName kid, " [label=\"" ++ kname, " implementing ", flName kfl,
-            " producing ", show repr, "\"]"]
-        forM_ (deps) $ \kid' ->
-          hPutStrLn h $ concat
-            [ kernName kid', " -> ", kernName kid]
-  forM_ kerns' dumpKern
-  hPutStrLn h "}"
-  hClose h
-
-dumpSteps :: Strategy a -> IO ()
-dumpSteps strat = do
-
-  let dump ind (DomainStep dh)
-        = putStrLn $ ind ++ "Domain " ++ show dh
-      dump ind (SplitStep dh' dh steps)
-        = do putStrLn $ ind ++ "Split Domain " ++ show (dhId dh) ++ " into " ++ show dh'
-             forM_ steps (dump ("  " ++ ind))
-      dump ind (KernelStep dids kb)
-        = putStrLn $ ind ++ "Over " ++ show dids ++ " " ++ show kb
-      dump ind (DistributeStep did sched steps)
-        = do putStrLn $ ind ++ "Distribute " ++ show did ++ " using " ++ show sched
-             forM_ steps (dump ("  " ++ ind))
-
-  forM_ (reverse $ ssSteps $ execState strat initStratState) (dump "")
 
 testStrat :: Strategy ()
 testStrat = scatterImagingMain $ Config
