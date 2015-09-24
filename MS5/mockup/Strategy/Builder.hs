@@ -1,5 +1,5 @@
 {-# LANGUAGE GADTs, TypeFamilies, TypeOperators, FlexibleInstances,
-             ScopedTypeVariables, FlexibleContexts #-}
+             ScopedTypeVariables, FlexibleContexts, MultiParamTypeClasses #-}
 
 module Strategy.Builder
   (
@@ -10,7 +10,8 @@ module Strategy.Builder
   , runStrategy
   , uniqFlow, implementing, calculate
   -- * Kernel binding
-  , Kernel(..), IsReprs(..)
+  , IsReprs(..), IsReprKern(..)
+  , kernel, Kernel
   , bind, bind1D
   , rebind, rebind1D
   , bindRule, bindRule1D
@@ -64,28 +65,37 @@ instance IsFlows fs => IsFlows (Flow a :. fs) where
 class IsFlows (Flows fs) => IsCurriedFlows fs where
   type Flows fs
   type Ret fs
+  type KernFun fs
   curryFlow :: (Flows fs -> Flow (Ret fs)) -> fs
   uncurryFlow :: fs -> Flows fs -> Flow (Ret fs)
+  uncurryKernFun :: fs -> KernFun fs -> Flows fs -> Kernel (Ret fs)
 instance IsCurriedFlows (Flow a) where
   type Flows (Flow a) = HNil
   type Ret (Flow a) = a
+  type KernFun (Flow a) = Kernel a
   curryFlow f = f HNil
   uncurryFlow fl _ = fl
+  uncurryKernFun _ kfl _ = kfl
 instance IsCurriedFlows fs => IsCurriedFlows (Flow f -> fs) where
   type Flows (Flow f -> fs) = Flow f :. Flows fs
   type Ret (Flow f -> fs) = Ret fs
+  type KernFun (Flow f -> fs) = Flow f -> KernFun fs
   curryFlow f fl = curryFlow (f . (fl :.))
   uncurryFlow f (fl :. fls) = uncurryFlow (f fl) fls
+  uncurryKernFun _ f (fl :. fls) = uncurryKernFun (undefined :: fs) (f fl) fls
 
 -- | Class for reasoning about lists of data representations
-class IsReprs rs where
+class (IsFlows (RFlows rs), Pars (RFlows rs) ~ RPars rs) => IsReprs rs where
   type RPars rs
+  type RFlows rs
   toReprsI :: rs -> [ReprI]
 instance IsReprs HNil where
   type RPars HNil = HNil
+  type RFlows HNil = HNil
   toReprsI _ = []
 instance (DataRepr r, IsReprs rs) => IsReprs (r :. rs) where
   type RPars (r :. rs) = RPar r :. RPars rs
+  type RFlows (r :. rs) = Flow (RPar r) :. RFlows rs
   toReprsI (r:.rs) = ReprI r : toReprsI rs
 
 -- | Create a new abstract kernel flow
@@ -99,19 +109,32 @@ uniqFlow name fls = state $ \ss ->
   (mkFlow (name ++ "." ++ show (ssKernelId ss)) $ toList fls,
    ss {ssKernelId = 1 + ssKernelId ss})
 
--- | Represents a kernel implementation
-data Kernel ps a where
-  Kernel :: (IsReprs rs, DataRepr r)
-         => String -> rs -> r
-         -> Kernel (RPars rs) (RPar r)
+-- | Class for reasoning about producing kernels from curried lists of flows
+class IsReprs rs => IsReprKern a rs where
+  type RKern a rs
+  curryReprs :: rs -> (RFlows rs -> Kernel a) -> RKern a rs
+instance IsReprKern a HNil where
+  type RKern a HNil = Kernel a
+  curryReprs _ f = f HNil
+instance (DataRepr r, IsReprKern a rs) => IsReprKern a (r :. rs) where
+  type RKern a (r :. rs) = Flow (RPar r) -> RKern a rs
+  curryReprs _ f fl = curryReprs (undefined :: rs) (f . (fl :.))
 
-prepareKernel :: forall ps a. IsFlows ps
-              => ps -> Flow a -> [DomainId] -> Kernel (Pars ps) a -> Strategy KernelBind
-prepareKernel ps (Flow fi) ds (Kernel kname parReprs retRep) = do
+-- | Kernel implementation, with parameters bound to flows
+data Kernel a where
+  Kernel :: (IsReprs rs, IsReprKern (RPar r) rs, DataRepr r)
+         => String -> rs -> r -> RFlows rs
+         -> Kernel (RPar r)
 
-  -- Make kernel
-  i <- freshKernelId
-  let typeCheck (ReprI inR) = maybe False (reprCompatible retRep) (cast inR)
+-- | Creates a new kernel using the given data representations for
+-- input values. Needs to be bound to input flows.
+kernel :: forall r rs. (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
+       => String -> rs -> r -> RKern (RPar r) rs
+kernel name parReprs retRep
+  = curryReprs (undefined :: rs) (Kernel name parReprs retRep)
+
+prepareKernel :: Kernel r -> Flow r -> [DomainId] -> Strategy KernelBind
+prepareKernel (Kernel kname parReprs retRep ps) (Flow fi) ds = do
 
   -- Get parameters + representation. Filter out the ones marked as
   -- "don't care".
@@ -167,40 +190,63 @@ prepareKernel ps (Flow fi) ds (Kernel kname parReprs retRep) = do
                             flName fi ++ ": Failed to apply rule to calculate " ++ show p ++ "! " ++
                             "This should be impossible!"
 
-  -- Add to kernel list
-  let kern = KernelBind i fi kname (ReprI retRep) kis typeCheck
+  -- Make kernel, add to kernel list
+  i <- freshKernelId
+  let typeCheck (ReprI inR) = maybe False (reprCompatible retRep) (cast inR)
+      kern = KernelBind i fi kname (ReprI retRep) kis typeCheck
   addStep $ KernelStep ds kern
   return kern
 
--- | Bind the given flow to a kernel. This is equivalent to first
--- setting a "rule" for the flow, then calling "calculate". More
--- efficient though.
-bind :: IsFlows fs => fs -> Flow a -> Kernel (Pars fs) a -> Strategy ()
-bind ps fl k = do
-  entry <- prepareKernel ps fl [] k
+-- | Bind the given flow to a kernel. For this to succeed, threee
+-- conditions must be met:
+--
+-- 1. All input flows of the kernel must be direct or indirect data
+-- dependencies of the given flow. If this flow was bound before, this
+-- includes the flow itself (see also "rebind").
+--
+-- 2. All input flows have either been bound, or can be bound
+-- automatically using rules registered by "rule".
+--
+-- 3. The bound kernels produce data representations that are fit
+-- ("reprCompatible") for getting consumed by this kernel.
+bind :: Flow r -> Kernel r -> Strategy ()
+bind fl kfl = do
+  entry <- prepareKernel kfl fl []
   let fi = kernFlow entry
   modify $ \ss -> ss{ ssMap = HM.insert fi entry (ssMap ss)}
 
-bind1D :: IsFlows fs
-       => DomainHandle d -> fs -> Flow a -> Kernel (Pars fs) a
-       -> Strategy ()
-bind1D d ps fl k = do
-  entry <- prepareKernel ps fl [dhId d] k
+-- | Bind the given flow to a kernel, using a one-dimensional
+-- domain. See "bind" for details.
+bind1D :: DomainHandle d -> Flow r -> Kernel r -> Strategy ()
+bind1D d fl kfl = do
+  entry <- prepareKernel kfl fl [dhId d]
   let fi = kernFlow entry
   modify $ \ss -> ss{ ssMap = HM.insert fi entry (ssMap ss)}
 
-rebind :: Flow a -> Kernel (a :. HNil) a -> Strategy ()
-rebind fl = bind (fl :. HNil) fl
+-- | Rebinds the given flow. This is a special case of "bind" for
+-- kernels that modify the data the flow represents - for example to
+-- change the data representations. This only works if the flow in
+-- question has been bound previously.
+rebind :: Flow a -> (Flow a -> Kernel a) -> Strategy ()
+rebind fl f = bind fl (f fl)
 
-rebind1D :: DomainHandle d -> Flow a -> Kernel (a :. HNil) a
-         -> Strategy ()
-rebind1D dh fl = bind1D dh (fl :. HNil) fl
+-- | Rebinds the given flow, using a one-dimensional domain. See
+-- "rebind" for details.
+rebind1D :: DomainHandle d -> Flow a -> (Flow a -> Kernel a) -> Strategy ()
+rebind1D dh fl f = bind fl (f fl)
 
-rule :: IsFlows fs => (fs -> Flow a) -> (fs -> Strategy ()) -> Strategy ()
+-- | Registers a new rule for automatically binding kernels given a
+-- certain data flow pattern. This is used by "calculate" to figure
+-- out what to do. Furthermore, "bind" and friends will use them in
+-- order to materialise missing data dependencies.
+rule :: IsCurriedFlows fs
+     => fs                        -- ^ Abstract data flow to match
+     -> (Flows fs -> Strategy ()) -- ^ Code for binding the data flow
+     -> Strategy ()
 rule flf strat = do
 
   -- Pass wildcard flows to function to get pattern
-  let (Flow pat) = flf (wilds 0)
+  let (Flow pat) = uncurryFlow flf (wilds 0)
 
       -- Rule is now to match the given pattern, and if successful
       -- execute strategy and check that it actually implements the
@@ -213,14 +259,28 @@ rule flf strat = do
 
   modify $ \ss -> ss{ ssRules = stratRule : ssRules ss }
 
--- | Simple rule, binding a kernel to a pattern
-bindRule :: IsFlows fs => (fs -> Flow a) -> Kernel (Pars fs) a -> Strategy()
-bindRule flf kern = rule flf $ \inp -> bind inp (flf inp) kern
+-- | Registers a new "rule" that binds a kernel to all occurences of
+-- the given flow pattern. The kernel input types must exactly match
+-- the flow inputs for this to work.
+bindRule :: forall d fs. IsCurriedFlows fs
+         => fs
+         -> KernFun fs
+         -> Strategy ()
+bindRule flf kern =
+  rule flf $ \inp ->
+    bind (uncurryFlow flf inp) (uncurryKernFun (undefined :: fs) kern inp)
 
-bindRule1D :: IsCurriedFlows fs
-            => DomainHandle d -> fs -> Kernel (Pars (Flows fs)) (Ret fs) -> Strategy()
+-- | Reigsters a new "rule" that binds a kernel to all occurences of
+-- the given flow pattern, subject to a one-dimensional domain. See
+-- "bindRule".
+bindRule1D :: forall d fs. IsCurriedFlows fs
+           => DomainHandle d
+           -> fs
+           -> KernFun fs
+           -> Strategy ()
 bindRule1D dh flf kern =
-  rule (uncurryFlow flf) $ \inp -> bind1D dh inp (uncurryFlow flf inp) kern
+  rule flf $ \inp ->
+    bind1D dh (uncurryFlow flf inp) (uncurryKernFun (undefined :: fs) kern inp)
 
 -- | Check whether a flow matches a pattern.
 matchPattern :: forall fs. IsFlows fs => FlowI -> FlowI -> Maybe fs
@@ -275,6 +335,8 @@ findRule (Flow fi) = do
   return $ listToMaybe $ mapMaybe apply rules
     -- TODO: Warn about rule overlap?
 
+-- | Documents that the given strategy code is meant to bind the
+-- indicated flow. An error will be raised if it fails to do so.
 implementing :: Flow a -> Strategy () -> Strategy ()
 implementing (Flow fi) strat = do
   -- Execute strategy

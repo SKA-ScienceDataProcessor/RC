@@ -1,4 +1,5 @@
-{-# LANGUAGE DeriveDataTypeable, TypeFamilies, TypeOperators, StandaloneDeriving #-}
+{-# LANGUAGE DeriveDataTypeable, TypeFamilies, TypeOperators, StandaloneDeriving,
+             FlexibleContexts #-}
 
 -- Workaround
 {-# LANGUAGE CPP, UndecidableInstances #-}
@@ -107,11 +108,6 @@ data Config = Config
   }
 data GridPar = GridPar
 
--- Stubs for kernels for now
-dummy :: (IsReprs rs, DataRepr r)
-      => String -> rs -> r -> Kernel (RPars rs) (RPar r)
-dummy = Kernel
-
 -- Make data representations. Sadly, this can not be *quite* done with
 -- deriving yet (#8165). In the meantime, we use preprocessor
 #define DATAREPR_INSTANCE(NewRepr, Repr) \
@@ -156,52 +152,53 @@ visRepr = SortedVisRepr $ CBufRepr ReadAccess
 gcfsRepr :: CBufRepr GCFs
 gcfsRepr = CBufRepr ReadAccess
 
-halideWrapper :: (IsReprs rs, DataRepr r)
-              => String -> rs -> r -> Kernel (RPars rs) (RPar r)
-halideWrapper _ = dummy "halide"
-cWrapper :: (IsReprs rs, DataRepr r)
-            => a -> rs -> r -> Kernel (RPars rs) (RPar r)
-cWrapper _ = dummy "c"
+halideWrapper :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
+              => String -> rs -> r -> RKern (RPar r) rs
+halideWrapper _ = kernel "halide"
+cWrapper :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
+         => String -> rs -> r -> RKern (RPar r) rs
+cWrapper _ = kernel "c"
 
-oskarReader :: [(FilePath, Int)] -> Kernel HNil Vis
-oskarReader _ = dummy "oskar" HNil rawVisRepr
-sorter :: Kernel (Vis :. HNil) Vis
-sorter = dummy "sorter" (rawVisRepr :. HNil) visRepr
-setOnes :: Kernel (Vis :. HNil) Vis
-setOnes = dummy "ones" (visRepr :. HNil) visRepr
+oskarReader :: [(FilePath, Int)] -> Kernel Vis
+oskarReader _ = kernel "oskar" HNil rawVisRepr
+sorter :: Flow Vis -> Kernel Vis
+sorter = kernel "sorter" (rawVisRepr :. HNil) visRepr
 
-gcfKernel :: GridPar -> Kernel (Tag :. Vis :. HNil) GCFs
+setOnes :: Flow Vis -> Kernel Vis
+setOnes = kernel "ones" (visRepr :. HNil) visRepr
+
+gcfKernel :: GridPar -> Flow Tag -> Flow Vis -> Kernel GCFs
 gcfKernel _ = halideWrapper "gcfs" (planRepr :. visRepr :. HNil) gcfsRepr
 
-fftCreatePlans :: GridPar -> Kernel (() :. HNil) Tag
-fftCreatePlans _ = dummy "fftPlans" (NoRepr :. HNil) planRepr
-fftKern :: GridPar -> Kernel (Tag :. Image :. HNil) UVGrid
-fftKern _ = dummy "fftKern" (planRepr :. imgRepr :. HNil) uvgRepr
-ifftKern :: GridPar -> Kernel (Tag :. UVGrid :. HNil) Image
-ifftKern _ = dummy "ifftKern" (planRepr :. uvgRepr :. HNil) imgRepr
+fftCreatePlans :: GridPar -> Flow Tag -> Kernel Tag
+fftCreatePlans _ = kernel "fftPlans" (NoRepr :. HNil) planRepr
+fftKern :: GridPar -> Flow Tag -> Flow Image -> Kernel UVGrid
+fftKern _ = kernel "fftKern" (planRepr :. imgRepr :. HNil) uvgRepr
+ifftKern :: GridPar -> Flow Tag -> Flow UVGrid -> Kernel Image
+ifftKern _ = kernel "ifftKern" (planRepr :. uvgRepr :. HNil) imgRepr
 
-gridInit :: GridPar -> Kernel HNil UVGrid
-gridInit _ = dummy "gridInit" HNil uvgRepr
-gridKernel :: GridPar -> Kernel (Vis :. GCFs :. UVGrid :. HNil) UVGrid
-gridKernel _ = dummy "gridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. HNil) uvgRepr
-psfGridKernel :: GridPar -> Kernel (Vis :. GCFs :. UVGrid :. HNil) UVGrid
-psfGridKernel _ = dummy "psfGridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. HNil) uvgRepr
-degridKernel :: GridPar -> Kernel (UVGrid :. GCFs :. Vis :. HNil) Vis
-degridKernel _ = dummy "degridKernel" (uvgRepr :. gcfsRepr :. visRepr :. HNil) visRepr
+gridInit :: GridPar -> Kernel UVGrid
+gridInit _ = kernel "gridInit" HNil uvgRepr
+gridKernel :: GridPar -> Flow Vis -> Flow GCFs -> Flow UVGrid -> Kernel UVGrid
+gridKernel _ = kernel "gridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. HNil) uvgRepr
+psfGridKernel :: GridPar -> Flow Vis -> Flow GCFs -> Flow UVGrid -> Kernel UVGrid
+psfGridKernel _ = kernel "psfGridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. HNil) uvgRepr
+degridKernel :: GridPar -> Flow UVGrid -> Flow GCFs -> Flow Vis -> Kernel Vis
+degridKernel _ = kernel "degridKernel" (uvgRepr :. gcfsRepr :. visRepr :. HNil) visRepr
 
 cleanResRepr :: CBufRepr CleanResult
 cleanResRepr = CBufRepr WriteAccess
-cleanKernel :: Kernel (Image :. Image :. HNil) CleanResult
+cleanKernel :: Flow Image -> Flow Image -> Kernel CleanResult
 cleanKernel = halideWrapper "clean" (imgRepr :. imgRepr :. HNil) cleanResRepr
-splitModel :: Kernel (CleanResult :. HNil) Image
-splitModel = dummy "splitModel" (cleanResRepr :. HNil) imgRepr
-splitResidual :: Kernel (CleanResult :. HNil) Image
-splitResidual = dummy "splitResidual" (cleanResRepr :. HNil) imgRepr
+splitModel :: Flow CleanResult -> Kernel Image
+splitModel = kernel "splitModel" (cleanResRepr :. HNil) imgRepr
+splitResidual :: Flow CleanResult -> Kernel Image
+splitResidual = kernel "splitResidual" (cleanResRepr :. HNil) imgRepr
 
-imageSum :: Kernel (Image :. HNil) Image
-imageSum = dummy "image summation" (imgRepr :. HNil) imgRepr
-imageWriter :: FilePath -> Kernel (Image :. HNil) Image
-imageWriter _ = dummy "image writer" (imgRepr :. HNil) NoRepr
+imageSum :: Flow Image -> Kernel Image
+imageSum = kernel "image summation" (imgRepr :. HNil) imgRepr
+imageWriter :: FilePath -> Flow Image -> Kernel Image
+imageWriter _ = kernel "image writer" (imgRepr :. HNil) NoRepr
 
 -- ----------------------------------------------------------------------------
 -- ---                               Strategy                               ---
@@ -217,11 +214,11 @@ scatterImaging cfg dh tag vis =
 
   -- Initialise FFTs
   let gpar = cfgGrid cfg
-  bind1D dh HNil tag $ cWrapper (fftCreatePlans gpar) HNil planRepr
+  rebind1D dh tag (fftCreatePlans gpar)
 
   -- Generate GCF
   let gcfs = gcf tag vis
-  bind1D dh (tag :. vis :. HNil) gcfs (gcfKernel gpar)
+  bind1D dh gcfs (gcfKernel gpar tag vis)
 
   -- Make rules
   bindRule1D dh idft (ifftKern gpar)
@@ -236,8 +233,7 @@ scatterImaging cfg dh tag vis =
   -- PSF. Note that we bind a kernel here that implements *two*
   -- abstract kernel nodes!
   let psfg = grid (psfVis vis) gcfs createGrid
-  bind1D dh (vis :. gcfs :. createGrid :. HNil) psfg (psfGridKernel gpar)
-  --bind1D dh (vis :. HNil) (psfVis (vis :. HNil)) setOnes
+  bind1D dh psfg (psfGridKernel gpar vis gcfs createGrid)
   calculate $ psfGrid tag vis gcfs
 
   -- Loop
@@ -278,7 +274,7 @@ scatterImagingMain cfg = do
 
       -- Read in visibilities. The domain handle passed in tells the
       -- kernel which of the datasets to load.
-      bind1D rep HNil vis $ oskarReader $ cfgInput cfg
+      bind1D rep vis $ oskarReader $ cfgInput cfg
 
       -- Implement this data flow
       implementing result $ void $ scatterImaging cfg rep tag vis
