@@ -123,18 +123,19 @@ instance (DataRepr r, IsReprKern a rs) => IsReprKern a (r :. rs) where
 -- | Kernel implementation, with parameters bound to flows
 data Kernel a where
   Kernel :: (IsReprs rs, IsReprKern (RPar r) rs, DataRepr r)
-         => String -> rs -> r -> RFlows rs
+         => String -> KernelCode
+         -> rs -> r -> RFlows rs
          -> Kernel (RPar r)
 
 -- | Creates a new kernel using the given data representations for
 -- input values. Needs to be bound to input flows.
 kernel :: forall r rs. (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
-       => String -> rs -> r -> RKern (RPar r) rs
-kernel name parReprs retRep
-  = curryReprs (undefined :: rs) (Kernel name parReprs retRep)
+       => String -> KernelCode -> rs -> r -> RKern (RPar r) rs
+kernel name code parReprs retRep
+  = curryReprs (undefined :: rs) (Kernel name code parReprs retRep)
 
 prepareKernel :: Kernel r -> Flow r -> [DomainId] -> Strategy KernelBind
-prepareKernel (Kernel kname parReprs retRep ps) (Flow fi) ds = do
+prepareKernel (Kernel kname kcode parReprs retRep ps) (Flow fi) ds = do
 
   -- Get parameters + representation. Filter out the ones marked as
   -- "don't care".
@@ -193,7 +194,7 @@ prepareKernel (Kernel kname parReprs retRep ps) (Flow fi) ds = do
   -- Make kernel, add to kernel list
   i <- freshKernelId
   let typeCheck (ReprI inR) = maybe False (reprCompatible retRep) (cast inR)
-      kern = KernelBind i fi kname (ReprI retRep) kis typeCheck
+      kern = KernelBind i fi kname (ReprI retRep) kis kcode typeCheck
   addStep $ KernelStep ds kern
   return kern
 
@@ -233,7 +234,7 @@ rebind fl f = bind fl (f fl)
 -- | Rebinds the given flow, using a one-dimensional domain. See
 -- "rebind" for details.
 rebind1D :: DomainHandle d -> Flow a -> (Flow a -> Kernel a) -> Strategy ()
-rebind1D dh fl f = bind fl (f fl)
+rebind1D dh fl f = bind1D dh fl (f fl)
 
 -- | Registers a new rule for automatically binding kernels given a
 -- certain data flow pattern. This is used by "calculate" to figure
@@ -262,7 +263,7 @@ rule flf strat = do
 -- | Registers a new "rule" that binds a kernel to all occurences of
 -- the given flow pattern. The kernel input types must exactly match
 -- the flow inputs for this to work.
-bindRule :: forall d fs. IsCurriedFlows fs
+bindRule :: forall fs. IsCurriedFlows fs
          => fs
          -> KernFun fs
          -> Strategy ()
