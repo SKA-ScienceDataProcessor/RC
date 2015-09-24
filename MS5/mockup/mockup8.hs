@@ -40,55 +40,55 @@ deriving instance Typeable CleanResult
 -- unique in some other way.
 --
 -- TODO 2: All this would look *way* nicer with currying.
-createGrid :: HNil -> Flow UVGrid
+createGrid :: Flow UVGrid
 createGrid = flow "create grid"
-grid :: Flow Vis :. Flow GCFs :. Flow UVGrid :. HNil -> Flow UVGrid
+grid :: Flow Vis -> Flow GCFs -> Flow UVGrid -> Flow UVGrid
 grid = flow "grid"
-degrid :: Flow UVGrid :. Flow GCFs :. Flow Vis :. HNil -> Flow Vis
+degrid :: Flow UVGrid -> Flow GCFs -> Flow Vis -> Flow Vis
 degrid = flow "degrid"
-idft :: Flow Tag :. Flow UVGrid :. HNil -> Flow Image
+idft :: Flow Tag -> Flow UVGrid -> Flow Image
 idft = flow "idft"
-dft :: Flow Tag :. Flow Image :. HNil -> Flow UVGrid
+dft :: Flow Tag -> Flow Image -> Flow UVGrid
 dft = flow "dft"
-gcf :: Flow Tag :. Flow Vis :. HNil -> Flow GCFs
+gcf :: Flow Tag -> Flow Vis -> Flow GCFs
 gcf = flow "gcf"
-initRes :: HNil -> Flow Image
+initRes :: Flow Image
 initRes = flow "residual init"
-psfVis :: Flow Vis :. HNil -> Flow  Vis
+psfVis :: Flow Vis -> Flow  Vis
 psfVis = flow "prepare vis for PSF"
-clean :: Flow Image :. Flow Image :. HNil -> Flow CleanResult
+clean :: Flow Image -> Flow Image -> Flow CleanResult
 clean = flow "clean"
-cleanModel :: Flow CleanResult :. HNil -> Flow Image
+cleanModel :: Flow CleanResult -> Flow Image
 cleanModel = flow "clean/model"
-cleanResidual :: Flow CleanResult :. HNil -> Flow Image
+cleanResidual :: Flow CleanResult -> Flow Image
 cleanResidual = flow "clean/residual"
 
 -- | Compound gridder actor
 gridder :: Flow Tag -> Flow Vis -> Flow GCFs -> Flow Image
-gridder tag vis gcfs = idft (tag :. uvg :. HNil)
- where uvg = grid (vis :. gcfs :. createGrid HNil :. HNil)
+gridder tag vis gcfs = idft tag uvg
+ where uvg = grid vis gcfs createGrid
 
 -- | Compound degridder actor
 degridder :: Flow Tag -> Flow Image -> Flow Vis -> Flow GCFs -> Flow Vis
-degridder tag img vis gcfs = degrid (uvg :. gcfs :. vis :. HNil)
- where uvg = dft (tag :. img :. HNil)
+degridder tag img vis gcfs = degrid uvg gcfs vis
+ where uvg = dft tag img
 
 -- | Compound PSF gridder actor
 psfGrid :: Flow Tag -> Flow Vis -> Flow GCFs -> Flow Image
-psfGrid tag vis gcfs = gridder tag (psfVis (vis :. HNil)) gcfs
+psfGrid tag vis gcfs = gridder tag (psfVis vis) gcfs
 
 -- | Compound cleaning actor
 cleaner :: Flow Image -> Flow Image -> (Flow Image, Flow Image)
-cleaner dirty psf = (cleanResidual (result :. HNil), cleanModel (result :. HNil))
- where result = clean (dirty :. psf :. HNil)
+cleaner dirty psf = (cleanResidual result, cleanModel result)
+ where result = clean dirty psf
 
 -- | Compound major loop actor
 majorLoop :: Int -> Flow Tag -> Flow Vis
          -> ( Flow Image  -- ^ residual
             , Flow Vis -- ^ visibilities
             )
-majorLoop n tag vis = foldl go (initRes HNil, vis) [1..n]
- where gcfs = gcf (tag :. vis :. HNil)
+majorLoop n tag vis = foldl go (initRes, vis) [1..n]
+ where gcfs = gcf tag vis
        psf = psfGrid tag vis gcfs
        go (_res, vis1) _i = (res', vis')
          where img = gridder tag vis1 gcfs
@@ -220,7 +220,7 @@ scatterImaging cfg dh tag vis =
   bind1D dh HNil tag $ cWrapper (fftCreatePlans gpar) HNil planRepr
 
   -- Generate GCF
-  let gcfs = gcf (tag :. vis :. HNil)
+  let gcfs = gcf tag vis
   bind1D dh (tag :. vis :. HNil) gcfs (gcfKernel gpar)
 
   -- Make rules
@@ -235,8 +235,8 @@ scatterImaging cfg dh tag vis =
 
   -- PSF. Note that we bind a kernel here that implements *two*
   -- abstract kernel nodes!
-  let psfg = grid (psfVis (vis :. HNil) :. gcfs :. createGrid HNil :. HNil)
-  bind1D dh (vis :. gcfs :. createGrid HNil :. HNil) psfg (psfGridKernel gpar)
+  let psfg = grid (psfVis vis) gcfs createGrid
+  bind1D dh (vis :. gcfs :. createGrid :. HNil) psfg (psfGridKernel gpar)
   --bind1D dh (vis :. HNil) (psfVis (vis :. HNil)) setOnes
   calculate $ psfGrid tag vis gcfs
 
@@ -245,13 +245,13 @@ scatterImaging cfg dh tag vis =
 
     -- Force grid calculation - we do not want to share this between
     -- loop iterations!
-    calculate $ createGrid HNil
+    calculate createGrid
 
     -- Generate new visibilities
     calculate $ snd $ majorLoop i tag vis
 
   -- Calculate residual of last loop iteration
-  calculate $ createGrid HNil
+  calculate createGrid
   calculate $ fst $ majorLoop (cfgMajorLoops cfg) tag vis
 
 -- Strategy implements imaging loop for a number of data sets
@@ -278,7 +278,7 @@ scatterImagingMain cfg = do
 
       -- Read in visibilities. The domain handle passed in tells the
       -- kernel which of the datasets to load.
-      bind1D ds HNil vis $ oskarReader $ cfgInput cfg
+      bind1D rep HNil vis $ oskarReader $ cfgInput cfg
 
       -- Implement this data flow
       implementing result $ void $ scatterImaging cfg rep tag vis

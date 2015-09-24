@@ -1,5 +1,5 @@
 {-# LANGUAGE GADTs, TypeFamilies, TypeOperators, FlexibleInstances,
-             ScopedTypeVariables #-}
+             ScopedTypeVariables, FlexibleContexts #-}
 
 module Strategy.Builder
   (
@@ -59,6 +59,24 @@ instance IsFlows fs => IsFlows (Flow a :. fs) where
   fromList _      = error "Internal error: fromList expected non-empty list!"
   wilds i = wildFlow i :. wilds (i+1)
 
+-- | Support class for allowing to pass lists of flows using curried
+-- parameters
+class IsFlows (Flows fs) => IsCurriedFlows fs where
+  type Flows fs
+  type Ret fs
+  curryFlow :: (Flows fs -> Flow (Ret fs)) -> fs
+  uncurryFlow :: fs -> Flows fs -> Flow (Ret fs)
+instance IsCurriedFlows (Flow a) where
+  type Flows (Flow a) = HNil
+  type Ret (Flow a) = a
+  curryFlow f = f HNil
+  uncurryFlow fl _ = fl
+instance IsCurriedFlows fs => IsCurriedFlows (Flow f -> fs) where
+  type Flows (Flow f -> fs) = Flow f :. Flows fs
+  type Ret (Flow f -> fs) = Ret fs
+  curryFlow f fl = curryFlow (f . (fl :.))
+  uncurryFlow f (fl :. fls) = uncurryFlow (f fl) fls
+
 -- | Class for reasoning about lists of data representations
 class IsReprs rs where
   type RPars rs
@@ -71,14 +89,14 @@ instance (DataRepr r, IsReprs rs) => IsReprs (r :. rs) where
   toReprsI (r:.rs) = ReprI r : toReprsI rs
 
 -- | Create a new abstract kernel flow
-flow :: IsFlows fs => String -> fs -> Flow r
-flow name fs = mkFlow name (toList fs)
+flow :: IsCurriedFlows fs => String -> fs
+flow name = curryFlow (mkFlow name . toList)
 
 -- | Create a new unique abstract kernel flow. In contrast to "flow",
 -- the result will never be seen as equal to another flow.
 uniqFlow :: IsFlows fl => String -> fl -> Strategy (Flow a)
 uniqFlow name fls = state $ \ss ->
-  (flow (name ++ "." ++ show (ssKernelId ss)) fls,
+  (mkFlow (name ++ "." ++ show (ssKernelId ss)) $ toList fls,
    ss {ssKernelId = 1 + ssKernelId ss})
 
 -- | Represents a kernel implementation
@@ -199,9 +217,10 @@ rule flf strat = do
 bindRule :: IsFlows fs => (fs -> Flow a) -> Kernel (Pars fs) a -> Strategy()
 bindRule flf kern = rule flf $ \inp -> bind inp (flf inp) kern
 
-bindRule1D :: IsFlows fs
-           => DomainHandle d -> (fs -> Flow a) -> Kernel (Pars fs) a -> Strategy()
-bindRule1D dh flf kern = rule flf $ \inp -> bind1D dh inp (flf inp) kern
+bindRule1D :: IsCurriedFlows fs
+            => DomainHandle d -> fs -> Kernel (Pars (Flows fs)) (Ret fs) -> Strategy()
+bindRule1D dh flf kern =
+  rule (uncurryFlow flf) $ \inp -> bind1D dh inp (uncurryFlow flf inp) kern
 
 -- | Check whether a flow matches a pattern.
 matchPattern :: forall fs. IsFlows fs => FlowI -> FlowI -> Maybe fs
