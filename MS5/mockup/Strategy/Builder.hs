@@ -233,7 +233,7 @@ rebind fl f = bind fl (f fl)
 -- | Rebinds the given flow, using a one-dimensional domain. See
 -- "rebind" for details.
 rebind1D :: DomainHandle d -> Flow a -> (Flow a -> Kernel a) -> Strategy ()
-rebind1D dh fl f = bind fl (f fl)
+rebind1D dh fl f = bind1D dh fl (f fl)
 
 -- | Registers a new rule for automatically binding kernels given a
 -- certain data flow pattern. This is used by "calculate" to figure
@@ -262,7 +262,7 @@ rule flf strat = do
 -- | Registers a new "rule" that binds a kernel to all occurences of
 -- the given flow pattern. The kernel input types must exactly match
 -- the flow inputs for this to work.
-bindRule :: forall d fs. IsCurriedFlows fs
+bindRule :: forall fs. IsCurriedFlows fs
          => fs
          -> KernFun fs
          -> Strategy ()
