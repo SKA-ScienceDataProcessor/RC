@@ -7,6 +7,7 @@ import Control.Monad.State.Strict
 import Data.Hashable
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
+import qualified Data.ByteString as BS
 
 -- | Internal representation of a data flow.
 data FlowI = FlowI
@@ -51,13 +52,17 @@ data KernelBind = KernelBind
   , kernName :: String     -- ^ Name
   , kernRepr :: ReprI      -- ^ Data representation produced
   , kernDeps :: [KernelId] -- ^ Kernel dependencies
+  , kernCode :: KernelCode -- ^ Code to execute the kernel
   , kernReprCheck :: ReprI -> Bool
     -- ^ Check whether a sink data representation is compatible with
     -- the data we produce
   }
 
+-- | Code implementing a kernel
+type KernelCode = [BS.ByteString] -> IO BS.ByteString
+
 instance Show KernelBind where
-  showsPrec _ (KernelBind kid kflow kname krepr kdeps _)
+  showsPrec _ (KernelBind kid kflow kname krepr kdeps _ _)
     = showString "Kernel " . shows kid . showString ":" . showString kname
       . showString " implementing " . showString (flName kflow)
       . showString " producing " . shows krepr
