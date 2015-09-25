@@ -57,3 +57,19 @@ buffer_t mk1DHalideBuf(vector<T> & v){
   buf.elem_size = sizeof(T);
   return buf;
 }
+
+// 2D doublish
+template<typename T> inline
+buffer_t mk2DHalideBuf(vector<T> & v){
+  const int32_t n = sizeof(T)/sizeof(double);
+
+  buffer_t buf = {0};
+  buf.host = tohh(v.data());
+  buf.stride[0] = 1;
+  buf.extent[0] = n;
+  buf.stride[1] = n;
+  buf.extent[1] = int32_t(v.size());
+  buf.elem_size = sizeof(double);
+
+  return buf;
+}
