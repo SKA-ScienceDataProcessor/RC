@@ -5,9 +5,11 @@ module Main where
 import Strategy.Builder
 import Strategy.Domain
 import Strategy.Data
-import Strategy.Dump
+import Strategy.Exec
 
 import Data.Typeable
+
+import qualified Data.ByteString as BS
 
 -- Data tags
 data Vec deriving Typeable
@@ -32,13 +34,17 @@ sumRepr = CBufRepr ReadAccess
 
 -- Kernels
 fKern :: Kernel Vec
-fKern = kernel "f" HNil vecRepr
+fKern = kernel "f" code HNil vecRepr
+  where code _ = putStrLn "f" >> return BS.empty
 gKern :: Kernel Vec
-gKern = kernel "g" HNil vecRepr
+gKern = kernel "g" code HNil vecRepr
+  where code _ = putStrLn "g" >> return BS.empty
 ppKern :: Flow Vec -> Flow Vec -> Kernel Vec
-ppKern = kernel "pp" (vecRepr :. vecRepr :. HNil) vecRepr
+ppKern = kernel "pp" code (vecRepr :. vecRepr :. HNil) vecRepr
+  where code _ = putStrLn "pp" >> return BS.empty
 aKern :: Flow Vec -> Kernel Sum
-aKern = kernel "a" (vecRepr :. HNil) sumRepr
+aKern = kernel "a" code (vecRepr :. HNil) sumRepr
+  where code _ = putStrLn "a" >> return BS.empty
 
 ddpStrat :: Int -> Strategy ()
 ddpStrat size = do
@@ -53,4 +59,4 @@ ddpStrat size = do
   bind1D dom ddp (aKern (pp f g))
 
 main :: IO ()
-main = dumpSteps $ ddpStrat 1000
+main = execStrategy $ ddpStrat 1000
