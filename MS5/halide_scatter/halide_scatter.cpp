@@ -93,9 +93,9 @@ int main(/* int argc, char **argv */) {
     , rgcfy = red.z
     ;
 
-  #define TMPLIM 100000000 // Should be full GCF data size here. Put some provisional value to make halide happy
+  Param<int> P(gcf_data_size);
   // No layer correction yet
-  Expr off = clamp (gcfoff(w(rvis)) + overc(0,rvis) * gcf_supps(w(rvis)) + overc(1,rvis), 0, TMPLIM);
+  Expr off = clamp (gcfoff(w(rvis)) + overc(0,rvis) * gcf_supps(w(rvis)) + overc(1,rvis), 0, gcf_data_size-1);
   // Do the complex arithmetic to update the grid
   Complex visC(
       vis(0,rvis)
@@ -116,11 +116,12 @@ int main(/* int argc, char **argv */) {
   // Temp. disable. It wants constants only.
   // uvg.vectorize(x);
 
-  uvg.compute_root();
-
   Func uvgsh("uvgsh");
   Var P(gu), P(gv);
+  uvg.compute_root();
   uvgsh(gu, gv) = uvg(gu, gv);
+  uvgsh.output_buffers()[0].set_stride(0, Expr());
+  uvgsh.output_buffers()[1].set_stride(0, Expr());
 
   std::vector<Halide::Argument> compile_args = {
        scale
@@ -132,9 +133,20 @@ int main(/* int argc, char **argv */) {
      , gcf_supps
      , uvwf
      , vis
+     , gcf_data_size
      , gcfoff
      , gcfr, gcfi
      };
   // uvg.compile_to_lowered_stmt("uvg.html", compile_args, HTML);
   uvgsh.compile_to_lowered_stmt("uvg.html", compile_args, HTML);
+
+  Target target(
+      // Target::Windows
+      Target::Linux
+    , Target::X86, 64
+    , { Target::SSE41
+      , Target::AVX
+      }
+    );
+  uvgsh.compile_to_file("uvgsh", compile_args, target);
 }
