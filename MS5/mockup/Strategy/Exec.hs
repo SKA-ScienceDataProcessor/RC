@@ -19,26 +19,31 @@ execStrategy strat = do
   -- Execute steps
   dataMapRef <- newIORef IM.empty
   domainMapRef <- newIORef IM.empty
-  forM_ (runStrategy strat) $ \step -> case step of
+  let go (DomainStep dh) =
+        modifyIORef domainMapRef (IM.insert (dhId dh) (AnyDomain dh))
 
-    DomainStep dh -> do
-      modifyIORef domainMapRef (IM.insert (dhId dh) (AnyDomain dh))
+      go (KernelStep _dom kbind) = do
 
-    KernelStep _dom kbind -> do
+        -- Look up input data
+        dataMap <- readIORef dataMapRef
+        ins <- forM (kernDeps kbind) $ \kid -> case IM.lookup kid dataMap of
+          Just inp -> return inp
+          Nothing  -> fail $ "Internal error: Input " ++ show kid ++ " not found!"
+                      -- This should never happen
 
-      -- Look up input data
-      dataMap <- readIORef dataMapRef
-      ins <- forM (kernDeps kbind) $ \kid -> case IM.lookup kid dataMap of
-        Just inp -> return inp
-        Nothing  -> fail $ "Internal error: Input " ++ show kid ++ " not found!"
-                    -- This should never happen
+        -- Call the kernel
+        res <- kernCode kbind ins
 
-      -- Call the kernel
-      res <- kernCode kbind ins
+        -- Insert result
+        modifyIORef dataMapRef (IM.insert (kernId kbind) res)
 
-      -- Insert result
-      modifyIORef dataMapRef (IM.insert (kernId kbind) res)
+      go (SplitStep dh dh0 steps) = do
+        putStrLn $ "(splitting domain " ++ show dh0 ++ " into " ++ show dh ++ " not implemented)"
+        modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDomain dh)
+        mapM_ go steps
 
-    _other -> fail "Distribution not implemented!"
+      go (DistributeStep dh _ steps) = do
+        putStrLn $ "(distributing domain " ++ show dh ++ " not implemented)"
+        mapM_ go steps
 
-  return ()
+  mapM_ go $ runStrategy strat

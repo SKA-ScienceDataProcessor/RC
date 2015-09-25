@@ -10,10 +10,12 @@ import Strategy.Builder
 import Strategy.Domain
 import Strategy.Data
 import Strategy.Dump
+import Strategy.Exec
 
 import Control.Monad
 
 import Data.Typeable
+import qualified Data.ByteString as BS
 
 -- ----------------------------------------------------------------------------
 -- ---                             Functional                               ---
@@ -152,53 +154,58 @@ visRepr = SortedVisRepr $ CBufRepr ReadAccess
 gcfsRepr :: CBufRepr GCFs
 gcfsRepr = CBufRepr ReadAccess
 
+dummy :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
+              => String -> rs -> r -> RKern (RPar r) rs
+dummy name = kernel name code
+  where code _ = putStrLn name >> return BS.empty
+
 halideWrapper :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
               => String -> rs -> r -> RKern (RPar r) rs
-halideWrapper _ = kernel "halide"
+halideWrapper _ = dummy "halide"
 cWrapper :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
          => String -> rs -> r -> RKern (RPar r) rs
-cWrapper _ = kernel "c"
+cWrapper _ = dummy "c"
 
 oskarReader :: [(FilePath, Int)] -> Kernel Vis
-oskarReader _ = kernel "oskar" HNil rawVisRepr
+oskarReader _ = dummy "oskar" HNil rawVisRepr
 sorter :: Flow Vis -> Kernel Vis
-sorter = kernel "sorter" (rawVisRepr :. HNil) visRepr
+sorter = dummy "sorter" (rawVisRepr :. HNil) visRepr
 
 setOnes :: Flow Vis -> Kernel Vis
-setOnes = kernel "ones" (visRepr :. HNil) visRepr
+setOnes = dummy "ones" (visRepr :. HNil) visRepr
 
 gcfKernel :: GridPar -> Flow Tag -> Flow Vis -> Kernel GCFs
 gcfKernel _ = halideWrapper "gcfs" (planRepr :. visRepr :. HNil) gcfsRepr
 
 fftCreatePlans :: GridPar -> Flow Tag -> Kernel Tag
-fftCreatePlans _ = kernel "fftPlans" (NoRepr :. HNil) planRepr
+fftCreatePlans _ = dummy "fftPlans" (NoRepr :. HNil) planRepr
 fftKern :: GridPar -> Flow Tag -> Flow Image -> Kernel UVGrid
-fftKern _ = kernel "fftKern" (planRepr :. imgRepr :. HNil) uvgRepr
+fftKern _ = dummy "fftKern" (planRepr :. imgRepr :. HNil) uvgRepr
 ifftKern :: GridPar -> Flow Tag -> Flow UVGrid -> Kernel Image
-ifftKern _ = kernel "ifftKern" (planRepr :. uvgRepr :. HNil) imgRepr
+ifftKern _ = dummy "ifftKern" (planRepr :. uvgRepr :. HNil) imgRepr
 
 gridInit :: GridPar -> Kernel UVGrid
-gridInit _ = kernel "gridInit" HNil uvgRepr
+gridInit _ = dummy "gridInit" HNil uvgRepr
 gridKernel :: GridPar -> Flow Vis -> Flow GCFs -> Flow UVGrid -> Kernel UVGrid
-gridKernel _ = kernel "gridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. HNil) uvgRepr
+gridKernel _ = dummy "gridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. HNil) uvgRepr
 psfGridKernel :: GridPar -> Flow Vis -> Flow GCFs -> Flow UVGrid -> Kernel UVGrid
-psfGridKernel _ = kernel "psfGridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. HNil) uvgRepr
+psfGridKernel _ = dummy "psfGridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. HNil) uvgRepr
 degridKernel :: GridPar -> Flow UVGrid -> Flow GCFs -> Flow Vis -> Kernel Vis
-degridKernel _ = kernel "degridKernel" (uvgRepr :. gcfsRepr :. visRepr :. HNil) visRepr
+degridKernel _ = dummy "degridKernel" (uvgRepr :. gcfsRepr :. visRepr :. HNil) visRepr
 
 cleanResRepr :: CBufRepr CleanResult
 cleanResRepr = CBufRepr WriteAccess
 cleanKernel :: Flow Image -> Flow Image -> Kernel CleanResult
 cleanKernel = halideWrapper "clean" (imgRepr :. imgRepr :. HNil) cleanResRepr
 splitModel :: Flow CleanResult -> Kernel Image
-splitModel = kernel "splitModel" (cleanResRepr :. HNil) imgRepr
+splitModel = dummy "splitModel" (cleanResRepr :. HNil) imgRepr
 splitResidual :: Flow CleanResult -> Kernel Image
-splitResidual = kernel "splitResidual" (cleanResRepr :. HNil) imgRepr
+splitResidual = dummy "splitResidual" (cleanResRepr :. HNil) imgRepr
 
 imageSum :: Flow Image -> Kernel Image
-imageSum = kernel "image summation" (imgRepr :. HNil) imgRepr
+imageSum = dummy "image summation" (imgRepr :. HNil) imgRepr
 imageWriter :: FilePath -> Flow Image -> Kernel Image
-imageWriter _ = kernel "image writer" (imgRepr :. HNil) NoRepr
+imageWriter _ = dummy "image writer" (imgRepr :. HNil) NoRepr
 
 -- ----------------------------------------------------------------------------
 -- ---                               Strategy                               ---
@@ -296,4 +303,4 @@ testStrat = scatterImagingMain $ Config
     GridPar
 
 main :: IO ()
-main = dumpSteps testStrat
+main = dumpSteps testStrat >> execStrategy testStrat
