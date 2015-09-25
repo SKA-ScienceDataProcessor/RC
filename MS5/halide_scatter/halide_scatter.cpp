@@ -45,43 +45,36 @@ int main(/* int argc, char **argv */) {
     , P(grid_size)
     ;
   ImageParam IP(gcf_supps, type_of<int>(), 1);
-  // They are in fact interleaved, so we declare them separately
-  ImageParam
-      IP(uf, type_of<double>(), 1)
-    , IP(vf, type_of<double>(), 1)
-    , IP(wf, type_of<double>(), 1)
-    ;
-  // Also interleaved, so we declare them separately too
-  ImageParam
-      IP(visr, type_of<double>(), 1)
-    , IP(visi, type_of<double>(), 1)
-    ;
+  ImageParam IP(uvwf, type_of<double>(), 2);
+  ImageParam IP(vis, type_of<double>(), 2);
   ImageParam IP(gcfoff, type_of<int>(), 1);
-  // Interleaved
+
+  // We don't make additional complex dimension ATM
+  // because we will need all 4 available dimensions
+  // to address GCF if we stick to one-GCF-layer-per-baseline
+  // approach.
+  // Interleaved.
   ImageParam
       IP(gcfr, type_of<double>(), 1)
     , IP(gcfi, type_of<double>(), 1)
     ;
-
   Func
-      P(us)
-    , P(vs)
-    , P(u)
-    , P(v)
+      P(uvs)
+    , P(uv)
     , P(w)
-    , P(overx)
-    , P(overy)
+    , P(overc)
     ;
-  Var P(t);
-  us(t) = uf(t) * scale;
-  vs(t) = vf(t) * scale;
-  overx(t) = cast(Int(16), over * (us(t) - floor(us(t))));
-  overy(t) = cast(Int(16), over * (vs(t) - floor(vs(t))));
-  u(t) = cast(Int(16), us(t) + cast(Int(16), grid_size / 2 - max_supp_here / 2));
-  v(t) = cast(Int(16), vs(t) + cast(Int(16), grid_size / 2 - max_supp_here / 2));
-  w(t) = cast(Int(16), wf(t) / wstep);
-  
-  
+  Var P(t), P(uvdim);
+  uvs(uvdim,t) = uvwf(uvdim,t) * scale;
+  overc(uvdim,t) = cast(Int(16), over * (uvs(uvdim,t) - floor(uvs(uvdim,t))));
+  uv(uvdim,t) = cast(Int(16), uvs(uvdim,t) + cast(Int(16), grid_size / 2 - max_supp_here / 2));
+  w(t) = cast(Int(16), uvwf(2,t) / wstep);
+
+  // If we compute_root them.
+  // uvs.bound(uvdim, 0, 2);
+  // overc.bound(uvdim, 0, 2);
+  // uv.bound(uvdim, 0, 2);
+
   // UV-Grid - initially 0
   Func P(uvg); Var P(x), P(y);
   uvg(x, y) = Complex(cast<double>(0.0f), cast<double>(0.0f));
@@ -102,23 +95,23 @@ int main(/* int argc, char **argv */) {
 
   #define TMPLIM 100000000 // Should be full GCF data size here. Put some provisional value to make halide happy
   // No layer correction yet
-  Expr off = clamp (gcfoff(w(rvis)) + overx(rvis) * gcf_supps(w(rvis)) + overy(rvis), 0, TMPLIM);
+  Expr off = clamp (gcfoff(w(rvis)) + overc(0,rvis) * gcf_supps(w(rvis)) + overc(1,rvis), 0, TMPLIM);
   // Do the complex arithmetic to update the grid
   Complex visC(
-      visr(rvis)
-    , visi(rvis)
+      vis(0,rvis)
+    , vis(1,rvis)
     );
   Complex gcfC(
       gcfr(off)
     , gcfi(off)
     );
   uvg(
-      clamp(u(rvis) + rgcfx, 0, grid_pitch - 1)
-    , clamp(v(rvis) + rgcfy, 0, grid_size - 1)
+      clamp(uv(0,rvis) + rgcfx, 0, grid_pitch - 1)
+    , clamp(uv(1,rvis) + rgcfy, 0, grid_size - 1)
     ) += visC * gcfC;
 
-  uvg.bound(x, 0, grid_pitch);
-  uvg.bound(y, 0, grid_size);
+  uvg.bound(x, 0, grid_size);
+  uvg.bound(y, 0, grid_pitch);
 
   // Temp. disable. It wants constants only.
   // uvg.vectorize(x);
@@ -137,8 +130,8 @@ int main(/* int argc, char **argv */) {
      , grid_pitch
      , grid_size
      , gcf_supps
-     , uf, vf, wf
-     , visr, visi
+     , uvwf
+     , vis
      , gcfoff
      , gcfr, gcfi
      };
