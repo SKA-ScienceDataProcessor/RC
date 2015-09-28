@@ -2,14 +2,16 @@
 
 module Main where
 
+import Control.Monad
+
+import Data.Typeable
+
 import Strategy.Builder
 import Strategy.Domain
 import Strategy.Data
 import Strategy.Exec
-
-import Data.Typeable
-
-import qualified Data.ByteString as BS
+import Strategy.Vector
+import Strategy.Kernel
 
 -- Data tags
 data Vec deriving Typeable
@@ -27,24 +29,48 @@ ddp :: Flow Sum
 ddp = a $ pp f g
 
 -- Vector representation
-vecRepr :: CBufRepr Vec
-vecRepr = CBufRepr ReadAccess
-sumRepr :: CBufRepr Sum
-sumRepr = CBufRepr ReadAccess
+vecRepr :: VectorRepr Double Vec
+vecRepr = VectorRepr ReadAccess
+sumRepr :: VectorRepr Double Sum
+sumRepr = VectorRepr ReadAccess
 
 -- Kernels
-fKern :: Kernel Vec
-fKern = kernel "f" code HNil vecRepr
-  where code _ = putStrLn "f" >> return BS.empty
-gKern :: Kernel Vec
-gKern = kernel "g" code HNil vecRepr
-  where code _ = putStrLn "g" >> return BS.empty
-ppKern :: Flow Vec -> Flow Vec -> Kernel Vec
-ppKern = kernel "pp" code (vecRepr :. vecRepr :. HNil) vecRepr
-  where code _ = putStrLn "pp" >> return BS.empty
-aKern :: Flow Vec -> Kernel Sum
-aKern = kernel "a" code (vecRepr :. HNil) sumRepr
-  where code _ = putStrLn "a" >> return BS.empty
+fKern :: Int -> Kernel Vec
+fKern size = vecKernel0 "f" vecRepr $ do
+  v <- allocCVector size
+  forM_ [1..size] $ \i ->
+    pokeVector v i (fromIntegral i)
+  return v
+gKern :: Int -> Kernel Vec
+gKern size = vecKernel0 "g" vecRepr $ do
+  v <- allocCVector size
+  forM_ [1..size] $ \i ->
+    pokeVector v i 2.0
+  return v
+
+ppKern :: Int -> Flow Vec -> Flow Vec -> Kernel Vec
+ppKern size = vecKernel2 "pp" vecRepr vecRepr vecRepr $ \fv gv -> do
+  v <- allocCVector size
+  forM_ [1..size] $ \i -> do
+    a <- peekVector fv i
+    b <- peekVector gv i
+    pokeVector v i (a * b)
+  return v
+
+aKern :: Int -> Flow Vec -> Kernel Sum
+aKern size = vecKernel1 "sum" vecRepr sumRepr $ \iv -> do
+  v <- allocCVector 1
+  s <- flip (flip foldM 0) [1..size] $ \s i -> do
+    a <- peekVector iv i
+    return (s + a)
+  pokeVector v 0 s
+  return v
+
+printKern :: Flow Sum -> Kernel Sum
+printKern = vecKernel1 "print" sumRepr sumRepr $ \sv -> do
+  s <- peekVector sv 0
+  putStrLn $ "Sum: " ++ show s
+  return sv
 
 ddpStrat :: Int -> Strategy ()
 ddpStrat size = do
@@ -53,10 +79,12 @@ ddpStrat size = do
   dom <- makeRangeDomain $ Range 0 (size-1)
 
   -- Calculate ddp for the whole domain
-  bind1D dom f fKern
-  bind1D dom g gKern
-  bind1D dom (pp f g) (ppKern f g)
-  bind1D dom ddp (aKern (pp f g))
+  bind1D dom f (fKern size)
+  bind1D dom g (gKern size)
+  bindRule1D dom pp (ppKern size)
+  bindRule1D dom a (aKern size)
+  calculate ddp
+  rebind1D dom ddp printKern
 
 main :: IO ()
 main = execStrategy $ ddpStrat 1000

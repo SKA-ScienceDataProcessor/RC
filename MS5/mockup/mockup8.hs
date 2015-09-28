@@ -11,6 +11,7 @@ import Strategy.Domain
 import Strategy.Data
 import Strategy.Dump
 import Strategy.Exec
+import Strategy.Vector
 
 import Control.Monad
 
@@ -162,7 +163,7 @@ gcfsRepr = CBufRepr ReadAccess
 dummy :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
               => String -> rs -> r -> RKern (RPar r) rs
 dummy name = kernel name code
-  where code _ = putStrLn name >> return BS.empty
+  where code _ = putStrLn name >> return nullVector
 
 halideWrapper :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
               => String -> rs -> r -> RKern (RPar r) rs
