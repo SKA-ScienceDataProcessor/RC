@@ -10,7 +10,7 @@ all : \
 	generate_f dotp \
 	test_run
 clean :
-	rm -fv *.o a.out generate_f
+	rm -fv *.o a.out generate_f dotp sum
 
 generate_f : generate_f.o
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $< -o $@

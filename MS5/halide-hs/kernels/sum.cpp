@@ -9,14 +9,12 @@ int main(int argc, char **argv) {
 
        
     ImageParam vec(type_of<float>(), 1);
-    Param<int32_t> off;
-    Param<int32_t> size;
 
-    RDom r(off,size);
+    RDom r(vec.min(0), vec.extent(0));
     sum()  = cast<float>(0);
     sum() += vec(r);
 
-    std::vector<Argument> args = {vec, off, size};
+    std::vector<Argument> args = {vec};
     sum.compile_to_file("kern_sum", args);
     return 0;
 }

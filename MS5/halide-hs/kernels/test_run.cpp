@@ -57,16 +57,16 @@ int main() {
     // 
     buffer_t hbuf_s  = {0};
     hbuf_s.host      = reinterpret_cast<uint8_t*>(buf_s);
-    hbuf_s.min[0]    = off;
+    hbuf_s.min[0]    = 0;
     hbuf_s.stride[0] = 1;
-    hbuf_s.extent[0] = N;
+    hbuf_s.extent[0] = 1;
     hbuf_s.elem_size = sizeof(float);
     // 
 
     int err_f  = kern_generate_f(&hbuf_f);
     int err_g  = kern_generate_f(&hbuf_g);
     int err_pp = kern_dotp(&hbuf_f, &hbuf_g, &hbuf_pp);
-    int err_s  = kern_sum(&hbuf_pp, off, N, &hbuf_s);
+    int err_s  = kern_sum(&hbuf_pp, &hbuf_s);
 
 
     std::cout << err_f << std::endl;
@@ -86,5 +86,20 @@ int main() {
     dump_meta(kern_generate_f_metadata);
     dump_meta(kern_dotp_metadata);
     dump_meta(kern_sum_metadata);
+
+    std::cout << sizeof(buffer_t) << std::endl;
+    {
+        buffer_t& p = hbuf_s;
+#define OFF(nm) ((char*)(&p.nm) - (char*)(&p))
+        std::cout << OFF(dev) << std::endl;
+        std::cout << OFF(host) << std::endl;
+        std::cout << OFF(extent) << std::endl;
+        std::cout << OFF(stride) << std::endl;
+        std::cout << OFF(min) << std::endl;
+        std::cout << OFF(elem_size) << std::endl;
+        // std::cout << OFF(host_dirty) << std::endl;
+        // std::cout << OFF(dev_dirty) << std::endl;
+        // std::cout << OFF(_padding) << std::endl;        
+    }
     return 0;
 }
