@@ -8,7 +8,7 @@ module Strategy.Builder
   -- * Strategy
   , Strategy
   , runStrategy
-  , uniqFlow, implementing, calculate
+  , uniq, implementing, calculate
   -- * Kernel binding
   , IsReprs(..), IsReprKern(..)
   , kernel, Kernel
@@ -102,11 +102,12 @@ instance (DataRepr r, IsReprs rs) => IsReprs (r :. rs) where
 flow :: IsCurriedFlows fs => String -> fs
 flow name = curryFlow (mkFlow name . toList)
 
--- | Create a new unique abstract kernel flow. In contrast to "flow",
--- the result will never be seen as equal to another flow.
-uniqFlow :: IsFlows fl => String -> fl -> Strategy (Flow a)
-uniqFlow name fls = state $ \ss ->
-  (mkFlow (name ++ "." ++ show (ssKernelId ss)) $ toList fls,
+-- | Makes a data flow unique. This means that the flow will get a new
+-- identity, and anything bound to the old flow will no longer apply
+-- to the new flow. No rule will ever mach a unique flow.
+uniq :: Flow a -> Strategy (Flow a)
+uniq (Flow fi) = state $ \ss ->
+  (mkFlow (flName fi ++ "." ++ show (ssKernelId ss)) (flDepends fi),
    ss {ssKernelId = 1 + ssKernelId ss})
 
 -- | Class for reasoning about producing kernels from curried lists of flows
