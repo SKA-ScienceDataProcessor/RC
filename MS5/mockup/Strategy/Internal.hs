@@ -9,6 +9,8 @@ import qualified Data.HashMap.Strict as HM
 import Data.Typeable
 import qualified Data.ByteString as BS
 
+import Strategy.Vector
+
 -- | Internal representation of a data flow.
 data FlowI = FlowI
   { flHash    :: {-# UNPACK #-} !Int
@@ -59,7 +61,7 @@ data KernelBind = KernelBind
   }
 
 -- | Code implementing a kernel
-type KernelCode = [BS.ByteString] -> IO BS.ByteString
+type KernelCode = [Vector ()] -> IO (Vector ())
 
 instance Show KernelBind where
   showsPrec _ (KernelBind kid kflow kname krepr kdeps _ _)

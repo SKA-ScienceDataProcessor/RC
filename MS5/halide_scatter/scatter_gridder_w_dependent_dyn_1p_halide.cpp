@@ -4,7 +4,7 @@
 
 #include <cstring>
 #include <complex>
-#include <tuple>
+#include <array>
 
 #include <omp.h>
 
@@ -13,7 +13,16 @@
 
 using namespace std;
 
+struct Double3
+{
+  double u;
+  double v;
+  double w;
+};
+
 typedef complex<double> complexd;
+
+#define __tod(a, ...) reinterpret_cast<__VA_ARGS__ double *>(a)
 
 const int over = 8;
 void gridKernel_scatter_halide(
@@ -49,11 +58,11 @@ void gridKernel_scatter_halide(
     gcf_offs_[wp] = off;
     off += over * over * gcf_supps[wp] * gcf_supps[wp];
   }
-  buffer_t gcfsup_buf = mk1DHalideBuf(gcf_supps, wplanes);
-  buffer_t gcfoff_buf = mk1DHalideBuf(gcf_offs, wplanes);
-  tuple<buffer_t, buffer_t> gcf_buf = mk1DHalideBuf(gcf, off);
-  buffer_t uvw_buf = mk2DHalideBuf<Double3>(ts_ch);
-  buffer_t vis_buf = mk2DHalideBuf<complexd>(ts_ch);
+  buffer_t gcfsup_buf = mkHalideBuf(gcf_supps, wplanes);
+  buffer_t gcfoff_buf = mkHalideBuf(gcf_offs, wplanes);
+  auto gcf_buf = mkInterleavedHalideBufs<2>(__tod(gcf, const), off);
+  buffer_t uvw_buf = mkHalideBuf<3, double>(ts_ch);
+  buffer_t vis_buf = mkHalideBuf<2, double>(ts_ch);
 
 #pragma omp parallel
   {
@@ -61,12 +70,12 @@ void gridKernel_scatter_halide(
     complexd * grid = grids + omp_get_thread_num() * siz;
 
     memset(grid, 0, sizeof(complexd) * siz);
-    tuple<buffer_t, buffer_t> grid_buf = mk1DHalideBuf(grid, siz);
+    auto grid_buf = mkInterleavedHalideBufs<2>(__tod(grid), siz);
 
 #pragma omp for schedule(dynamic,23)
     for(int bl = 0; bl < baselines; bl++){
-      set2DHalideBuf(_uvw[bl], uvw_buf);
-      set2DHalideBuf(_vis[bl], vis_buf);
+      setHalideBuf(__tod(_uvw[bl], const), uvw_buf);
+      setHalideBuf(__tod(_vis[bl], const), vis_buf);
       uvgsh(
           scale
         , wstep
@@ -79,10 +88,10 @@ void gridKernel_scatter_halide(
         , &vis_buf
         , off
         , &gcfoff_buf
-        , &get<0>(gcf_buf)
-        , &get<1>(gcf_buf)
-        , &get<0>(grid_buf)
-        , &get<1>(grid_buf)
+        , &gcf_buf[0]
+        , &gcf_buf[1]
+        , &grid_buf[0]
+        , &grid_buf[1]
         );
     }
   }
