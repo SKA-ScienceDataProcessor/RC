@@ -12,6 +12,7 @@ module Halide.Types where
 import Control.Applicative
 import Control.Monad
 import Data.Int
+import Data.Vector.HFixed.Class  (Fn,Fun(..),Arity,curryFun,uncurryFun)
 import Foreign.C
 import Foreign.Ptr
 import Foreign.ForeignPtr
@@ -31,7 +32,7 @@ import Halide.BufferT
 newtype Scalar a = Scalar a
                    deriving (Show)
 
--- | Representation of array
+-- | Representation of array. It's GC controlled buffer in memory and 
 data Array dim a = Array
   { arrayExtent :: dim           -- ^ Array shape
   , arrayBuffer :: ForeignPtr a  -- ^ Pointer to buffer
@@ -44,72 +45,36 @@ data (:.) a b = a :. b
               deriving (Show)
 infixr :.
 
+
 type Dim1 = (Int32,Int32) :. Z
 
-----------------------------------------------------------------
--- Manual marshaling
-----------------------------------------------------------------
-
--- | Type class for scalars known by Halide
-class Storable a => HalideScalar a where
-
-instance HalideScalar Int32
-instance HalideScalar Float
-instance HalideScalar Double
-
--- | Type class for marshalling array of different dimensions
-class MarshalArray dim where
-  -- | Copy array information to the buffer_t for passing
-  wrapArray  :: HalideScalar a => Array dim a -> IO BufferT
-  -- | Allocate new array. Memory content is not initialized
-  allocArray :: HalideScalar a => dim -> IO (Array dim a)
-  allocArray dim = do
-    arr <- mallocForeignPtrArray $ nOfElements dim
-    return $ Array dim arr
-  -- | Full array size
-  nOfElements :: dim -> Int
-
-withScalarResult :: forall a b. HalideScalar a => (Ptr BufferT -> IO b) -> IO (Scalar a,b)
-withScalarResult action = do
-  buf <- newBufferT
-  setElemSize buf $ sizeOf (undefined :: a)
-  setBufferStride  buf 1 0 0 0
-  setBufferExtents buf 1 0 0 0
-  alloca $ \ptr -> do
-    setHostPtr buf (castPtr ptr)
-    r <- withBufferT buf action
-    a <- peek ptr
-    return (Scalar a, r)
-
-
-
-instance MarshalArray ((Int32,Int32) :. Z) where
-  wrapArray (Array ((off,size) :. Z) arr) = do
-    buf <- newBufferT
-    setElemSize buf $ sizeOfVal arr
-    setBufferStride  buf    1 0 0 0
-    setBufferMin     buf  off 0 0 0
-    setBufferExtents buf size 0 0 0
-    withForeignPtr arr $ setHostPtr buf . castPtr
-    return buf
-  nOfElements ((_,n) :. Z) = fromIntegral n
-
-sizeOfVal :: forall p a. HalideScalar a => p a -> Int
-sizeOfVal _ = sizeOf (undefined :: a)
-
+-- | Type which describes dimension of value
+type family   Extent a
+type instance Extent (Array dim a) = dim
+type instance Extent (Scalar a)    = ()
 
 
 ----------------------------------------------------------------
 -- FFI types
 ----------------------------------------------------------------
 
--- | Type signature for function which takes list of parameters xs and
---   generate result of type a
-type family KernelCSig (xs :: [*]) (a :: *)
+-- |
+-- Newtype wrapper for halide kernel. It's needed to preserve
+-- injectivity of type. Note that it could be used as:
+--
+-- > foreign import ccall "kern_generate_f"
+-- >   kern_generate_f :: Kernel '[Int32, Array Dim1 Float] (Array Dim1 Float)
+--
+-- Output is always(?) represented as an array even if we return a scalar.
+newtype Kernel xs a = Kernel (Fn (KernelCParams xs) (Ptr BufferT -> IO CInt))
 
--- | Output is always(?) represented as an array even if we return a
---   scalar.
-type instance KernelCSig '[]                 a = (Ptr BufferT -> IO CInt)
 
-type instance KernelCSig (Array dim x ': xs) a = Ptr BufferT -> KernelCSig xs a
-type instance KernelCSig (Scalar x    ': xs) a = x           -> KernelCSig xs a
+-- | Types for C parameters corresponding to haskell values
+type family KernelCParams (xs :: [*])  :: [*]
+
+type instance KernelCParams '[]                 = '[]
+type instance KernelCParams (Array dim x ': xs) = Ptr BufferT ': KernelCParams xs
+type instance KernelCParams (Scalar x    ': xs) = x           ': KernelCParams xs
+
+
+

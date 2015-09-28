@@ -8,13 +8,33 @@ import Data.Int
 
 import Halide.BufferT
 import Halide.Types
+import Halide.Marshal
 
 import qualified Data.Vector.Storable as S
 
 
 
-main :: IO ()
-main = do
+main = main1
+
+main1 :: IO ()
+main1 = do
+  let off  = 110
+      size = 20
+      dim  = (off,size) :. Z
+  f  <- call kern_generate_f dim
+  g  <- call kern_generate_f dim
+  pp <- call kern_dotp       dim f g
+  a  <- call kern_sum        ()  pp
+  print $ toVector f
+  print $ toVector g
+  print $ toVector pp
+  print (a :: Scalar Float)
+  return ()
+  --
+  
+  {-
+main2 :: IO ()
+main2 = do
   let off  = 0
       size = 20
       dim  = (off,size) :. Z
@@ -49,7 +69,7 @@ main = do
   print $ toVector pp
   print (a :: Scalar Float)
   return ()
-  
+-}  
 
 
 check :: CInt -> IO ()
@@ -65,6 +85,7 @@ toVector (Array ((_,n):.Z) ptr) = S.unsafeFromForeignPtr0 ptr (fromIntegral n)
 -- FFI declarations
 ----------------------------------------------------------------
 
+{-
 foreign import ccall "kern_generate_f"
   c_kern_generate_f :: KernelCSig '[] (Array Dim1 Float)
 
@@ -73,3 +94,14 @@ foreign import ccall "kern_dotp"
 
 foreign import ccall "kern_sum"
   c_kern_sum :: KernelCSig '[Array Dim1 Float, Scalar Int32, Scalar Int32] (Scalar Float)
+-}
+
+
+foreign import ccall "kern_generate_f"
+  kern_generate_f :: Kernel '[] (Array Dim1 Float)
+
+foreign import ccall "kern_dotp"
+  kern_dotp :: Kernel '[Array Dim1 Float, Array Dim1 Float] (Array Dim1 Float)
+
+foreign import ccall "kern_sum"
+  kern_sum :: Kernel '[Array Dim1 Float] (Scalar Float)
