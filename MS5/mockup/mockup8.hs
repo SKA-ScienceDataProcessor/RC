@@ -50,11 +50,11 @@ grid :: Flow Vis -> Flow GCFs -> Flow UVGrid -> Flow UVGrid
 grid = flow "grid"
 degrid :: Flow UVGrid -> Flow GCFs -> Flow Vis -> Flow Vis
 degrid = flow "degrid"
-idft :: Flow Tag -> Flow UVGrid -> Flow Image
+idft :: Flow UVGrid -> Flow Image
 idft = flow "idft"
-dft :: Flow Tag -> Flow Image -> Flow UVGrid
+dft :: Flow Image -> Flow UVGrid
 dft = flow "dft"
-gcf :: Flow Tag -> Flow Vis -> Flow GCFs
+gcf :: Flow Vis -> Flow GCFs
 gcf = flow "gcf"
 initRes :: Flow Image
 initRes = flow "residual init"
@@ -70,39 +70,40 @@ imageSum :: Flow Image -> Flow Image
 imageSum = flow "image sum"
 
 -- | Compound gridder actor
-gridder :: Flow Tag -> Flow Vis -> Flow GCFs -> Flow Image
-gridder tag vis gcfs = idft tag uvg
- where uvg = grid vis gcfs createGrid
+gridder :: Flow Vis -> Flow GCFs -> Flow Image
+gridder vis gcfs = idft (grid vis gcfs createGrid)
 
 -- | Compound degridder actor
-degridder :: Flow Tag -> Flow Image -> Flow Vis -> Flow GCFs -> Flow Vis
-degridder tag img vis gcfs = degrid uvg gcfs vis
- where uvg = dft tag img
+degridder :: Flow Image -> Flow Vis -> Flow GCFs -> Flow Vis
+degridder img vis gcfs = degrid (dft img) gcfs vis
 
 -- | Compound PSF gridder actor
-psfGrid :: Flow Tag -> Flow Vis -> Flow GCFs -> Flow Image
-psfGrid tag vis gcfs = gridder tag (psfVis vis) gcfs
+psfGrid :: Flow Vis -> Flow GCFs -> Flow Image
+psfGrid vis gcfs = gridder (psfVis vis) gcfs
 
 -- | Compound cleaning actor
 cleaner :: Flow Image -> Flow Image -> (Flow Image, Flow Image)
 cleaner dirty psf = (cleanResidual result, cleanModel result)
  where result = clean dirty psf
 
--- | Compound major loop actor
-majorLoop :: Int -> Flow Tag -> Flow Vis
-         -> ( Flow Image  -- ^ residual
-            , Flow Vis -- ^ visibilities
-            )
-majorLoop n tag vis = foldl go (initRes, vis) [1..n]
- where gcfs = gcf tag vis
-       psf = psfGrid tag vis gcfs
-       go (_res, vis1) _i = (res', vis')
-         where img = gridder tag vis1 gcfs
-               (res', mod') = cleaner img psf
-               vis' = degridder tag mod' vis1 gcfs
+-- | Compound major loop iteration actor
+majorIter :: Flow GCFs -> Flow Image
+          -> (Flow Image, Flow Vis) -> Int
+          -> (Flow Image, Flow Vis)
+majorIter gcfs psf (_res, vis) _i = (res', vis')
+  where img = gridder vis gcfs
+        (res', mod') = cleaner img psf
+        vis' = degridder mod' vis gcfs
 
-majorLoopSum :: Int -> Flow Tag -> Flow Vis -> Flow Image
-majorLoopSum n tag vis = imageSum $ fst $ majorLoop n tag vis
+-- | Compound major loop actor
+majorLoop :: Int -> Flow Vis -> (Flow Image, Flow Vis)
+majorLoop n vis
+  = foldl (majorIter gcfs psf) (initRes, vis) [1..n]
+ where gcfs = gcf vis
+       psf = psfGrid vis gcfs
+
+majorLoopSum :: Int -> Flow Vis -> Flow Image
+majorLoopSum n vis = imageSum $ fst $ majorLoop n vis
 
 -- ----------------------------------------------------------------------------
 -- ---                               Kernels                                ---
@@ -183,8 +184,8 @@ setOnes = dummy "ones" (visRepr :. HNil) visRepr
 gcfKernel :: GridPar -> Flow Tag -> Flow Vis -> Kernel GCFs
 gcfKernel _ = halideWrapper "gcfs" (planRepr :. visRepr :. HNil) gcfsRepr
 
-fftCreatePlans :: GridPar -> Flow Tag -> Kernel Tag
-fftCreatePlans _ = dummy "fftPlans" (NoRepr :. HNil) planRepr
+fftCreatePlans :: GridPar -> Kernel Tag
+fftCreatePlans _ = dummy "fftPlans" HNil planRepr
 fftKern :: GridPar -> Flow Tag -> Flow Image -> Kernel UVGrid
 fftKern _ = dummy "fftKern" (planRepr :. imgRepr :. HNil) uvgRepr
 ifftKern :: GridPar -> Flow Tag -> Flow UVGrid -> Kernel Image
@@ -220,22 +221,22 @@ imageWriter _ = dummy "image writer" (imgRepr :. HNil) NoRepr
 scatterImaging :: Config -> DomainHandle d -> Flow Tag -> Flow Vis
                -> Strategy ()
 scatterImaging cfg dh tag vis =
- implementing (fst $ majorLoop (cfgMajorLoops cfg) tag vis) $ do
+ implementing (fst $ majorLoop (cfgMajorLoops cfg) vis) $ do
 
   -- Sort visibility data
   rebind1D dh vis sorter
 
   -- Initialise FFTs
   let gpar = cfgGrid cfg
-  rebind1D dh tag (fftCreatePlans gpar)
+  bind1D dh tag (fftCreatePlans gpar)
 
   -- Generate GCF
-  let gcfs = gcf tag vis
+  let gcfs = gcf vis
   bind1D dh gcfs (gcfKernel gpar tag vis)
 
   -- Make rules
-  bindRule1D dh idft (ifftKern gpar)
-  bindRule1D dh dft (fftKern gpar)
+  bindRule1D dh idft (ifftKern gpar tag)
+  bindRule1D dh dft (fftKern gpar tag)
   bindRule1D dh createGrid (gridInit gpar)
   bindRule1D dh grid (gridKernel gpar)
   bindRule1D dh degrid (degridKernel gpar)
@@ -248,7 +249,7 @@ scatterImaging cfg dh tag vis =
   --let psfg = grid (psfVis vis) gcfs createGrid
   --bind1D dh psfg (psfGridKernel gpar vis gcfs createGrid)
   bindRule1D dh (grid . psfVis) (psfGridKernel gpar)
-  calculate $ psfGrid tag vis gcfs
+  calculate $ psfGrid vis gcfs
 
   -- Loop
   forM_ [1..cfgMajorLoops cfg-1] $ \i -> do
@@ -258,11 +259,11 @@ scatterImaging cfg dh tag vis =
     calculate createGrid
 
     -- Generate new visibilities
-    calculate $ snd $ majorLoop i tag vis
+    calculate $ snd $ majorLoop i vis
 
   -- Calculate residual of last loop iteration
   calculate createGrid
-  calculate $ fst $ majorLoop (cfgMajorLoops cfg) tag vis
+  calculate $ fst $ majorLoop (cfgMajorLoops cfg) vis
 
 -- Strategy implements imaging loop for a number of data sets
 scatterImagingMain :: Config -> Strategy ()
@@ -275,12 +276,12 @@ scatterImagingMain cfg = do
 
   -- Create data flow for visibilities, build abstract data flow to do
   -- configured number of major loops over this input data
-  vis <- uniq (flow "vis")
   tag <- uniq (flow "tag")
-  let result = fst $ majorLoop (cfgMajorLoops cfg) tag vis
+  let vis = flow "vis" tag
+      result = fst $ majorLoop (cfgMajorLoops cfg) vis
 
   -- Split by datasets
-  let result = majorLoopSum (cfgMajorLoops cfg) tag vis
+  let result = majorLoopSum (cfgMajorLoops cfg) vis
   split dom dataSets $ \ds -> distribute ds ParSchedule $ void $ do
 
     -- Split by number of runs.
@@ -322,7 +323,7 @@ scatterSimple  cfg = do
 
   -- Sum and write out the result
   bindRule imageSum imageSumKernel
-  let result = majorLoopSum (cfgMajorLoops cfg) tag vis
+  let result = majorLoopSum (cfgMajorLoops cfg) vis
   rebind result (imageWriter (cfgOutput cfg))
 
 testStrat :: Strategy ()
