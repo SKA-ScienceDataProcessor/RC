@@ -32,6 +32,30 @@ main1 = do
   return ()
   --
   
+main2 :: IO ()
+main2 = do
+  let off  = 110 :: Int32
+      sz   = 20  :: Int32
+      dim  = (off,sz) :. Z
+      size = (Extent $ wrapDimensions dim)
+  --
+  f  <- eraseTypes kern_generate_f []    size
+  g  <- eraseTypes kern_generate_f []    size
+  pp <- eraseTypes kern_dotp       [f,g] size
+  a  <- eraseTypes kern_sum        [pp]  Unit
+  --
+  case a of
+    Number n -> print n
+    _        -> error "Oops!"
+  -- g  <- call kern_generate_f dim
+  -- pp <- call kern_dotp       dim f g
+  -- a  <- call kern_sum        ()  pp
+  -- print $ toVector f
+  -- print $ toVector g
+  -- print $ toVector pp
+  -- print (a :: Scalar Float)
+  return ()
+
   {-
 main2 :: IO ()
 main2 = do

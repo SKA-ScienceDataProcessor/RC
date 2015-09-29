@@ -11,6 +11,7 @@ import Strategy.Domain
 import Strategy.Data
 import Strategy.Dump
 import Strategy.Exec
+import Strategy.Vector
 
 import Control.Monad
 
@@ -65,6 +66,8 @@ cleanModel :: Flow CleanResult -> Flow Image
 cleanModel = flow "clean/model"
 cleanResidual :: Flow CleanResult -> Flow Image
 cleanResidual = flow "clean/residual"
+imageSum :: Flow Image -> Flow Image
+imageSum = flow "image sum"
 
 -- | Compound gridder actor
 gridder :: Flow Tag -> Flow Vis -> Flow GCFs -> Flow Image
@@ -97,6 +100,9 @@ majorLoop n tag vis = foldl go (initRes, vis) [1..n]
          where img = gridder tag vis1 gcfs
                (res', mod') = cleaner img psf
                vis' = degridder tag mod' vis1 gcfs
+
+majorLoopSum :: Int -> Flow Tag -> Flow Vis -> Flow Image
+majorLoopSum n tag vis = imageSum $ fst $ majorLoop n tag vis
 
 -- ----------------------------------------------------------------------------
 -- ---                               Kernels                                ---
@@ -157,7 +163,7 @@ gcfsRepr = CBufRepr ReadAccess
 dummy :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
               => String -> rs -> r -> RKern (RPar r) rs
 dummy name = kernel name code
-  where code _ = putStrLn name >> return BS.empty
+  where code _ = putStrLn name >> return nullVector
 
 halideWrapper :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
               => String -> rs -> r -> RKern (RPar r) rs
@@ -202,8 +208,8 @@ splitModel = dummy "splitModel" (cleanResRepr :. HNil) imgRepr
 splitResidual :: Flow CleanResult -> Kernel Image
 splitResidual = dummy "splitResidual" (cleanResRepr :. HNil) imgRepr
 
-imageSum :: Flow Image -> Kernel Image
-imageSum = dummy "image summation" (imgRepr :. HNil) imgRepr
+imageSumKernel :: Flow Image -> Kernel Image
+imageSumKernel = dummy "image summation" (imgRepr :. HNil) imgRepr
 imageWriter :: FilePath -> Flow Image -> Kernel Image
 imageWriter _ = dummy "image writer" (imgRepr :. HNil) NoRepr
 
@@ -239,8 +245,9 @@ scatterImaging cfg dh tag vis =
 
   -- PSF. Note that we bind a kernel here that implements *two*
   -- abstract kernel nodes!
-  let psfg = grid (psfVis vis) gcfs createGrid
-  bind1D dh psfg (psfGridKernel gpar vis gcfs createGrid)
+  --let psfg = grid (psfVis vis) gcfs createGrid
+  --bind1D dh psfg (psfGridKernel gpar vis gcfs createGrid)
+  bindRule1D dh (grid . psfVis) (psfGridKernel gpar)
   calculate $ psfGrid tag vis gcfs
 
   -- Loop
@@ -268,11 +275,12 @@ scatterImagingMain cfg = do
 
   -- Create data flow for visibilities, build abstract data flow to do
   -- configured number of major loops over this input data
-  vis <- uniqFlow "vis" HNil
-  tag <- uniqFlow "tag" HNil
+  vis <- uniq (flow "vis")
+  tag <- uniq (flow "tag")
   let result = fst $ majorLoop (cfgMajorLoops cfg) tag vis
 
   -- Split by datasets
+  let result = majorLoopSum (cfgMajorLoops cfg) tag vis
   split dom dataSets $ \ds -> distribute ds ParSchedule $ void $ do
 
     -- Split by number of runs.
@@ -284,14 +292,38 @@ scatterImagingMain cfg = do
       bind1D rep vis $ oskarReader $ cfgInput cfg
 
       -- Implement this data flow
-      implementing result $ void $ scatterImaging cfg rep tag vis
+      scatterImaging cfg rep tag vis
 
     -- Sum up local images (TODO: accumulate?)
-    rebind1D ds result imageSum
+    bindRule1D ds imageSum imageSumKernel
+    calculate result
 
   -- Sum and write out the result
-  rebind result imageSum
+  bindRule imageSum imageSumKernel
+  calculate result
   rebind result $ imageWriter (cfgOutput cfg)
+
+-- Strategy implements imaging loop for a number of data sets
+scatterSimple :: Config -> Strategy ()
+scatterSimple  cfg = do
+
+  -- Create data flow for visibilities, build abstract data flow to do
+  -- configured number of major loops over this input data
+  vis <- uniq (flow "vis")
+  tag <- uniq (flow "tag")
+
+  -- Read in visibilities. The domain handle passed in tells the
+  -- kernel which of the datasets to load.
+  bind vis $ oskarReader $ cfgInput cfg
+
+  -- Implement this data flow
+  dom <- makeRangeDomain (Range 0 1)
+  scatterImaging cfg dom tag vis
+
+  -- Sum and write out the result
+  bindRule imageSum imageSumKernel
+  let result = majorLoopSum (cfgMajorLoops cfg) tag vis
+  rebind result (imageWriter (cfgOutput cfg))
 
 testStrat :: Strategy ()
 testStrat = scatterImagingMain $ Config
@@ -299,7 +331,7 @@ testStrat = scatterImagingMain $ Config
      ("input2.vis", 300),
      ("input3.vis", 300)]
     "output.img"
-    10
+    1
     GridPar
 
 main :: IO ()

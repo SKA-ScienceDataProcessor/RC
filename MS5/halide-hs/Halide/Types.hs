@@ -55,6 +55,26 @@ type instance Extent (Scalar a)    = ()
 
 
 ----------------------------------------------------------------
+-- Dynamic typing
+----------------------------------------------------------------
+
+-- | Wrapper for scalar values
+data ScalarVal
+  = Double !Double
+  | Float  !Float
+  | Int32  !Int32
+  deriving (Show)
+
+-- | Wrapper for any known type
+data Box
+  = Number    !ScalarVal
+    -- ^ Any scalar data type
+  | SomeArray !ScalarVal [(Int32,Int32)] (ForeignPtr ())
+    -- ^ Some array. ScalarVal holds type of an array
+  | Extent [(Int32,Int32)]
+  | Unit
+
+----------------------------------------------------------------
 -- FFI types
 ----------------------------------------------------------------
 
