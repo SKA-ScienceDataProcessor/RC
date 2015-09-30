@@ -1,39 +1,29 @@
-How to try this: 
 
-obtain a binary Haskell package from `http://www.haskell.org/ghc/dist/7.8.3/`
+SDP - DSL Project: Radio Cortex
+==
 
-     configure —prefix $HOME/opt 
-     make install
+The goal of this project is to explore high-level data-flow and DSL
+programming techniques for implementing SKA SDP pipelines (or programs
+something sufficiently close to it).
 
-obtain LLVM source package from `http://llvm.org/releases/download.html`
+Setup Instructions
+--
 
-     configure —prefix $HOME/opt
-     make install
+This repository is structured into several milestones, each with
+different priorities as we learn more about the desirable
+characteristics of the pipeline implementation. They often share code,
+but will vary significantly in functionality.
 
-obtain cabal-install from `http://www.haskell.org/cabal/download.html`
+* [MS1:](https://github.com/SKA-ScienceDataProcessor/RC/tree/master/MS1) First experiments with Erlang-inspired actor languages
 
-     install the binary in your path
+* [MS2:](https://github.com/SKA-ScienceDataProcessor/RC/tree/master/MS2) DNA library for distribution and resource allocation, first attempts at gridding using [Halide](http://halide-lang.org) and C++ / Cuda kernels.
 
-check out Radio Cortex
+* [MS3:](https://github.com/SKA-ScienceDataProcessor/RC/tree/master/MS3) Systematic performance comparison of gridding implementation,
+  introduction of profiling
 
-     git clone https://github.com/SKA-ScienceDataProcessor/RC.git
-     cd RC/MS1/ddp-erlang-style
-     cabal sandbox init
-     cabal update
-     cabal install --only-dependencies
-     cabal install ghc-events
-     cabal configure
-     cabal build
-     gcc -o create-floats  create-floats.c
+* [MS4:](https://github.com/SKA-ScienceDataProcessor/RC/tree/master/MS4) First complete imaging pipeline, abstraction over kernels
+ 
+Background on DSL design
+--
 
-A test run can be done locally
-
-     sh test.sh
-     test2.sh is virtually equal to an sbatch file
-     
-A visualization is created with: 
-
-    use ghc-events to change binary event files into text files
-    python logs2plot.py dir-with-events-txt-files
-
-For more information see:  http://ska-sciencedataprocessor.github.io/RC/
+Our libraries for data flow and actor interfaces are documented on the [github wiki of this repository](https://github.com/SKA-ScienceDataProcessor/RC/wiki)

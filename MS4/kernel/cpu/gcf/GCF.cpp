@@ -96,7 +96,7 @@ fftw_plan __mkGCFLayer(
     currp += istep;
   }
 
-  fftw_plan plan = fft_inplace_even(p, FFTW_FORWARD, arena, size, pitch);
+  fftw_plan plan = fft_inplace_even(p, FFTW_BACKWARD, arena, size, pitch);
 
   __transpose_and_normalize_and_extract<over>(
       dst

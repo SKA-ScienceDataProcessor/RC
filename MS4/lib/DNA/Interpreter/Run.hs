@@ -8,6 +8,7 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- |
 -- Functions which execute DNA routines on remote nodes. Below is
 -- general algorithms:
@@ -124,14 +125,14 @@ runCollectActor (CollectActor step start fini) = do
            case [pCrash | CrashProbably pCrash <- actorDebugFlags p] of
              pCrash : _ -> crashMaybe pCrash
              _          -> return ()
-           s0 <- kernel "collector init" [] (Kern start)
+           s0 <- kernel "collector init" [] start
            s  <- gatherM (Group chRecvParam chRecvN) step s0
-           kernel "collector fini" [] (Kern (fini s))
+           kernel "collector fini" [] (fini s)
     sendResult p b
 
 -- | Start execution of collector actor
-runTreeActor :: TreeCollector a -> Process ()
-runTreeActor (TreeCollector step start fini) = do
+runTreeActor :: CollectActor a a -> Process ()
+runTreeActor (CollectActor step start fini) = do
     -- Obtain parameters
     p <- expect
     -- Create channels for communication
@@ -142,9 +143,9 @@ runTreeActor (TreeCollector step start fini) = do
         $ RcvReduce (makeRecv chSendParam) chSendN
     -- Start execution of an actor
     !a <- runDnaParam p $ do
-           s0 <- kernel "tree collector init" [] (Kern start)
+           s0 <- kernel "tree collector init" [] start
            s  <- gatherM (Group chRecvParam chRecvN) step s0
-           kernel "tree collector fini" [] (Kern $ fini s)
+           kernel "tree collector fini" [] (fini s)
     sendResult p a
 
 
@@ -215,10 +216,11 @@ doGatherDna
     :: Serializable a
     => [MatchS]
     -> Group a
-    -> (b -> a -> IO b)
+    -> (b -> a -> Kern b)
     -> b
     -> DnaMonad b
 doGatherDna ms (Group chA chN) f x0 = do
+    runK <- mkKernRunner
     let loop n tot !b
             | n >= tot && tot >= 0 = return b
         loop n tot !b = do
@@ -227,7 +229,7 @@ doGatherDna ms (Group chA chN) f x0 = do
                      , Left  `fmap` matchChan' chN
                      ]
             case r of
-              Right a -> loop (n + 1) tot =<< liftIO (f b a)
+              Right a -> loop (n + 1) tot =<< liftIO (runK $ f b a)
               Left  k -> loop n k b
     loop 0 (-1) x0
 

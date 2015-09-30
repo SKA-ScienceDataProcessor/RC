@@ -42,10 +42,10 @@ degrid_kernel(CmplxType* out, PosType* in, CmplxType* img, CmplxType* gcf,
    for (int q=threadIdx.y;q<32;q+=blockDim.y) {
       if (n+q >= npts) break;
       PosType inn = in[n+q];
-      int sub_x = floorf(GCF_GRID*(inn.x-floorf(inn.x)));
-      int sub_y = floorf(GCF_GRID*(inn.y-floorf(inn.y)));
-      int main_x = floorf(inn.x);
-      int main_y = floorf(inn.y);
+      int sub_x = floor(GCF_GRID*(inn.x-floor(inn.x)));
+      int sub_y = floor(GCF_GRID*(inn.y-floor(inn.y)));
+      int main_x = floor(inn.x);
+      int main_y = floor(inn.y);
       double sum_r = make_zero(img);
       double sum_i = make_zero(img);
       for(int a = threadIdx.x-gcf_dim/2;a<(gcf_dim+1)/2;a+=blockDim.x)
@@ -102,10 +102,10 @@ degrid_kernel_small_gcf(CmplxType* out, PosType* in, CmplxType* img, CmplxType* 
    for (int q=threadIdx.y;q<32;q+=blockDim.y) {
       if (n+q >= npts) break;
       PosType inn = in[n+q];
-      int sub_x = floorf(GCF_GRID*(inn.x-floorf(inn.x)));
-      int sub_y = floorf(GCF_GRID*(inn.y-floorf(inn.y)));
-      int main_x = floorf(inn.x);
-      int main_y = floorf(inn.y);
+      int sub_x = floor(GCF_GRID*(inn.x-floor(inn.x)));
+      int sub_y = floor(GCF_GRID*(inn.y-floor(inn.y)));
+      int main_x = floor(inn.x);
+      int main_y = floor(inn.y);
       double sum_r = make_zero(img);
       double sum_i = make_zero(img);
       int a = -gcf_dim/2 + threadIdx.x%gcf_dim;
@@ -175,10 +175,10 @@ void vis2ints(PosType *vis_in, int2* vis_out, int npts) {
         q<npts;
         q+=gridDim.x*blockDim.x) {
       PosType inn = vis_in[q];
-      int main_y = floorf(inn.y);
-      int sub_y = floorf(GCF_GRID*(inn.y-main_y));
-      int main_x = floorf(inn.x);
-      int sub_x = floorf(GCF_GRID*(inn.x-main_x));
+      int main_y = floor(inn.y);
+      int sub_y = floor(GCF_GRID*(inn.y-main_y));
+      int main_x = floor(inn.x);
+      int sub_x = floor(GCF_GRID*(inn.x-main_x));
       vis_out[q].x = main_x*GCF_GRID+sub_x;
       vis_out[q].y = main_y*GCF_GRID+sub_y;
    }
@@ -241,7 +241,7 @@ degrid_kernel_scatter(CmplxType* out, int2* in, size_t npts, CmplxType* img,
       //if (threadIdx.y==0 && threadIdx.x==22) shm[threadIdx.y][threadIdx.x].x = 4.04;
    for (int q = 0; q<32 && n+q < bookmarks[y*img_dim/half_gcf+x+1]; q++) {
       int2 inn = inbuff[q];
-      //TODO Don't floorf initially, just compare
+      //TODO Don't floor initially, just compare
       int main_y = inn.y/GCF_GRID;
       int b = this_y - main_y;
       //Skip the whole block?

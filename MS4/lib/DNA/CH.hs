@@ -1,5 +1,6 @@
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE RankNTypes                #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- | Extra utils for cloud haskell
 module DNA.CH where
 

@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP                #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- |
 -- Module    : DNA.Logging
 -- Copyright : (C) 2014-2015 Braam Research, LLC.
@@ -113,7 +114,6 @@ import DNA.Types          (AID,VirtualCAD)
 class MonadIO m => MonadLog m where
     -- | Who created log message. It could be process ID, actor name etc.
     logSource :: m String
-    logSource = return ""
     -- | Logger options
     --
     --   Verbosity of logging:
@@ -123,11 +123,10 @@ class MonadIO m => MonadLog m where
     --    * 0  - warnings and more severe events logged
     --    * 1  - everything is logged
     logLoggerOpt :: m LoggerOpt
-    logLoggerOpt = return $ LoggerOpt 0 NoDebugPrint ""
-    
-instance MonadLog IO
+
 instance MonadLog Process where
     logSource = show <$> getSelfPid
+    logLoggerOpt = return $ LoggerOpt 0 NoDebugPrint ""
 instance MonadLog m => MonadLog (ExceptT e m) where
     logSource     = lift logSource
     logLoggerOpt  = lift logLoggerOpt
@@ -390,7 +389,12 @@ logDuration msg dna = do
 -- these numbers to the program's real performance.  Note that the
 -- hint must only be a best-effort estimate. As a rule of thumb, it is
 -- better to use a more conservative estimate, as this will generally
--- result in lower performance estimates.
+-- result in lower performance estimates. These hints are passed to
+-- 'DNA.kernel' or 'DNA.unboundKernel'.
+--
+-- Hints should preferably be constructed using the default
+-- constructors: 'floatHint', 'memHint', 'ioHint', 'haskellHint' and
+-- 'cudaHint'. See their definitions for examples.
 data ProfileHint
     = FloatHint { hintFloatOps :: !Int
                 , hintDoubleOps :: !Int
@@ -410,7 +414,7 @@ data ProfileHint
       -- writing from/to external sources.
     | HaskellHint { hintAllocation :: !Int
                   }
-      -- ^ Rough estimate for how much Haskell work we are doing.
+      -- ^ Rough estimate for how much Haskell work we are doing
     | CUDAHint { hintCopyBytesHost :: !Int
                , hintCopyBytesDevice :: !Int
                , hintCudaFloatOps :: !Int
@@ -425,18 +429,74 @@ data ProfileHint
       -- respectively. Note that this requires instrumentation, which
       -- will reduce overall performance!
 
+-- | Default constructor for 'FloatHint' with hint 0 for all
+-- metrics. Can be used for requesting FLOP profiling. Hints can be
+-- added by overwriting fields values.
+--
+-- For example, we can use this 'ProfileHint' to declare the amount of
+-- floating point operations involved in computing a sum:
+--
+-- > kernel "compute sum" [floatHint{hintDoubleOps = fromIntegral (2*n)} ] $
+-- >     return $ (S.sum $ S.zipWith (*) va vb :: Double)
 floatHint :: ProfileHint
 floatHint = FloatHint 0 0
 
+-- | Default constructor for 'MemHint' with hint 0 for all
+-- metrics. Can be used for requesting memory bandwidth profiling.
+-- Hints can be added by overwriting field values.
+--
+-- This could be used to track the bandwidth involved in copying a
+-- large buffer:
+--
+-- > let size = Vec.length in * sizeOf (Vec.head in)
+-- > kernel "copy buffer" [memHint{hintMemoryReadBytes=size}] $ liftIO $
+-- >     VecMut.copy in out
 memHint :: ProfileHint
 memHint = MemHint 0
 
+-- | Default constructor for 'IOHint' with hint 0 for all
+-- metrics. Can be used for requesting I/O bandwidth profiling. Hints
+-- can be added by overwriting field values.
+--
+-- This can be used to document the amount of data that we expect to
+-- read from a hard drive:
+--
+-- > kernel "read vector" [iOHint{hintReadBytes = fromIntegral (n * 8)}] $
+-- >     liftIO $ readData n off fname
 ioHint :: ProfileHint
 ioHint = IOHint 0 0
 
+-- | Default constructor for 'IOHint' with hint 0 for all
+-- metrics. Can be used for requesting Haskell allocation
+-- profiling. Hints can be added by overwriting field values.
+--
+-- Useful for tracking the amount of allocation Haskell does in a
+-- certain computation. This can often be a good indicator for whether
+-- it has been compiled in an efficient way.
+--
+-- > unboundKernel "generate vector" [HaskellHint (fromIntegral $ n * 8)] $
+-- >   liftIO $ withFileChan out "data" WriteMode $ \h ->
+-- >     BS.hPut h $ runPut $
+-- >       replicateM_ (fromIntegral n) $ putFloat64le 0.1
+--
+-- For example, this 'HaskellHint' specifies that Haskell is allowed
+-- to only heap-allocate one 'Double'-object per value written.
 haskellHint :: ProfileHint
 haskellHint = HaskellHint 0
 
+-- | Default constructor for 'CUDAHint' with hint 0 for all
+-- metrics. Can be used for requesting Haskell allocation
+-- profiling. Hints can be added by overwriting field values.
+--
+-- For instance, we could wrap an @accelerate@ computation as follows:
+--
+-- > let size = S.length va
+-- > kernel "accelerate dot product" [cudaHint{hintCudaDoubleOps=size*2}] $ liftIO $ do
+-- >   let sh = S.length va
+-- >       va' = A.fromVectors (A.Z A.:. size) ((), va) :: A.Vector Double
+-- >       vb' = A.fromVectors (A.Z A.:. size) ((), vb) :: A.Vector Double
+-- >    return $ head $ A.toList $ CUDA.run $
+-- >      A.fold (+) 0 $ A.zipWith (*) (A.use va') (A.use vb')
 cudaHint :: ProfileHint
 cudaHint = CUDAHint 0 0 0 0
 
@@ -447,20 +507,21 @@ cudaHint = CUDAHint 0 0 0 0
 -- better. However, also note that more hints generally means that we
 -- are going to safe more information, so keep in mind that every hint
 -- means a certain (constant) profiling overhead.
-logProfile :: String           -- ^ Message. Will be used in profile view
+logProfile :: (Functor m, MonadLog m)
+           => String           -- ^ Message. Will be used in profile view
                                -- to identify costs, so short and
                                -- recognisable names are preferred.
            -> [ProfileHint]    -- ^ Hints about the code's complexity.
            -> [Attr]           -- ^ Extra attributes to add to profile messages
-           -> IO a             -- ^ The code to profile
-           -> IO a
-logProfile msg hints attrs = measurement (liftIO . sample) msg attrs
+           -> m a              -- ^ The code to profile
+           -> m a
+logProfile msg hints attrs = measurement sample msg attrs
     where sample pt = concat `liftM` mapM (hintToSample pt) hints
 
 
 
 -- | Takes a sample according to the given hint
-hintToSample :: SamplePoint -> ProfileHint -> IO [Attr]
+hintToSample :: (Functor m, MonadLog m) => SamplePoint -> ProfileHint -> m [Attr]
 hintToSample pt fh@FloatHint{}
     = consHint pt "hint:float-ops" (hintFloatOps fh)
     . consHint pt "hint:double-ops" (hintDoubleOps fh)
@@ -510,24 +571,26 @@ consAttrNZT n v t = ((n, show v ++ "/" ++ show t):)
 -- ought to be reusing bound threads at some level. Still, I can't
 -- think of a good solution to make sure that perf_events handles
 -- wouldn't leak, so let's do this for now.
-samplePerfEvents :: IORef (Map.Map ThreadId PerfStatGroup) -> [PerfStatDesc]
+samplePerfEvents :: MonadLog m
+                 => IORef (Map.Map ThreadId PerfStatGroup) -> [PerfStatDesc]
                  -> SamplePoint
-                 -> IO [PerfStatCount]
+                 -> m [PerfStatCount]
 samplePerfEvents countersVar countersDesc StartSample = do
     -- Check that the thread is actually bound
-    isBound <- isCurrentThreadBound
+    isBound <- liftIO $ isCurrentThreadBound
     when (not isBound) $ warningMsg "perf_events not running in bound thread!"
-    -- Open the counters
-    counters <- perfEventOpen countersDesc
-    -- Store them as thread-local state
-    tid <- myThreadId
-    atomicModifyIORef' countersVar $ flip (,) () . Map.insert tid counters
-    -- Read values, then enable
-    vals <- perfEventRead counters
-    perfEventEnable counters
-    return vals
+    liftIO $ do
+      -- Open the counters
+      counters <- perfEventOpen countersDesc
+      -- Store them as thread-local state
+      tid <- myThreadId
+      atomicModifyIORef' countersVar $ flip (,) () . Map.insert tid counters
+      -- Read values, then enable
+      vals <- perfEventRead counters
+      perfEventEnable counters
+      return vals
 
-samplePerfEvents countersVar _            EndSample = do
+samplePerfEvents countersVar _            EndSample = liftIO $ do
     tid <- myThreadId
     Just counters <- atomicModifyIORef' countersVar $
                      swap . Map.updateLookupWithKey (\_ _ -> Nothing) tid
@@ -566,7 +629,7 @@ floatCounterDescs
     ]
 
 -- | Generate message attributes from current floating point counter values
-floatCounterAttrs :: SamplePoint -> IO [Attr]
+floatCounterAttrs :: MonadLog m => SamplePoint -> m [Attr]
 floatCounterAttrs pt = do
     -- Get counters from perf_event
     vals <- samplePerfEvents loggerFloatCounters (map snd floatCounterDescs) pt
@@ -582,7 +645,7 @@ cacheCounterDescs
     ]
 
 -- | Generate message attributes from current cache performance counter values
-cacheCounterAttrs :: SamplePoint -> IO [Attr]
+cacheCounterAttrs :: MonadLog m => SamplePoint -> m [Attr]
 cacheCounterAttrs pt = do
     -- Get counters from perf_event
     vals <- samplePerfEvents loggerCacheCounters (map snd cacheCounterDescs) pt
@@ -599,8 +662,8 @@ cacheCounterAttrs pt = do
 ----------------------------------------------------------------
 
 -- | Generate message attributes for procces I/O statistics
-ioAttrs :: IO [Attr]
-ioAttrs = do
+ioAttrs :: MonadLog m => m [Attr]
+ioAttrs = liftIO $ do
 
     -- Read /proc/self/io - not the full story by any means, especially
     -- when consindering mmap I/O (TODO!), but it's easy.
@@ -615,8 +678,8 @@ ioAttrs = do
 ----------------------------------------------------------------
 
 -- | Generate message attributes for procces I/O statistics
-haskellAttrs :: IO [Attr]
-haskellAttrs = do
+haskellAttrs :: MonadLog m => m [Attr]
+haskellAttrs = liftIO $ do
 
     -- This might be slightly controversial: This forces a GC so we get
     -- statistics about the *true* memory residency.
@@ -709,7 +772,7 @@ cudaAttrs pt = do
                $ metricAttrs
 
 #else
-cudaAttrs :: SamplePoint -> IO [Attr]
+cudaAttrs :: MonadLog m => SamplePoint -> m [Attr]
 cudaAttrs _ = return []
 #endif
 

@@ -25,7 +25,7 @@ import Scheduling
 import Vector
 
 ----------------------------------------------------------------
--- Imaging dataflow
+-- * Imaging dataflow
 --
 -- It's implicitly assumed that all dataflow for generating single
 -- image is confined to single computer.
@@ -33,31 +33,62 @@ import Vector
 
 
 -- | Compound gridding actor.
+--
+-- Provided suitable parameterisation, this actor produces an "Image"
+-- from visibilities ("Vis") and a set of GCF ("GCFSet"). This means
+-- that we create a new grid, use the gridding kernel to grid the
+-- visibilities, and finally use the discrete fourier transform kernel
+-- in order to produce the output image.
 gridderActor :: GridPar -> GCFPar -> GridKernel -> DFTKernel
              -> Actor (Vis, GCFSet) Image
 gridderActor gpar gcfpar gridk dftk = actor $ \(vis,gcfSet) -> do
     -- Grid visibilities to a fresh uv-grid
-    grid <- kernel "grid" [] $ liftIO $ do
+    grid <- kernel "grid" (gridkGridHints gridk gpar vis gcfSet) $ liftIO $ do
       grid <- gridkCreateGrid gridk gpar gcfpar
       gridkGrid gridk vis gcfSet grid
 
     -- Transform uv-grid into an (possibly dirty) image
-    kernel "ifft" [] $ liftIO $ do
+    kernel "ifft" (dftIKernelHints dftk gpar) $ liftIO $ do
       dftIKernel dftk grid
 
 -- | Compound degridding actor.
+--
+-- This is the counterpart to "gridderActor": Conceptually we use an
+-- "Image" and a "GCFSet" in order to produce new visibilities. The
+-- input visibilities are used for baseline information. Also note
+-- that we will actually *subtract* the degridded visibilities from
+-- the given visibilities, so think of it as follows:
+--
+-- > out = in - degrid image gcfSet
+--
+-- This is what we need for cleaning, and saves us from having to
+-- temporarily maintain two copies of visibility information.
 degridderActor :: GridKernel -> DFTKernel
              -> Actor (Image, Vis, GCFSet) Vis
 degridderActor gridk dftk = actor $ \(model,vis,gcfSet) -> do
 
     -- Transform image into a uv-grid
-    grid <- kernel "fft" [] $ liftIO $ do
+    let gpar = imgPar model
+    grid <- kernel "fft" (dftKernelHints dftk gpar) $ liftIO $ do
       dftKernel dftk model
 
     -- Degrid to obtain new visibilitities for the positions in "vis"
-    kernel "degrid" [] $ liftIO $ do
+    kernel "degrid" (gridkDegridHints gridk gpar vis gcfSet) $ liftIO $
       gridkDegrid gridk grid gcfSet vis
 
+-- | Compound imaging actor.
+--
+-- This is the main worker actor.
+--
+--  1. Initialises all kernels based on the given "Config"
+--  2. Reads in visibilities from the "Oskar" data sets
+--  3. Generates GCFs appropriate for the data set's @w@-range
+--  4. Calculates the PSF using "gridderActor"
+--  5. For each major loop iteration, first grids the visibilities using
+--     "gridderActor", cleans it ("CleanKernel") and finally calls
+--     "degridderActor" to degrid the model and update the visibilities.
+--  6. Once we have run through all major loops, the residual of the final
+--     major loop is returned
 imagingActor :: Config -> Actor DataSet Image
 imagingActor cfg = actor $ \dataSet -> do
 
@@ -82,11 +113,13 @@ imagingActor cfg = actor $ \dataSet -> do
 
     -- Let kernels prepare for processing GCF and visibilities
     -- (transfer buffers, do binning, plan FFTs etc.)
-    (vis1, psfVis1, gcfSet1) <- kernel "prepare" [] $ liftIO $ do
-      (vis', gcfSet') <- gridkPrepare gridk (cfgGridPar cfg) vis0 gcfSet0
-      (psfVis', gcfSet'') <- gridkPrepare gridk (cfgGridPar cfg) psfVis0 gcfSet'
+    let prepHints = gridkPrepareHints gridk (cfgGridPar cfg) vis0 gcfSet0
+    (vis1, gcfSet') <- kernel "prepare" prepHints $ liftIO $
+      gridkPrepare gridk (cfgGridPar cfg) vis0 gcfSet0
+    (psfVis1, gcfSet1) <- kernel "prepare" prepHints $ liftIO $
+      gridkPrepare gridk (cfgGridPar cfg) psfVis0 gcfSet'
+    kernel "prepare" prepHints $ liftIO $
       dftPrepare dftk (cfgGridPar cfg)
-      return (vis', psfVis', gcfSet'')
 
     -- Calculate PSF
     let gridAct = gridderActor (cfgGridPar cfg) (cfgGCFPar cfg) gridk dftk
@@ -133,10 +166,12 @@ imagingActor cfg = actor $ \dataSet -> do
       memImage res
 
 ----------------------------------------------------------------
--- High level dataflow
+-- * High level dataflow
 ----------------------------------------------------------------
 
--- | Actor which generate N clean images for given frequency channel
+-- | Actor organising the main worker loop. It generaetes the cleaned residual
+-- for the given data set "dsRepeats" times for the given "DataSet",
+-- and writes the summed-up image to a file.
 workerActor :: Actor (Config, DataSet) (GridPar, FileChan Image)
 workerActor = actor $ \(cfg, dataSet) -> do
 
@@ -172,11 +207,12 @@ workerActor = actor $ \(cfg, dataSet) -> do
         freeImage img
     return (cfgGridPar cfg, outChan)
 
--- | Actor which collects images in tree-like fashion
-imageCollector :: TreeCollector (GridPar, FileChan Image)
-imageCollector = treeCollector collect start finish
+-- | Actor which collects the images generated by the "workerActor" in
+-- a tree-like fashion.
+imageCollector :: CollectActor (GridPar, FileChan Image) (GridPar, FileChan Image)
+imageCollector = collectActor collect start finish
   where start = return Nothing
-        collect mimg (gridp, imgCh) = do
+        collect mimg (gridp, imgCh) = liftIO $ do
           img' <- readImage gridp imgCh "data.img"
           img'' <- case mimg of
             Nothing -> return img'
@@ -184,7 +220,7 @@ imageCollector = treeCollector collect start finish
               deleteFileChan chan
               addImage img img'
           return $ Just (img'', imgCh)
-        finish (Just (img, ch)) = do
+        finish (Just (img, ch)) = liftIO $ do
           writeImage img ch "data.img"
           return (imgPar img, ch)
         finish Nothing = fail "No images to reduce!"
@@ -193,10 +229,9 @@ imageCollector = treeCollector collect start finish
 type Weight = Rational
 
 -- | Actor to estimate the cost of doing a single repeat on the given
--- data set using our configuration. This basically means running the
--- whole imaging pipeline once, measuring the performance it takes.
---
--- TODO: Warmup? Determine mean derivation?
+-- data set using our configuration. This basically means running
+-- "imagingActor" once, and measure the performance it takes. The
+-- returned "Weight" is the time in seconds.
 estimateActor :: Actor (Config, DataSet) (DataSet, Weight)
 estimateActor = actor $ \(cfg, dataSet) -> do
 
@@ -224,8 +259,9 @@ remotable
   , 'estimateActor
   ]
 
--- | The main program actor. Schedules the given data sets
--- appropriately to the available nodes.
+-- | The main program actor. Estimates the cost for all "DataSet"s using the
+-- "estimateActor", followed by optimally scheduling "workerActor"s on
+-- all available nodes as determined by the "balancer".
 mainActor :: Actor (Config, [DataSet]) (FileChan Image)
 mainActor = actor $ \(cfg, dataSets) -> do
 
@@ -252,7 +288,8 @@ mainActor = actor $ \(cfg, dataSets) -> do
       logMessage $ show (fromRational w :: Float) ++ " - " ++ show (dsName ds)
 
     -- Schedule work
-    let schedule = balancer (avail+1) (map (fromRational . snd) weightedDataSets)
+    let fullTime (ds, weight) = fromRational weight * fromIntegral (dsRepeats ds)
+        schedule = balancer (avail+1) (map fullTime weightedDataSets)
         splitData low high dataSet =
             let atRatio r = floor $ r * fromIntegral (dsRepeats dataSet)
             in dataSet { dsRepeats = atRatio high - atRatio low }
@@ -283,6 +320,7 @@ mainActor = actor $ \(cfg, dataSets) -> do
     connect leaves  topLevel
     fmap snd . await =<< delay Local topLevel
 
+-- | Program entry point. Reads in configuration files and checks "Oskar" data.
 main :: IO ()
 main = dnaRun rtable $ do
 

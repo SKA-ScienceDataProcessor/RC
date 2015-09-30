@@ -32,7 +32,7 @@ executable test
     build-depends:     base >=4.7 && <4.8,
                        time,
                        cupti,
-                       accelerate, accelerate-cuda, accelerate-io,
+                       accelerate <= 0.15.0.99, accelerate-cuda, accelerate-io,
                        vector
   } else {
     buildable:         False

@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# OPTIONS_HADDOCK hide #-}
 module DNA.Types where
 
 import Control.Monad.Reader
@@ -58,9 +59,10 @@ data NodeInfo = NodeInfo
   deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary NodeInfo
 
--- | Describes where actor should be spawned.
-data Location = Remote -- ^ Will be spawned on some other node
-              | Local  -- ^ Will be spawned on the same node
+-- | Describes whether some entity should be local to node or could be
+-- possibly on remote node.
+data Location = Remote
+              | Local
               deriving (Show,Eq,Ord,Typeable,Generic)
 instance Binary Location
 
@@ -84,7 +86,15 @@ instance Binary GroupType
 -- | This describes how many nodes we want to allocate either to a
 -- single actor process or to the group of processes as whole. We can
 -- either request exactly /n/ nodes or a fraction of the total pool of
--- free nodes.
+-- free nodes. If there isn't enough nodes in the pool to satisfy
+-- request it will cause runtime error.
+--
+-- For example @N 4@ requests exactly for nodes. And @Frac 0.5@
+-- requests half of all currently available nodes.
+--
+-- Local node (which could be added using 'DNA.useLocal') is added in
+-- addition to this. If in the end 0 nodes will be allocated it will
+-- cause runtime error.
 data Res
     = N    Int                -- ^ Fixed number of nodes
     | Frac Double             -- ^ Fraction of nodes. Should lie in /(0,1]/ range.
@@ -92,13 +102,16 @@ data Res
 instance Binary Res
 
 -- | Describes how to divide allocated nodes between worker
--- processes. 'NWorkers' means that we want to divide nodes evenly
--- between /n/ actors. 'NNodes' means that we want allocate no less
--- that /n/ nodes for each actors. In latter case DSL will allocate
--- resources for as many actors as possible given constraints.
+-- processes.
 data ResGroup
-    = NWorkers Int   -- ^ Allocate no less than /n/ workers
-    | NNodes   Int   -- ^ Allocate no less than /n/ nodes to each worker
+    = NWorkers Int
+      -- ^ divide nodes evenly between /n/ actors.
+    | NNodes   Int
+      -- ^ Allocate no less that /n/ nodes for each actors. DSL will
+      -- try to create as many actor as possible under given
+      -- constraint
+
+
     deriving (Show,Typeable,Generic)
 instance Binary ResGroup
 

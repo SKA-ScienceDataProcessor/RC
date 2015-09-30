@@ -1,4 +1,5 @@
--- |CmdLine.hs
+{-# OPTIONS_HADDOCK hide #-}
+-- |
 --
 -- Command-line options parsing, using optparser-applicative.
 --

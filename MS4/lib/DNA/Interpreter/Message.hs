@@ -3,6 +3,7 @@
 {-# LANGUAGE GADTs                     #-}
 {-# LANGUAGE LambdaCase                #-}
 {-# LANGUAGE RankNTypes                #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- |
 -- Handling of message for CH interpreter
 --

@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns               #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- | Code for starting remote actors
 module DNA.Interpreter.Spawn (
       -- * Spawning actors
@@ -110,7 +111,7 @@ execSpawnGroupN res resG _n act = do
 
 execSpawnCollectorTree
     :: (Serializable a)
-    => Spawn (Closure (TreeCollector a))
+    => Spawn (Closure (CollectActor a a))
     -> DnaMonad (Shell (Grp a) (Val a))
 execSpawnCollectorTree actorCmd = do
     let (act,flags) = runSpawn
@@ -125,7 +126,7 @@ execSpawnCollectorTree actorCmd = do
 execSpawnCollectorTreeGroup
     :: (Serializable a)
     => Res
-    -> Spawn (Closure (TreeCollector a))
+    -> Spawn (Closure (CollectActor a a))
     -> DnaMonad (Shell (Grp a) (Grp a))
 execSpawnCollectorTreeGroup res act = do
     aid <- spawnActorGroup res (NWorkers 1) RcvTyTree ActorTree

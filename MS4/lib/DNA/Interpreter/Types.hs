@@ -7,6 +7,7 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- | Data types for interpretation of DNA DSL using cloud haskell
 module DNA.Interpreter.Types where
 

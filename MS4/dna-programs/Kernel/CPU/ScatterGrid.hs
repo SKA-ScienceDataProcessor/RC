@@ -4,15 +4,20 @@ module Kernel.CPU.ScatterGrid
   , phaseRotate
   , grid
   , degrid
+  , trivHints
   ) where
 
+import Data.Word
 import Data.Complex
 import Foreign.C
 import Foreign.Ptr
 import Foreign.Marshal.Array
+import Text.Printf
 
 import Data
 import Vector
+
+import DNA ( ProfileHint, floatHint )
 
 type PUVW = Ptr UVW
 type PCD = Ptr (Complex Double)
@@ -31,7 +36,7 @@ type CPUGridderType =
   -> CInt      -- grid pitch
   -> CInt      -- grid size
   -> Ptr CInt  -- GCF supports vector
-  -> IO ()
+  -> IO Word64
 
 {-
 foreign import ccall "& gridKernelCPUHalfGCF" gridKernelCPUHalfGCF_ptr :: FunPtr CPUGridderType
@@ -59,12 +64,13 @@ createGrid gp _ = fmap (UVGrid gp 0) $ allocCVector (gridFullSize gp)
 gridWrapper :: CPUGridderType -> Vis -> GCFSet -> UVGrid -> IO ()
 -- This massive nested pattern matches are not quite flexible, but I think a burden
 --   to adapt them if data types change is small, thus we stick to this more concise code ATM.
-gridWrapper gfun (Vis _ _ tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) (GCFSet gcfp _ (CVector tsiz table)) (UVGrid gp _ (CVector _ gptr)) =
+gridWrapper gfun (Vis vmin vmax tsteps bls (CVector _ uwpptr) (CVector _ ampptr) _ _) (GCFSet gcfp _ (CVector tsiz table)) (UVGrid gp _ (CVector _ gptr)) =
     withArray supps $ \suppp -> 
       withArray uvws $ \uvwp -> 
         withArray amps $ \ampp -> do
           withArray gcfSupps $ \gcfsp -> do
-            gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) uvwp ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp) (advancePtr gcfsp maxWPlane)
+            nops <- gfun scale wstep (fi $ length bls) suppp gptr (advancePtr table $ tsiz `div` 2) uvwp ampp (fi tsteps) (fi grWidth) (fi $ gridPitch gp) (advancePtr gcfsp maxWPlane)
+            putStrLn (printf "%llu ops for (%f,%f) dataset" nops vmin vmax)
   where
     fi = fromIntegral
     grWidth = gridWidth gp
@@ -99,4 +105,10 @@ grid vis gcfset uvg = do
 
 -- What about the normalization here?
 degrid :: UVGrid -> GCFSet -> Vis -> IO Vis
-degrid uvg gcfset vis = gridWrapper deGridKernelCPUFullGCF vis gcfset uvg >> return vis
+degrid uvg gcfset vis = do
+  gridWrapper deGridKernelCPUFullGCF vis gcfset uvg
+  freeVector (uvgData uvg)
+  return vis
+
+trivHints :: GridPar -> Vis -> GCFSet -> [ProfileHint]
+trivHints _ _ _ = [floatHint]

@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- | Run.hs
 --
 -- Functions for starting DNA programs
@@ -35,8 +36,27 @@ import DNA.Interpreter.Types
 
 
 
--- | Parse command line option and start program
-dnaRun :: (RemoteTable -> RemoteTable) -> DNA () -> IO ()
+-- |
+-- Execute DNA program. First parameter is list of remote tables. Each
+-- invocation of 'remotable' generate @__remoteTable@ top level
+-- identifier with type @RemoteTable -> RemoteTable@. All such remote
+-- tables must composed using '.' and passed to @dnaRun@ as in
+-- following example:
+--
+-- > dnaRun (ModuleA.__remoteTable . ModuleB.__remoteTable) program
+--
+-- UNIX startup. If command line parameter '--nprocs=N' is
+-- given. Program will create N processes on same machine and execute
+-- program using these processes as cloud haskell's nodes.
+--
+-- SLURM startup. Jobs of starting processes is handled to SLURM and
+-- processes learn addresses of other processes from environment
+-- variables set by SLURM. No command line parameters is required in
+-- this case.
+dnaRun
+    :: (RemoteTable -> RemoteTable) -- ^ Cloud haskell's remote tablse
+    -> DNA ()                       -- ^ DNA program
+    -> IO ()
 dnaRun remoteTable dna = do
     (opts,common) <- dnaParseOptions
     initLogging (dnaLogger common)
@@ -124,8 +144,8 @@ slurmHosts :: IO [(String,Int)]
 slurmHosts = do
     nodeListStr <- getEnv "SLURM_NODELIST"
     numNodesStr <- getEnv "SLURM_TASKS_PER_NODE"
-    eventMessage $ "SLURM_NODELIST=" ++ nodeListStr
-    eventMessage $ "SLURM_TASKS_PER_NODE=" ++ numNodesStr
+    --eventMessage $ "SLURM_NODELIST=" ++ nodeListStr
+    --eventMessage $ "SLURM_TASKS_PER_NODE=" ++ numNodesStr
     let nodeList = runReadP parseNodeList nodeListStr
         numNodes = runReadP parseNumNode  =<< split ','numNodesStr
     when (length nodeList /= length numNodes) $

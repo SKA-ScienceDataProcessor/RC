@@ -1,4 +1,21 @@
 -- |
+-- DNA is a data flow DSL aimed at expressing data movement and initiation of
+-- computational kernels for numerical calculations. We use the "actor/channel"
+-- paradigm, which allows for a descriptive approach that separates definition
+-- from execution strategy. Our target is data intensive high performance computing
+-- applications that employ hierarchical cluster scheduling techniques. Furthermore,
+-- we provide infrastructure for detailed profiling and high availability, allowing
+-- recovery for certain types of failures.
+--
+-- DNA is presently implemented as an embedded monadic DSL on top of the 
+-- well-established distributed programming framework "Cloud Haskell".
+-- This document describes the structure of the language at a high level,
+-- followed by detailed specifications and use cases for the introduced
+-- primitives. We will give examples at several points.
+--
+--
+-- === High level structure
+--
 -- DNA programs are composed of actors and channels. DNA provides means for
 -- defining an abstract data flow graph using programming language primitives.
 --
@@ -32,12 +49,14 @@
 -- > ddpProductSlice = actor $ \(fullSlice) -> duration "vector slice" $ do
 -- >    -- Calculate offsets
 -- >    slices <- scatterSlice <$> groupSize
--- >    slice  <- (slices !!) <$> rank
+-- >    slice  <- (slices !!)  <$> rank
 -- >    -- First we need to generate files on tmpfs
 -- >    fname <- duration "generate" $ eval ddpGenerateVector n
 -- >    -- Start local processes
--- >    shellVA <- startActor (N 0) $ useLocal >> return $(mkStaticClosure 'ddpComputeVector)
--- >    shellVB <- startActor (N 0) $ useLocal >> return $(mkStaticClosure 'ddpReadVector)
+-- >    shellVA <- startActor (N 0) $
+-- >        useLocal >> return $(mkStaticClosure 'ddpComputeVector)
+-- >    shellVB <- startActor (N 0) $
+-- >        useLocal >> return $(mkStaticClosure 'ddpReadVector)
 -- >    -- Connect actors
 -- >    sendParam slice              shellVA
 -- >    sendParam (fname, Slice 0 n) shellVB
@@ -49,16 +68,19 @@
 -- >    -- Clean up, compute sum
 -- >    kernel "compute sum" [FloatHint 0 (2 * fromIntegral n)] $
 -- >      return (S.sum $ S.zipWith (*) va vb :: Double)
+-- >
 -- > -- Calculate dot product of full vector
 -- > ddpDotProduct :: Actor Int64 Double
 -- > ddpDotProduct = actor $ \size -> do
 -- >     -- Chunk & send out
--- >     res   <- selectMany (Frac 1) (NNodes 1) [UseLocal]
--- >     shell <- startGroup (Frac 1) (NNodes 1) $ useLocal >> return $(mkStaticClosure 'ddpProductSlice)
--- >     sendParam (Slice 0 size) (broadcast shell)
+-- >     shell <- startGroup (Frac 1) (NNodes 1) $ do
+-- >         useLocal
+-- >         return $(mkStaticClosure 'ddpProductSlice)
+-- >     broadcast (Slice 0 size) shell
 -- >     -- Collect results
 -- >     partials <- delayGroup shell
 -- >     duration "collecting vectors" $ gather partials (+) 0
+-- >
 -- > main :: IO ()
 -- > main = dnaRun (...) $
 -- >   liftIO . print =<<  eval ddpDotProduct (400*1000*1000)
@@ -73,26 +95,32 @@
 -- ddpComputeVector  ddpReadVector
 -- @
 --
--- Here 'ddpDotProduct' is a single actor, which takes exactly one parameter
--- 'size' and produces exactly the sum as its output. On the other hand,
--- 'ddpProductSlice' is an actor group, which sums up a portion of the full
--- dot-product. Finally, 'ddpComputeVector' and 'ddpReadVector' are two
--- child actor groups (TODO: correct?), which for our example are supposed
--- to generate or read the requested vector slice from the hard desk,
--- respectively.
+-- Here 'ddpDotProduct' is a single actor, which takes exactly one
+-- parameter 'size' and produces exactly the sum as its output. On the
+-- other hand, 'ddpProductSlice' is an actor group, which sums up a
+-- portion of the full dot-product. Each actor in group spawns two
+-- child actors: 'ddpComputeVector' and 'ddpReadVector' are two child
+-- actors, which for our example are supposed to generate or read the
+-- requested vector slice from the hard desk, respectively.
+--
 --
 -- === Scheduling data flow programs for execution.
+--
 -- Scheduling, spawning and generation of the runtime data flow graph are handled
 -- separately. The starting point for scheduling is the cluster architecture
 -- descriptor, which describes the resources available to the program.
 --
--- For DNA, we are using the following simple algorithm: First a control actor
--- starts the program.  This actor will be assigned exclusively all resources
--- available to the program, which it can then in turn allocate to it spawn child
--- actors. When a child actor finishes execution (either normally or abnormally),
--- its resources are returned to parent actor's resource pool and can be reused.
+-- For DNA, we are using the following simple algorithm: First a
+-- control actor starts the program. It's actor which passed to
+-- 'runDna' as parameter. This actor will be assigned exclusively all
+-- resources available to the program, which it can then in turn
+-- allocate to it spawn child actors. When a child actor finishes
+-- execution (either normally or abnormally), its resources are
+-- returned to parent actor's resource pool and can be reused.
+--
 --
 -- === High Availability
+--
 -- We must account for the fact that every actor could fail at any point. This could
 -- not only happen because of hardware failures, but also due to programming errors.
 -- In order to maintain the liveness of the data flow network, we must detect such
@@ -101,20 +129,32 @@
 -- on the failed actor. This approach is obviously problematic for achieving
 -- fault tolerance since we always have a single point of failure.
 --
--- To improve stability, we need to make use of special cases. For example, let us
--- assume that a single actor instance in large group fails. Then in some case it
--- makes sense to simply ignore the failure and discard the partial result. This
--- is the "failout" model. To use these semantics in the DNA program, all we
--- need to do is to specify 'failout' when spawning the actor with 'startGroup'.
+-- To improve stability, we need to make use of special cases. For
+-- example, let us assume that a single actor instance in large group
+-- fails. Then in some case it makes sense to simply ignore the
+-- failure and discard the partial result. This is the \"failout\"
+-- model. To use these semantics in the DNA program, all we need to do
+-- is to specify 'failout' when spawning the actor with
+-- 'startGroup'. To make use of failout example above should be changed to:
 --
--- Another important recovery technique is restarting failed processes. This
--- obviously loses the current state of the restarted process, so any accumulated
--- data is lost. In the current design, we only support this approach
--- for 'CollectActor's.
+-- >     ...
+-- >     shell <- startGroup (Frac 1) (NNodes 1) $ do
+-- >         useLocal
+-- >         failout
+-- >         return $(mkStaticClosure 'ddpProductSlice)
+-- >     ...
 --
--- XXX Example - re-discovery of intermediate collector
+-- Another important recovery technique is restarting failed
+-- processes. This obviously loses the current state of the restarted
+-- process, so any accumulated data is lost. In the current design, we
+-- only support this approach for 'CollectActor's. Similarly only
+-- change to program is addition of 'respawnOnFail' to parameters of
+-- actors.
+--
+--
 --
 -- === Profiling
+--
 -- For maintaing a robust system performance, we track
 -- the performance of all actors and channels. This should allow us
 -- to assess exactly how performance is shaped by not only scheduling
@@ -142,18 +182,29 @@
 -- whole system performance in a way that will hopefully allow for
 -- painless optimisation of the whole system.
 module DNA (
-      -- * Actors
-      Actor
-    , actor
-    , CollectActor
-    , collectActor
-    , TreeCollector
-    , treeCollector
       -- * DNA monad
-    , DNA
+      DNA
     , dnaRun
+      -- ** Groups of actors
+      -- |
+      -- Actor could run in groups. These groups are treated as single
+      -- logical actor. Each actor in group is assigned rank from /0/
+      -- to /N-1/ where /N/ is group size. For uniformity single
+      -- actors are treated as members of group of size 1. Both group
+      -- size and rank could be accessed using 'rank' and 'groupSize'
     , rank
     , groupSize
+      -- ** Logging and profiling
+      -- |
+      -- DNA programs write logs in GHC's eventlog format for
+      -- recording execution progress and performance monitoring. Logs
+      -- are written in following locations:
+      -- @~\/_dna\/logs\/PID-u\/{N}\/program-name.eventlog@ if program
+      -- was started using UNIX startup or
+      -- @~\/_dna\/logs\/SLURM_JOB_ID-s\/{N}\/program-name.eventlog@
+      -- if it was started by SLURM (see 'runDna' for detail of
+      -- starting DNA program). They're stored in GHC's eventlog
+      -- format.
     , logMessage
     , duration
       -- * Kernels
@@ -162,50 +213,109 @@ module DNA (
     , unboundKernel
     , ProfileHint(..)
     , floatHint, memHint, ioHint, haskellHint, cudaHint
+      -- * Actors
+    , Actor
+    , actor
+    , CollectActor
+    , collectActor
       -- * Spawning
+      -- |
+      -- Actors could be spawned using start* functions. They spawn
+      -- new actors which are executed asynchronously and usually on
+      -- remote nodes. Nodes for newly spawned actor(s) are taken from
+      -- pool of free nodes. If there's not enough nodes it's runtime
+      -- error. eval* functions allows to execute actor synchronously. 
+
+      -- ** Eval
     , eval
     , evalClosure
+      -- ** Spawn parameters
     , Spawn
-    , startActor
-    , startCollector
-    , startGroup
-    -- ** Shell
-    , Shell
-    , Val
-    , Grp
-    , Scatter
-    -- ** Resources
+    , useLocal
+    , failout
+    , respawnOnFail
+    , debugFlags
+    , DebugFlag(..)
+      -- ** Resources
+      -- |
+      -- These data types are used for describing how much resources
+      -- should be allocated to nodes and are passed as parameters to
+      -- start* functions.
     , Res(..)
     , ResGroup(..)
     , Location(..)
     , availableNodes
     , waitForResources
-    -- , startGroupN
+      -- ** Function to spawn new actors
+      -- |
+      -- All functions for starting new actors following same
+      -- pattern. They take parameter which describe how many nodes
+      -- should be allocated to actor(s) and 'Closure' to actor to be
+      -- spawned. They all return handle to running actor (see
+      -- documentation of 'Shell' for details).
+      --
+      -- Here is example of spawning single actor on remote node. To
+      -- be able to create 'Closure' to execute actor on remote node
+      -- we need to make it \"remotable\". For details of 'remotable'
+      -- semantics refer to distributed-process documentation,. (This
+      -- could change in future version of @distributed-process@ when
+      -- it start use StaticPointers language extension)
+      --
+      -- > someActor :: Actor Int Int
+      -- > someActor = actor $ \i -> ...
+      -- >
+      -- > remotable [ 'someActor ]
+      --
+      -- Finally we start actor and allocate 3 nodes to it:
+      --
+      -- > do a <- startActor (N 3) (return $(mkStaticClosure 'someActor))
+      -- >    ...
+      --
+      -- In next example we start group of actors, use half of
+      -- available nodes and local node in addition to that. These
+      -- nodes will be evenly divided between 4 actors:
+      --
+      -- > do a <- startGroup (Frac 0.5) (NWorkers 4) $ do
+      -- >           useLocal
+      -- >           return $(mkStaticClosure 'someActor)
+      -- >    ...
+      --
+      -- All other start* functions share same pattern and could be
+      -- used in similar manner.
+    , startActor
+    , startGroup
+      -- , startGroupN
+    , startCollector
     , startCollectorTree
     , startCollectorTreeGroup
-    , useLocal
-    , respawnOnFail
-    , debugFlags
-    , DebugFlag(..)
-      -- * Connecting
+      -- ** Shell
+    , Shell
+    , Val
+    , Grp
+    , Scatter
+      
+      -- * Connecting actors
 
       -- | Each actor must be connected to exactly one destination and
       -- consequently could only receive input from a single
-      -- source. Trying to connect an actor twice will result in
-      -- a runtime error.
+      -- source. Trying to connect an actor twice will result in a
+      -- runtime error. Functions 'sendParam', 'broadcast',
+      -- 'distributeWork', 'connect', 'delay', and 'delayGroup' count
+      -- to this.
     , sendParam
     , broadcast
     , distributeWork
     , connect
+      -- ** File channels.
     , FileChan
     , createFileChan
       -- * Promises
     , Promise
-    , Group
-    , await
-    , gather
     , delay
+    , await
+    , Group
     , delayGroup
+    , gather
       -- * Reexports
     , MonadIO(..)
     , remotable

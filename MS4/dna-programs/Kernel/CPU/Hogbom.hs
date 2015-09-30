@@ -23,7 +23,7 @@ cleanPrepare _ psf = return psf
 
 cleanKernel :: CleanPar -> Image -> Image -> IO (Image, Image)
 cleanKernel (CleanPar iter gain thresh) res@(Image gp _ (CVector _ dirtyp)) (Image _ _ (CVector _ psfp)) = do
-    mdl@(CVector _ modp) <- allocCVector (imageSize gp)
+    mdl@(CVector _ modp) <- allocCVector (2 * imageSize gp)
     deconvolve  modp dirtyp psfp (fi $ gridHeight gp) (fi $ gridPitch gp) (fi iter) gain thresh
     return (res, Image gp 0 mdl)
   where fi = fromIntegral

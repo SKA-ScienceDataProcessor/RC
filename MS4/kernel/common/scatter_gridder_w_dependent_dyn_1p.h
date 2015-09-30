@@ -9,11 +9,13 @@
 #define EXTERNC
 #endif
 
+typedef unsigned long long ull;
+
 #ifndef __DEGRID
 
 #define gridKernelCPUDecl(hgcfSuff, isHgcf)               \
 EXTERNC                                                   \
-void gridKernelCPU##hgcfSuff(                             \
+ull gridKernelCPU##hgcfSuff(                              \
     double scale                                          \
   , double wstep                                          \
   , int baselines                                         \
@@ -70,7 +72,7 @@ void rotateCPU(
 
 #define deGridKernelCPUDecl(hgcfSuff, isHgcf)             \
 EXTERNC                                                   \
-void deGridKernelCPU##hgcfSuff(                           \
+ull deGridKernelCPU##hgcfSuff(                            \
     double scale                                          \
   , double wstep                                          \
   , int baselines                                         \

@@ -1,10 +1,11 @@
+{-# LANGUAGE RankNTypes #-}
+{-# OPTIONS_HADDOCK hide #-}
 -- |
 -- Lens are immensely useful for working with state but I don't want
 -- to pull in full Kmettoverse for small set of combinators.
 --
 -- Here we redefine all necessary combinators. Full compatibility with
 -- lens is maintained.
-{-# LANGUAGE RankNTypes #-}
 module DNA.Lens where
 
 import Control.Applicative

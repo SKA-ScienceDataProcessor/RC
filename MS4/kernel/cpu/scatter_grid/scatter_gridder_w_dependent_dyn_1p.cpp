@@ -67,17 +67,23 @@ void gridKernel_scatter(
   , int grid_pitch
   , int grid_size
   , int gcf_supps[]
+  , ull counters[]
   ) {
-  int siz = grid_size*grid_pitch;
 #pragma omp parallel
   {
-    GRID_MOD complexd * _grid = grids + omp_get_thread_num() * siz;
+    int tno = omp_get_thread_num();
 #ifndef __DEGRID
+    int siz = grid_size*grid_pitch;
+    GRID_MOD complexd * _grid = grids + tno * siz;
     memset(_grid, 0, sizeof(complexd) * siz);
+#else
+    GRID_MOD complexd * _grid = grids;
 #endif
     __ACC(complexd, grid, grid_pitch);
+    ull * ctrp = counters + tno;
+    *ctrp = 0;
 
-#pragma omp for schedule(dynamic)
+#pragma omp for schedule(dynamic,23)
     for(int bl = 0; bl < baselines; bl++) {
       int max_supp_here;
       max_supp_here = bl_supps[bl];
@@ -158,6 +164,7 @@ void gridKernel_scatter(
 #else
             vis[i] += grid[gsu][gsv] * supportPixel;
 #endif
+            (*ctrp)++;
           }
         }
       }
@@ -177,7 +184,7 @@ template <
   , bool is_half_gcf
   >
 // grid must be initialized to 0s.
-void gridKernel_scatter_full(
+ull gridKernel_scatter_full(
     double scale
   , double wstep
   , int baselines
@@ -202,25 +209,33 @@ void gridKernel_scatter_full(
 #pragma omp single
   nthreads = omp_get_num_threads();
 
+#ifndef _MSC_VER
+  ull counters[nthreads];
+#else
+  std::vector<ull> countersVec(nthreads);
+  ull * counters = countersVec.data();
+#endif
   // Nullify incoming grid, allocate thread-local grids
   memset(grid, 0, sizeof(complexd) * siz);
   complexd * tmpgrids = alignedMallocArray<complexd>(siz * nthreads, 32);
   gridKernel_scatter<
       over
     , is_half_gcf
-    >(scale, wstep, baselines, bl_supps, tmpgrids, gcf, uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps);
+    >(scale, wstep, baselines, bl_supps, tmpgrids, gcf, uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps, counters);
   addGrids(grid, tmpgrids, nthreads, grid_pitch, grid_size);
   _aligned_free(tmpgrids);
 #else
   gridKernel_scatter<
       over
     , is_half_gcf
-    >(scale, wstep, baselines, bl_supps, grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps);
+    >(scale, wstep, baselines, bl_supps, grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps, counters);
 #endif
+  for (int i = 1; i < nthreads; i++) counters[0] += counters[i];
+  return counters[0];
 }
 
 #define gridKernelCPU(hgcfSuff, isHgcf)                   \
-void gridKernelCPU##hgcfSuff(                             \
+ull gridKernelCPU##hgcfSuff(                              \
     double scale                                          \
   , double wstep                                          \
   , int baselines                                         \
@@ -234,7 +249,7 @@ void gridKernelCPU##hgcfSuff(                             \
   , int grid_size                                         \
   , int gcf_supps[]                                       \
   ){                                                      \
-  gridKernel_scatter_full<OVER, isHgcf>                   \
+  return gridKernel_scatter_full<OVER, isHgcf>            \
     ( scale, wstep, baselines, bl_supps, grid, gcf        \
     , uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps); \
 }
@@ -342,8 +357,50 @@ void rotateCPU(
 
 #else
 
+template <
+    int over
+  , bool is_half_gcf
+  >
+ull deGridKernel_scatter_full(
+    double scale
+  , double wstep
+  , int baselines
+  , const int bl_supps[/* baselines */]
+  , const complexd grid[]
+  , const complexd * gcf[]
+  , const Double3 * uvw[]
+  , complexd * vis[]
+  , int ts_ch
+  , int grid_pitch
+  , int grid_size
+  , int gcf_supps[]
+  ) {
+  int nthreads;
+#if defined _OPENMP
+#pragma omp parallel
+#pragma omp single
+  nthreads = omp_get_num_threads();
+
+#ifndef _MSC_VER
+  ull counters[nthreads];
+#else
+  std::vector<ull> countersVec(nthreads);
+  ull * counters = countersVec.data();
+#endif
+#else
+  nthreads = 1;
+  ull counters[1];
+#endif
+  gridKernel_scatter<
+      over
+    , is_half_gcf
+    >(scale, wstep, baselines, bl_supps, grid, gcf, uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps, counters);
+  for (int i = 1; i < nthreads; i++) counters[0] += counters[i];
+  return counters[0];
+}
+
 #define deGridKernelCPU(hgcfSuff, isHgcf)                 \
-void deGridKernelCPU##hgcfSuff(                           \
+ull deGridKernelCPU##hgcfSuff(                            \
     double scale                                          \
   , double wstep                                          \
   , int baselines                                         \
@@ -357,7 +414,7 @@ void deGridKernelCPU##hgcfSuff(                           \
   , int grid_size                                         \
   , int gcf_supps[]                                       \
   ){                                                      \
-  gridKernel_scatter<OVER, isHgcf>                        \
+  return deGridKernel_scatter_full<OVER, isHgcf>          \
     ( scale, wstep, baselines, bl_supps, grid, gcf        \
     , uvw, vis, ts_ch, grid_pitch, grid_size, gcf_supps); \
 }
