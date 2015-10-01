@@ -19,21 +19,14 @@ module Strategy.Vector
 import Control.Monad (when, forM_)
 import Data.Binary   (Binary(..))
 import Data.Typeable (Typeable)
-import Data.ByteString (ByteString, hPut)
-import Data.ByteString.Unsafe (unsafePackAddressLen)
-import qualified Data.ByteString.Internal as BSI
 import Foreign.Ptr
 import Foreign.C
 import Foreign.Marshal.Alloc
 import Foreign.Marshal.Array (advancePtr)
-import Foreign.Marshal.Utils
 
 import Foreign.Storable
 
-import GHC.Exts     (Ptr(..))
 import GHC.Generics (Generic)
-
-import System.IO
 
 -- | The alignment that we are going to use for all vectors
 vectorAlign :: CUInt
@@ -135,12 +128,3 @@ freeVector (CVector _ ptr)      = Foreign.Marshal.Alloc.free ptr
 -- consumed.
 toCVector :: Storable a => Vector a -> IO (Vector a)
 toCVector v@CVector{}      = return v
-
--- | Create a copy of the given vector as a C vector. Leaves the
--- original vector intact.
-dupCVector :: forall a. Storable a => Vector a -> IO (Vector a)
-dupCVector v = do
-  v'@(CVector _ p') <- allocCVector (vectorSize v)
-  case v of
-    CVector _ p      -> copyBytes p' p (vectorByteSize v)
-  return v'

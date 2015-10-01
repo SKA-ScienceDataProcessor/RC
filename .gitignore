@@ -5,3 +5,5 @@ cabal.sandbox.config
 *.pyc
 *#
 *~
+*.o
+*.hi

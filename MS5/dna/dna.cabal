@@ -3,7 +3,7 @@ version:             0.1
 synopsis:            DSL constructions for radio astronomy imaging with a focus on data movement and optimization
 homepage:            https://github.com/SKA-ScienceDataProcessor/RC
 license:             Apache-2.0
-license-file:        LICENSE
+license-file:        ../LICENSE
 author:              Peter Braam
 maintainer:          peter.braam@peterbraam.com
 -- copyright:

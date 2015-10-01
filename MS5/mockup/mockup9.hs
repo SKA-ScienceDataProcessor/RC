@@ -2,13 +2,10 @@
 
 module Main where
 
-import Control.Monad
-
 import Data.Typeable
 
 import Strategy.Builder
 import Strategy.Domain
-import Strategy.Data
 import Strategy.Exec
 import Strategy.Vector
 import Strategy.Kernel

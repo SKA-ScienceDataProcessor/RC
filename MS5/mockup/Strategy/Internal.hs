@@ -7,7 +7,6 @@ import Control.Monad.State.Strict
 import Data.Hashable
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
-import qualified Data.ByteString as BS
 
 import Strategy.Vector
 
