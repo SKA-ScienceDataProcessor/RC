@@ -1,0 +1,43 @@
+name:                ms5
+version:             0.1
+synopsis:            DSL for radio astronomy imaging with a focus on data movement and optimization
+homepage:            https://github.com/SKA-ScienceDataProcessor/RC
+license:             Apache-2.0
+license-file:        LICENSE
+author:              Peter Braam
+maintainer:          peter.braam@peterbraam.com
+-- copyright:
+category:            Concurrency
+build-type:          Custom
+cabal-version:       >=1.16
+description:
+ .
+ DNA is a data flow DSL aimed at expressing data movement and initiation of
+ computational kernels for numerical calculations. We use the "actor/channel"
+ paradigm, which allows for a descriptive approach that separates definition
+ from execution strategy. Our target is data intensive high performance computing
+ applications that employ hierarchical cluster scheduling techniques. Furthermore,
+ we provide infrastructure for detailed profiling and high availability, allowing
+ recovery for certain types of failures.
+
+----------------------------------------------------------------
+executable mockup9
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall
+  Hs-source-dirs:      mockup
+  main-is:             mockup9.hs
+  build-depends:
+    base >=4.6,
+    binary       >= 0.7,
+    containers   >= 0.5,
+    mtl          >= 2.1,
+    unordered-containers >= 0.2,
+    hashable     >= 1.2,
+    bytestring   >= 0.10,
+    fixed-vector-hetero >= 0.2,
+    dna
+  x-halide-sources:    mockup/kernels/generate_f.cpp
+                       mockup/kernels/generate_g.cpp
+                       mockup/kernels/dotp.cpp
+                       mockup/kernels/sum.cpp
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lstdc++ -lHalide

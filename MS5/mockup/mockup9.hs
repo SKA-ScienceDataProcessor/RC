@@ -1,4 +1,6 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
 
 module Main where
 
@@ -9,6 +11,10 @@ import Strategy.Domain
 import Strategy.Exec
 import Strategy.Vector
 import Strategy.Kernel
+
+import qualified Halide.Types as Halide
+
+import Foreign.C
 
 -- Data tags
 data Vec deriving Typeable
@@ -26,48 +32,42 @@ ddp :: Flow Sum
 ddp = a $ pp f g
 
 -- Vector representation
-vecRepr :: VectorRepr Double Vec
-vecRepr = VectorRepr ReadAccess
-sumRepr :: VectorRepr Double Sum
-sumRepr = VectorRepr ReadAccess
+vecRepr :: Int -> HalideRepr Halide.Dim1 Float Vec
+vecRepr size = HalideRepr ((0, fromIntegral size) Halide.:. Halide.Z)
+sumRepr :: HalideRepr Halide.Dim1 Float Sum
+sumRepr = HalideRepr ((0,1) Halide.:. Halide.Z)
 
 -- Kernels
+
 fKern :: Int -> Kernel Vec
-fKern size = vecKernel0 "f" vecRepr $ do
-  v <- allocCVector size
-  forM_ [1..size] $ \i ->
-    pokeVector v i (fromIntegral i)
-  return v
+fKern size = halideKernel0 "f" (vecRepr size) kern_generate_f
+foreign import ccall "kern_generate_f"
+  kern_generate_f :: Halide.Kernel '[] (Halide.Array Halide.Dim1 Float)
+
 gKern :: Int -> Kernel Vec
-gKern size = vecKernel0 "g" vecRepr $ do
-  v <- allocCVector size
-  forM_ [1..size] $ \i ->
-    pokeVector v i 2.0
-  return v
+gKern size = halideKernel0 "g" (vecRepr size) kern_generate_g
+foreign import ccall "kern_generate_g"
+  kern_generate_g :: Halide.Kernel '[] (Halide.Array Halide.Dim1 Float)
 
 ppKern :: Int -> Flow Vec -> Flow Vec -> Kernel Vec
-ppKern size = vecKernel2 "pp" vecRepr vecRepr vecRepr $ \fv gv -> do
-  v <- allocCVector size
-  forM_ [1..size] $ \i -> do
-    a <- peekVector fv i
-    b <- peekVector gv i
-    pokeVector v i (a * b)
-  return v
+ppKern size = halideKernel2 "pp" (vecRepr size) (vecRepr size) (vecRepr size)
+                            kern_dotp
+foreign import ccall "kern_dotp"
+  kern_dotp :: Halide.Kernel '[ Halide.Array Halide.Dim1 Float
+                              , Halide.Array Halide.Dim1 Float] (Halide.Array Halide.Dim1 Float)
 
 aKern :: Int -> Flow Vec -> Kernel Sum
-aKern size = vecKernel1 "sum" vecRepr sumRepr $ \iv -> do
-  v <- allocCVector 1
-  s <- flip (flip foldM 0) [1..size] $ \s i -> do
-    a <- peekVector iv i
-    return (s + a)
-  pokeVector v 0 s
-  return v
+aKern size = halideKernel1 "a" (vecRepr size) sumRepr kern_sum
+foreign import ccall "kern_sum"
+  kern_sum :: Halide.Kernel '[Halide.Array Halide.Dim1 Float] (Halide.Array Halide.Dim1 Float)
 
 printKern :: Flow Sum -> Kernel Sum
-printKern = vecKernel1 "print" sumRepr sumRepr $ \sv -> do
-  s <- peekVector sv 0
-  putStrLn $ "Sum: " ++ show s
-  return sv
+printKern = kernel "print" code (sumRepr :. HNil) sumRepr
+  where code [sv] = do
+          s <- peekVector (castVector sv :: Vector Float) 0
+          putStrLn $ "Sum: " ++ show s
+          return sv
+        code _other = fail "printKern: Received wrong number of input buffers!"
 
 ddpStrat :: Int -> Strategy ()
 ddpStrat size = do
@@ -84,4 +84,7 @@ ddpStrat size = do
   rebind1D dom ddp printKern
 
 main :: IO ()
-main = execStrategy $ ddpStrat 1000
+main = do
+  let size = 1000
+  execStrategy $ ddpStrat size
+  putStrLn $ "Expected: " ++ show ((size-1)*size`div`20)
