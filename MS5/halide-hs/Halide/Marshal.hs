@@ -9,7 +9,9 @@
 module Halide.Marshal (
     -- * Hihg level API
     call
-  , eraseTypes  
+  , eraseTypes
+  , arr2scalar
+  , scalar2arr
     -- * Type classes
   , HalideScalar(..)
   , MarshalArray(..)
@@ -199,6 +201,17 @@ class MarshalArray dim where
   unwrapDimensions :: [(Int32,Int32)] -> Maybe dim
   wrapDimensions   :: dim -> [(Int32,Int32)]
 
+-- | Convert scalar to 0-dimensional array
+scalar2arr :: HalideScalar a => Scalar a -> IO (Array Z a)
+scalar2arr (Scalar a) = do
+  arr@(Array Z fptr) <- allocArray Z
+  withForeignPtr fptr $ \p -> poke p a
+  return arr
+
+-- | Convert 0-dimensional array to scalar
+arr2scalar :: HalideScalar a => Array Z a -> IO (Scalar a)
+arr2scalar (Array Z fptr) =
+  Scalar <$> withForeignPtr fptr peek
 
 -- | Allocate array for halide kernel which returns scalar value
 withScalarResult :: forall a b. HalideScalar a => (Ptr BufferT -> IO b) -> IO (Scalar a,b)
@@ -212,6 +225,20 @@ withScalarResult action = do
     r <- withBufferT buf action
     a <- peek ptr
     return (Scalar a, r)
+
+instance MarshalArray (Z) where
+  allocBufferT (Array Z arr) = do
+    buf <- newBufferT
+    setElemSize buf $ sizeOfVal arr
+    setBufferStride  buf 1 0 0 0
+    setBufferMin     buf 1 0 0 0
+    setBufferExtents buf 1 0 0 0
+    withForeignPtr arr $ setHostPtr buf . castPtr
+    return buf
+  nOfElements Z = 1
+  unwrapDimensions [] = Just Z
+  unwrapDimensions _  = Nothing
+  wrapDimensions Z = []
 
 instance MarshalArray ((Int32,Int32) :. Z) where
   allocBufferT (Array ((off,size) :. Z) arr) = do
