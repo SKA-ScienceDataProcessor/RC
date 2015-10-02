@@ -7,9 +7,11 @@
 -- |
 -- Marshalling of data between haskell and Halide kernels
 module Flow.Halide.Marshal (
-    -- * Hhhg level API
+    -- * High level API
     call
   , eraseTypes
+  , arr2scalar
+  , scalar2arr
     -- * Type classes
   , HalideScalar(..)
   , MarshalArray(..)
@@ -199,6 +201,17 @@ class MarshalArray dim where
   unwrapDimensions :: [(Int32,Int32)] -> Maybe dim
   wrapDimensions   :: dim -> [(Int32,Int32)]
 
+-- | Convert scalar to 0-dimensional array
+scalar2arr :: HalideScalar a => Scalar a -> IO (Array Z a)
+scalar2arr (Scalar a) = do
+  arr@(Array Z v) <- allocArray Z
+  pokeVector v 0 a
+  return arr
+
+-- | Convert 0-dimensional array to scalar
+arr2scalar :: HalideScalar a => Array Z a -> IO (Scalar a)
+arr2scalar (Array Z v) =
+  Scalar <$> peekVector v 0
 
 -- | Allocate array for halide kernel which returns scalar value
 withScalarResult :: forall a b. HalideScalar a => (Ptr BufferT -> IO b) -> IO (Scalar a,b)
@@ -213,6 +226,22 @@ withScalarResult action = do
     a <- peek ptr
     return (Scalar a, r)
 
+instance MarshalArray (Z) where
+  allocBufferT (Array Z arr) = do
+    buf <- newBufferT
+    setElemSize buf $ sizeOfVal arr
+    setBufferStride  buf 1 0 0 0
+    setBufferMin     buf 1 0 0 0
+    setBufferExtents buf 1 0 0 0
+    case arr of
+      CVector _ p -> setHostPtr buf (castPtr p)
+      _other      -> fail "Halide only supports C arrays currently!"
+    return buf
+  nOfElements Z = 1
+  unwrapDimensions [] = Just Z
+  unwrapDimensions _  = Nothing
+  wrapDimensions Z = []
+
 instance MarshalArray ((Int32,Int32) :. Z) where
   allocBufferT (Array ((off,size) :. Z) arr) = do
     buf <- newBufferT
@@ -222,6 +251,7 @@ instance MarshalArray ((Int32,Int32) :. Z) where
     setBufferExtents buf size 0 0 0
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
+      _other      -> fail "Halide only supports C arrays currently!"
     return buf
   nOfElements ((_,n) :. Z) = fromIntegral n
   unwrapDimensions [n] = Just (n :. Z)

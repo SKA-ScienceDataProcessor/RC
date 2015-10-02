@@ -32,9 +32,9 @@ ddp = a $ pp f g
 type VecRepr = HalideRepr Dim1 Float Vec
 vecRepr :: Int -> VecRepr
 vecRepr size = HalideRepr ((0, fromIntegral size) :. Z)
-type SumRepr = HalideRepr Dim1 Float Sum
+type SumRepr = HalideRepr Z Float Sum
 sumRepr :: SumRepr
-sumRepr = HalideRepr ((0,1) :. Z)
+sumRepr = HalideRepr Z
 
 -- Kernels
 
@@ -53,7 +53,7 @@ foreign import ccall unsafe kern_dotp :: HalideFun '[ VecRepr, VecRepr ] VecRepr
 
 aKern :: Int -> Flow Vec -> Kernel Sum
 aKern size = halideKernel1 "a" (vecRepr size) sumRepr kern_sum
-foreign import ccall unsafe kern_sum :: HalideFun '[ VecRepr ] VecRepr
+foreign import ccall unsafe kern_sum :: HalideFun '[ VecRepr ] SumRepr
 
 printKern :: Flow Sum -> Kernel Sum
 printKern = kernel "print" code (sumRepr :. Z) sumRepr
@@ -79,6 +79,7 @@ ddpStrat size = do
 
 main :: IO ()
 main = do
-  let size = 1000
+  let size = 100000
+  dumpSteps $ ddpStrat size
   execStrategy $ ddpStrat size
   putStrLn $ "Expected: " ++ show ((size-1)*size`div`20)
