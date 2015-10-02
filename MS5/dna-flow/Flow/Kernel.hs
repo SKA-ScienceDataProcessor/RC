@@ -5,6 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Flow.Kernel
   ( DataRepr(..), ReprAccess(..)
@@ -35,7 +36,7 @@ data NoRepr a = NoRepr
 instance Typeable a => Show (NoRepr a) where
   show _ = "nothing [" ++ show (typeOf (undefined :: a)) ++ "]"
 instance Typeable a => DataRepr (NoRepr a) where
-  type RPar (NoRepr a) = a
+  type ReprType (NoRepr a) = a
   reprNop _ = True
   reprAccess _ = ReadAccess
   reprCompatible _ _ = True
@@ -49,33 +50,32 @@ data VectorRepr val abs = VectorRepr ReprAccess
 instance (Typeable val, Typeable abs) => Show (VectorRepr val abs) where
   show _ = show (typeOf (undefined :: val)) ++ " vector [" ++ show (typeOf (undefined :: abs)) ++ "]"
 instance (Typeable val, Typeable abs) => DataRepr (VectorRepr val abs) where
-  type RPar (VectorRepr val abs) = abs
+  type ReprType (VectorRepr val abs) = abs
   reprNop _ = False
   reprAccess (VectorRepr acc)  = acc
   reprCompatible _ _ = True
 
 vecKernel0 :: (Typeable val, Typeable abs)
            => String -> VectorRepr val abs -> IO (Vector val) -> Kernel abs
-vecKernel0 name rrepr code = kernel name code' Z rrepr
-  where code' _ = castVector <$> code
+vecKernel0 name rrepr code = kernel name Z rrepr $ \_ -> castVector <$> code
 
 vecKernel1 :: (Typeable val, Typeable abs, Typeable val0, Typeable abs0)
            => String
            -> VectorRepr val0 abs0 -> VectorRepr val abs
            -> (Vector val0 -> IO (Vector val))
            -> Flow abs0 -> Kernel abs
-vecKernel1 name repr0 rrepr code = kernel name code' (repr0 :. Z) rrepr
-  where code' [vec] = castVector <$> code (castVector vec)
-        code' _other = fail "vecKernel1: Received wrong number of input buffers!"
+vecKernel1 name repr0 rrepr code = kernel name (repr0 :. Z) rrepr $ \case
+  [vec]  -> castVector <$> code (castVector vec)
+  _other -> fail "vecKernel1: Received wrong number of input buffers!"
 
 vecKernel2 :: (Typeable val, Typeable abs, Typeable val0, Typeable abs0, Typeable val1, Typeable abs1)
            => String
            -> VectorRepr val0 abs0 -> VectorRepr val1 abs1 -> VectorRepr val abs
            -> (Vector val0 -> Vector val1 -> IO (Vector val))
            -> Flow abs0 -> Flow abs1 -> Kernel abs
-vecKernel2 name repr0 repr1 rrepr code = kernel name code' (repr0 :. repr1 :. Z) rrepr
-  where code' [vec,vec1] = castVector <$> code (castVector vec) (castVector vec1)
-        code' _other = fail "vecKernel2: Received wrong number of input buffers!"
+vecKernel2 name repr0 repr1 rrepr code = kernel name (repr0 :. repr1 :. Z) rrepr $ \case
+  [vec,vec1] -> castVector <$> code (castVector vec) (castVector vec1)
+  _other     -> fail "vecKernel2: Received wrong number of input buffers!"
 
 -- | Halide array of statically known (!) size. Scalar type is @val@,
 -- dimensionality is given by @dim@, and @abs@ identifies the abstract
@@ -89,7 +89,7 @@ instance (Typeable dim, Typeable val, Typeable abs, HalideScalar val, Show dim) 
     . shows dim . showString " [" . shows (typeOf (undefined :: abs)) . showString "]"
 instance (Typeable dim, Typeable val, Typeable abs, HalideScalar val, Show dim, Eq dim) =>
          DataRepr (HalideRepr dim val abs) where
-  type RPar (HalideRepr dim val abs) = abs
+  type ReprType (HalideRepr dim val abs) = abs
   reprNop _ = False
   reprAccess (HalideRepr _) = ReadAccess
   reprCompatible (HalideRepr d0) (HalideRepr d1) = d0 == d1
@@ -125,18 +125,17 @@ halideKernel0 :: HalideReprClass rr
               => String
               -> rr
               -> HalideFun '[] rr
-              -> Kernel (RPar rr)
-halideKernel0 name retR code = kernel name code' Z retR
-  where code' _ = do
-          vecR <- call code (halrDim retR)
-          return $ castVector $ arrayBuffer vecR
+              -> Kernel (ReprType rr)
+halideKernel0 name retR code = kernel name Z retR $ \_ -> do
+  vecR <- call code (halrDim retR)
+  return $ castVector $ arrayBuffer vecR
 
 halideKernel1 :: (HalideReprClass rr, HalideReprClass r0)
               => String
               -> r0 -> rr
               -> HalideFun '[r0] rr
-              -> Flow (RPar r0) -> Kernel (RPar rr)
-halideKernel1 name rep0 repR code = kernel name code' (rep0 :. Z) repR
+              -> Flow (ReprType r0) -> Kernel (ReprType rr)
+halideKernel1 name rep0 repR code = kernel name (rep0 :. Z) repR code'
   where code' [v0] = do
          vecR <- call code (halrDim repR) (Array (halrDim rep0) (castVector v0))
          return $ castVector $ arrayBuffer vecR
@@ -146,8 +145,8 @@ halideKernel2 :: (HalideReprClass rr, HalideReprClass r0, HalideReprClass r1)
               => String
               -> r0 -> r1 -> rr
               -> HalideFun '[r0, r1] rr
-              -> Flow (RPar r0) -> Flow (RPar r1) -> Kernel (RPar rr)
-halideKernel2 name rep0 rep1 repR code = kernel name code' (rep0 :. rep1 :. Z) repR
+              -> Flow (ReprType r0) -> Flow (ReprType r1) -> Kernel (ReprType rr)
+halideKernel2 name rep0 rep1 repR code = kernel name (rep0 :. rep1 :. Z) repR code'
   where code' [v0, v1] = do
          vecR <- call code (halrDim repR) (Array (halrDim rep0) (castVector v0))
                                           (Array (halrDim rep1) (castVector v1))

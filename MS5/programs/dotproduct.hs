@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Main where
 
@@ -56,12 +57,11 @@ aKern size = halideKernel1 "a" (vecRepr size) sumRepr kern_sum
 foreign import ccall unsafe kern_sum :: HalideFun '[ VecRepr ] SumRepr
 
 printKern :: Flow Sum -> Kernel Sum
-printKern = kernel "print" code (sumRepr :. Z) sumRepr
-  where code [sv] = do
-          s <- peekVector (castVector sv :: Vector Float) 0
-          putStrLn $ "Sum: " ++ show s
-          return sv
-        code _other = fail "printKern: Received wrong number of input buffers!"
+printKern = kernel "print" (sumRepr :. Z) sumRepr $ \case
+  [sv]   -> do s <- peekVector (castVector sv :: Vector Float) 0
+               putStrLn $ "Sum: " ++ show s
+               return sv
+  _other -> fail "printKern: Received wrong number of input buffers!"
 
 ddpStrat :: Int -> Strategy ()
 ddpStrat size = do

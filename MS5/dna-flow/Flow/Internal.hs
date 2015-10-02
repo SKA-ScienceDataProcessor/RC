@@ -120,7 +120,7 @@ addStep :: Step -> Strategy ()
 addStep step =  modify $ \ss -> ss { ssSteps = step : ssSteps ss }
 
 class (Show r, Typeable r) => DataRepr r where
-  type RPar r
+  type ReprType r
   -- | Does the representation contain no data? This means that we are
   -- going to ignore it.
   reprNop :: r -> Bool

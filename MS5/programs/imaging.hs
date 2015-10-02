@@ -37,8 +37,6 @@ deriving instance Typeable CleanResult
 -- TODO: The string we use here is somewhat important for keeping them
 -- apart - it would be more elegant if we could enforce them to be
 -- unique in some other way.
---
--- TODO 2: All this would look *way* nicer with currying.
 createGrid :: Flow UVGrid
 createGrid = flow "create grid"
 grid :: Flow Vis -> Flow GCFs -> Flow UVGrid -> Flow UVGrid
@@ -116,7 +114,7 @@ data GridPar = GridPar
 -- deriving yet (#8165). In the meantime, we use preprocessor
 #define DATAREPR_INSTANCE(NewRepr, Repr) \
   instance DataRepr NewRepr where \
-    type RPar NewRepr = RPar (Repr); \
+    type ReprType NewRepr = ReprType (Repr); \
     reprNop (NewRepr r) = reprNop r; \
     reprAccess (NewRepr r) = reprAccess r; \
     reprCompatible (NewRepr r1) (NewRepr r2) = reprCompatible r1 r2
@@ -156,16 +154,16 @@ visRepr = SortedVisRepr $ VectorRepr ReadAccess
 gcfsRepr :: VectorRepr () GCFs
 gcfsRepr = VectorRepr ReadAccess
 
-dummy :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
-              => String -> rs -> r -> RKern (RPar r) rs
-dummy name = kernel name code
+dummy :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
+      => String -> rs -> r -> ReprKernFun (ReprType r) rs
+dummy name rs r = kernel name rs r code
   where code _ = putStrLn name >> return nullVector
 
-halideWrapper :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
-              => String -> rs -> r -> RKern (RPar r) rs
+halideWrapper :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
+              => String -> rs -> r -> ReprKernFun (ReprType r) rs
 halideWrapper _ = dummy "halide"
-cWrapper :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
-         => String -> rs -> r -> RKern (RPar r) rs
+cWrapper :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
+         => String -> rs -> r -> ReprKernFun (ReprType r) rs
 cWrapper _ = dummy "c"
 
 oskarReader :: [(FilePath, Int)] -> Kernel Vis

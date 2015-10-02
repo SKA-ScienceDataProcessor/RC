@@ -56,39 +56,57 @@ instance IsFlows fs => IsFlows (Flow a :. fs) where
 -- parameters
 class IsFlows (Flows fs) => IsCurriedFlows fs where
   type Flows fs
-  type Ret fs
-  type KernFun fs
-  curryFlow :: (Flows fs -> Flow (Ret fs)) -> fs
-  uncurryFlow :: fs -> Flows fs -> Flow (Ret fs)
-  uncurryKernFun :: fs -> KernFun fs -> Flows fs -> Kernel (Ret fs)
+  type FlowsRet fs
+  type FlowsKernFun fs
+  curryFlow :: (Flows fs -> Flow (FlowsRet fs)) -> fs
+  uncurryFlow :: fs -> Flows fs -> Flow (FlowsRet fs)
+  uncurryKernFun :: fs -> FlowsKernFun fs -> Flows fs -> Kernel (FlowsRet fs)
 instance IsCurriedFlows (Flow a) where
   type Flows (Flow a) = Z
-  type Ret (Flow a) = a
-  type KernFun (Flow a) = Kernel a
+  type FlowsRet (Flow a) = a
+  type FlowsKernFun (Flow a) = Kernel a
   curryFlow f = f Z
   uncurryFlow fl _ = fl
   uncurryKernFun _ kfl _ = kfl
 instance IsCurriedFlows fs => IsCurriedFlows (Flow f -> fs) where
   type Flows (Flow f -> fs) = Flow f :. Flows fs
-  type Ret (Flow f -> fs) = Ret fs
-  type KernFun (Flow f -> fs) = Flow f -> KernFun fs
+  type FlowsRet (Flow f -> fs) = FlowsRet fs
+  type FlowsKernFun (Flow f -> fs) = Flow f -> FlowsKernFun fs
   curryFlow f fl = curryFlow (f . (fl :.))
   uncurryFlow f (fl :. fls) = uncurryFlow (f fl) fls
   uncurryKernFun _ f (fl :. fls) = uncurryKernFun (undefined :: fs) (f fl) fls
 
 -- | Class for reasoning about lists of data representations
-class (IsFlows (RFlows rs), Pars (RFlows rs) ~ RPars rs) => IsReprs rs where
-  type RPars rs
-  type RFlows rs
+class (IsFlows (ReprFlows rs), Pars (ReprFlows rs) ~ ReprTypes rs) => IsReprs rs where
+  type ReprTypes rs
+  type ReprFlows rs
   toReprsI :: rs -> [ReprI]
 instance IsReprs Z where
-  type RPars Z = Z
-  type RFlows Z = Z
+  type ReprTypes Z = Z
+  type ReprFlows Z = Z
   toReprsI _ = []
 instance (DataRepr r, IsReprs rs) => IsReprs (r :. rs) where
-  type RPars (r :. rs) = RPar r :. RPars rs
-  type RFlows (r :. rs) = Flow (RPar r) :. RFlows rs
+  type ReprTypes (r :. rs) = ReprType r :. ReprTypes rs
+  type ReprFlows (r :. rs) = Flow (ReprType r) :. ReprFlows rs
   toReprsI (r:.rs) = ReprI r : toReprsI rs
+
+-- | Class for reasoning about producing kernels from curried lists of flows
+class IsReprs rs => IsReprKern a rs where
+  type ReprKernFun a rs
+  curryReprs :: rs -> (ReprFlows rs -> Kernel a) -> ReprKernFun a rs
+instance IsReprKern a Z where
+  type ReprKernFun a Z = Kernel a
+  curryReprs _ f = f Z
+instance (DataRepr r, IsReprKern a rs) => IsReprKern a (r :. rs) where
+  type ReprKernFun a (r :. rs) = Flow (ReprType r) -> ReprKernFun a rs
+  curryReprs _ f fl = curryReprs (undefined :: rs) (f . (fl :.))
+
+-- | Kernel implementation, with parameters bound to flows
+data Kernel a where
+  Kernel :: (IsReprs rs, IsReprKern (ReprType r) rs, DataRepr r)
+         => String -> KernelCode
+         -> rs -> r -> ReprFlows rs
+         -> Kernel (ReprType r)
 
 -- | Create a new abstract kernel flow
 flow :: IsCurriedFlows fs => String -> fs
@@ -102,31 +120,16 @@ uniq (Flow fi) = state $ \ss ->
   (mkFlow (flName fi ++ "." ++ show (ssKernelId ss)) (flDepends fi),
    ss {ssKernelId = 1 + ssKernelId ss})
 
--- | Class for reasoning about producing kernels from curried lists of flows
-class IsReprs rs => IsReprKern a rs where
-  type RKern a rs
-  curryReprs :: rs -> (RFlows rs -> Kernel a) -> RKern a rs
-instance IsReprKern a Z where
-  type RKern a Z = Kernel a
-  curryReprs _ f = f Z
-instance (DataRepr r, IsReprKern a rs) => IsReprKern a (r :. rs) where
-  type RKern a (r :. rs) = Flow (RPar r) -> RKern a rs
-  curryReprs _ f fl = curryReprs (undefined :: rs) (f . (fl :.))
-
--- | Kernel implementation, with parameters bound to flows
-data Kernel a where
-  Kernel :: (IsReprs rs, IsReprKern (RPar r) rs, DataRepr r)
-         => String -> KernelCode
-         -> rs -> r -> RFlows rs
-         -> Kernel (RPar r)
-
 -- | Creates a new kernel using the given data representations for
 -- input values. Needs to be bound to input flows.
-kernel :: forall r rs. (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
-       => String -> KernelCode -> rs -> r -> RKern (RPar r) rs
-kernel name code parReprs retRep
+kernel :: forall r rs. (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
+       => String -> rs -> r -> KernelCode -> ReprKernFun (ReprType r) rs
+kernel name parReprs retRep code
   = curryReprs (undefined :: rs) (Kernel name code parReprs retRep)
 
+-- | Prepares the given kernel. This means checking its parameters and
+-- adding it to the kernel list. However, it will not automatically be
+-- added to the current scope.
 prepareKernel :: Kernel r -> Flow r -> [DomainId] -> Strategy KernelBind
 prepareKernel (Kernel kname kcode parReprs retRep ps) (Flow fi) ds = do
 
@@ -134,55 +137,10 @@ prepareKernel (Kernel kname kcode parReprs retRep ps) (Flow fi) ds = do
   -- "don't care".
   let parReprsI = toReprsI parReprs
       pars = zip (toList ps) parReprsI
-      pars' = filter (not . isNoReprI . snd) pars
 
   -- Look up dependencies
-  kis <- forM (zip [(1::Int)..] pars') $ \(parn, (p, prep)) -> do
-
-    -- Parameter flows must all be in the dependency tree of the flow
-    -- to calculate. Yes, this means that theoretically flows are
-    -- allowed to depend on very early flows. This is most likely not
-    -- a good idea though.
-    let hasDepend f
-          | p == f    = True
-          | otherwise = any hasDepend $ flDepends f
-    when (not $ hasDepend fi) $
-      fail $ "Parameter " ++ show p ++ " not a dependency of " ++ show fi ++ "!"
-
-    -- Look up latest kernel ID
-    ss <- get
-    let check kern
-          | kernReprCheck kern prep = return $ kernId kern
-          | otherwise = fail $ concat
-              [ "Data representation mismatch when binding kernel "
-              , kname, " to implement "
-              , flName fi, ": Expected ", show prep, " for parameter "
-              , show parn, ", but kernel ", kernName kern, " produced "
-              , show (kernRepr kern), "!"
-              ]
-    case HM.lookup p (ssMap ss) of
-      Just sme -> check sme
-      Nothing  -> do
-
-        -- Not defined yet? Attempt to match a rule to produce it
-        m_strat <- findRule (Flow p)
-        case m_strat of
-          Nothing -> fail $ "When binding kernel " ++ kname ++ " to implement " ++
-                            flName fi ++ ": Could not find a kernel calculating flow " ++
-                            show p ++ "!"
-          Just strat -> do
-
-            -- Execute rule
-            strat
-
-            -- Lookup again. The rule should normaly guarantee that
-            -- this doesn't fail any more.
-            ss' <- get
-            case HM.lookup p (ssMap ss') of
-              Just krn -> return $ kernId krn
-              Nothing  -> fail $ "When binding kernel " ++ kname ++ " to implement " ++
-                            flName fi ++ ": Failed to apply rule to calculate " ++ show p ++ "! " ++
-                            "This should be impossible!"
+  kis <- mapM (uncurry (prepareDependency kname fi)) $
+         zip [1..] $ filter (not . isNoReprI . snd) pars
 
   -- Make kernel, add to kernel list
   i <- freshKernelId
@@ -190,6 +148,58 @@ prepareKernel (Kernel kname kcode parReprs retRep ps) (Flow fi) ds = do
       kern = KernelBind i fi kname (ReprI retRep) kis kcode typeCheck
   addStep $ KernelStep ds kern
   return kern
+
+-- | Prepares a concrete data dependency for a kernel implementing the
+-- flow. This means finding the kernel that produces the result,
+-- possibly aplying a rule, and finally doing a type-check to ensure
+-- that data representations match.
+prepareDependency :: String -> FlowI -> Int -> (FlowI, ReprI) -> Strategy KernelId
+prepareDependency kname fi parn (p, prep) = do
+
+  -- Parameter flows must all be in the dependency tree of the flow
+  -- to calculate. Yes, this means that theoretically flows are
+  -- allowed to depend on very early flows. This is most likely not
+  -- a good idea though.
+  let hasDepend f
+        | p == f    = True
+        | otherwise = any hasDepend $ flDepends f
+  when (not $ hasDepend fi) $
+    fail $ "Parameter " ++ show p ++ " not a dependency of " ++ show fi ++ "!"
+
+  -- Look up latest kernel ID
+  ss <- get
+  let check kern
+        | kernReprCheck kern prep = return $ kernId kern
+        | otherwise = fail $ concat
+            [ "Data representation mismatch when binding kernel "
+            , kname, " to implement "
+            , flName fi, ": Expected ", show prep, " for parameter "
+            , show parn, ", but kernel ", kernName kern, " produced "
+            , show (kernRepr kern), "!"
+            ]
+  case HM.lookup p (ssMap ss) of
+    Just sme -> check sme
+    Nothing  -> do
+
+      -- Not defined yet? Attempt to match a rule to produce it
+      m_strat <- findRule (Flow p)
+      case m_strat of
+        Nothing -> fail $ "When binding kernel " ++ kname ++ " to implement " ++
+                          flName fi ++ ": Could not find a kernel calculating flow " ++
+                          show p ++ "!"
+        Just strat -> do
+
+          -- Execute rule
+          strat
+
+          -- Lookup again. The rule should normaly guarantee that
+          -- this doesn't fail any more.
+          ss' <- get
+          case HM.lookup p (ssMap ss') of
+            Just krn -> check krn
+            Nothing  -> fail $ "When binding kernel " ++ kname ++ " to implement " ++
+                          flName fi ++ ": Failed to apply rule to calculate " ++ show p ++ "! " ++
+                          "This should be impossible!"
 
 -- | Bind the given flow to a kernel. For this to succeed, threee
 -- conditions must be met:
@@ -258,7 +268,7 @@ rule flf strat = do
 -- the flow inputs for this to work.
 bindRule :: forall fs. IsCurriedFlows fs
          => fs
-         -> KernFun fs
+         -> FlowsKernFun fs
          -> Strategy ()
 bindRule flf kern =
   rule flf $ \inp ->
@@ -270,7 +280,7 @@ bindRule flf kern =
 bindRule1D :: forall d fs. IsCurriedFlows fs
            => DomainHandle d
            -> fs
-           -> KernFun fs
+           -> FlowsKernFun fs
            -> Strategy ()
 bindRule1D dh flf kern =
   rule flf $ \inp ->
