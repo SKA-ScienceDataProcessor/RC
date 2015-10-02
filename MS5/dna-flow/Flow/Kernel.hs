@@ -11,7 +11,7 @@ module Flow.Kernel
   ( DataRepr(..), ReprAccess(..)
   , NoRepr(..)
   , VectorRepr(..)
-  , vecKernel0, vecKernel1, vecKernel2
+  , vecKernel0, vecKernel1, vecKernel2, vecKernel3
   , HalideRepr(..), HalideFun
   , Dim1, dim1
   , halideKernel0, halideKernel1, halideKernel2
@@ -76,6 +76,16 @@ vecKernel2 :: (Typeable val, Typeable abs, Typeable val0, Typeable abs0, Typeabl
 vecKernel2 name repr0 repr1 rrepr code = kernel name (repr0 :. repr1 :. Z) rrepr $ \case
   [vec,vec1] -> castVector <$> code (castVector vec) (castVector vec1)
   _other     -> fail "vecKernel2: Received wrong number of input buffers!"
+
+vecKernel3 :: ( Typeable val, Typeable abs, Typeable val0, Typeable abs0
+              , Typeable val1, Typeable abs1, Typeable val2, Typeable abs2)
+           => String
+           -> VectorRepr val0 abs0 -> VectorRepr val1 abs1 -> VectorRepr val2 abs2 -> VectorRepr val abs
+           -> (Vector val0 -> Vector val1 -> Vector val2 -> IO (Vector val))
+           -> Flow abs0 -> Flow abs1 -> Flow abs2 -> Kernel abs
+vecKernel3 name repr0 repr1 repr2 rrepr code = kernel name (repr0 :. repr1 :. repr2 :. Z) rrepr $ \case
+  [vec,vec1,vec2] -> castVector <$> code (castVector vec) (castVector vec1) (castVector vec2)
+  _other          -> fail "vecKernel3: Received wrong number of input buffers!"
 
 -- | Halide array of statically known (!) size. Scalar type is @val@,
 -- dimensionality is given by @dim@, and @abs@ identifies the abstract
