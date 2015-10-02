@@ -21,26 +21,26 @@ description:
  recovery for certain types of failures.
 
 ----------------------------------------------------------------
-executable mockup9
+executable dotproduct
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall
-  Hs-source-dirs:      mockup
-  main-is:             mockup9.hs
+  Hs-source-dirs:      programs
+  main-is:             dotproduct.hs
   build-depends:
     base         >= 4.6,
     dna-flow     >= 0.5,
     fixed-vector-hetero
-  x-halide-sources:    mockup/kernels/generate_f.cpp
-                       mockup/kernels/generate_g.cpp
-                       mockup/kernels/dotp.cpp
-                       mockup/kernels/sum.cpp
+  x-halide-sources:    kernel/cpu/dotproduct/generate_f.cpp
+                       kernel/cpu/dotproduct/generate_g.cpp
+                       kernel/cpu/dotproduct/dotp.cpp
+                       kernel/cpu/dotproduct/sum.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lstdc++ -lHalide
 
-executable mockup8
+executable imaging
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall
-  Hs-source-dirs:      mockup
-  main-is:             mockup8.hs
+  Hs-source-dirs:      programs
+  main-is:             imaging.hs
   build-depends:
     base         >= 4.6,
     binary       >= 0.7,
