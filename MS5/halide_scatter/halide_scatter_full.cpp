@@ -1,7 +1,7 @@
 #include "Halide.h"
 
 #include <utility>
-// #include <cstdio>
+#include <vector>
 
 using namespace Halide;
 
@@ -10,7 +10,6 @@ struct Complex {
   Complex(Tuple t) : real(t[0]), imag(t[1]) {}
   Complex(Expr r, Expr i) : real(r), imag(i) {}
   Complex(FuncRefExpr t) : Complex(Tuple(t)) {}
-  Complex(FuncRefVar t) : Complex(Tuple(t)) {}
   operator Tuple() const {
     return{ real, imag };
   }
@@ -23,21 +22,27 @@ struct Complex {
   }
 };
 
-// "Optimization".
-inline void updif(const Expr & cond, FuncRefExpr fref, const Complex &cplx) {
-  Complex added = Complex(fref) + cplx;
-  fref = Complex(
-             select(cond, added.real, Complex(fref).real)
-           , select(cond, added.imag, Complex(fref).imag)
-           );
+inline Complex select(Expr condition, Complex true_value, Complex false_value) {
+  return Complex(
+      select(condition, true_value.real, false_value.real)
+    , select(condition, true_value.imag, false_value.imag)
+    );
 }
+
+inline Func flushAndContinue(const char * new_name, Func & f) {
+  Func ret(new_name);
+  f.compute_root();
+  ret(f.args()) = f(f.args());
+  return ret;
+}
+
 
 #define P(a) a(#a)
 #define IP(a,b,c) a(b,c,#a)
 
 int main(/* int argc, char **argv */) {
   int over = 8;
-  
+
   Param<double>
       P(scale)
     , P(wstep)
@@ -72,10 +77,10 @@ int main(/* int argc, char **argv */) {
     ;
 
   Var P(t), P(uvdim), P(bl);
-  uvs(uvdim,t,bl) = uvwf(uvdim,t,bl) * scale;
-  overc(uvdim,t,bl) = cast(Int(16), over * (uvs(uvdim,t,bl) - floor(uvs(uvdim,t,bl))));
-  uv(uvdim,t,bl) = cast(Int(16), uvs(uvdim,t,bl) + cast(Int(16), grid_size / 2 - supports(bl) / 2));
-  w(t,bl) = cast(Int(16), uvwf(2,t,bl) / wstep);
+  uvs(uvdim, t, bl) = uvwf(uvdim, t, bl) * scale;
+  overc(uvdim, t, bl) = cast(Int(16), over * (uvs(uvdim, t, bl) - floor(uvs(uvdim, t, bl))));
+  uv(uvdim, t, bl) = cast(Int(16), uvs(uvdim, t, bl) + cast(Int(16), grid_size / 2 - supports(bl) / 2));
+  w(t, bl) = cast(Int(16), uvwf(2, t, bl) / wstep);
 
   // If we compute_root them.
   // uvs.bound(uvdim, 0, 2);
@@ -91,14 +96,14 @@ int main(/* int argc, char **argv */) {
   // 1. All visibilities
   // 2. All GCF coordinates (X,Y)
   // Provisional limit only to experiment with things
-  #define TMP_LIM 256
+#define TMP_LIM 256
   RDom red(
       0, num_of_baselines
     , 0, TMP_LIM
     , 0, ts_ch
     , 0, TMP_LIM
     );
-  
+
   RVar
       rbl   = red.x
     , rgcfx = red.y
@@ -108,22 +113,24 @@ int main(/* int argc, char **argv */) {
 
   Param<int> P(gcf_data_size);
   // No layer correction yet
-  Expr off = clamp (gcfoff(w(rvis,rbl)) + overc(0,rvis,rbl) * gcf_supps(w(rvis,rbl)) + overc(1,rvis,rbl), 0, gcf_data_size-1);
+  Expr off = clamp(gcfoff(w(rvis, rbl)) + overc(0, rvis, rbl) * gcf_supps(w(rvis, rbl)) + overc(1, rvis, rbl), 0, gcf_data_size - 1);
   // Do the complex arithmetic to update the grid
   Complex visC(
-      vis(0,rvis,rbl)
-    , vis(1,rvis,rbl)
+      vis(0, rvis, rbl)
+    , vis(1, rvis, rbl)
     );
   Complex gcfC(
       gcfr(off)
     , gcfi(off)
     );
-  updif(rgcfx < supports(rbl) && rgcfy < supports(rbl)
-    , uvg(
-      clamp(uv(0,rvis,rbl) + rgcfx, 0, grid_pitch - 1)
-    , clamp(uv(1,rvis,rbl) + rgcfy, 0, grid_size - 1))
-    , visC * gcfC
+
+  FuncRefExpr uvRef = uvg(
+      clamp(uv(0, rvis, rbl) + rgcfx, 0, grid_pitch - 1)
+    , clamp(uv(1, rvis, rbl) + rgcfy, 0, grid_size - 1)
     );
+
+  // Convolve
+  uvRef = select(rgcfx < supports(rbl) && rgcfy < supports(rbl), Complex(uvRef) + visC * gcfC, uvRef);
 
   uvg.bound(x, 0, grid_size);
   uvg.bound(y, 0, grid_pitch);
@@ -131,28 +138,25 @@ int main(/* int argc, char **argv */) {
   // Temp. disable. It wants constants only.
   // uvg.vectorize(x);
 
-  Func P(uvgsh_full);
-  Var P(gu), P(gv);
-  uvg.compute_root();
-  uvgsh_full(gu, gv) = uvg(gu, gv);
+  Func uvgsh_full = flushAndContinue("uvgsh_full", uvg);
   uvgsh_full.output_buffers()[0].set_stride(0, Expr());
   uvgsh_full.output_buffers()[1].set_stride(0, Expr());
-
+  
   std::vector<Halide::Argument> compile_args = {
-       scale
-     , wstep
-     , num_of_baselines
-     , supports
-     , ts_ch
-     , grid_pitch
-     , grid_size
-     , gcf_supps
-     , uvwf
-     , vis
-     , gcf_data_size
-     , gcfoff
-     , gcfr, gcfi
-     };
+      scale
+    , wstep
+    , num_of_baselines
+    , supports
+    , ts_ch
+    , grid_pitch
+    , grid_size
+    , gcf_supps
+    , uvwf
+    , vis
+    , gcf_data_size
+    , gcfoff
+    , gcfr, gcfi
+    };
   // uvg.compile_to_lowered_stmt("uvg.html", compile_args, HTML);
   uvgsh_full.compile_to_lowered_stmt("uvg_full.html", compile_args, HTML);
 
