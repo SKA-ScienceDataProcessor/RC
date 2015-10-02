@@ -1,5 +1,5 @@
 name:                dna
-version:             0.1
+version:             0.5
 synopsis:            DSL constructions for radio astronomy imaging with a focus on data movement and optimization
 homepage:            https://github.com/SKA-ScienceDataProcessor/RC
 license:             Apache-2.0

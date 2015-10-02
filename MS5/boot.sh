@@ -7,7 +7,7 @@ cabal sandbox add-source ../MS4/dep/cupti
 cabal sandbox add-source ../MS4/dep/linux-perf-stat
 cabal sandbox add-source ../MS4/dep/oskar
 cabal sandbox add-source dna
-cabal sandbox add-source halide-hs
+cabal sandbox add-source dna-flow
 
 # Install dependencies into sandbox
 cabal install --only-dependencies

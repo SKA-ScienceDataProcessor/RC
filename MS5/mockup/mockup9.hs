@@ -6,15 +6,12 @@ module Main where
 
 import Data.Typeable
 
-import Strategy.Builder
-import Strategy.Domain
-import Strategy.Exec
-import Strategy.Vector
-import Strategy.Kernel
-
-import qualified Halide.Types as Halide
+import Flow
+import Flow.Vector
 
 import Foreign.C
+
+import Data.Vector.HFixed.Class ()
 
 -- Data tags
 data Vec deriving Typeable
@@ -32,37 +29,34 @@ ddp :: Flow Sum
 ddp = a $ pp f g
 
 -- Vector representation
-vecRepr :: Int -> HalideRepr Halide.Dim1 Float Vec
-vecRepr size = HalideRepr ((0, fromIntegral size) Halide.:. Halide.Z)
-sumRepr :: HalideRepr Halide.Dim1 Float Sum
-sumRepr = HalideRepr ((0,1) Halide.:. Halide.Z)
+type VecRepr = HalideRepr Dim1 Float Vec
+vecRepr :: Int -> VecRepr
+vecRepr size = HalideRepr ((0, fromIntegral size) :. Z)
+type SumRepr = HalideRepr Dim1 Float Sum
+sumRepr :: SumRepr
+sumRepr = HalideRepr ((0,1) :. Z)
 
 -- Kernels
 
 fKern :: Int -> Kernel Vec
 fKern size = halideKernel0 "f" (vecRepr size) kern_generate_f
-foreign import ccall "kern_generate_f"
-  kern_generate_f :: Halide.Kernel '[] (Halide.Array Halide.Dim1 Float)
+foreign import ccall unsafe kern_generate_f :: HalideFun '[] VecRepr
 
 gKern :: Int -> Kernel Vec
 gKern size = halideKernel0 "g" (vecRepr size) kern_generate_g
-foreign import ccall "kern_generate_g"
-  kern_generate_g :: Halide.Kernel '[] (Halide.Array Halide.Dim1 Float)
+foreign import ccall unsafe kern_generate_g :: HalideFun '[] VecRepr
 
 ppKern :: Int -> Flow Vec -> Flow Vec -> Kernel Vec
 ppKern size = halideKernel2 "pp" (vecRepr size) (vecRepr size) (vecRepr size)
                             kern_dotp
-foreign import ccall "kern_dotp"
-  kern_dotp :: Halide.Kernel '[ Halide.Array Halide.Dim1 Float
-                              , Halide.Array Halide.Dim1 Float] (Halide.Array Halide.Dim1 Float)
+foreign import ccall unsafe kern_dotp :: HalideFun '[ VecRepr, VecRepr ] VecRepr
 
 aKern :: Int -> Flow Vec -> Kernel Sum
 aKern size = halideKernel1 "a" (vecRepr size) sumRepr kern_sum
-foreign import ccall "kern_sum"
-  kern_sum :: Halide.Kernel '[Halide.Array Halide.Dim1 Float] (Halide.Array Halide.Dim1 Float)
+foreign import ccall unsafe kern_sum :: HalideFun '[ VecRepr ] VecRepr
 
 printKern :: Flow Sum -> Kernel Sum
-printKern = kernel "print" code (sumRepr :. HNil) sumRepr
+printKern = kernel "print" code (sumRepr :. Z) sumRepr
   where code [sv] = do
           s <- peekVector (castVector sv :: Vector Float) 0
           putStrLn $ "Sum: " ++ show s

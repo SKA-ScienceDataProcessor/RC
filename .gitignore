@@ -7,3 +7,6 @@ cabal.sandbox.config
 *~
 *.o
 *.hi
+MS3/bin
+MS4/bin
+MS5/bin

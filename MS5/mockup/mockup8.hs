@@ -6,17 +6,12 @@
 
 module Main where
 
-import Strategy.Builder
-import Strategy.Domain
-import Strategy.Data
-import Strategy.Dump
-import Strategy.Exec
-import Strategy.Vector
+import Flow
+import Flow.Vector
 
 import Control.Monad
 
 import Data.Typeable
-import qualified Data.ByteString as BS
 
 -- ----------------------------------------------------------------------------
 -- ---                             Functional                               ---
@@ -125,41 +120,41 @@ data GridPar = GridPar
     reprNop (NewRepr r) = reprNop r; \
     reprAccess (NewRepr r) = reprAccess r; \
     reprCompatible (NewRepr r1) (NewRepr r2) = reprCompatible r1 r2
-newtype ImageRepr = ImageRepr (CBufRepr Image)
+newtype ImageRepr = ImageRepr (VectorRepr () Image)
   deriving (Typeable, Show)
-DATAREPR_INSTANCE(ImageRepr, CBufRepr Image)
-newtype UVGridRepr = UVGridRepr (CBufRepr UVGrid)
+DATAREPR_INSTANCE(ImageRepr, VectorRepr () Image)
+newtype UVGridRepr = UVGridRepr (VectorRepr () UVGrid)
   deriving (Typeable, Show)
-DATAREPR_INSTANCE(UVGridRepr, CBufRepr UVGrid)
+DATAREPR_INSTANCE(UVGridRepr, VectorRepr () UVGrid)
 
 -- By default images and grids are always consumed by the caller, as
 -- they are large objects with lots of write operations, and we don't
 -- want to duplicate them.
 imgRepr :: ImageRepr
-imgRepr = ImageRepr $ CBufRepr WriteAccess
+imgRepr = ImageRepr $ VectorRepr WriteAccess
 uvgRepr :: UVGridRepr
-uvgRepr = UVGridRepr $ CBufRepr WriteAccess
+uvgRepr = UVGridRepr $ VectorRepr WriteAccess
 
 -- Plan representation is used by many kernels
-planRepr :: CBufRepr Tag
-planRepr = CBufRepr ReadAccess
+planRepr :: VectorRepr () Tag
+planRepr = VectorRepr ReadAccess
 
-newtype RawVisRepr = RawVisRepr (CBufRepr Vis)
+newtype RawVisRepr = RawVisRepr (VectorRepr () Vis)
   deriving (Typeable, Show)
-DATAREPR_INSTANCE(RawVisRepr, CBufRepr Vis)
-newtype SortedVisRepr = SortedVisRepr (CBufRepr Vis)
+DATAREPR_INSTANCE(RawVisRepr, VectorRepr () Vis)
+newtype SortedVisRepr = SortedVisRepr (VectorRepr () Vis)
   deriving (Typeable, Show)
-DATAREPR_INSTANCE(SortedVisRepr, CBufRepr Vis)
+DATAREPR_INSTANCE(SortedVisRepr, VectorRepr () Vis)
 
 -- Visibilities generally remain constant
 rawVisRepr :: RawVisRepr
-rawVisRepr = RawVisRepr $ CBufRepr ReadAccess
+rawVisRepr = RawVisRepr $ VectorRepr ReadAccess
 visRepr :: SortedVisRepr
-visRepr = SortedVisRepr $ CBufRepr ReadAccess
+visRepr = SortedVisRepr $ VectorRepr ReadAccess
 
 -- GCFs too
-gcfsRepr :: CBufRepr GCFs
-gcfsRepr = CBufRepr ReadAccess
+gcfsRepr :: VectorRepr () GCFs
+gcfsRepr = VectorRepr ReadAccess
 
 dummy :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
               => String -> rs -> r -> RKern (RPar r) rs
@@ -174,45 +169,45 @@ cWrapper :: (DataRepr r, IsReprs rs, IsReprKern (RPar r) rs)
 cWrapper _ = dummy "c"
 
 oskarReader :: [(FilePath, Int)] -> Kernel Vis
-oskarReader _ = dummy "oskar" HNil rawVisRepr
+oskarReader _ = dummy "oskar" Z rawVisRepr
 sorter :: Flow Vis -> Kernel Vis
-sorter = dummy "sorter" (rawVisRepr :. HNil) visRepr
+sorter = dummy "sorter" (rawVisRepr :. Z) visRepr
 
 setOnes :: Flow Vis -> Kernel Vis
-setOnes = dummy "ones" (visRepr :. HNil) visRepr
+setOnes = dummy "ones" (visRepr :. Z) visRepr
 
 gcfKernel :: GridPar -> Flow Tag -> Flow Vis -> Kernel GCFs
-gcfKernel _ = halideWrapper "gcfs" (planRepr :. visRepr :. HNil) gcfsRepr
+gcfKernel _ = halideWrapper "gcfs" (planRepr :. visRepr :. Z) gcfsRepr
 
 fftCreatePlans :: GridPar -> Kernel Tag
-fftCreatePlans _ = dummy "fftPlans" HNil planRepr
+fftCreatePlans _ = dummy "fftPlans" Z planRepr
 fftKern :: GridPar -> Flow Tag -> Flow Image -> Kernel UVGrid
-fftKern _ = dummy "fftKern" (planRepr :. imgRepr :. HNil) uvgRepr
+fftKern _ = dummy "fftKern" (planRepr :. imgRepr :. Z) uvgRepr
 ifftKern :: GridPar -> Flow Tag -> Flow UVGrid -> Kernel Image
-ifftKern _ = dummy "ifftKern" (planRepr :. uvgRepr :. HNil) imgRepr
+ifftKern _ = dummy "ifftKern" (planRepr :. uvgRepr :. Z) imgRepr
 
 gridInit :: GridPar -> Kernel UVGrid
-gridInit _ = dummy "gridInit" HNil uvgRepr
+gridInit _ = dummy "gridInit" Z uvgRepr
 gridKernel :: GridPar -> Flow Vis -> Flow GCFs -> Flow UVGrid -> Kernel UVGrid
-gridKernel _ = dummy "gridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. HNil) uvgRepr
+gridKernel _ = dummy "gridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. Z) uvgRepr
 psfGridKernel :: GridPar -> Flow Vis -> Flow GCFs -> Flow UVGrid -> Kernel UVGrid
-psfGridKernel _ = dummy "psfGridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. HNil) uvgRepr
+psfGridKernel _ = dummy "psfGridKernel" (visRepr :. gcfsRepr :. uvgRepr  :. Z) uvgRepr
 degridKernel :: GridPar -> Flow UVGrid -> Flow GCFs -> Flow Vis -> Kernel Vis
-degridKernel _ = dummy "degridKernel" (uvgRepr :. gcfsRepr :. visRepr :. HNil) visRepr
+degridKernel _ = dummy "degridKernel" (uvgRepr :. gcfsRepr :. visRepr :. Z) visRepr
 
-cleanResRepr :: CBufRepr CleanResult
-cleanResRepr = CBufRepr WriteAccess
+cleanResRepr :: VectorRepr () CleanResult
+cleanResRepr = VectorRepr WriteAccess
 cleanKernel :: Flow Image -> Flow Image -> Kernel CleanResult
-cleanKernel = halideWrapper "clean" (imgRepr :. imgRepr :. HNil) cleanResRepr
+cleanKernel = halideWrapper "clean" (imgRepr :. imgRepr :. Z) cleanResRepr
 splitModel :: Flow CleanResult -> Kernel Image
-splitModel = dummy "splitModel" (cleanResRepr :. HNil) imgRepr
+splitModel = dummy "splitModel" (cleanResRepr :. Z) imgRepr
 splitResidual :: Flow CleanResult -> Kernel Image
-splitResidual = dummy "splitResidual" (cleanResRepr :. HNil) imgRepr
+splitResidual = dummy "splitResidual" (cleanResRepr :. Z) imgRepr
 
 imageSumKernel :: Flow Image -> Kernel Image
-imageSumKernel = dummy "image summation" (imgRepr :. HNil) imgRepr
+imageSumKernel = dummy "image summation" (imgRepr :. Z) imgRepr
 imageWriter :: FilePath -> Flow Image -> Kernel Image
-imageWriter _ = dummy "image writer" (imgRepr :. HNil) NoRepr
+imageWriter _ = dummy "image writer" (imgRepr :. Z) NoRepr
 
 -- ----------------------------------------------------------------------------
 -- ---                               Strategy                               ---
@@ -278,7 +273,6 @@ scatterImagingMain cfg = do
   -- configured number of major loops over this input data
   tag <- uniq (flow "tag")
   let vis = flow "vis" tag
-      result = fst $ majorLoop (cfgMajorLoops cfg) vis
 
   -- Split by datasets
   let result = majorLoopSum (cfgMajorLoops cfg) vis
