@@ -8,7 +8,7 @@
 
 #include <omp.h>
 
-#include "uvgsh_full.h"
+#include "uvg_full.h"
 #include "mkHalideBuf.h"
 
 using namespace std;
@@ -65,15 +65,14 @@ void gridKernel_scatter_halide_full(
   auto gcf_buf = mkInterleavedHalideBufs<2>(__tod(gcf, const), off);
   buffer_t uvw_buf = mkHalideBuf<3>(__tod(uvw, const), baselines, ts_ch);
   buffer_t vis_buf = mkHalideBuf<2>(__tod(vis, const), baselines, ts_ch);
-  auto grid_buf = mkInterleavedHalideBufs<2>(__tod(grid), grid_size*grid_pitch);
+  buffer_t grid_buf = mkHalideBuf<2>(__tod(grid), grid_size, grid_pitch);
 
-  uvgsh_full(
+  uvg_full(
       scale
     , wstep
     , baselines
     , &blsup_buf
     , ts_ch
-    , grid_pitch
     , grid_size
     , &gcfsup_buf
     , &uvw_buf
@@ -82,7 +81,6 @@ void gridKernel_scatter_halide_full(
     , &gcfoff_buf
     , &gcf_buf[0]
     , &gcf_buf[1]
-    , &grid_buf[0]
-    , &grid_buf[1]
+    , &grid_buf
     );
 }
