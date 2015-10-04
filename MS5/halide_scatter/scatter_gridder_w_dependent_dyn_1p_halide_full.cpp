@@ -3,7 +3,6 @@
 #endif
 
 #include <cstring>
-#include <complex>
 #include <array>
 
 #include <omp.h>
@@ -11,16 +10,9 @@
 #include "uvg_full.h"
 #include "mkHalideBuf.h"
 
+#include "scatter_gridder_w_dependent_dyn_1p_halide_full.h"
+
 using namespace std;
-
-struct Double3
-{
-  double u;
-  double v;
-  double w;
-};
-
-typedef complex<double> complexd;
 
 #define __tod(a, ...) reinterpret_cast<__VA_ARGS__ double *>(a)
 
@@ -54,18 +46,20 @@ void gridKernel_scatter_halide_full(
     #define gcf_offs gcf_offs_.data()
   #endif
   int off = 0;
-  for(int wp=0; wp<wplanes; wp++){
+  for(int wp = 0; wp < wplanes; wp++){
     gcf_offs_[wp] = off;
     off += over * over * gcf_supps[wp] * gcf_supps[wp];
   }
 
   buffer_t blsup_buf = mkHalideBuf(bl_supps, baselines);
   buffer_t gcfsup_buf = mkHalideBuf(gcf_supps, wplanes);
+  centerHalideBuf(&gcfsup_buf, wplanes/2);
   buffer_t gcfoff_buf = mkHalideBuf(gcf_offs, wplanes);
+  centerHalideBuf(&gcfoff_buf, wplanes/2);
   auto gcf_buf = mkInterleavedHalideBufs<2>(__tod(gcf, const), off);
   buffer_t uvw_buf = mkHalideBuf<3>(__tod(uvw, const), baselines, ts_ch);
   buffer_t vis_buf = mkHalideBuf<2>(__tod(vis, const), baselines, ts_ch);
-  buffer_t grid_buf = mkHalideBuf<2>(__tod(grid), grid_size, grid_pitch);
+  buffer_t grid_buf = mkHalideBufPadded<2>(__tod(grid), grid_size, grid_pitch-grid_size);
 
   uvg_full(
       scale
@@ -78,6 +72,7 @@ void gridKernel_scatter_halide_full(
     , &uvw_buf
     , &vis_buf
     , off
+    , wplanes/2
     , &gcfoff_buf
     , &gcf_buf[0]
     , &gcf_buf[1]

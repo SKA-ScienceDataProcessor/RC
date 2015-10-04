@@ -59,6 +59,9 @@ int main(/* int argc, char **argv */) {
       IP(gcfr, type_of<double>(), 1)
     , IP(gcfi, type_of<double>(), 1)
     ;
+  gcfr.set_stride(0, Expr());
+  gcfi.set_stride(0, Expr());
+
   Func
       P(uvs)
     , P(uv)
@@ -77,9 +80,13 @@ int main(/* int argc, char **argv */) {
     ;
   
   uvs(uvdim, t, bl) = uvwf(uvdim, t, bl) * scale;
-  overc(uvdim, t, bl) = cast(Int(16), over * (uvs(uvdim, t, bl) - floor(uvs(uvdim, t, bl))));
-  uv(uvdim, t, bl) = cast(Int(16), uvs(uvdim, t, bl) + cast(Int(16), grid_size / 2 - supports(bl) / 2));
-  w(t, bl) = cast(Int(16), uvwf(_W, t, bl) / wstep);
+  overc(uvdim, t, bl) = cast<int>(round(over * (uvs(uvdim, t, bl) - floor(uvs(uvdim, t, bl)))));
+  uv(uvdim, t, bl) = cast<int>(round(uvs(uvdim, t, bl)) + grid_size / 2 - supports(bl) / 2);
+  w(t, bl) = cast<int>(round(uvwf(_W, t, bl) / wstep));
+
+  overc.compute_root();
+  uv.compute_root();
+  w.compute_root();
 
   // If we compute_root them.
   // uvs.bound(uvdim, 0, 2);
@@ -120,8 +127,11 @@ int main(/* int argc, char **argv */) {
     ;
 
   Param<int> P(gcf_data_size);
+  Param<int> P(max_w_plane);
+
   // No layer correction yet
-  Expr off = clamp(gcfoff(w(rvis, rbl)) + overc(_U, rvis, rbl) * gcf_supps(w(rvis, rbl)) + overc(_V, rvis, rbl), 0, gcf_data_size - 1);
+  Expr wclamped = clamp(w(rvis, rbl), -max_w_plane, max_w_plane);
+  Expr off = clamp(gcfoff(wclamped) + overc(_U, rvis, rbl) * gcf_supps(wclamped) + overc(_V, rvis, rbl), 0, gcf_data_size - 1);
   // Do the complex arithmetic to update the grid
   Complex visC(
       vis(_REAL, rvis, rbl)
@@ -176,6 +186,7 @@ int main(/* int argc, char **argv */) {
     , uvwf
     , vis
     , gcf_data_size
+    , max_w_plane
     , gcfoff
     , gcfr, gcfi
   };
@@ -183,8 +194,8 @@ int main(/* int argc, char **argv */) {
   // uvgsh_full.compile_to_lowered_stmt("uvg_full.html", compile_args, HTML);
 
   Target target(
-      // Target::Windows
-      Target::Linux
+      Target::Windows
+      // Target::Linux
     , Target::X86, 64
     , { Target::SSE41
       , Target::AVX
