@@ -83,6 +83,7 @@ newtype HalideKernel xs a = HalideKernel (Fn (KernelCParams xs) (Ptr BufferT -> 
 -- | Types for C parameters corresponding to haskell values
 type family KernelCParams (xs :: [*])  :: [*]
 
-type instance KernelCParams '[]                 = '[]
-type instance KernelCParams (Array dim x ': xs) = Ptr BufferT ': KernelCParams xs
-type instance KernelCParams (Scalar x    ': xs) = x           ': KernelCParams xs
+type instance KernelCParams '[]                        = '[]
+type instance KernelCParams (Array (d1 :. d2) x ': xs) = Ptr BufferT ': KernelCParams xs
+type instance KernelCParams (Array  Z         x ': xs) = x           ': KernelCParams xs
+type instance KernelCParams (Scalar x           ': xs) = x           ': KernelCParams xs

@@ -130,11 +130,13 @@ makeVector alloc vs = do
 
 -- | Show vector contents
 unmakeVector :: (Show a, Storable a) => Vector a -> Int -> Int -> IO [a]
+#ifdef USE_CUDA
 unmakeVector (DeviceVector _ p) off len = do
   v' <- dupCVector (DeviceVector len (p `advanceDevPtr` off))
   r <- unmakeVector v' 0 len
   freeVector v'
   return r
+#endif
 unmakeVector v off len = do
   (CVector _ p) <- toCVector v
   mapM (peekElemOff p) [off..off+len-1]
