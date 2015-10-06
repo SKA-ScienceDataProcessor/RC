@@ -12,7 +12,7 @@ inline void centerHalideBuf(buffer_t * bp, int nelems){
 
 template<int n, typename T>
 inline
-array<buffer_t, n> mkInterleavedHalideBufs(int32_t size){
+array<buffer_t, n> mkInterleavedHalideBufs(int32_t size = 0){
   buffer_t buf = {0};
   buf.stride[0] = n;
   buf.extent[0] = size;
@@ -115,4 +115,9 @@ buffer_t mkHalideBuf(const T * v, int32_t size2, int32_t size){
   buffer_t buf = mkHalideBuf<n, T>(size2, size);
   setHalideBuf(v, buf);
   return buf;
+}
+
+inline void set_strides(buffer_t * bp){
+  for (int i = 1; i<4; i++)
+    bp->stride[i] = bp->extent[i-1] * bp->stride[i-1];
 }
