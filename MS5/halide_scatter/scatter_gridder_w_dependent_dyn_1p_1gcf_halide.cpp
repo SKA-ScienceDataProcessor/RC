@@ -11,11 +11,10 @@
 #define omp_get_thread_num()  0
 #endif
 
-#include "common.h"
-#include "stats_n_utils.h"
-
 #include "uvg11_full.h"
 #include "mkHalideBuf.h"
+
+#include "scatter_gridder_w_dependent_dyn_1p_1gcf_halide.h"
 
 using namespace std;
 
