@@ -3,13 +3,15 @@
 #include <algorithm>
 #endif
 
+#include <ctime>
+
 #include "common.h"
 #include "GCF.h"
 #include "fft_dyn_padded.h"
 #include "OskarBinReader.h"
 #include "stats_n_utils.h"
 
-#include "scatter_gridder_w_dependent_dyn_1p_halide_full.h"
+#include "scatter_gridder_w_dependent_dyn_1p_1gcf_halide.h"
 
 // Config
 const double wstep = 10000.0;
@@ -183,34 +185,38 @@ int main(/* int argc, char * argv[] */)
 
   printf("Start gridding preps!\n");
   iv blSuppvec(vd.num_baselines);
+  d3pv uvwpvec(vd.num_baselines); Double3 * uvwp = uvwvec.data();
+  cdpv pol0pvec(vd.num_baselines); complexd * pol0p = pol0vec.data();
   int ts_ch = vd.num_times * vd.num_channels;
   for (int i = 0; i < vd.num_baselines; i++) {
     // bwvec is unsorted, thus we directly use w-plane number
     blSuppvec[i] = lsize(bwvec[i].wp + maxWPlane); // lsize waits maxWPlane-centered w-plane
+    uvwpvec[i] = uvwp; uvwp += ts_ch;
+    pol0pvec[i] = pol0p; pol0p += ts_ch;
   }
-
   iv gcfSuppvec(numOfPlanes);
   for (int i = 0; i < numOfPlanes; i++) gcfSuppvec[i] = lsize(i);
+
+  clock_t ti = clock();
 
   cdv gridVec(fullSize);
   printf("Start gridding!\n");
   gridKernel_scatter_halide_full(
       scale
     , wstep
-    , vd.num_baselines
+    , 50 // vd.num_baselines
+    , bwvec.data()
     , blSuppvec.data()
     , gridVec.data()
-    , const_cast<const complexd *>(gcfData.data())
-    , const_cast<const Double3 *>(uvwvec.data())
-    , const_cast<const complexd *>(pol0vec.data())
+    , const_cast<const complexd **>(gcfTable.data()+maxWPlane*over2) // Center at 0
+    , const_cast<const Double3 **>(uvwpvec.data())
+    , const_cast<const complexd **>(pol0pvec.data())
     , ts_ch
     , gridPitch
     , gridSize
-    , gcfSuppvec.data()
-    , numOfPlanes
     );
 
-  printf("Start normalizing!\n");
+  printf("%d\nStart normalizing!\n", clock() - ti);
   normalizeCPU(
       gridVec.data()
     , gridPitch
