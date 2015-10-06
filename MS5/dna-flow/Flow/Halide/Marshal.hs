@@ -1,6 +1,6 @@
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
@@ -80,7 +80,7 @@ unwrapK (HalideKernel f) = Fun f
 class (Num a, Storable a) => HalideScalar a where
   wrapScalar   :: a -> ScalarVal
   unwrapScalar :: ScalarVal -> Maybe a
-  
+
 instance HalideScalar Int32 where
   wrapScalar   = Int32
   unwrapScalar (Int32 i) = Just i
@@ -146,7 +146,7 @@ marshalParams fun = fmap ($ fun) <$> marshalParamsF
 class Arity xs => MarshalParams xs where
   -- | Wrap all parameters for calling halide
   marshalParamsF :: Fun xs (IO (Fun (KernelCParams xs) a -> a))
-  -- | Convert function with statically known types to 
+  -- | Convert function with statically known types to
   dynamicParams :: Fun xs a -> [Box] -> a
 
 instance MarshalParams '[] where
@@ -166,7 +166,9 @@ instance (HalideScalar x, MarshalParams xs) => MarshalParams (Scalar x ': xs) wh
       Just n  -> dynamicParams (curryFun fun (Scalar n)) rest
       Nothing -> error "Type mismatch!"
 
-instance (HalideScalar x, MarshalArray dim, MarshalParams xs) => MarshalParams (Array dim x ': xs) where
+
+instance (HalideScalar x, MarshalArray (d1 :. d2), MarshalParams xs) =>
+         MarshalParams (Array (d1 :. d2) x ': xs) where
   marshalParamsF = uncurryFun $ \arr ->
     do contIO <- marshalParamsF
        return $ do
@@ -180,6 +182,18 @@ instance (HalideScalar x, MarshalArray dim, MarshalParams xs) => MarshalParams (
       Just arr -> dynamicParams (curryFun fun arr) rest
       Nothing  -> error "Type mismatch!"
 
+instance (HalideScalar x, MarshalParams xs) => MarshalParams (Array Z x ': xs) where
+  marshalParamsF = uncurryFun $ \arr ->
+    do contIO <- marshalParamsF
+       return $ do
+         cont     <- contIO
+         Scalar x <- arr2scalar arr
+         return $ \f -> cont (curryFun f x)
+  dynamicParams _   [] = error "Too few parameters!"
+  dynamicParams fun (dyn:rest) =
+    case unwrapScalarArray dyn of
+      Just arr -> dynamicParams (curryFun fun arr) rest
+      Nothing  -> error "Type mismatch!"
 
 
 ----------------------------------------------------------------
