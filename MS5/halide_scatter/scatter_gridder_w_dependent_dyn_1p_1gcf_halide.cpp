@@ -1,16 +1,9 @@
 #ifdef _MSC_VER
 #include <vector>
 #endif
-
-#include <cstring>
-#include <array>
-
-#if defined _OPENMP
 #include <omp.h>
-#else
-#define omp_get_thread_num()  0
-#endif
 
+#include "aligned_malloc.h"
 #include "uvg11_full.h"
 #include "mkHalideBuf.h"
 
@@ -81,4 +74,73 @@ void gridKernel_scatter_halide(
         );
     }
   }
+}
+
+
+inline
+void addGrids(
+    complexd dst[]
+  , const complexd srcs[]
+  , int nthreads
+  , int grid_pitch
+  , int grid_size
+  )
+{
+  int siz = grid_size*grid_pitch;
+#pragma omp parallel for
+  for (int i = 0; size_t(i) < siz*sizeof(complexd)/__MMSIZE; i++) {
+    __mdType sum = asMdpc(srcs)[i];
+    // __m256d sum = _mm256_loadu_pd(reinterpret_cast<const double*>(as256pc(srcs)+i));
+
+    for (int g = 1; g < nthreads; g ++)
+      sum = _mm_add_pd(sum, asMdpc(srcs + g * siz)[i]);
+
+    asMdp(dst)[i] = sum;
+  }
+}
+
+void gridKernel_scatter_halide_full(
+    double scale
+  , double wstep
+  , int baselines
+  , const BlWMap bl_wp_map[/* baselines */]
+  , const int bl_supps[/* baselines */] // computed from previous
+  , complexd grid[]
+    // w-planes length array of pointers
+    // to [over][over][gcf_supp][gcf_supp] arrays
+  , const complexd * gcf[]
+  , const Double3 * uvw[]
+  , const complexd * vis[]
+  , int ts_ch
+  , int grid_pitch
+  , int grid_size
+  ) {
+  int siz = grid_size*grid_pitch;
+  int nthreads;
+
+#pragma omp parallel
+#pragma omp single
+  nthreads = omp_get_num_threads();
+
+  // Nullify incoming grid, allocate thread-local grids
+  memset(grid, 0, sizeof(complexd) * siz);
+  complexd * tmpgrids = alignedMallocArray<complexd>(siz * nthreads, 32);
+
+  gridKernel_scatter_halide(
+      scale
+    , wstep
+    , baselines
+    , bl_wp_map
+    , bl_supps
+    , tmpgrids
+    , gcf
+    , uvw
+    , vis
+    , ts_ch
+    , grid_pitch
+    , grid_size
+    );
+
+  addGrids(grid, tmpgrids, nthreads, grid_pitch, grid_size);
+  _aligned_free(tmpgrids);
 }
