@@ -39,7 +39,12 @@ void gridKernel_scatter_halide(
   , int grid_size
   ) {
 
-  auto gcf_buf = mkInterleavedHalideBufs<2, double>(0); // We set the size below (in the baselines loop)
+  auto gcf_buf = mkInterleavedHalideBufs<2, double>();
+
+  // FIXME: add an API
+  gcf_buf[0].extent[2] = gcf_buf[1].extent[2] =
+  gcf_buf[0].extent[3] = gcf_buf[1].extent[3] = over;
+
   buffer_t uvw_buf = mkHalideBuf<3, double>(ts_ch);
   buffer_t vis_buf = mkHalideBuf<2, double>(ts_ch);
 
@@ -57,21 +62,20 @@ void gridKernel_scatter_halide(
       setHalideBuf(__tod(_vis[bl], const), vis_buf);
       int curr_wp = bl_wp_map[bl].wp;
       setInterleavedHalideBufs(gcf[curr_wp], gcf_buf);
-      int
-          gcf_layer_lin_size = bl_supps[curr_wp] * over
-        , gcf_layer_size = gcf_layer_lin_size * gcf_layer_lin_size
-        ;
+      int supp = bl_supps[curr_wp];
       // FIXME: add an API
-      gcf_buf[0].extent[0] = gcf_layer_size;
-      gcf_buf[1].extent[0] = gcf_layer_size;
- 
+      gcf_buf[0].extent[0] = gcf_buf[0].extent[1] =
+      gcf_buf[1].extent[0] = gcf_buf[1].extent[1] = supp;
+      set_strides(&gcf_buf[0]);
+      set_strides(&gcf_buf[1]);
+
       uvg11_full(
           scale
         , wstep
         , ts_ch
         , &uvw_buf
         , &vis_buf
-        , bl_supps[curr_wp]
+        , supp
         , &gcf_buf[0]
         , &gcf_buf[1]
         , &grid_buf
