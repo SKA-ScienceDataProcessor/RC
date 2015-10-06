@@ -54,7 +54,7 @@ void gridKernel_scatter_halide(
       setHalideBuf(__tod(_vis[bl], const), vis_buf);
       int curr_wp = bl_wp_map[bl].wp;
       setInterleavedHalideBufs(gcf[curr_wp], gcf_buf);
-      int supp = bl_supps[curr_wp];
+      int supp = bl_supps[bl];
       // FIXME: add an API
       gcf_buf[0].extent[0] = gcf_buf[0].extent[1] =
       gcf_buf[1].extent[0] = gcf_buf[1].extent[1] = supp;
