@@ -31,17 +31,17 @@ void gridKernel_scatter_halide(
   , int grid_size
   ) {
 
-  auto gcf_buf = mkInterleavedHalideBufs<2, double>();
-
-  // FIXME: add an API
-  gcf_buf[0].extent[2] = gcf_buf[1].extent[2] =
-  gcf_buf[0].extent[3] = gcf_buf[1].extent[3] = over;
-
-  buffer_t uvw_buf = mkHalideBuf<3, double>(ts_ch);
-  buffer_t vis_buf = mkHalideBuf<2, double>(ts_ch);
-
 #pragma omp parallel
   {
+    auto gcf_buf = mkInterleavedHalideBufs<2, double>();
+
+    // FIXME: add an API
+    gcf_buf[0].extent[2] = gcf_buf[1].extent[2] =
+    gcf_buf[0].extent[3] = gcf_buf[1].extent[3] = over;
+
+    buffer_t uvw_buf = mkHalideBuf<3, double>(ts_ch);
+    buffer_t vis_buf = mkHalideBuf<2, double>(ts_ch);
+
     int siz = grid_size*grid_pitch;
     complexd * grid = grids + omp_get_thread_num() * siz;
 
@@ -52,12 +52,10 @@ void gridKernel_scatter_halide(
     for(int bl = 0; bl < baselines; bl++){
       setHalideBuf(__tod(_uvw[bl], const), uvw_buf);
       setHalideBuf(__tod(_vis[bl], const), vis_buf);
-      int curr_wp = bl_wp_map[bl].wp;
-      setInterleavedHalideBufs(gcf[curr_wp], gcf_buf);
-      int supp = bl_supps[bl];
+      setInterleavedHalideBufs(gcf[bl_wp_map[bl].wp], gcf_buf);
       // FIXME: add an API
       gcf_buf[0].extent[0] = gcf_buf[0].extent[1] =
-      gcf_buf[1].extent[0] = gcf_buf[1].extent[1] = supp;
+      gcf_buf[1].extent[0] = gcf_buf[1].extent[1] = bl_supps[bl];
       set_strides(&gcf_buf[0]);
       set_strides(&gcf_buf[1]);
 
@@ -67,7 +65,7 @@ void gridKernel_scatter_halide(
         , ts_ch
         , &uvw_buf
         , &vis_buf
-        , supp
+        , bl_supps[bl]
         , &gcf_buf[0]
         , &gcf_buf[1]
         , &grid_buf
