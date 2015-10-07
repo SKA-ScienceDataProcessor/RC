@@ -44,7 +44,7 @@ void setHalideBuf(const T * v, buffer_t & buf){
 }
 
 template<typename T> inline
-buffer_t mkHalideBuf(int32_t size){
+buffer_t mkHalideBuf(int32_t size = 0){
   buffer_t buf = {0};
   buf.stride[0] = 1;
   buf.extent[0] = size;
@@ -60,7 +60,7 @@ buffer_t mkHalideBuf(const T * v, int32_t size){
 }
 
 template<int n, typename T> inline
-buffer_t mkHalideBuf(int32_t size){
+buffer_t mkHalideBuf(int32_t size = 0){
   buffer_t buf = {0};
   buf.stride[0] = 1;
   buf.extent[0] = n;
