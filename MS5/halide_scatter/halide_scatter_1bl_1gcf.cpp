@@ -114,20 +114,21 @@ int main(/* int argc, char **argv */) {
     ;
   uvg(cmplx, x, y) = cast<double>(0.0f);
 
-  auto clamped_uv = [=](Expr c) {
-    return clamp(uv(c, rvis) + rgcfx, 0, grid_size - 1);
-  };
+  Expr
+      clampedU = clamp(uv(_U, rvis) + rgcfx, 0, grid_size - 1)
+    , clampedV = clamp(uv(_V, rvis) + rgcfy, 0, grid_size - 1)
+    ;
 
   uvg(
       _REAL
-    , clamped_uv(_U)
-    , clamped_uv(_V)
+    , clampedU
+    , clampedV
     ) += (visC * gcfC).real
     ;
   uvg(
       _IMAG
-    , clamped_uv(_U)
-    , clamped_uv(_V)
+    , clampedU
+    , clampedV
     ) += (visC * gcfC).imag
     ;
 
