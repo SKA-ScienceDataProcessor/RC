@@ -157,7 +157,7 @@ gcfsRepr = VectorRepr ReadAccess
 dummy :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
       => String -> rs -> r -> ReprKernFun (ReprType r) rs
 dummy name rs r = kernel name rs r code
-  where code _ = putStrLn name >> return nullVector
+  where code _ _ = putStrLn name >> return nullVector
 
 halideWrapper :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
               => String -> rs -> r -> ReprKernFun (ReprType r) rs
@@ -217,31 +217,31 @@ scatterImaging cfg dh tag vis =
  implementing (fst $ majorLoop (cfgMajorLoops cfg) vis) $ do
 
   -- Sort visibility data
-  rebind1D dh vis sorter
+  rebind vis sorter
 
   -- Initialise FFTs
   let gpar = cfgGrid cfg
-  bind1D dh tag (fftCreatePlans gpar)
+  bind tag (fftCreatePlans gpar)
 
   -- Generate GCF
   let gcfs = gcf vis
-  bind1D dh gcfs (gcfKernel gpar tag vis)
+  bind gcfs (gcfKernel gpar tag vis)
 
   -- Make rules
-  bindRule1D dh idft (ifftKern gpar tag)
-  bindRule1D dh dft (fftKern gpar tag)
-  bindRule1D dh createGrid (gridInit gpar)
-  bindRule1D dh grid (gridKernel gpar)
-  bindRule1D dh degrid (degridKernel gpar)
-  bindRule1D dh clean cleanKernel
-  bindRule1D dh cleanResidual splitResidual
-  bindRule1D dh cleanModel splitModel
+  bindRule idft (ifftKern gpar tag)
+  bindRule dft (fftKern gpar tag)
+  bindRule createGrid (gridInit gpar)
+  bindRule grid (gridKernel gpar)
+  bindRule degrid (degridKernel gpar)
+  bindRule clean cleanKernel
+  bindRule cleanResidual splitResidual
+  bindRule cleanModel splitModel
 
   -- PSF. Note that we bind a kernel here that implements *two*
   -- abstract kernel nodes!
   --let psfg = grid (psfVis vis) gcfs createGrid
-  --bind1D dh psfg (psfGridKernel gpar vis gcfs createGrid)
-  bindRule1D dh (grid . psfVis) (psfGridKernel gpar)
+  --bind psfg (psfGridKernel gpar vis gcfs createGrid)
+  bindRule (grid . psfVis) (psfGridKernel gpar)
   calculate $ psfGrid vis gcfs
 
   -- Loop
@@ -265,7 +265,7 @@ scatterImagingMain cfg = do
   -- Make data set domain
   let dataSets = length (cfgInput cfg)
       dataSetRepeats = sum $ map snd $ cfgInput cfg
-  dom <- makeRangeDomain (Range 0 dataSetRepeats)
+  dom <- makeRangeDomain 0 dataSetRepeats
 
   -- Create data flow for visibilities, build abstract data flow to do
   -- configured number of major loops over this input data
@@ -282,13 +282,13 @@ scatterImagingMain cfg = do
 
       -- Read in visibilities. The domain handle passed in tells the
       -- kernel which of the datasets to load.
-      bind1D rep vis $ oskarReader $ cfgInput cfg
+      bind vis $ oskarReader $ cfgInput cfg
 
       -- Implement this data flow
       scatterImaging cfg rep tag vis
 
     -- Sum up local images (TODO: accumulate?)
-    bindRule1D ds imageSum imageSumKernel
+    bindRule imageSum imageSumKernel
     calculate result
 
   -- Sum and write out the result
@@ -310,7 +310,7 @@ scatterSimple  cfg = do
   bind vis $ oskarReader $ cfgInput cfg
 
   -- Implement this data flow
-  dom <- makeRangeDomain (Range 0 1)
+  dom <- makeRangeDomain 0 1
   scatterImaging cfg dom tag vis
 
   -- Sum and write out the result

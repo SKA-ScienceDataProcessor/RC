@@ -119,7 +119,7 @@ gridderStrat cfg = do
 
   -- Make data set domain
   let dataSets = length (cfgInput cfg)
-  dom <- makeRangeDomain (Range 0 dataSets)
+  dom <- makeRangeDomain 0 dataSets
 
   -- Create data flow for tag, bind it to FFT plans
   let gpar = cfgGrid cfg
@@ -128,20 +128,18 @@ gridderStrat cfg = do
 
   -- Create data flow for visibilities, read in and sort
   let vis = flow "vis" tag
-  bind1D dom vis $ oskarReader $ cfgInput cfg
-  rebind1D dom vis sorter
+  bind vis $ oskarReader $ cfgInput cfg
+  rebind vis sorter
 
-  -- Read in visibilities. The domain handle passed in tells the
-  -- kernel which of the datasets to load.
-  bindRule1D dom createGrid (gridInit gpar)
-  bindRule1D dom grid (gridKernel gpar)
-  bindRule1D dom idft (ifftKern gpar tag)
-  bindRule1D dom gcf (gcfKernel gpar tag)
-  rebind1D dom vis sorter
-
-  -- Write out the result
+  -- Compute the result
   let result = gridder vis (gcf vis)
+  bindRule createGrid (gridInit gpar)
+  bindRule grid (gridKernel gpar)
+  bindRule idft (ifftKern gpar tag)
+  bindRule gcf (gcfKernel gpar tag)
   calculate result
+
+  -- Write out
   rebind result $ imageWriter (cfgOutput cfg)
 
 main :: IO ()

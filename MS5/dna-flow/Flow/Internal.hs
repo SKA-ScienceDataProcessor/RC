@@ -5,6 +5,8 @@ module Flow.Internal where
 
 import Control.Monad.State.Strict
 
+import Data.Function ( on )
+import Data.List     ( sort )
 import Data.Hashable
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
@@ -61,7 +63,7 @@ data KernelBind = KernelBind
   , kernFlow :: FlowI      -- ^ Implemented flow
   , kernName :: String     -- ^ Name
   , kernRepr :: ReprI      -- ^ Data representation produced
-  , kernDeps :: [KernelId] -- ^ Kernel dependencies
+  , kernDeps :: [(KernelId, [DomainId])] -- ^ Kernel dependencies
   , kernCode :: KernelCode -- ^ Code to execute the kernel
   , kernReprCheck :: ReprI -> Bool
     -- ^ Check whether a sink data representation is compatible with
@@ -69,7 +71,7 @@ data KernelBind = KernelBind
   }
 
 -- | Code implementing a kernel
-type KernelCode = [Vector ()] -> IO (Vector ())
+type KernelCode = [(Vector (), [Domain])] -> [Domain] -> IO (Vector ())
 
 instance Show KernelBind where
   showsPrec _ (KernelBind kid kflow kname krepr kdeps _ _)
@@ -84,14 +86,55 @@ data DomainHandle a = DomainHandle
     -- | Number of regions this domain is split into
   , dhSize  :: Int
     -- | Get indexed region
-  , dhRegion :: Int -> a
+  , dhRegion :: Int -> Domain
     -- | Produce a new domain handle that is split up @n@ times more
   , dhSplit :: Int -> Strategy (DomainHandle a)
+    -- | Domain this was derived from
+  , dhParent :: Maybe (DomainHandle a)
   }
 
 instance forall a. Typeable a => Show (DomainHandle a) where
   showsPrec _ dh = showString "Domain " . shows (dhId dh) . showString " [" .
                    shows (typeOf (undefined :: a)) . showString "]"
+instance Eq (DomainHandle a) where
+  (==) = (==) `on` dhId
+
+dhIsParent :: DomainHandle a -> DomainHandle a -> Bool
+dhIsParent dh dh1
+  | dh == dh1                = True
+  | Just dh' <- dhParent dh  = dhIsParent dh' dh1
+  | otherwise                = False
+
+-- | Domains are just ranges for now. It is *very* likely that we are
+-- going to have to generalise this in some way.
+data Domain = RangeDomain Range
+  deriving (Typeable, Eq, Ord, Show)
+
+data Range = Range Int Int
+  deriving (Typeable, Eq, Ord, Show)
+
+-- | Checks whether the second domain is a subset of the first
+domainSubset :: Domain -> Domain -> Bool
+domainSubset (RangeDomain (Range low0 high0)) (RangeDomain (Range low1 high1))
+  = low0 <= low1 && high0 >= high1
+
+-- | Merges a number of domains, if possible. All domains must have
+-- the same length!
+--
+-- TODO: Ugly. Write properly
+domainMerge :: [[Domain]] -> Maybe [Domain]
+domainMerge dss
+  | not $ all ((==1) . length) dss
+  = error "domainMerge: Not implemented yet for domain combinations!"
+  | and $ zipWith no_gaps ds (tail ds)
+  , RangeDomain (Range l _) <- head ds
+  , RangeDomain (Range _ h) <- last ds
+  = Just [RangeDomain $ Range l h]
+  | otherwise
+  = Nothing
+ where ds = sort $ map head dss
+       no_gaps (RangeDomain (Range _ h)) (RangeDomain (Range l _))
+         = h == l
 
 type StratMap = HM.HashMap FlowI KernelBind
 type Strategy a = State StratState a
@@ -128,6 +171,10 @@ class (Show r, Typeable r) => DataRepr r where
   reprAccess :: r -> ReprAccess
   reprCompatible :: r -> r -> Bool
   reprCompatible _ _ = True
+  reprDomain :: r -> [DomainId]
+  reprDomain _ = []
+  reprMerge :: r -> [([Domain], Vector ())] -> [Domain] -> IO (Maybe (Vector ()))
+  reprMerge _ _ _ = return Nothing
 
 -- | Who has ownership of the data representation?
 data ReprAccess
@@ -150,7 +197,7 @@ isNoReprI (ReprI repr) = reprNop repr
 data Schedule
   = SeqSchedule
   | ParSchedule
-  deriving Show
+  deriving (Show, Eq)
 
 -- | A strategy rule, explaining how to implement certain data flow patterns
 newtype StratRule = StratRule (FlowI -> Maybe (Strategy ()))
@@ -159,9 +206,9 @@ newtype StratRule = StratRule (FlowI -> Maybe (Strategy ()))
 data Step where
   DomainStep :: Typeable a => DomainHandle a -> Step
     -- ^ Create a new domain
-  SplitStep :: Typeable a => DomainHandle a -> DomainHandle a -> [Step] -> Step
+  SplitStep :: Typeable a => DomainHandle a -> [Step] -> Step
     -- ^ Split a domain into regions
-  KernelStep :: [DomainId] -> KernelBind -> Step
+  KernelStep :: KernelBind -> Step
     -- ^ Execute a kernel for the given domain(s)
   DistributeStep :: Typeable a => DomainHandle a -> Schedule -> [Step] -> Step
     -- ^ Distribute steps across the given domain using the given
@@ -170,6 +217,6 @@ data Step where
 -- | List all kernels used in schedule
 stepsToKernels :: [Step] -> [KernelBind]
 stepsToKernels = concatMap go
-  where go (KernelStep _ kb)          = [kb]
+  where go (KernelStep kb)            = [kb]
         go (DistributeStep _ _ steps) = concatMap go steps
         go _other                     = []

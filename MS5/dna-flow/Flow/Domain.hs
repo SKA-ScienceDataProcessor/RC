@@ -3,8 +3,7 @@
 module Flow.Domain
   ( DomainHandle
   , Schedule(..)
-  , Range(..)
-  , makeRangeDomain
+  , Range, makeRangeDomain
   , split, distribute
   ) where
 
@@ -14,23 +13,26 @@ import Data.Typeable
 
 import Flow.Internal
 
-data Range = Range Int Int
-  deriving (Show, Typeable)
-
 -- | Create a new range domain
-makeRangeDomain :: Range -> Strategy (DomainHandle Range)
-makeRangeDomain range = do
-  d <- mkDom []
+makeRangeDomain :: Int -> Int -> Strategy (DomainHandle Range)
+makeRangeDomain rhigh rlow = do
+  d <- mkDom Nothing []
   addStep $ DomainStep d
   return d
- where region []     _ = range
+ where region []     _ = Range rhigh rlow
        region (n:ns) i
          | Range low high <- region ns (i `div` n)
          = Range (low + (high-low) * (i `mod` n) `div` n)
                  (low + (high-low) * ((i `mod` n)+1) `div` n)
-       mkDom ns = do
+       mkDom parDh ns = do
          did' <- freshDomainId
-         return $ DomainHandle did' (product ns) (region ns) (mkDom . (:ns))
+         let dh' = DomainHandle { dhId = did'
+                                , dhSize = product ns
+                                , dhRegion = RangeDomain . region ns
+                                , dhSplit = mkDom (Just dh') . (:ns)
+                                , dhParent = parDh
+                                }
+         return dh'
 
 -- | Split a domain into sub-regions. This creates a new partitioned region, which
 -- can be used to distribute both computation as well as data.
@@ -38,7 +40,7 @@ split :: Typeable a => DomainHandle a -> Int -> (DomainHandle a -> Strategy ()) 
 split dh parts sub = modify $ \ss0 ->
   let (dh', ss1) = flip runState ss0 (dhSplit dh parts)
       ((), ss2) = flip runState ss1{ ssSteps = [] } (sub dh')
-      splitStep = SplitStep dh' dh $ reverse $ ssSteps ss2
+      splitStep = SplitStep dh' $ reverse $ ssSteps ss2
   in ss2{ ssSteps = splitStep : ssSteps ss1 }
 
 -- | Perform computation in a distributed fashion.

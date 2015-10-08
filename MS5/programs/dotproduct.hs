@@ -30,56 +30,75 @@ ddp :: Flow Sum
 ddp = a $ pp f g
 
 -- Vector representation
-type VecRepr = HalideRepr Dim1 Float Vec
-vecRepr :: Int -> VecRepr
-vecRepr size = HalideRepr ((0, fromIntegral size) :. Z)
+type VecRepr = DynHalideRepr Float Vec
+vecRepr :: DomainHandle Range -> VecRepr
+vecRepr = DynHalideRepr
 type SumRepr = HalideRepr Z Float Sum
 sumRepr :: SumRepr
 sumRepr = HalideRepr Z
 
 -- Kernels
 
-fKern :: Int -> Kernel Vec
+fKern :: DomainHandle Range -> Kernel Vec
 fKern size = halideKernel0 "f" (vecRepr size) kern_generate_f
 foreign import ccall unsafe kern_generate_f :: HalideFun '[] VecRepr
 
-gKern :: Int -> Kernel Vec
+gKern :: DomainHandle Range -> Kernel Vec
 gKern size = halideKernel0 "g" (vecRepr size) kern_generate_g
 foreign import ccall unsafe kern_generate_g :: HalideFun '[] VecRepr
 
-ppKern :: Int -> Flow Vec -> Flow Vec -> Kernel Vec
+ppKern :: DomainHandle Range -> Flow Vec -> Flow Vec -> Kernel Vec
 ppKern size = halideKernel2 "pp" (vecRepr size) (vecRepr size) (vecRepr size)
                             kern_dotp
 foreign import ccall unsafe kern_dotp :: HalideFun '[ VecRepr, VecRepr ] VecRepr
 
-aKern :: Int -> Flow Vec -> Kernel Sum
+aKern :: DomainHandle Range -> Flow Vec -> Kernel Sum
 aKern size = halideKernel1 "a" (vecRepr size) sumRepr kern_sum
 foreign import ccall unsafe kern_sum :: HalideFun '[ VecRepr ] SumRepr
 
 printKern :: Flow Sum -> Kernel Sum
 printKern = kernel "print" (sumRepr :. Z) sumRepr $ \case
-  [sv]   -> do s <- peekVector (castVector sv :: Vector Float) 0
-               putStrLn $ "Sum: " ++ show s
-               return sv
+  [(sv,_)]-> \_ -> do
+    s <- peekVector (castVector sv :: Vector Float) 0
+    putStrLn $ "Sum: " ++ show s
+    return sv
   _other -> fail "printKern: Received wrong number of input buffers!"
 
+-- | Dot product, non-distributed
+dpStrat :: Int -> Strategy ()
+dpStrat size = do
+
+  -- Make vector domain
+  dom <- makeRangeDomain 0 size
+
+  -- Calculate ddp for the whole domain
+  bind f (fKern dom)
+  bind g (gKern dom)
+  bindRule pp (ppKern dom)
+  bindRule a (aKern dom)
+  calculate ddp
+  rebind ddp printKern
+
+-- | Dot product, distributed
 ddpStrat :: Int -> Strategy ()
 ddpStrat size = do
 
   -- Make vector domain
-  dom <- makeRangeDomain $ Range 0 (size-1)
+  dom <- makeRangeDomain 0 size
 
   -- Calculate ddp for the whole domain
-  bind1D dom f (fKern size)
-  bind1D dom g (gKern size)
-  bindRule1D dom pp (ppKern size)
-  bindRule1D dom a (aKern size)
+  split dom 10 $ \regs ->
+    distribute regs SeqSchedule $ do
+      bind f (fKern regs)
+      bind g (gKern regs)
+      bind (pp f g) (ppKern regs f g)
+  bindRule a (aKern dom)
   calculate ddp
-  rebind1D dom ddp printKern
+  rebind ddp printKern
 
 main :: IO ()
 main = do
-  let size = 100000
+  let size = 10000
   dumpSteps $ ddpStrat size
   execStrategy $ ddpStrat size
   putStrLn $ "Expected: " ++ show ((size-1)*size`div`20)

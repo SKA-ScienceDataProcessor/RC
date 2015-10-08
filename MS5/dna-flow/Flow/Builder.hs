@@ -12,9 +12,7 @@ module Flow.Builder
   -- * Kernel binding
   , IsReprs(..), IsReprKern(..)
   , kernel, Kernel
-  , bind, bind1D
-  , rebind, rebind1D
-  , bindRule, bindRule1D
+  , bind, rebind, bindRule
   -- * Support
   , Z(..), (:.)(..)
   ) where
@@ -28,6 +26,7 @@ import Data.Maybe
 import Data.Typeable
 
 import Flow.Internal
+
 
 -- | Run "Strategy" monad to convert it into a series of steps
 runStrategy :: Strategy () -> [Step]
@@ -130,8 +129,8 @@ kernel name parReprs retRep code
 -- | Prepares the given kernel. This means checking its parameters and
 -- adding it to the kernel list. However, it will not automatically be
 -- added to the current scope.
-prepareKernel :: Kernel r -> Flow r -> [DomainId] -> Strategy KernelBind
-prepareKernel (Kernel kname kcode parReprs retRep ps) (Flow fi) ds = do
+prepareKernel :: Kernel r -> Flow r -> Strategy KernelBind
+prepareKernel (Kernel kname kcode parReprs retRep ps) (Flow fi) = do
 
   -- Get parameters + representation. Filter out the ones marked as
   -- "don't care".
@@ -146,15 +145,16 @@ prepareKernel (Kernel kname kcode parReprs retRep ps) (Flow fi) ds = do
   i <- freshKernelId
   let typeCheck (ReprI inR) = maybe False (reprCompatible retRep) (cast inR)
       kern = KernelBind i fi kname (ReprI retRep) kis kcode typeCheck
-  addStep $ KernelStep ds kern
+  addStep $ KernelStep kern
   return kern
 
 -- | Prepares a concrete data dependency for a kernel implementing the
 -- flow. This means finding the kernel that produces the result,
 -- possibly aplying a rule, and finally doing a type-check to ensure
 -- that data representations match.
-prepareDependency :: String -> FlowI -> Int -> (FlowI, ReprI) -> Strategy KernelId
-prepareDependency kname fi parn (p, prep) = do
+prepareDependency :: String -> FlowI -> Int -> (FlowI, ReprI)
+                  -> Strategy (KernelId, [DomainId])
+prepareDependency kname fi parn (p, prep@(ReprI prepi)) = do
 
   -- Parameter flows must all be in the dependency tree of the flow
   -- to calculate. Yes, this means that theoretically flows are
@@ -169,7 +169,7 @@ prepareDependency kname fi parn (p, prep) = do
   -- Look up latest kernel ID
   ss <- get
   let check kern
-        | kernReprCheck kern prep = return $ kernId kern
+        | kernReprCheck kern prep = return (kernId kern, reprDomain prepi)
         | otherwise = fail $ concat
             [ "Data representation mismatch when binding kernel "
             , kname, " to implement "
@@ -215,15 +215,7 @@ prepareDependency kname fi parn (p, prep) = do
 -- ("reprCompatible") for getting consumed by this kernel.
 bind :: Flow r -> Kernel r -> Strategy ()
 bind fl kfl = do
-  entry <- prepareKernel kfl fl []
-  let fi = kernFlow entry
-  modify $ \ss -> ss{ ssMap = HM.insert fi entry (ssMap ss)}
-
--- | Bind the given flow to a kernel, using a one-dimensional
--- domain. See "bind" for details.
-bind1D :: DomainHandle d -> Flow r -> Kernel r -> Strategy ()
-bind1D d fl kfl = do
-  entry <- prepareKernel kfl fl [dhId d]
+  entry <- prepareKernel kfl fl
   let fi = kernFlow entry
   modify $ \ss -> ss{ ssMap = HM.insert fi entry (ssMap ss)}
 
@@ -233,11 +225,6 @@ bind1D d fl kfl = do
 -- question has been bound previously.
 rebind :: Flow a -> (Flow a -> Kernel a) -> Strategy ()
 rebind fl f = bind fl (f fl)
-
--- | Rebinds the given flow, using a one-dimensional domain. See
--- "rebind" for details.
-rebind1D :: DomainHandle d -> Flow a -> (Flow a -> Kernel a) -> Strategy ()
-rebind1D dh fl f = bind1D dh fl (f fl)
 
 -- | Registers a new rule for automatically binding kernels given a
 -- certain data flow pattern. This is used by "calculate" to figure
@@ -273,18 +260,6 @@ bindRule :: forall fs. IsCurriedFlows fs
 bindRule flf kern =
   rule flf $ \inp ->
     bind (uncurryFlow flf inp) (uncurryKernFun (undefined :: fs) kern inp)
-
--- | Reigsters a new "rule" that binds a kernel to all occurences of
--- the given flow pattern, subject to a one-dimensional domain. See
--- "bindRule".
-bindRule1D :: forall d fs. IsCurriedFlows fs
-           => DomainHandle d
-           -> fs
-           -> FlowsKernFun fs
-           -> Strategy ()
-bindRule1D dh flf kern =
-  rule flf $ \inp ->
-    bind1D dh (uncurryFlow flf inp) (uncurryKernFun (undefined :: fs) kern inp)
 
 -- | Check whether a flow matches a pattern.
 matchPattern :: forall fs. IsFlows fs => FlowI -> FlowI -> Maybe fs
