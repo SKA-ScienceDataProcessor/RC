@@ -4,6 +4,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE InstanceSigs        #-}
 -- |
 -- Marshalling of data between haskell and Halide kernels
 module Flow.Halide.Marshal (
@@ -166,29 +168,21 @@ instance (HalideScalar x, MarshalParams xs) => MarshalParams (Scalar x ': xs) wh
       Just n  -> dynamicParams (curryFun fun (Scalar n)) rest
       Nothing -> error "Type mismatch!"
 
-
-instance (HalideScalar x, MarshalArray (d1 :. d2), MarshalParams xs) =>
-         MarshalParams (Array (d1 :. d2) x ': xs) where
+instance (HalideScalar x, MarshalArray ds, MarshalParams xs) =>
+         MarshalParams (Array ds x ': xs) where
+  marshalParamsF :: forall a. Fun (Array ds x ': xs) (IO (Fun (KernelCParams (Array ds x ': xs)) a -> a))
   marshalParamsF = uncurryFun $ \arr ->
-    do contIO <- marshalParamsF
-       return $ do
-         cont <- contIO
-         buf  <- allocBufferT arr
-         withBufferT buf $ \pbuf ->
-           return $ \f -> cont (curryFun f pbuf)
-  dynamicParams _   [] = error "Too few parameters!"
-  dynamicParams fun (dyn:rest) =
-    case unwrapScalarArray dyn of
-      Just arr -> dynamicParams (curryFun fun arr) rest
-      Nothing  -> error "Type mismatch!"
-
-instance (HalideScalar x, MarshalParams xs) => MarshalParams (Array Z x ': xs) where
-  marshalParamsF = uncurryFun $ \arr ->
-    do contIO <- marshalParamsF
-       return $ do
-         cont     <- contIO
-         Scalar x <- arr2scalar arr
-         return $ \f -> cont (curryFun f x)
+    do contIO <- marshalParamsF :: Fun xs (IO (Fun (KernelCParams xs) a -> a))
+       return $ case isScalar (undefined :: ds) of
+         IsScalar -> do
+           cont <- contIO
+           Scalar x <- arr2scalar arr
+           return $ \f -> cont (curryFun f x)
+         NotScalar -> do
+           cont <- contIO
+           buf  <- allocBufferT arr
+           withBufferT buf $ \pbuf ->
+             return $ \f -> cont (curryFun f pbuf)
   dynamicParams _   [] = error "Too few parameters!"
   dynamicParams fun (dyn:rest) =
     case unwrapScalarArray dyn of
@@ -214,6 +208,12 @@ class MarshalArray dim where
   -- | Unwrap dimensions of an array
   unwrapDimensions :: [(Int32,Int32)] -> Maybe dim
   wrapDimensions   :: dim -> [(Int32,Int32)]
+  -- | Case split for scalarity
+  isScalar :: dim -> IsScalar dim
+
+data IsScalar dim where
+  IsScalar :: IsScalar Z
+  NotScalar :: IsScalar (d0 :. d1)
 
 -- | Convert scalar to 0-dimensional array
 scalar2arr :: HalideScalar a => Scalar a -> IO (Array Z a)
@@ -255,6 +255,7 @@ instance MarshalArray (Z) where
   unwrapDimensions [] = Just Z
   unwrapDimensions _  = Nothing
   wrapDimensions Z = []
+  isScalar _ = IsScalar
 
 instance MarshalArray ((Int32,Int32) :. Z) where
   allocBufferT (Array ((off,size) :. Z) arr) = do
@@ -271,6 +272,7 @@ instance MarshalArray ((Int32,Int32) :. Z) where
   unwrapDimensions [n] = Just (n :. Z)
   unwrapDimensions _   = Nothing
   wrapDimensions (n :. Z) = [n]
+  isScalar _ = NotScalar
 
 
 sizeOfVal :: forall p a. HalideScalar a => p a -> Int
