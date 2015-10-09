@@ -8,9 +8,11 @@ int main(int argc, char **argv) {
     Func gen;
     Var  x;
 
-    gen(x) = cast<float>(x);
+    Param<int32_t> start("start", 0);
 
-    std::vector<Argument> args = {};
+    gen(x) = cast<float>(start + x);
+
+    std::vector<Argument> args = {start};
     compile_module_to_object(gen.compile_to_module(args, "kern_generate_f"), argv[1]);
     return 0;
 }

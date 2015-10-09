@@ -13,16 +13,19 @@ module Flow.Kernel
   , NoRepr(..)
   , VectorRepr(..)
   , vecKernel0, vecKernel1, vecKernel2, vecKernel3
-  , HalideRepr(..), DynHalideRepr(..), HalideFun
+  , HalideRepr(..), DynHalideRepr(..), HalideReprClass(..)
   , Dim1, dim1
   , halideKernel0, halideKernel1, halideKernel2
-  , HalideKernel(..) -- newtype needs to be exported to prevent FFI error
+  -- * reexports (for FFI)
+  , CInt(..), HalideKernel(..)
   ) where
 
 import Control.Applicative
 import Control.Monad
 
+import Data.Int ( Int32 )
 import Data.Typeable
+import Data.Vector.HFixed.Class ( Fn )
 
 import Flow.Internal
 import Flow.Builder
@@ -30,6 +33,8 @@ import Flow.Vector
 
 import Flow.Halide.Marshal
 import Flow.Halide.Types
+
+import Foreign.C ( CInt(..) )
 
 -- | No representation: Either don't produce anything (= nobody can use
 -- result) or don't care about input (= accept any input).
@@ -135,25 +140,41 @@ instance (Typeable val, Typeable abs, HalideScalar val) =>
       forM_ [l..h-1] $ \i -> do
         pokeVector out (i-low) =<< peekVector (castVector v) (i-l)
     return $ Just $ castVector out
+  reprMerge r _   doms = error $
+    "reprMerge: Unexpected number of domains for " ++ show r ++ ": " ++ show (length doms)
 
-type HalideFun xs a = HalideKernel (KernelParams xs) (HalrParam a)
 type family KernelParams (reprs :: [*]) :: [*]
 type instance KernelParams '[] = '[]
 type instance KernelParams (repr ': reprs) = HalrParam repr ': KernelParams reprs
 
--- We essentially "hide" HalideRepr in its own class here for the sole
--- reason of not having to repeat all its parameters and the full
--- context every time we use it.
---
--- Meanwhile, this also means we could potentially have more diverse
--- Halide data representations in future, plus possibly doing
--- newtype-tricks.
-type HalrParam r = Array (HalrDim r) (HalrVal r)
+-- | Halide data representation. Instances of this type class can be
+-- used with "halideKernel" and friends.
 class (DataRepr r, HalideScalar (HalrVal r), MarshalArray (HalrDim r)) =>
       HalideReprClass r where
+
+  -- | Halide dimension type. If this is "Z" we have a scalar,
+  -- otherwise an array of the appropriate dimension.
   type HalrDim r
+
+  -- | Value types of the array / scalar
   type HalrVal r
+
+  -- | Get *concrete* dimensions of the Halide data
+  -- representation. This might depend on the domain.
   halrDim :: r -> [Domain] -> HalrDim r
+
+  -- | Type of Halide function that produces this data representation
+  type HalideFun (xs :: [*]) r
+
+  -- | Produce our result. Depending on data representation, this
+  -- might pass extra data.
+  halrCall :: forall xs. MarshalParams (KernelParams xs)
+           => r -> Proxy xs
+           -> HalideFun xs r -> [Domain]
+           -> Fn (KernelParams xs) (IO (HalrParam r))
+
+type HalrParam r = Array (HalrDim r) (HalrVal r)
+
 instance ( Typeable dim, MarshalArray dim, Show dim, Eq dim
          , Typeable val, HalideScalar val
          , Typeable abs
@@ -161,7 +182,10 @@ instance ( Typeable dim, MarshalArray dim, Show dim, Eq dim
          HalideReprClass (HalideRepr dim val abs) where
   type HalrDim (HalideRepr dim val abs) = dim
   type HalrVal (HalideRepr dim val abs) = val
+  type HalideFun xs (HalideRepr dim val abs)
+    = HalideKernel (KernelParams xs) (Array dim val)
   halrDim (HalideRepr d) _ = d
+  halrCall r _ fun ds = call fun (halrDim r ds)
 
 instance ( Typeable val, HalideScalar val
          , Typeable abs
@@ -169,10 +193,15 @@ instance ( Typeable val, HalideScalar val
          HalideReprClass (DynHalideRepr val abs) where
   type HalrDim (DynHalideRepr val abs) = Dim1
   type HalrVal (DynHalideRepr val abs) = val
-  halrDim (DynHalideRepr _) [RangeDomain (Range low high)]
+  type HalideFun xs (DynHalideRepr val abs)
+    = HalideKernel (Scalar Int32 ': KernelParams xs) (Array Dim1 val)
   halrDim _ [RangeDomain (Range low high)]
     = dim1 0 (fromIntegral $ high - low)
   halrDim r doms
+    = error $ "halrDim: Unexpected number of domains for " ++ show r ++ ": " ++ show (length doms)
+  halrCall r _ fun doms@[RangeDomain (Range low _)]
+    = call fun (halrDim r doms) (Scalar $ fromIntegral low)
+  halrCall r _ _   doms
     = error $ "halrDim: Unexpected number of domains for " ++ show r ++ ": " ++ show (length doms)
 
 halideKernel0 :: HalideReprClass rr
@@ -181,30 +210,30 @@ halideKernel0 :: HalideReprClass rr
               -> HalideFun '[] rr
               -> Kernel (ReprType rr)
 halideKernel0 name retR code = kernel name Z retR $ \_ ds -> do
-  vecR <- call code (halrDim retR ds)
+  vecR <- halrCall retR (Proxy :: Proxy '[]) code ds
   return $ castVector $ arrayBuffer vecR
 
-halideKernel1 :: (HalideReprClass rr, HalideReprClass r0)
+halideKernel1 :: forall rr r0. (HalideReprClass rr, HalideReprClass r0)
               => String
               -> r0 -> rr
               -> HalideFun '[r0] rr
               -> Flow (ReprType r0) -> Kernel (ReprType rr)
 halideKernel1 name rep0 repR code = kernel name (rep0 :. Z) repR code'
   where code' [(v0,d0)] ds = do
-         vecR <- call code (halrDim repR ds) (Array (halrDim rep0 d0) (castVector v0))
+         vecR <- halrCall repR (Proxy :: Proxy '[r0]) code ds
+                          (Array (halrDim rep0 d0) (castVector v0))
          return $ castVector $ arrayBuffer vecR
         code' _ _ = fail "halideKernel1: Received wrong number of input buffers!"
 
-halideKernel2 :: (HalideReprClass rr, HalideReprClass r0, HalideReprClass r1)
+halideKernel2 :: forall rr r0 r1. (HalideReprClass rr, HalideReprClass r0, HalideReprClass r1)
               => String
               -> r0 -> r1 -> rr
               -> HalideFun '[r0, r1] rr
               -> Flow (ReprType r0) -> Flow (ReprType r1) -> Kernel (ReprType rr)
 halideKernel2 name rep0 rep1 repR code = kernel name (rep0 :. rep1 :. Z) repR code'
   where code' [(v0,d0), (v1,d1)] ds = do
-         vecR <- call code (halrDim repR ds)
-                           (Array (halrDim rep0 d0) (castVector v0))
-                           (Array (halrDim rep1 d1) (castVector v1))
+         vecR <- halrCall repR (Proxy :: Proxy '[r0, r1]) code ds
+                          (Array (halrDim rep0 d0) (castVector v0))
+                          (Array (halrDim rep1 d1) (castVector v1))
          return $ castVector $ arrayBuffer vecR
         code' _ _ = fail "halideKernel2: Received wrong number of input buffers!"
-

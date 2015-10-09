@@ -10,9 +10,9 @@ import Data.Typeable
 import Flow
 import Flow.Vector
 
-import Foreign.C
-
+-- Needed for FFI to work
 import Data.Vector.HFixed.Class ()
+import Flow.Halide.Types ()
 
 -- Data tags
 data Vec deriving Typeable
