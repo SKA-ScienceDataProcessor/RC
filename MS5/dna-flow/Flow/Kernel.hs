@@ -119,9 +119,7 @@ instance (Typeable val, Typeable abs, HalideScalar val) =>
   showsPrec _ (DynHalideRepr dim)
     = shows (typeOf (undefined :: val)) . showString " halide vector "
     . shows dim . showString " [" . shows (typeOf (undefined :: abs)) . showString "]"
-instance (Typeable val, Typeable abs, HalideScalar val
-         , Show val -- remove!
-         ) =>
+instance (Typeable val, Typeable abs, HalideScalar val) =>
          DataRepr (DynHalideRepr val abs) where
   type ReprType (DynHalideRepr val abs) = abs
   reprNop _ = False
@@ -164,17 +162,18 @@ instance ( Typeable dim, MarshalArray dim, Show dim, Eq dim
   type HalrDim (HalideRepr dim val abs) = dim
   type HalrVal (HalideRepr dim val abs) = val
   halrDim (HalideRepr d) _ = d
+
 instance ( Typeable val, HalideScalar val
          , Typeable abs
-         , Show val -- remove!
          ) =>
          HalideReprClass (DynHalideRepr val abs) where
   type HalrDim (DynHalideRepr val abs) = Dim1
   type HalrVal (DynHalideRepr val abs) = val
   halrDim (DynHalideRepr _) [RangeDomain (Range low high)]
+  halrDim _ [RangeDomain (Range low high)]
     = dim1 0 (fromIntegral $ high - low)
-  halrDim _ doms
-    = error $ "halrDim: Unexpected number of domains: " ++ show doms
+  halrDim r doms
+    = error $ "halrDim: Unexpected number of domains for " ++ show r ++ ": " ++ show (length doms)
 
 halideKernel0 :: HalideReprClass rr
               => String
