@@ -126,6 +126,7 @@ domainSubset (RangeDomain (Range low0 high0)) (RangeDomain (Range low1 high1))
 --
 -- TODO: Ugly. Write properly
 domainMerge :: [[Domain]] -> Maybe [Domain]
+domainMerge [] = Just []
 domainMerge dss
   | not $ all ((==1) . length) dss
   = error "domainMerge: Not implemented yet for domain combinations!"

@@ -220,9 +220,6 @@ execStep dataMapRef domainMapRef deps step = case step of
 
   DistributeStep dh sched steps -> do
 
-    when (sched /= SeqSchedule) $
-      putStrLn "Only sequential distribution supported, falling back to that!"
-
     -- Make new domain maps for children
     domainMap <- readIORef domainMapRef
     let domDeps = IS.delete (dhId dh) $ stepDomainDeps step
@@ -246,7 +243,7 @@ execStep dataMapRef domainMapRef deps step = case step of
 
       -- Execute steps
       result <- newEmptyMVar
-      void $ forkOS $ do
+      (if sched == SeqSchedule then id else void . forkOS) $ do
         execSteps dataMapRef' domainMapRef' deps steps
         putMVar result =<< readIORef dataMapRef'
       return result

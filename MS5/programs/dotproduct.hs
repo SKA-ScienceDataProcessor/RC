@@ -88,7 +88,7 @@ ddpStrat size = do
 
   -- Calculate ddp for the whole domain
   split dom 10 $ \regs ->
-    distribute regs SeqSchedule $ do
+    distribute regs ParSchedule $ do
       bind f (fKern regs)
       bind g (gKern regs)
       bind (pp f g) (ppKern regs f g)
