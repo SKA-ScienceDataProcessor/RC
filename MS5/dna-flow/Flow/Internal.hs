@@ -70,6 +70,9 @@ data KernelBind = KernelBind
     -- the data we produce
   }
 
+kernDomain :: KernelBind -> [DomainId]
+kernDomain KernelBind{kernRepr=ReprI r} = reprDomain r
+
 -- | Code implementing a kernel
 type KernelCode = [(Vector (), [Domain])] -> [Domain] -> IO (Vector ())
 

@@ -61,7 +61,7 @@ printKern = kernel "print" (sumRepr :. Z) sumRepr $ \case
   [(sv,_)]-> \_ -> do
     s <- peekVector (castVector sv :: Vector Float) 0
     putStrLn $ "Sum: " ++ show s
-    return sv
+    return nullVector
   _other -> fail "printKern: Received wrong number of input buffers!"
 
 -- | Dot product, non-distributed
@@ -98,7 +98,7 @@ ddpStrat size = do
 
 main :: IO ()
 main = do
-  let size = 10000
+  let size = 1000000
   dumpSteps $ ddpStrat size
   execStrategy $ ddpStrat size
   putStrLn $ "Expected: " ++ show ((size-1)*size`div`20)
