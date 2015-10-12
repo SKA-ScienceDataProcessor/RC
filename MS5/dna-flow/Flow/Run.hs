@@ -1,3 +1,4 @@
+{-# LANGUAGE ExistentialQuantification #-}
 
 module Flow.Run
   ( dumpStrategy
@@ -7,6 +8,7 @@ module Flow.Run
   ) where
 
 import Control.Monad
+import Control.Applicative
 import Control.Concurrent
 
 import Data.List
@@ -16,6 +18,7 @@ import qualified Data.IntSet as IS
 import qualified Data.Map.Strict as Map
 import Data.IORef
 import Data.Ord
+import Data.Typeable
 
 import System.IO
 
@@ -79,27 +82,27 @@ dumpSteps strat = do
 
   forM_ (runStrategy (void strat)) (dump "")
 
-type DataMap = IM.IntMap (Map.Map [Domain] (Vector (), ReprI))
-type DomainMap = IM.IntMap Domain
+data AnyDH = forall a. Typeable a => AnyDH (DomainHandle a)
+type DataMap = IM.IntMap (ReprI, Map.Map [Domain] (Vector ()))
+type DomainMap = IM.IntMap (AnyDH, [Domain])
 
 findParameters :: KernelId -> [Domain] -> DataMap -> IO (Vector (), [Domain])
 findParameters kid inDoms dataMap = case IM.lookup kid dataMap of
-  Just m
+  Just (ReprI repr, bufs)
     -- Have it for exactly the right domain region?
-    | Just (inp, _) <- Map.lookup inDoms m
+    | Just inp <- Map.lookup inDoms bufs
     -> return (inp, inDoms)
     -- Have it for the right domain region, but split into
     -- sub-regions? This is rather ad-hoc, clearly needs a better
     -- solution. We actually have guarantees here - at least if we
     -- ignore the possibility for failure (where in a distributed
     -- implementation parts could be missing).
-    | let inps = filter (and . zipWith domainSubset inDoms . fst) $ Map.assocs m
+    | let inps = filter (and . zipWith domainSubset inDoms . fst) $ Map.assocs bufs
     , Just merged <- domainMerge (map fst inps)
     , merged == inDoms
-    , (_, ReprI repr) <- snd $ head inps
+    , (_:_) <- inps
     -> do -- Merge the vectors.
-          let toMPar (dom, (vec, _repr)) = (dom, vec)
-          m_inp' <- reprMerge repr (map toMPar inps) inDoms
+          m_inp' <- reprMerge repr inps inDoms
           case m_inp' of
             Just inp' -> return (inp', inDoms)
             Nothing   -> fail $ "Could not merge data of representation " ++ show repr ++ "!"
@@ -150,7 +153,7 @@ execStrategy :: Strategy () -> IO ()
 execStrategy strat = do
 
   -- Initialise maps
-  dataMapRef <- newIORef IM.empty :: IO (IORef DataMap)
+  dataMapRef <- newIORef IM.empty
   domainMapRef <- newIORef IM.empty
 
   -- Run steps given by strategy
@@ -175,16 +178,18 @@ execSteps dataMapRef domainMapRef topDeps steps = do
     let isDep kid _ = kid `IS.member` allDeps
         (dataMap', discardMap) = IM.partitionWithKey isDep dataMap
     writeIORef dataMapRef dataMap'
-    forM_ (IM.assocs discardMap) $ \(kid,m) ->
-      forM_ (Map.assocs m) $ \(dom, (v, _dh)) -> do
+    forM_ (IM.assocs discardMap) $ \(kid, (_repr, m)) ->
+      forM_ (Map.assocs m) $ \(dom, v) -> do
         putStrLn $ "Discarding buffer " ++ show kid ++ " for domain " ++ show dom
         freeVector v
 
 -- | Execute schedule step
 execStep :: IORef DataMap -> IORef DomainMap -> KernelSet -> Step -> IO ()
 execStep dataMapRef domainMapRef deps step = case step of
-  DomainStep dh ->
-    modifyIORef domainMapRef $ IM.insert (dhId dh) (dhRegion dh 0)
+  DomainStep dh -> do
+    -- Primitive domains have exactly one region on construction
+    dom <- dhCreate dh
+    modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, [dom])
 
   KernelStep kbind@KernelBind{kernRepr=ReprI rep} -> do
 
@@ -192,30 +197,52 @@ execStep dataMapRef domainMapRef deps step = case step of
     domainMap <- readIORef domainMapRef
     let lookupDom did = case IM.lookup did domainMap of
           Just dom -> dom
-          Nothing  -> error $
-            "Kernel " ++ show kbind ++ " called for domain " ++ show did ++
-            " which is neither unary nor distributed over. This is not yet" ++
-            " supported!"
+          Nothing  -> error $ "Kernel " ++ show kbind ++ " called for non-existant domain " ++ show did ++ "!"
         outDoms = map lookupDom (reprDomain rep)
 
-    -- Look up input data
-    dataMap <- readIORef dataMapRef
-    ins <- forM (kernDeps kbind) $ \(kid, dids) ->
-      findParameters kid (map lookupDom dids) dataMap
+    -- Any output domains non-unary and therefore need to be split
+    -- into separate kernel calls?
+    -- TODO: Some kernels might be okay with producing the output
+    -- values for more than one region at the same time. However at
+    -- this point we do not have an interface for this yet, so
+    -- sequentialising things is the easiest choice that is also
+    -- somewhat correct.
+    case filter ((/=1) . length . snd) outDoms of
+     (AnyDH dh, _):_ ->
+      execStep dataMapRef domainMapRef deps $ DistributeStep dh SeqSchedule [step]
 
-    -- Call the kernel
-    res <- kernCode kbind ins outDoms
+     [] -> do
+      -- Look up input data
+      let lookupUnaryDom = head . snd . lookupDom
+      dataMap <- readIORef dataMapRef
+      ins <- forM (kernDeps kbind) $ \(kid, dids) ->
+        findParameters kid (map lookupUnaryDom dids) dataMap
 
-    -- Debug
-    putStrLn $ "Calculated result for kernel " ++ show (kernId kbind) ++ " domain " ++ show outDoms
+      -- Call the kernel using the right regions
+      let outRegs = map (head . snd) outDoms
+      res <- kernCode kbind ins outRegs
 
-    -- Insert result
-    let m = fromMaybe Map.empty $ IM.lookup (kernId kbind) dataMap
-        m' = Map.insert outDoms (res, kernRepr kbind) m
-    writeIORef dataMapRef $ IM.insert (kernId kbind) m' dataMap
+      -- Debug
+      putStrLn $ "Calculated result for kernel " ++ show (kernId kbind) ++ " regions " ++ show outRegs
+
+      -- Insert result
+      let bufs = maybe Map.empty snd $ IM.lookup (kernId kbind) dataMap
+          bufs' = Map.insert outRegs res bufs
+      writeIORef dataMapRef $ IM.insert (kernId kbind) (kernRepr kbind, bufs') dataMap
 
   SplitStep dh steps -> do
-    modifyIORef domainMapRef $ IM.insert (dhId dh) (dhRegion dh 0)
+
+    -- Get domain to split up
+    let parDh = fromJust $ dhParent dh
+    (_, regs)
+      <- fromMaybe (error $ "Could not find domain " ++ show (dhId dh) ++ " to split!") .
+         IM.lookup (dhId parDh) <$> readIORef domainMapRef
+
+    -- Perform split
+    regs' <- concat <$> mapM (dhRegion dh) regs
+    modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, regs')
+
+    -- Execute nested steps
     execSteps dataMapRef domainMapRef deps steps
 
   DistributeStep dh sched steps -> do
@@ -232,26 +259,49 @@ execStep dataMapRef domainMapRef deps step = case step of
         isDataDep did _ = did `IS.member` dataDeps
         dataMap' = IM.filterWithKey isDataDep dataMap
 
-    -- TODO: If we are already distributing over a super-domain,
-    -- we do not want to distribute it again here!
-    threads <- forM [1..dhSize dh] $ \i -> do
+    -- Distribute over all regions
+    let regs = snd $ fromJust $ IM.lookup (dhId dh) domainMap
+    threads <- forM regs $ \reg -> do
 
       -- Make new restricted maps. In a distributed setting, this is
       -- the data we would need to send remotely.
-      domainMapRef' <- newIORef $ IM.insert (dhId dh) (dhRegion dh i) domainMap'
-      dataMapRef' <- newIORef dataMap'
+      domainMapRef' <- newIORef $ IM.insert (dhId dh) (AnyDH dh, [reg]) domainMap'
+
+      -- Also filter data so we only send data for the appropriate region
+      let filterData (ri@(ReprI repr), bufs)
+            | dhId dh `elem` reprDomain repr
+            = (ri, Map.filterWithKey (\ds _ -> reg `elem` ds) bufs)
+            | otherwise
+            = (ri, bufs)
+          dataMap'' = IM.map filterData dataMap'
+      dataMapRef' <- newIORef dataMap''
 
       -- Execute steps
       result <- newEmptyMVar
       (if sched == SeqSchedule then id else void . forkOS) $ do
         execSteps dataMapRef' domainMapRef' deps steps
         putMVar result =<< readIORef dataMapRef'
-      return result
+      return (result, dataMap'')
 
-    -- Wait for threads, integrate results
-    forM_ threads $ \result -> do
+    -- Wait for threads
+    dataMapsNew <- mapM readMVar $ map fst threads
 
-      -- Register returned data (all new data should only be for the
-      -- distributed domain - check?)
-      dataMap'' <- readMVar result
-      modifyIORef dataMapRef $ IM.unionWith Map.union dataMap''
+    -- Combine maps. What is happening here is:
+    --
+    -- 1. We add all new buffers that the child returned. Note that it might
+    --    return buffers that we already have - this does no harm, but a
+    --    distributed version would want to prevent this.
+    --
+    -- 2. We remove all buffers that the children freed (to prevent double-free).
+    --    Obviously only a concern because of SM parallelism.
+    let combine (repr, bufs) (_, bufs') = (repr, bufs `Map.union` bufs')
+        dataMapOrig = IM.unionsWith combine (map snd threads)
+        dataMapNew = IM.unionsWith combine dataMapsNew
+        remove (repr, bufs) (_, bufs')
+           = if Map.null diff then Nothing else Just (repr, diff)
+         where diff = bufs `Map.difference` bufs'
+        dataMapRemoved = IM.differenceWith remove dataMapOrig dataMapNew
+    modifyIORef dataMapRef $
+      IM.unionWith combine dataMapNew .
+      flip (IM.differenceWith remove) dataMapRemoved
+

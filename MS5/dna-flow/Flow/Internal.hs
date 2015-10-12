@@ -88,12 +88,14 @@ data DomainHandle a = DomainHandle
   { dhId    :: DomainId
     -- | Number of regions this domain is split into
   , dhSize  :: Int
-    -- | Get indexed region
-  , dhRegion :: Int -> Domain
     -- | Produce a new domain handle that is split up @n@ times more
-  , dhSplit :: Int -> Strategy (DomainHandle a)
+  , dhSplit  :: Int -> Strategy (DomainHandle a)
     -- | Domain this was derived from
   , dhParent :: Maybe (DomainHandle a)
+    -- | Creates a new region for this handle
+  , dhCreate :: IO Domain
+    -- | Splits a region of the parent domain
+  , dhRegion :: Domain -> IO [Domain]
   }
 
 instance forall a. Typeable a => Show (DomainHandle a) where
