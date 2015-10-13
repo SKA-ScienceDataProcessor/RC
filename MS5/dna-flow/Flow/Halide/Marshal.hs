@@ -274,6 +274,23 @@ instance MarshalArray ((Int32,Int32) :. Z) where
   wrapDimensions (n :. Z) = [n]
   isScalar _ = NotScalar
 
+instance MarshalArray ((Int32,Int32) :. (Int32,Int32) :. Z) where
+  allocBufferT (Array ((off,size) :. (off1, size1) :. Z) arr) = do
+    buf <- newBufferT
+    setElemSize buf $ sizeOfVal arr
+    setBufferStride  buf    1     1 0 0
+    setBufferMin     buf  off  off1 0 0
+    setBufferExtents buf size size1 0 0
+    case arr of
+      CVector _ p -> setHostPtr buf (castPtr p)
+      _other      -> fail "Halide only supports C arrays currently!"
+    return buf
+  nOfElements ((_,n) :. (_,m) :. Z) = fromIntegral n * fromIntegral m
+  unwrapDimensions [n,m] = Just (n :. m :. Z)
+  unwrapDimensions _   = Nothing
+  wrapDimensions (n :. m :. Z) = [n,m]
+  isScalar _ = NotScalar
+
 
 sizeOfVal :: forall p a. HalideScalar a => p a -> Int
 sizeOfVal _ = sizeOf (undefined :: a)

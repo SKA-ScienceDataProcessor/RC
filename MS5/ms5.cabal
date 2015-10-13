@@ -52,4 +52,5 @@ executable gridding
   main-is:             gridding.hs
   build-depends:
     base         >= 4.6,
-    dna-flow     >= 0.5
+    dna-flow     >= 0.5,
+    oskar        >= 0.1

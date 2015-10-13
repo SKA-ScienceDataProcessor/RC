@@ -274,7 +274,7 @@ scatterImagingMain cfg = do
 
   -- Split by datasets
   let result = majorLoopSum (cfgMajorLoops cfg) vis
-  split dom dataSets $ \ds -> distribute ds ParSchedule $ void $ do
+  split dom dataSets $ \ds -> distribute ds SeqSchedule $ void $ do
 
     -- Split by number of runs.
     -- TODO: Number of runs should depend on data set!

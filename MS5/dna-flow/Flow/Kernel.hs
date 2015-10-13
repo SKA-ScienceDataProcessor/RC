@@ -11,11 +11,12 @@
 module Flow.Kernel
   ( DataRepr(..), ReprAccess(..)
   , NoRepr(..)
+  , rangeKernel0, rangeKernel1
   , VectorRepr(..)
   , vecKernel0, vecKernel1, vecKernel2, vecKernel3
   , HalideRepr(..), DynHalideRepr(..), HalideReprClass(..)
-  , Dim1, dim1
-  , halideKernel0, halideKernel1, halideKernel2
+  , Dim0, Dim1, Dim2, dim0, dim1, dim2
+  , halideKernel0, halideKernel1, halideKernel2, halideKernel3
   -- * reexports (for FFI)
   , CInt(..), HalideKernel(..)
   ) where
@@ -61,6 +62,23 @@ instance (Typeable val, Typeable abs) => DataRepr (VectorRepr val abs) where
   reprNop _ = False
   reprAccess (VectorRepr acc)  = acc
   reprCompatible _ _ = True
+
+rangeKernel0 :: DataRepr r
+             => String -> r -> (Int -> Int -> IO (Vector a))
+             -> Kernel (ReprType r)
+rangeKernel0 name retRep code = kernel name Z retRep code'
+  where code' _ [] = fail $ "kernel " ++ show name ++ ": Received wrong number of domains!"
+        code' _ ds | RangeDomain (Range low high) <- last ds
+                   = castVector <$> code low high
+
+rangeKernel1 :: (DataRepr r, DataRepr r0)
+             => String -> r0 -> r -> (Int -> Int -> Vector () -> IO (Vector a))
+             -> Flow (ReprType r0) -> Kernel (ReprType r)
+rangeKernel1 name repr0 retRep code = kernel name (repr0 :. Z) retRep code'
+  where code' _   [] = fail $ "kernel " ++ show name ++ ": Received wrong number of domains!"
+        code' [v] ds | RangeDomain (Range low high) <- last ds
+                     = castVector <$> code low high (fst v)
+        code' _   _  = fail $ "kernel " ++ show name ++ ": Received wrong number of arguments!"
 
 vecKernel0 :: (Typeable val, Typeable abs)
            => String -> VectorRepr val abs -> IO (Vector val) -> Kernel abs
@@ -237,3 +255,18 @@ halideKernel2 name rep0 rep1 repR code = kernel name (rep0 :. rep1 :. Z) repR co
                           (Array (halrDim rep1 d1) (castVector v1))
          return $ castVector $ arrayBuffer vecR
         code' _ _ = fail "halideKernel2: Received wrong number of input buffers!"
+
+halideKernel3 :: forall rr r0 r1 r2. (HalideReprClass rr, HalideReprClass r0,
+                                      HalideReprClass r1, HalideReprClass r2)
+              => String
+              -> r0 -> r1 -> r2 -> rr
+              -> HalideFun '[r0, r1, r2] rr
+              -> Flow (ReprType r0) -> Flow (ReprType r1) -> Flow (ReprType r2) -> Kernel (ReprType rr)
+halideKernel3 name rep0 rep1 rep2 repR code = kernel name (rep0 :. rep1 :. rep2 :. Z) repR code'
+  where code' [(v0,d0), (v1,d1), (v2, d2)] ds = do
+         vecR <- halrCall repR (Proxy :: Proxy '[r0, r1, r2]) code ds
+                          (Array (halrDim rep0 d0) (castVector v0))
+                          (Array (halrDim rep1 d1) (castVector v1))
+                          (Array (halrDim rep2 d2) (castVector v2))
+         return $ castVector $ arrayBuffer vecR
+        code' _ _ = fail "halideKernel3: Received wrong number of input buffers!"
