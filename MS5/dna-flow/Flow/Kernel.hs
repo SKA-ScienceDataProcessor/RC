@@ -17,6 +17,7 @@ module Flow.Kernel
   , HalideRepr(..), DynHalideRepr(..), HalideReprClass(..)
   , Dim0, Dim1, Dim2, dim0, dim1, dim2
   , halideKernel0, halideKernel1, halideKernel2, halideKernel3
+  , halideBind, HalideBind
   -- * reexports (for FFI)
   , CInt(..), HalideKernel(..)
   ) where

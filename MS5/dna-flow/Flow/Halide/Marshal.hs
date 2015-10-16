@@ -6,6 +6,7 @@
 {-# LANGUAGE TypeOperators       #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE InstanceSigs        #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 -- |
 -- Marshalling of data between haskell and Halide kernels
 module Flow.Halide.Marshal (
@@ -20,6 +21,7 @@ module Flow.Halide.Marshal (
   , withScalarResult
   , MarshalResult(..)
   , MarshalParams(..)
+  , HalideCanBind(..)
   ) where
 
 import Control.Applicative
@@ -71,8 +73,14 @@ eraseTypes kern param size
 unwrapK :: HalideKernel xs a -> Fun (KernelCParams xs) (Ptr BufferT -> IO CInt)
 unwrapK (HalideKernel f) = Fun f
 
-
-
+-- | Type class for adding constant parameters to a kernel. Meant for
+-- configuration.
+class HalideCanBind x kern where
+  type HalideBind x kern
+  halideBind :: HalideBind x kern -> x -> kern
+instance HalideScalar x => HalideCanBind x (HalideKernel xs a) where
+  type HalideBind x (HalideKernel xs a) = HalideKernel (Scalar x ': xs) a
+  halideBind (HalideKernel f) x = HalideKernel (f x)
 
 ----------------------------------------------------------------
 -- Type guided marshalling
@@ -278,7 +286,7 @@ instance MarshalArray ((Int32,Int32) :. (Int32,Int32) :. Z) where
   allocBufferT (Array ((off,size) :. (off1, size1) :. Z) arr) = do
     buf <- newBufferT
     setElemSize buf $ sizeOfVal arr
-    setBufferStride  buf    1     1 0 0
+    setBufferStride  buf    1  size 0 0
     setBufferMin     buf  off  off1 0 0
     setBufferExtents buf size size1 0 0
     case arr of
