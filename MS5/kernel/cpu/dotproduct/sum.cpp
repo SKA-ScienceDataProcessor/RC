@@ -14,8 +14,14 @@ int main(int argc, char **argv) {
     sum()  = cast<float>(0);
     sum() += vec(r);
 
+    vec.set_stride(0,1);
+
+    // Doesn't work because it can't prove that the vector extend is
+    // divisible by 8...
+    //sum.update().allow_race_conditions().vectorize(r.x,8);
+
     std::vector<Argument> args = {vec};
-    compile_module_to_object(sum.compile_to_module(args, "kern_sum"), argv[1]);
+    Target target(Target::OSUnknown, Target::X86, 64, { Target::SSE41, Target::AVX});
+    compile_module_to_object(sum.compile_to_module(args, "kern_sum", target), argv[1]);
     return 0;
 }
-

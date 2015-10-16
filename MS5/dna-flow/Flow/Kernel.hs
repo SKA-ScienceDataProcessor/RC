@@ -17,6 +17,7 @@ module Flow.Kernel
   , HalideRepr(..), DynHalideRepr(..), HalideReprClass(..)
   , Dim0, Dim1, Dim2, dim0, dim1, dim2
   , halideKernel0, halideKernel1, halideKernel2, halideKernel3
+  , halideBind, HalideBind
   -- * reexports (for FFI)
   , CInt(..), HalideKernel(..)
   ) where
@@ -24,7 +25,6 @@ module Flow.Kernel
 import Control.Applicative
 import Control.Monad
 
-import Data.Int ( Int32 )
 import Data.Typeable
 import Data.Vector.HFixed.Class ( Fn )
 
@@ -212,15 +212,13 @@ instance ( Typeable val, HalideScalar val
   type HalrDim (DynHalideRepr val abs) = Dim1
   type HalrVal (DynHalideRepr val abs) = val
   type HalideFun xs (DynHalideRepr val abs)
-    = HalideKernel (Scalar Int32 ': KernelParams xs) (Array Dim1 val)
+    = HalideKernel (KernelParams xs) (Array Dim1 val)
   halrDim _ [RangeDomain (Range low high)]
-    = dim1 0 (fromIntegral $ high - low)
+    = dim1 (fromIntegral low) (fromIntegral $ high - low)
   halrDim r doms
     = error $ "halrDim: Unexpected number of domains for " ++ show r ++ ": " ++ show (length doms)
-  halrCall r _ fun doms@[RangeDomain (Range low _)]
-    = call fun (halrDim r doms) (Scalar $ fromIntegral low)
-  halrCall r _ _   doms
-    = error $ "halrDim: Unexpected number of domains for " ++ show r ++ ": " ++ show (length doms)
+  halrCall r _ fun doms
+    = call fun (halrDim r doms)
 
 halideKernel0 :: HalideReprClass rr
               => String
