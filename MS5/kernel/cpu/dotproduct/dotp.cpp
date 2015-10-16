@@ -13,7 +13,13 @@ int main(int argc, char **argv) {
 
     dotp(x) = vec_f(x) * vec_g(x);
 
+    vec_f.set_stride(0,1);
+    vec_g.set_stride(0,1);
+    dotp.output_buffer().set_stride(0,1);
+    dotp.vectorize(x,8);
+
     std::vector<Argument> args = {vec_f, vec_g};
-    compile_module_to_object(dotp.compile_to_module(args, "kern_dotp"), argv[1]);
+    Target target(Target::OSUnknown, Target::X86, 64, { Target::SSE41, Target::AVX});
+    compile_module_to_object(dotp.compile_to_module(args, "kern_dotp", target), argv[1]);
     return 0;
 }
