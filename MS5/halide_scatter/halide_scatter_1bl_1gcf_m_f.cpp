@@ -35,6 +35,9 @@ int main(/* int argc, char **argv */) {
   int
       over = 8
     , grid_size = 2048
+    , max_gcf_size = 128
+    // FIXME: factor all relevant constants out
+    // and share them between this code and cppcycle.cpp
     ;
 
   Param<double>
@@ -47,13 +50,14 @@ int main(/* int argc, char **argv */) {
     ;
   ImageParam IP(uvwf, type_of<double>(), 2);
   ImageParam IP(vis, type_of<double>(), 2);
-  ImageParam IP(gcf, type_of<double>(), 2);
+  // gcf_fused has 2 oversample dimensions fused into one
+  //  to fit into 4D parameter limit
+  ImageParam IP(gcf_fused, type_of<double>(), 4);
 
   Func
       P(uvs)
     , P(uv)
     , P(overc)
-    , P(gcfoff)
     ;
 
   Var P(t)
@@ -68,18 +72,33 @@ int main(/* int argc, char **argv */) {
   uvs(uvdim, t) = uvwf(uvdim, t) * scale;
   overc(uvdim, t) = clamp(cast<int>(round(over * (uvs(uvdim, t) - floor(uvs(uvdim, t))))), 0, 7);
   uv(uvdim, t) = cast<int>(round(uvs(uvdim, t)) + grid_size / 2 - gcf_layer_size / 2);
-  gcfoff(t) = (overc(0, t) * over + overc(1, t)) * gcf_layer_size * gcf_layer_size;
+
+  Var P(cmplx);
+
+// No difference in fact
+#define __UNFUSE 0
+
+#if __UNFUSE
+  Var
+      P(suppx)
+    , P(suppy)
+    , P(overx)
+    , P(overy)
+    ;
+  Func P(gcf);
+  gcf(cmplx, suppx, suppy, overx, overy) = gcf_fused(cmplx, suppx, suppy, overx + 8 * overy);
+#endif
   
+#define __MATERIALIZE 1
+#define __CONST_PAD 1
+	
+#if __MATERIALIZE
   overc.bound(uvdim, 0, 2);
   uv.bound(uvdim, 0, 2);
 
-  overc.bound(t, 0, ts_ch);
-  uv.bound(t, 0, ts_ch);
-  gcfoff.bound(t, 0, ts_ch);
-
   overc.compute_root();
   uv.compute_root();
-  gcfoff.compute_root();
+#endif
 
   RDom red(
       0, gcf_layer_size
@@ -97,10 +116,14 @@ int main(/* int argc, char **argv */) {
     , _IMAG = 1
     ;
 
-  Expr gcf_pix_off = gcfoff(rvis) + rgcfx + rgcfy * gcf_layer_size; 
   Complex gcfC(
-      gcf(0, gcf_pix_off)
-    , gcf(1, gcf_pix_off)
+#if __UNFUSE
+      gcf(_REAL, rgcfx, rgcfy, overc(_U, rvis), overc(_V, rvis))
+    , gcf(_IMAG, rgcfx, rgcfy, overc(_U, rvis), overc(_V, rvis))
+#else
+      gcf_fused(_REAL, rgcfx, rgcfy, overc(_U, rvis) + 8 * overc(_V, rvis))
+    , gcf_fused(_IMAG, rgcfx, rgcfy, overc(_U, rvis) + 8 * overc(_V, rvis))
+#endif
     );
 
   Complex visC(
@@ -109,27 +132,33 @@ int main(/* int argc, char **argv */) {
     );
 
   Func P(uvg);
-  Var P(cmplx)
-    , P(x)
+  Var P(x)
     , P(y)
     ;
   uvg(cmplx, x, y) = cast<double>(0.0f);
 
   Expr
-      clampedU = clamp(uv(_U, rvis) + rgcfx, 0, grid_size - 1)
-    , clampedV = clamp(uv(_V, rvis) + rgcfy, 0, grid_size - 1)
+#if __CONST_PAD
+      clampedU = clamp(uv(_U, rvis), 0, grid_size - 1 - max_gcf_size)
+    , clampedV = clamp(uv(_V, rvis), 0, grid_size - 1 - max_gcf_size)
+    , U = clampedU + rgcfx
+    , V = clampedV + rgcfy
+#else
+      U = clamp(uv(_U, rvis) + rgcfx, 0, grid_size - 1)
+    , V = clamp(uv(_V, rvis) + rgcfy, 0, grid_size - 1)
+#endif
     ;
 
   uvg(
       _REAL
-    , clampedU
-    , clampedV
+    , U
+    , V
     ) += (visC * gcfC).real
     ;
   uvg(
       _IMAG
-    , clampedU
-    , clampedV
+    , U
+    , V
     ) += (visC * gcfC).imag
     ;
 
@@ -149,7 +178,7 @@ int main(/* int argc, char **argv */) {
     , uvwf
     , vis
     , gcf_layer_size
-    , gcf
+    , gcf_fused
   };
   uvg.compile_to_lowered_stmt("uvg11.html", compile_args, HTML);
 
