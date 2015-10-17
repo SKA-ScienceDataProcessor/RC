@@ -6,6 +6,13 @@
 
 using namespace Halide;
 
+enum ComplxFields {
+  _REAL = 0,
+  _IMAG,
+
+  _CPLX_COUNT
+};
+
 struct Complex {
   Expr real, imag;
   Complex(Expr r, Expr i) : real(r), imag(i) {}
@@ -18,6 +25,7 @@ struct Complex {
       , real * other.imag + imag * other.real
       };
   }
+  Expr unpack(Expr c) { return select(c == _REAL, real, imag); }
 };
 
 /* Not need it ATM
@@ -37,6 +45,7 @@ int main(/* int argc, char **argv */) {
       over = 8
     , grid_size = 2048
     , max_gcf_size = 128
+    , gcf_layer_size = 16
     // FIXME: factor all relevant constants out
     // and share them between this code and cppcycle.cpp
     ;
@@ -46,8 +55,7 @@ int main(/* int argc, char **argv */) {
     , P(wstep)
     ;
   Param<int>
-      P(gcf_layer_size)
-    , P(ts_ch)
+      P(ts_ch)
     ;
   ImageParam IP(uvwf, type_of<double>(), 2);
   ImageParam IP(vis, type_of<double>(), 2);
@@ -65,11 +73,15 @@ int main(/* int argc, char **argv */) {
     , P(uvdim)
     , P(bl)
     ;
-  const Expr
+
+  enum UvwFields {
       _U = 0
-    , _V = 1
-    ;
-  
+    , _V
+	, _W
+
+	, _UVW_COUNT
+  };
+
   uvs(uvdim, t) = uvwf(uvdim, t) * scale;
   overc(uvdim, t) = clamp(cast<int>(round(over * (uvs(uvdim, t) - floor(uvs(uvdim, t))))), 0, 7);
   uv(uvdim, t) = cast<int>(round(uvs(uvdim, t)) + grid_size / 2 - gcf_layer_size / 2);
@@ -89,32 +101,29 @@ int main(/* int argc, char **argv */) {
   Func P(gcf);
   gcf(cmplx, suppx, suppy, overx, overy) = gcf_fused(cmplx, suppx, suppy, overx + 8 * overy);
 #endif
-  
+
 #define __MATERIALIZE 1
 #define __CONST_PAD 1
-	
+
 #if __MATERIALIZE
-  overc.bound(uvdim, 0, 2);
-  uv.bound(uvdim, 0, 2);
+  overc.bound(uvdim, 0, _UVW_COUNT);
+  uv.bound(uvdim, 0, _UVW_COUNT);
 
   overc.compute_root();
   uv.compute_root();
 #endif
 
   RDom red(
-      0, gcf_layer_size
+      0, _CPLX_COUNT
+    , 0, gcf_layer_size
     , 0, ts_ch
     , 0, gcf_layer_size
     );
   RVar
-      rgcfx = red.x
-    , rvis  = red.y
-    , rgcfy = red.z
-    ;
-
-  const Expr
-      _REAL = 0
-    , _IMAG = 1
+      rcmplx = red.x
+    , rgcfx = red.y
+    , rvis  = red.z
+    , rgcfy = red.w
     ;
 
   Complex gcfC(
@@ -151,23 +160,38 @@ int main(/* int argc, char **argv */) {
     ;
 
   uvg(
-      _REAL
+      rcmplx
     , U
     , V
-    ) += (visC * gcfC).real
-    ;
-  uvg(
-      _IMAG
-    , U
-    , V
-    ) += (visC * gcfC).imag
+    ) += (visC * gcfC).unpack(rcmplx)
     ;
 
-  uvg.bound(cmplx, 0, 2);
-  uvg.bound(x, 0, grid_size);
-  uvg.bound(y, 0, grid_size);
   Var P(xc);
   uvg.fuse(x, cmplx, xc).vectorize(xc, 4);
+
+  RVar rgcfxc;
+  uvg.update()
+	.allow_race_conditions()
+	.fuse(rgcfx, rcmplx, rgcfxc)
+	.vectorize(rgcfxc, 8).unroll(rgcfxc, 4);
+
+  gcf_fused
+	.set_min(0,0).set_stride(0,1).set_extent(0,_CPLX_COUNT)
+	.set_min(1,0).set_stride(1,_CPLX_COUNT).set_extent(1,max_gcf_size)
+	.set_min(2,0).set_stride(2,_CPLX_COUNT*max_gcf_size).set_extent(2,max_gcf_size)
+	.set_min(3,0).set_stride(3,_CPLX_COUNT*max_gcf_size*max_gcf_size);
+
+  uvwf
+	.set_min(0,0).set_stride(0,1).set_extent(0,_UVW_COUNT)
+	.set_stride(1,_UVW_COUNT);
+
+  vis
+	.set_min(0,0).set_stride(0,1).set_extent(0,_CPLX_COUNT)
+	.set_stride(1,_CPLX_COUNT);
+
+  uvg.output_buffer()
+	.set_min(0,0).set_stride(0,1).set_extent(0,_CPLX_COUNT)
+	.set_min(1,0).set_stride(1,_CPLX_COUNT);
 
   // Var x_outer, y_outer, x_inner, y_inner;
   // uvg.tile(x, y, x_outer, y_outer, x_inner, y_inner, 4, 4);
@@ -178,7 +202,6 @@ int main(/* int argc, char **argv */) {
     , ts_ch
     , uvwf
     , vis
-    , gcf_layer_size
     , gcf_fused
   };
   uvg.compile_to_lowered_stmt("uvg11.html", compile_args, HTML);
@@ -190,5 +213,6 @@ int main(/* int argc, char **argv */) {
     	__HALIDE_ADD_AVX__
       }
     );
+  uvg.compile_to_bitcode("uvg11.bc", compile_args, target);
   uvg.compile_to_file("uvg11_full", compile_args, target);
 }
