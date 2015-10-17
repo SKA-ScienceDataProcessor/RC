@@ -44,7 +44,7 @@ int main(/* int argc, char **argv */) {
   int
       over = 8
     , grid_size = 2048
-    , max_gcf_size = 128
+    , max_gcf_size = 16 // No difference with gcf_layer_size
     , gcf_layer_size = 16
     // FIXME: factor all relevant constants out
     // and share them between this code and cppcycle.cpp
