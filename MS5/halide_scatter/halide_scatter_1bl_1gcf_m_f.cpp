@@ -106,8 +106,9 @@ int main(/* int argc, char **argv */) {
 #define __CONST_PAD 1
 
 #if __MATERIALIZE
-  overc.bound(uvdim, 0, _UVW_COUNT);
-  uv.bound(uvdim, 0, _UVW_COUNT);
+  // Not interested in W here
+  overc.bound(uvdim, 0, _UVW_COUNT-1);
+  uv.bound(uvdim, 0, _UV_COUNT-1);
 
   overc.compute_root();
   uv.compute_root();
