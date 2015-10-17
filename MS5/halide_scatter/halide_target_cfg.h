@@ -8,9 +8,9 @@
 #endif
 
 #ifdef __AVX__
-#define	__HALIDE_ADD_AVX__ , Target::AVX
+#define __HALIDE_ADD_AVX__ , Target::AVX
 #else
-#define	__HALIDE_ADD_AVX__
+#define __HALIDE_ADD_AVX__
 #endif
 
 #endif
