@@ -70,7 +70,7 @@ main = do
                      }
       gcfpar = GCFPar { gcfSize = 3
                       , gcfOver = 8
-                      , gcfFile = "gcf.img"
+                      , gcfFile = "gcf0.dat"
                       }
       config = Config
         { cfgInput  = "test_p00_s00_f00.vis"
