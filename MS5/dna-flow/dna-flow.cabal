@@ -37,9 +37,9 @@ library
                    Flow.Domain,
                    Flow.Vector,
                    Flow.Halide.Types
-  Other-modules: Flow.Internal,
-                 Flow.Halide.BufferT,
-                 Flow.Halide.Marshal
+                   Flow.Internal,
+                   Flow.Halide.BufferT,
+                   Flow.Halide.Marshal
   if flag(cuda)
     build-depends: cuda, cufft
     cpp-options:   -DUSE_CUDA
