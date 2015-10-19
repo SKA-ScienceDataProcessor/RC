@@ -204,7 +204,7 @@ int main(/* int argc, char * argv[] */)
   gridKernel_scatter_halide_full(
       scale
     , wstep
-    , 500 // vd.num_baselines
+    , vd.num_baselines
     , bwvec.data()
     , blSuppvec.data()
     , gridVec.data()
