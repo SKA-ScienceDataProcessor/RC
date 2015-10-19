@@ -1,5 +1,4 @@
 #include "Halide.h"
-#include "halide_target_cfg.h"
 
 #include <utility>
 #include <vector>
@@ -148,13 +147,5 @@ int main(/* int argc, char **argv */) {
     , gcfr, gcfi
   };
   uvg.compile_to_lowered_stmt("uvg11.html", compile_args, HTML);
-
-  Target target(
-      Target::__HALIDE_HOST
-    , Target::X86, 64
-    , { Target::SSE41
-    	__HALIDE_ADD_AVX__
-      }
-    );
-  uvg.compile_to_file("uvg11_full", compile_args, target);
+  uvg.compile_to_file("uvg11_full", compile_args, get_target_from_environment());
 }
