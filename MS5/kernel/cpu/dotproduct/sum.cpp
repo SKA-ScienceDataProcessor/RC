@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
     //sum.update().allow_race_conditions().vectorize(r.x,8);
 
     std::vector<Argument> args = {vec};
-    Target target(Target::OSUnknown, Target::X86, 64, { Target::SSE41, Target::AVX});
+    Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
     compile_module_to_object(sum.compile_to_module(args, "kern_sum", target), argv[1]);
     return 0;
 }
