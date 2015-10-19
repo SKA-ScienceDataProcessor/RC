@@ -21,7 +21,7 @@ const int over2 = over*over;
 const int pad = 2;
 const int gcfGrowth = 16;
 const int gcfMinSize = 16;
-const int gcfMaxSize = 128;
+const int gcfMaxSize = 16;
 const int src_size = over * gcfMaxSize * (over * gcfMaxSize + pad);
 const int gridSize = 2048;
 const int gridPad = 2;
@@ -204,7 +204,7 @@ int main(/* int argc, char * argv[] */)
   gridKernel_scatter_halide_full(
       scale
     , wstep
-    , 500 // vd.num_baselines
+    , vd.num_baselines
     , bwvec.data()
     , blSuppvec.data()
     , gridVec.data()

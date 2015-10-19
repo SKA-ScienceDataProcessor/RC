@@ -113,7 +113,7 @@ int main(/* int argc, char **argv */) {
     , P(x)
     , P(y)
     ;
-  uvg(cmplx, x, y) = cast<double>(0.0f);
+  uvg(cmplx, x, y) = undef<double>();
 
   Expr
       clampedU = clamp(uv(_U, rvis) + rgcfx, 0, grid_size - 1)

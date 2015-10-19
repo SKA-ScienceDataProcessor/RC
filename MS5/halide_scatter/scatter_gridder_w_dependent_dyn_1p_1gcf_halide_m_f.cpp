@@ -50,8 +50,11 @@ void gridKernel_scatter_halide(
       setHalideBuf(__tod(_uvw[bl], const), uvw_buf);
       setHalideBuf(__tod(_vis[bl], const), vis_buf);
       setHalideBuf(__tod(gcf[bl_wp_map[bl].wp], const), gcf_buf);
+      const int supp = 16;
+      /*
       int supp;
       supp = bl_supps[bl];
+       */
       gcf_buf.extent[1] = supp;
       gcf_buf.extent[2] = supp;
       // gcf_buf.stride[1] * gcf_buf.extent[1]
@@ -65,7 +68,7 @@ void gridKernel_scatter_halide(
         , ts_ch
         , &uvw_buf
         , &vis_buf
-        , supp
+        // , supp
         , &gcf_buf
         , &grid_buf
         );

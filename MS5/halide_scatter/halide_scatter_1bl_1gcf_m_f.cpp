@@ -146,7 +146,7 @@ int main(/* int argc, char **argv */) {
   Var P(x)
     , P(y)
     ;
-  uvg(cmplx, x, y) = cast<double>(0.0f);
+  uvg(cmplx, x, y) = undef<double>();
 
   Expr
 #if __CONST_PAD
