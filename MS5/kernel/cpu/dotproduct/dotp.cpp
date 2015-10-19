@@ -19,7 +19,7 @@ int main(int argc, char **argv) {
     dotp.vectorize(x,8);
 
     std::vector<Argument> args = {vec_f, vec_g};
-    Target target(Target::OSUnknown, Target::X86, 64, { Target::SSE41, Target::AVX});
+    Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
     compile_module_to_object(dotp.compile_to_module(args, "kern_dotp", target), argv[1]);
     return 0;
 }
