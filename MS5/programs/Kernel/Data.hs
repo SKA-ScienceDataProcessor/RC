@@ -69,13 +69,17 @@ type PlanRepr = HalideRepr Dim0 Int32 Tag
 planRepr :: PlanRepr
 planRepr = halideRepr dim0
 
-type RawVisRepr = DynHalideRepr Double Vis
+type RawVisRepr = DynHalideRepr Dim1 Double Vis
 rawVisRepr :: DomainHandle Range -> RawVisRepr
-rawVisRepr dh = dynHalideRepr dh
+rawVisRepr = dynHalideRepr (dim1 dimVisFields)
 
-type VisRepr = DynHalideRepr Double Vis
+type VisRepr = DynHalideRepr Dim1 Double Vis
 visRepr :: DomainHandle Range -> VisRepr
-visRepr dh = dynHalideRepr dh
+visRepr = dynHalideRepr (dim1 dimVisFields)
+
+-- | We have 5 visibility fields: Real, imag, u, v and w.
+dimVisFields :: Dim
+dimVisFields = (0, 5)
 
 type GCFsRepr = HalideRepr Dim4 Double GCFs
 gcfsRepr :: GCFPar -> GCFsRepr

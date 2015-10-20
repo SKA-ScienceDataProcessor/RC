@@ -7,6 +7,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 
+-- TODO: Figure out how to lift this, see below.
+{-# LANGUAGE UndecidableInstances #-}
+
 module Flow.Halide
   ( -- * Data representation
     HalideRepr, DynHalideRepr, HalideReprClass(..)
@@ -59,21 +62,22 @@ halideRepr :: dim -> HalideRepr dim val abs
 halideRepr = HalideRepr ReadAccess
 
 -- | One-dimensional Halide array of size given by a domain
-data DynHalideRepr val abs = DynHalideRepr ReprAccess (DomainHandle Range)
+data DynHalideRepr dim val abs = DynHalideRepr ReprAccess dim (DomainHandle Range)
   deriving Typeable
-instance (Typeable val, Typeable abs, HalideScalar val) =>
-         Show (DynHalideRepr val abs) where
-  showsPrec _ (DynHalideRepr _ dim)
+instance (Typeable dim, Typeable val, Typeable abs, HalideScalar val, Show dim) =>
+         Show (DynHalideRepr dim val abs) where
+  showsPrec _ (DynHalideRepr _ dim dom)
     = shows (typeOf (undefined :: val)) . showString " halide vector "
-    . shows dim . showString " [" . shows (typeOf (undefined :: abs)) . showString "]"
-instance (Typeable val, Typeable abs, HalideScalar val) =>
-         DataRepr (DynHalideRepr val abs) where
-  type ReprType (DynHalideRepr val abs) = abs
+    . shows dim . showString ", " . shows dom
+    . showString " [" . shows (typeOf (undefined :: abs)) . showString "]"
+instance (Typeable dim, Typeable val, Typeable abs, HalideScalar val, Show dim, Eq dim) =>
+         DataRepr (DynHalideRepr dim val abs) where
+  type ReprType (DynHalideRepr dim val abs) = abs
   reprNop _ = False
-  reprAccess (DynHalideRepr acc _) = acc
-  reprCompatible (DynHalideRepr _ d0) (DynHalideRepr _ d1)
-    = d0 `dhIsParent` d1
-  reprDomain (DynHalideRepr _ d) = [dhId d]
+  reprAccess (DynHalideRepr acc _ _) = acc
+  reprDomain (DynHalideRepr _ _ d) = [dhId d]
+  reprCompatible (DynHalideRepr _ ex0 d0) (DynHalideRepr _ ex1 d1)
+    = ex0 == ex1 && d0 `dhIsParent` d1
   reprMerge _ dvs [RangeDomain (Range low high)] = do
     out <- allocCVector (high - low) :: IO (Vector val)
     -- Populate vector. The caller should have made sure that the
@@ -87,7 +91,7 @@ instance (Typeable val, Typeable abs, HalideScalar val) =>
 
 -- | Constructor function for "DynHalideRepr". Returns a data
 -- representation with "ReadAccess".
-dynHalideRepr :: DomainHandle Range -> DynHalideRepr val abs
+dynHalideRepr :: dim -> DomainHandle Range -> DynHalideRepr dim val abs
 dynHalideRepr = DynHalideRepr ReadAccess
 
 type family KernelParams (reprs :: [*]) :: [*]
@@ -143,20 +147,22 @@ instance ( Typeable dim, MarshalArray dim, Show dim, Eq dim
   halrCall      r _ fun ds = call fun (halrDim r ds)
   halrCallWrite _ _ fun    = callWrite fun
 
-instance ( Typeable val, HalideScalar val
+-- Here is where we need undecideable instance, regrettably
+instance ( Typeable dim, MarshalArray (Dim :. dim), Show dim, Eq dim
+         , Typeable val, HalideScalar val
          , Typeable abs
          ) =>
-         HalideReprClass (DynHalideRepr val abs) where
-  type HalrDim (DynHalideRepr val abs) = Dim1
-  type HalrVal (DynHalideRepr val abs) = val
-  type HalideFun xs (DynHalideRepr val abs)
-    = HalideKernel (KernelParams xs) (Array Dim1 val)
-  halrDim _ [RangeDomain (Range low high)]
-    = dim1 (fromIntegral low, fromIntegral $ high - low)
+         HalideReprClass (DynHalideRepr dim val abs) where
+  type HalrDim (DynHalideRepr dim val abs) = Dim :. dim
+  type HalrVal (DynHalideRepr dim val abs) = val
+  type HalideFun xs (DynHalideRepr dim val abs)
+    = HalideKernel (KernelParams xs) (Array (Dim :. dim) val)
+  halrDim (DynHalideRepr _ dim _) [RangeDomain (Range low high)]
+    = (fromIntegral low, fromIntegral $ high - low) :. dim
   halrDim r doms
     = error $ "halrDim: Unexpected number of domains for " ++ show r ++ ": " ++ show (length doms)
-  halrWrite (DynHalideRepr _ dh)
-    = DynHalideRepr WriteAccess dh
+  halrWrite (DynHalideRepr _ dim dh)
+    = DynHalideRepr WriteAccess dim dh
   halrCall r _ fun doms
     = call fun (halrDim r doms)
   halrCallWrite _ _ fun

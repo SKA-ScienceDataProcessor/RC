@@ -31,9 +31,9 @@ ddp :: Flow Sum
 ddp = a $ pp f g
 
 -- Vector representation
-type VecRepr = DynHalideRepr Float Vec
+type VecRepr = DynHalideRepr Dim0 Float Vec
 vecRepr :: DomainHandle Range -> VecRepr
-vecRepr = dynHalideRepr
+vecRepr = dynHalideRepr dim0
 type SumRepr = HalideRepr Z Float Sum
 sumRepr :: SumRepr
 sumRepr = halideRepr Z
