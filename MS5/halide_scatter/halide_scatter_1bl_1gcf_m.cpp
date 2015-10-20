@@ -5,6 +5,13 @@
 
 using namespace Halide;
 
+const Expr
+    _REAL = 0
+  , _IMAG = 1
+  ;
+		
+const int _CMPLX_SIZE = 2;
+
 struct Complex {
   Expr real, imag;
   Complex(Expr r, Expr i) : real(r), imag(i) {}
@@ -17,6 +24,7 @@ struct Complex {
       , real * other.imag + imag * other.real
       };
   }
+  Expr unpack(Expr c) { return select(c == _REAL, real, imag); }
 };
 
 /* Not need it ATM
@@ -82,25 +90,21 @@ int main(/* int argc, char **argv */) {
   gcfoff.compute_root();
 
   RDom red(
-      0, gcf_layer_size
+      0, _CMPLX_SIZE
+    , 0, gcf_layer_size
     , 0, ts_ch
     , 0, gcf_layer_size
     );
-  RVar
-      rgcfx = red.x
-    , rvis  = red.y
-    , rgcfy = red.z
-    ;
-
-  const Expr
-      _REAL = 0
-    , _IMAG = 1
-    ;
+  RVar P(rcmplx), P(rgcfx), P(rvis), P(rgcfy);
+  rcmplx = red.x;
+  rgcfx  = red.y;
+  rvis   = red.z;
+  rgcfy  = red.w;
 
   Expr gcf_pix_off = gcfoff(rvis) + rgcfx + rgcfy * gcf_layer_size; 
   Complex gcfC(
-      gcf(0, gcf_pix_off)
-    , gcf(1, gcf_pix_off)
+      gcf(_REAL, gcf_pix_off)
+    , gcf(_IMAG, gcf_pix_off)
     );
 
   Complex visC(
@@ -121,23 +125,18 @@ int main(/* int argc, char **argv */) {
     ;
 
   uvg(
-      _REAL
-    , clampedU
-    , clampedV
-    ) += (visC * gcfC).real
-    ;
-  uvg(
-      _IMAG
-    , clampedU
-    , clampedV
-    ) += (visC * gcfC).imag
+      rcmplx
+    , _U
+    , _V
+    ) += (visC * gcfC).unpack(rcmplx)
     ;
 
-  uvg.bound(cmplx, 0, 2);
+  uvg.bound(cmplx, 0, _CMPLX_SIZE);
   uvg.bound(x, 0, grid_size);
   uvg.bound(y, 0, grid_size);
-  Var P(xc);
-  uvg.fuse(x, cmplx, xc).vectorize(xc, 4);
+
+  uvg.update()
+	.vectorize(rcmplx, _CMPLX_SIZE);
 
   // Var x_outer, y_outer, x_inner, y_inner;
   // uvg.tile(x, y, x_outer, y_outer, x_inner, y_inner, 4, 4);
