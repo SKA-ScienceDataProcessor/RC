@@ -53,4 +53,7 @@ executable gridding
   build-depends:
     base         >= 4.6,
     dna-flow     >= 0.5,
-    oskar        >= 0.1
+    oskar        >= 0.1,
+    fixed-vector-hetero
+  x-halide-sources:    kernel/cpu/gridding/scatter.cpp
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lstdc++ -lHalide

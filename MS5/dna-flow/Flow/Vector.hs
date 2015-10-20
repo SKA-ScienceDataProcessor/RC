@@ -25,6 +25,7 @@ module Flow.Vector
 #endif
   , unsafeToByteString, unsafeToByteString'
   , dumpVector, dumpVector'
+  , readCVector
   ) where
 
 import Control.Monad (when, forM_)
@@ -48,6 +49,8 @@ import Foreign.Storable
 
 import GHC.Exts     (Ptr(..))
 import GHC.Generics (Generic)
+import qualified GHC.IO.FD as FD
+import qualified GHC.IO.Device as Dev
 
 import System.IO
 
@@ -71,17 +74,17 @@ instance Binary (Vector a) where
 
 -- | Returns the number of elements a vector has. Note that this will
 -- return @0@ for the result of "offsetVector".
-vectorSize :: Vector a -> Int
-vectorSize (CVector n _) = n
-#ifdef USE_CUDA
-vectorSize (HostVector n _) = n
-vectorSize (DeviceVector n _) = n
-#endif
+vectorSize :: forall a. Storable a => Vector a -> Int
+vectorSize v = (vectorByteSize v) `div` sizeOf (undefined :: a)
 
 -- | Returns the size of the vector in bytes. Note that this will
 -- return @0@ for the result of "offsetVector".
-vectorByteSize :: forall a. Storable a => Vector a -> Int
-vectorByteSize v = (vectorSize v) * sizeOf (undefined :: a)
+vectorByteSize :: Vector a -> Int
+vectorByteSize (CVector n _) = n
+#ifdef USE_CUDA
+vectorByteSize (HostVector n _) = n
+vectorByteSize (DeviceVector n _) = n
+#endif
 
 -- | A vector carrying no data, pointing nowhere
 nullVector :: Vector a
@@ -147,20 +150,20 @@ unmakeVector v off len = do
 allocCVector :: forall a. Storable a => Int -> IO (Vector a)
 #ifdef _WIN32
 -- On Windows we can use _aligned_malloc directly
-allocCVector n = fmap (CVector n) $ c_aligned_malloc vectorAlign vs
-  where vs = fromIntegral $ n * sizeOf (undefined :: a)
+allocCVector n = fmap (CVector vs) $ c_aligned_malloc vectorAlign (fromIntegral vs)
+  where vs = n * sizeOf (undefined :: a)
 foreign import ccall unsafe "_aligned_malloc"
     c_aligned_malloc :: CUInt -> CUInt -> IO (Ptr a)
 #else
 -- The POSIX version is slightly less nice because just "memalign" is
 -- apparently obsolete.
 allocCVector n = alloca $ \pp -> do
-  let vs = fromIntegral $ n * sizeOf (undefined :: a)
-  ret <- c_posix_memalign pp vectorAlign vs
+  let vs = n * sizeOf (undefined :: a)
+  ret <- c_posix_memalign pp vectorAlign (fromIntegral vs)
   when (ret /= 0) $
     ioError $ errnoToIOError "allocCVector" (Errno ret) Nothing Nothing
   p <- peek pp
-  return $ CVector n p
+  return $ CVector vs p
 foreign import ccall unsafe "posix_memalign"
     c_posix_memalign :: Ptr (Ptr a) -> CUInt -> CUInt -> IO CInt
 #endif
@@ -168,12 +171,12 @@ foreign import ccall unsafe "posix_memalign"
 #ifdef USE_CUDA
 -- | Allocate a CUDA host vector in pinned memory with the given
 -- number of elements.
-allocHostVector :: Storable a => Int -> IO (Vector a)
-allocHostVector n = fmap (HostVector n) $ mallocHostArray [] n
+allocHostVector :: forall a. Storable a => Int -> IO (Vector a)
+allocHostVector n = fmap (HostVector (n * sizeOf (undefined :: a))) $ mallocHostArray [] n
 
 -- | Allocate a CUDA device array with the given number of elements
-allocDeviceVector :: Storable a => Int -> IO (Vector a)
-allocDeviceVector n = fmap (DeviceVector n) $ CUDA.mallocArray n
+allocDeviceVector :: forall a. Storable a => Int -> IO (Vector a)
+allocDeviceVector n = fmap (DeviceVector (n * sizeOf (undefined :: a))) $ CUDA.mallocArray n
 #endif
 
 -- | Free data associated with the vector. It is generally required to
@@ -234,34 +237,34 @@ dupCVector v = do
 #ifdef USE_CUDA
 -- | Create a copy of the given vector as a host vector. Leaves the
 -- original vector intact.
-dupHostVector :: forall a. Storable a => Vector a -> IO (Vector a)
-dupHostVector v@(CVector n p) = do
-  v'@(HostVector _ p') <- allocHostVector n
+dupHostVector :: Storable a => Vector a -> IO (Vector a)
+dupHostVector v@(CVector _ p) = do
+  v'@(HostVector _ p') <- allocHostVector (vectorSize v)
   copyBytes (useHostPtr p') p (vectorByteSize v)
   return v'
-dupHostVector v@(HostVector n p) = do
-  v'@(HostVector _ p') <- allocHostVector n
+dupHostVector v@(HostVector _ p) = do
+  v'@(HostVector _ p') <- allocHostVector (vectorSize v)
   copyBytes (useHostPtr p') (useHostPtr p) (vectorByteSize v)
   return v'
-dupHostVector (DeviceVector n p) = do
-  v'@(HostVector _ p') <- allocHostVector n
-  peekArray n p (useHostPtr p')
+dupHostVector v@(DeviceVector _ p) = do
+  v'@(HostVector _ p') <- allocHostVector (vectorSize v)
+  peekArray (vectorSize v) p (useHostPtr p')
   return v'
 
 -- | Create a copy of the given vector as a device vector. Leaves the
 -- original vector intact.
-dupDeviceVector :: forall a. Storable a => Vector a -> IO (Vector a)
-dupDeviceVector (CVector n p) = do
-  v'@(DeviceVector _ p') <- allocDeviceVector n
-  pokeArray n p p'
+dupDeviceVector :: Storable a => Vector a -> IO (Vector a)
+dupDeviceVector v@(CVector _ p) = do
+  v'@(DeviceVector _ p') <- allocDeviceVector (vectorSize v)
+  pokeArray (vectorSize v) p p'
   return v'
-dupDeviceVector (HostVector n p) = do
-  v'@(DeviceVector _ p') <- allocDeviceVector n
-  pokeArray n (useHostPtr p) p'
+dupDeviceVector v@(HostVector _ p) = do
+  v'@(DeviceVector _ p') <- allocDeviceVector (vectorSize v)
+  pokeArray (vectorSize v) (useHostPtr p) p'
   return v'
-dupDeviceVector (DeviceVector n p) = do
-  v'@(DeviceVector _ p') <- allocDeviceVector n
-  copyArray n p p'
+dupDeviceVector v@(DeviceVector _ p) = do
+  v'@(DeviceVector _ p') <- allocDeviceVector (vectorSize v)
+  copyArray (vectorSize v) p p'
   return v'
 #endif
 
@@ -297,3 +300,15 @@ dumpVector' :: Storable a => Vector a -> Int -> Int -> FilePath ->  IO ()
 dumpVector' v off size file = do
   withFile file WriteMode $ \h ->
     hPut h =<< unsafeToByteString' v off size
+
+-- | Read vector from a file (raw)
+readCVector :: Storable a => FilePath -> Int -> IO (Vector a)
+readCVector file n = do
+  v@(CVector _ p) <- allocCVector n
+  (fd,_) <- FD.openFile file ReadMode False
+  bytes <- Dev.read fd (castPtr p) (vectorByteSize v)
+  when (bytes /= 0 && bytes /= vectorByteSize v) $
+    fail $ "readCVector: Expected to read " ++ show (vectorByteSize v) ++
+           " bytes, but only received " ++ show bytes ++ "!"
+  Dev.close fd
+  return v

@@ -10,6 +10,7 @@
 #include "fft_dyn_padded.h"
 #include "OskarBinReader.h"
 #include "stats_n_utils.h"
+#include "aligned_malloc.h"
 
 #include "scatter_gridder_w_dependent_dyn_1p_1gcf_halide.h"
 
@@ -41,6 +42,19 @@ void writeImgToDisk(const char * fname, T * out){
     fwrite(out, sizeof(T), gridSize, f);
   fclose(f);
 }
+
+template <typename T>
+void writeGcfToDisk(const char * fname, T * gcf, int supp){
+  FILE * f = fopen(fname, "wb");
+  if (f == NULL) {
+    printf("Can't open %s\n", fname);
+    return;
+  }
+  printf("Writing %s ...\n", fname);
+  fwrite(gcf, sizeof(T), over2*supp*supp, f);
+  fclose(f);
+}
+
 
 // Normalization is done inplace!
 inline void normalizeCPU(
@@ -199,7 +213,7 @@ int main(/* int argc, char * argv[] */)
 
   clock_t ti = clock();
 
-  cdv gridVec(fullSize);
+  complexd *grid = alignedMallocArray<complexd>(fullSize, 32);
   printf("Start gridding!\n");
   gridKernel_scatter_halide_full(
       scale
@@ -207,7 +221,7 @@ int main(/* int argc, char * argv[] */)
     , vd.num_baselines
     , bwvec.data()
     , blSuppvec.data()
-    , gridVec.data()
+    , grid
     , const_cast<const complexd **>(gcfTable.data()+maxWPlane*over2) // Center at 0
     , const_cast<const Double3 **>(uvwpvec.data())
     , const_cast<const complexd **>(pol0pvec.data())
@@ -218,12 +232,14 @@ int main(/* int argc, char * argv[] */)
 
   printf("%d\nStart normalizing!\n", clock() - ti);
   normalizeCPU(
-      gridVec.data()
+      grid
     , gridPitch
     , gridSize
     );
 
-  writeImgToDisk("grid.dat", gridVec.data());
+  writeImgToDisk("grid.dat", grid);
+
+  _aligned_free(grid);
 
   return 0;
 }

@@ -57,7 +57,7 @@ oskarReader dh file freq pol = rangeKernel0 "oskar reader" (rawVisRepr dh) $
   return visVector
 
 sorter :: DomainHandle Range -> Flow Vis -> Kernel Vis
-sorter dh = rangeKernel1 "sorter" (rawVisRepr dh) (visRepr dh) $ \_ _ v ->
+sorter dh = kernel "sorter" (rawVisRepr dh :. Z) (visRepr dh) $ \[(v,_)] _ ->
 
   -- TODO: We need to make a copy here to keep it from crashing. This
   -- will get resolved once we have implemented a way for kernels to
@@ -65,11 +65,17 @@ sorter dh = rangeKernel1 "sorter" (rawVisRepr dh) (visRepr dh) $ \_ _ v ->
   castVector <$> dupCVector (castVector v :: Vector Double)
 
 gcfKernel :: GCFPar -> DomainHandle Range -> Flow Tag -> Flow Vis -> Kernel GCFs
-gcfKernel gcfp dh = kernel "gcfs" (planRepr :. visRepr dh :. Z) (gcfsRepr gcfp) $ \_ _ -> do
+gcfKernel gcfp dh = kernel "gcfs" (planRepr :. visRepr dh :. Z) (gcfsRepr gcfp) $ \_ doms -> do
 
-  return nullVector
-
+  -- Simply read it from the file
+  let (_, wdt) :. (_, hgt) :. Z = halrDim (gcfsRepr gcfp) doms
+  v <- readCVector (gcfFile gcfp) (fromIntegral $ wdt * hgt) :: IO (Vector Double)
+  return (castVector v)
 
 imageWriter :: GridPar -> FilePath -> Flow Image -> Kernel Image
-imageWriter gp _ = kernel "image writer" (imageRepr gp :. Z) (imageRepr gp) $ \_ _ ->
+imageWriter gp file = kernel "image writer" (imageRepr gp :. Z) (imageRepr gp) $ \[(v,doms)] _ -> do
+
+  let (_, wdt) :. (_, hgt) :. Z = halrDim (imageRepr gp) doms
+      v' = castVector v :: Vector Double
+  dumpVector' v' 0 (fromIntegral $ wdt * hgt) file
   return nullVector
