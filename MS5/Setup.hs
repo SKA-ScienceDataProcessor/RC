@@ -146,7 +146,10 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
         when (srcMoreRecent || cabalMoreRecent) io
 
   -- Force rebuilding the library/executable by deleting it
-  let invalidate = removeFile $ buildDir </> nameReal
+  let invalidate = do
+        let path = buildDir </> nameReal
+        exists <- doesFileExist path
+        when exists $ removeFile path
 
   -- Build CUBINs
   cubins <- case lookup "x-cuda-sources-cubin" (customFieldsBI bi) of
