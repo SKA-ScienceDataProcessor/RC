@@ -23,7 +23,7 @@ array<buffer_t, n> mkInterleavedHalideBufs(int32_t size = 0){
   return res;
 }
 
-template <int n, typename T>
+template <size_t n, typename T>
 inline
 void setInterleavedHalideBufs(const T * v, array<buffer_t, n> & bufs){
   for(int i=0; i<n; i++) bufs[i].host= tohh(v+i);
