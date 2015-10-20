@@ -8,6 +8,7 @@ import Control.Applicative
 import Control.Monad
 
 import Distribution.Simple
+import Distribution.Simple.BuildPaths (exeExtension)
 import Distribution.Simple.Configure (configure)
 import Distribution.Simple.Setup
 import Distribution.Simple.LocalBuildInfo
@@ -31,6 +32,7 @@ import Data.Char
 import Data.List ( intersect )
 import Debug.Trace
 
+import System.Directory
 import System.Process
 import System.FilePath
 
@@ -94,7 +96,7 @@ buildCuda doBuild package lbi verbose = do
   -- build information accordingly.
   (library', lib_cubins) <- case library package of
     Just lib -> do (bi', cubins) <- cudaBuildInfo doBuild lbi verbose
-                                                  (buildDir lbi) (libBuildInfo lib)
+                                                  (buildDir lbi) "" (libBuildInfo lib)
                    return (Just lib { libBuildInfo = bi' }, cubins)
     Nothing  -> return (Nothing, [])
 
@@ -105,8 +107,15 @@ buildCuda doBuild package lbi verbose = do
                       (null exesToBuild || exeName e `elem` exesToBuild)
 
   exe_cubinss <- forM (filter shouldBuild $ executables package) $ \exe -> do
+
+    -- Build directory & real exe name, copied from Distribution/Simple/GHC.hs.
+    -- Would be brilliant if there was a more direct way to get this...
     let dir = buildDir lbi </> exeName exe
-    (bi', cubins) <- cudaBuildInfo doBuild lbi verbose dir (buildInfo exe)
+        exeNameReal = exeName exe <.> (if takeExtension (exeName exe) /= ('.':exeExtension)
+                                       then exeExtension
+                                       else "")
+
+    (bi', cubins) <- cudaBuildInfo doBuild lbi verbose dir exeNameReal (buildInfo exe)
     return (exe { buildInfo = bi' }, cubins)
   let (executables', cubinss) = unzip exe_cubinss
 
@@ -115,9 +124,9 @@ buildCuda doBuild package lbi verbose = do
                   , executables = executables' },
           lib_cubins ++ concat cubinss)
 
-cudaBuildInfo :: Bool -> LocalBuildInfo -> Verbosity -> FilePath -> BuildInfo
+cudaBuildInfo :: Bool -> LocalBuildInfo -> Verbosity -> FilePath -> FilePath -> BuildInfo
               -> IO (BuildInfo, [FilePath])
-cudaBuildInfo doBuild lbi verbose buildDir bi = do
+cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
 
   -- Get CUDA command line options
   let parseOpt rp = map fst . filter (all isSpace . snd) . readP_to_S rp
@@ -136,6 +145,9 @@ cudaBuildInfo doBuild lbi verbose buildDir bi = do
         cabalMoreRecent <- maybe (return False) (flip moreRecentFile out)  (pkgDescrFile lbi)
         when (srcMoreRecent || cabalMoreRecent) io
 
+  -- Force rebuilding the library/executable by deleting it
+  let invalidate = removeFile $ buildDir </> nameReal
+
   -- Build CUBINs
   cubins <- case lookup "x-cuda-sources-cubin" (customFieldsBI bi) of
     Nothing          -> return []
@@ -148,6 +160,7 @@ cudaBuildInfo doBuild lbi verbose buildDir bi = do
        when doBuild $ forM_ (zip cudaSources outputFiles) $ \(src, out) ->
            checkRebuild src out $ do
                putStrLn $ "Building CUDA source " ++ src ++ "..."
+               invalidate
                runProgram verbose nvcc (cudaOpts ++ ["--cubin", src, "-o", out])
        return outputFiles
 
@@ -163,10 +176,12 @@ cudaBuildInfo doBuild lbi verbose buildDir bi = do
        when doBuild $ forM_ (zip cudaSources outputFiles) $ \(src, out) -> 
            checkRebuild src out $ do
                putStrLn $ "Building CUDA source " ++ src ++ "..."
+               invalidate
                runProgram verbose nvcc (cudaOpts ++ ["-c", src, "-o", out])
 
        -- Now for the hacky part: Get the linker to actually link
-       -- this. I am 99% sure that this is the wrong way.
+       -- this. I am 99% sure that this is the wrong way. In fact, it
+       -- will fail to pick up the object file for ".a" libraries.
        return  bi { ldOptions = ldOptions bi ++ outputFiles }
 
   -- Finally build Halide object files
@@ -185,6 +200,7 @@ cudaBuildInfo doBuild lbi verbose buildDir bi = do
        when doBuild $ forM_ (zip3 halideSources genFiles outputFiles) $ \(src, gen, out) ->
            checkRebuild src out $ do
                putStrLn $ "Building Halide source " ++ src ++ "..."
+               invalidate
                runProgram verbose gcc $ concat
                  [ halideOpts
                  , map ("-I"++) (PD.includeDirs bi)
