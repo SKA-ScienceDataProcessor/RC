@@ -17,6 +17,7 @@ module Flow.Kernel
   , HalideRepr(..), DynHalideRepr(..), HalideReprClass(..)
   , Dim0, Dim1, Dim2, dim0, dim1, dim2
   , halideKernel0, halideKernel1, halideKernel2, halideKernel3
+  , halideKernel1Write
   , halideBind, HalideBind
   -- * reexports (for FFI)
   , CInt(..), HalideKernel(..)
@@ -190,6 +191,10 @@ class (DataRepr r, HalideScalar (HalrVal r), MarshalArray (HalrDim r)) =>
            => r -> Proxy xs
            -> HalideFun xs r -> [Domain]
            -> Fn (KernelParams xs) (IO (HalrParam r))
+  halrCallWrite :: forall xs. MarshalParams (KernelParams xs)
+                => r -> Proxy xs
+                -> HalideFun xs r
+                -> Fn (KernelParams xs) (HalrParam r -> IO (HalrParam r))
 
 type HalrParam r = Array (HalrDim r) (HalrVal r)
 
@@ -203,7 +208,8 @@ instance ( Typeable dim, MarshalArray dim, Show dim, Eq dim
   type HalideFun xs (HalideRepr dim val abs)
     = HalideKernel (KernelParams xs) (Array dim val)
   halrDim (HalideRepr d) _ = d
-  halrCall r _ fun ds = call fun (halrDim r ds)
+  halrCall      r _ fun ds = call fun (halrDim r ds)
+  halrCallWrite _ _ fun    = callWrite fun
 
 instance ( Typeable val, HalideScalar val
          , Typeable abs
@@ -219,6 +225,8 @@ instance ( Typeable val, HalideScalar val
     = error $ "halrDim: Unexpected number of domains for " ++ show r ++ ": " ++ show (length doms)
   halrCall r _ fun doms
     = call fun (halrDim r doms)
+  halrCallWrite _ _ fun
+    = callWrite fun
 
 halideKernel0 :: HalideReprClass rr
               => String
@@ -268,3 +276,20 @@ halideKernel3 name rep0 rep1 rep2 repR code = kernel name (rep0 :. rep1 :. rep2 
                           (Array (halrDim rep2 d2) (castVector v2))
          return $ castVector $ arrayBuffer vecR
         code' _ _ = fail "halideKernel3: Received wrong number of input buffers!"
+
+halideKernel1Write
+  :: forall rr r0. (HalideReprClass rr, HalideReprClass r0)
+  => String
+  -> r0 -> rr
+  -> HalideFun '[r0] rr
+  -> Flow (ReprType r0) -> Flow (ReprType rr) -> Kernel (ReprType rr)
+halideKernel1Write name rep0 repR code = kernel name (rep0 :. repR :. Z) repR code'
+  where code' [(v0,d0), (v1,d1)] ds = do
+         -- Should hold by construction.
+         when (ds /= d1) $
+           fail $ "halideKernel1Write: Domain mismatch between parameter and return value!"
+         vecR <- halrCallWrite repR (Proxy :: Proxy '[r0]) code
+                               (Array (halrDim rep0 d0) (castVector v0))
+                               (Array (halrDim repR d1) (castVector v1))
+         return $ castVector $ arrayBuffer vecR
+        code' _ _ = fail "halideKernel2: Received wrong number of input buffers!"

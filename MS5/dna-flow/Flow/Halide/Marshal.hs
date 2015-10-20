@@ -12,6 +12,7 @@
 module Flow.Halide.Marshal (
     -- * High level API
     call
+  , callWrite
   , eraseTypes
   , arr2scalar
   , scalar2arr
@@ -52,8 +53,19 @@ call kern size
   where
     go act = do
       cont <- act
-      marshalResult cont size
+      marshalNewResult cont size
 
+-- | Call halide kernel, initialising the output buffer with data from the
+-- last given parameter.
+callWrite :: forall xs a. (MarshalParams xs, MarshalResult a)
+          => HalideKernel xs a -- ^ Kernel to call
+          -> Fn xs (a -> IO a)
+callWrite kern
+  = unFun (go <$> marshalParams (unwrapK kern) :: Fun xs (a -> IO a))
+  where
+    go act ret = do
+      cont <- act
+      marshalResult cont ret
 
 eraseTypes
   :: forall xs a. (MarshalParams xs, MarshalResult a)
@@ -121,22 +133,26 @@ unwrapScalarArray _ = Nothing
 
 -- | Type class for allocating buffers for results of Halide kernels
 class MarshalResult a where
-  marshalResult :: (Ptr BufferT -> IO CInt) -> Extent a -> IO a
-  wrapResult    :: a -> Box
-  unwrapExtent  :: p a -> Box -> Maybe (Extent a)
+  marshalNewResult :: (Ptr BufferT -> IO CInt) -> Extent a -> IO a
+  marshalResult    :: (Ptr BufferT -> IO CInt) -> a -> IO a
+  wrapResult       :: a -> Box
+  unwrapExtent     :: p a -> Box -> Maybe (Extent a)
 
 instance HalideScalar a => MarshalResult (Scalar a) where
-  marshalResult cont () = do
+  marshalNewResult cont () = do
     (a,n) <- withScalarResult cont
     when (n /= 0) $ error "Could not call Halide kernel!"
     return a
+  marshalResult cont _ = marshalNewResult cont ()
   wrapResult (Scalar a) = Number $ wrapScalar a
   unwrapExtent _ Unit = Just ()
   unwrapExtent _ _    = Nothing
 
 instance (HalideScalar a, MarshalArray dim) => MarshalResult (Array dim a) where
-  marshalResult cont dim = do
+  marshalNewResult cont dim = do
     arr <- allocArray dim
+    marshalResult cont arr
+  marshalResult cont arr = do
     buf <- allocBufferT  arr
     n   <- withBufferT buf $ \pbuf ->
       cont pbuf
