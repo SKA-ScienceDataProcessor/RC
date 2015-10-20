@@ -299,7 +299,7 @@ instance MarshalArray Dim1 where
   isScalar _ = NotScalar
 
 instance MarshalArray Dim2 where
-  allocBufferT (Array ((off,size) :. (off1, size1) :. Z) arr) = do
+  allocBufferT (Array ((off1,size1) :. (off, size) :. Z) arr) = do
     buf <- newBufferT
     setElemSize buf $ sizeOfVal arr
     setBufferStride  buf    1  size 0 0
@@ -316,7 +316,7 @@ instance MarshalArray Dim2 where
   isScalar _ = NotScalar
 
 instance MarshalArray Dim3 where
-  allocBufferT (Array ((off,size) :. (off1, size1) :. (off2, size2) :. Z) arr) = do
+  allocBufferT (Array ((off2,size2) :. (off1, size1) :. (off, size) :. Z) arr) = do
     buf <- newBufferT
     setElemSize buf $ sizeOfVal arr
     setBufferStride  buf    1  size (size*size1) 0
@@ -334,7 +334,7 @@ instance MarshalArray Dim3 where
   isScalar _ = NotScalar
 
 instance MarshalArray Dim4 where
-  allocBufferT (Array ((off,size) :. (off1, size1) :. (off2, size2) :. (off3, size3) :. Z) arr) = do
+  allocBufferT (Array ((off3,size3) :. (off2, size2) :. (off1, size1) :. (off, size) :. Z) arr) = do
     buf <- newBufferT
     setElemSize buf $ sizeOfVal arr
     setBufferStride  buf    1  size (size*size1) (size*size1*size2)

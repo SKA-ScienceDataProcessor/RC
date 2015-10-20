@@ -50,11 +50,11 @@ deriving instance Typeable GCFs
 
 type UVGRepr = HalideRepr Dim3 Double UVGrid
 uvgRepr :: GridPar -> UVGRepr
-uvgRepr gp = halideRepr $ dimCpx :. dimX gp :. dimY gp :. Z
+uvgRepr gp = halideRepr $ dimY gp :. dimX gp :. dimCpx :. Z
 
 type ImageRepr = HalideRepr Dim2 Double Image
 imageRepr :: GridPar -> ImageRepr
-imageRepr gp = halideRepr $ dimX gp :. dimY gp :. Z
+imageRepr gp = halideRepr $ dimY gp :. dimX gp :. Z
 
 dimX :: GridPar -> Dim
 dimX gp = (0, fromIntegral $ gridWidth gp)
@@ -83,6 +83,6 @@ dimVisFields = (0, 5)
 
 type GCFsRepr = HalideRepr Dim4 Double GCFs
 gcfsRepr :: GCFPar -> GCFsRepr
-gcfsRepr gcfp = halideRepr $ dimCpx :. dimSize :. dimSize :. dimVis :. Z
-  where dimVis = (0, fromIntegral $ gcfOver gcfp * gcfOver gcfp)
+gcfsRepr gcfp = halideRepr $ dimOver :. dimSize :. dimSize :. dimCpx :. Z
+  where dimOver = (0, fromIntegral $ gcfOver gcfp * gcfOver gcfp)
         dimSize = (0, fromIntegral $ gcfSize gcfp)
