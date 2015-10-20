@@ -12,6 +12,7 @@
 module Flow.Halide.Marshal (
     -- * High level API
     call
+  , callWrite
   , eraseTypes
   , arr2scalar
   , scalar2arr
@@ -52,8 +53,19 @@ call kern size
   where
     go act = do
       cont <- act
-      marshalResult cont size
+      marshalNewResult cont size
 
+-- | Call halide kernel, initialising the output buffer with data from the
+-- last given parameter.
+callWrite :: forall xs a. (MarshalParams xs, MarshalResult a)
+          => HalideKernel xs a -- ^ Kernel to call
+          -> Fn xs (a -> IO a)
+callWrite kern
+  = unFun (go <$> marshalParams (unwrapK kern) :: Fun xs (a -> IO a))
+  where
+    go act ret = do
+      cont <- act
+      marshalResult cont ret
 
 eraseTypes
   :: forall xs a. (MarshalParams xs, MarshalResult a)
@@ -121,22 +133,26 @@ unwrapScalarArray _ = Nothing
 
 -- | Type class for allocating buffers for results of Halide kernels
 class MarshalResult a where
-  marshalResult :: (Ptr BufferT -> IO CInt) -> Extent a -> IO a
-  wrapResult    :: a -> Box
-  unwrapExtent  :: p a -> Box -> Maybe (Extent a)
+  marshalNewResult :: (Ptr BufferT -> IO CInt) -> Extent a -> IO a
+  marshalResult    :: (Ptr BufferT -> IO CInt) -> a -> IO a
+  wrapResult       :: a -> Box
+  unwrapExtent     :: p a -> Box -> Maybe (Extent a)
 
 instance HalideScalar a => MarshalResult (Scalar a) where
-  marshalResult cont () = do
+  marshalNewResult cont () = do
     (a,n) <- withScalarResult cont
     when (n /= 0) $ error "Could not call Halide kernel!"
     return a
+  marshalResult cont _ = marshalNewResult cont ()
   wrapResult (Scalar a) = Number $ wrapScalar a
   unwrapExtent _ Unit = Just ()
   unwrapExtent _ _    = Nothing
 
 instance (HalideScalar a, MarshalArray dim) => MarshalResult (Array dim a) where
-  marshalResult cont dim = do
+  marshalNewResult cont dim = do
     arr <- allocArray dim
+    marshalResult cont arr
+  marshalResult cont arr = do
     buf <- allocBufferT  arr
     n   <- withBufferT buf $ \pbuf ->
       cont pbuf
@@ -248,7 +264,7 @@ withScalarResult action = do
     a <- peek ptr
     return (Scalar a, r)
 
-instance MarshalArray (Z) where
+instance MarshalArray Dim0 where
   allocBufferT (Array Z arr) = do
     buf <- newBufferT
     setElemSize buf $ sizeOfVal arr
@@ -265,7 +281,7 @@ instance MarshalArray (Z) where
   wrapDimensions Z = []
   isScalar _ = IsScalar
 
-instance MarshalArray ((Int32,Int32) :. Z) where
+instance MarshalArray Dim1 where
   allocBufferT (Array ((off,size) :. Z) arr) = do
     buf <- newBufferT
     setElemSize buf $ sizeOfVal arr
@@ -282,8 +298,8 @@ instance MarshalArray ((Int32,Int32) :. Z) where
   wrapDimensions (n :. Z) = [n]
   isScalar _ = NotScalar
 
-instance MarshalArray ((Int32,Int32) :. (Int32,Int32) :. Z) where
-  allocBufferT (Array ((off,size) :. (off1, size1) :. Z) arr) = do
+instance MarshalArray Dim2 where
+  allocBufferT (Array ((off1,size1) :. (off, size) :. Z) arr) = do
     buf <- newBufferT
     setElemSize buf $ sizeOfVal arr
     setBufferStride  buf    1  size 0 0
@@ -297,6 +313,42 @@ instance MarshalArray ((Int32,Int32) :. (Int32,Int32) :. Z) where
   unwrapDimensions [n,m] = Just (n :. m :. Z)
   unwrapDimensions _   = Nothing
   wrapDimensions (n :. m :. Z) = [n,m]
+  isScalar _ = NotScalar
+
+instance MarshalArray Dim3 where
+  allocBufferT (Array ((off2,size2) :. (off1, size1) :. (off, size) :. Z) arr) = do
+    buf <- newBufferT
+    setElemSize buf $ sizeOfVal arr
+    setBufferStride  buf    1  size (size*size1) 0
+    setBufferMin     buf  off  off1         off2 0
+    setBufferExtents buf size size1        size2 0
+    case arr of
+      CVector _ p -> setHostPtr buf (castPtr p)
+      _other      -> fail "Halide only supports C arrays currently!"
+    return buf
+  nOfElements ((_,n) :. (_,m) :. (_, o) :. Z)
+    = fromIntegral n * fromIntegral m * fromIntegral o
+  unwrapDimensions [n,m,o] = Just (n :. m :. o :. Z)
+  unwrapDimensions _   = Nothing
+  wrapDimensions (n :. m :. o :. Z) = [n,m,o]
+  isScalar _ = NotScalar
+
+instance MarshalArray Dim4 where
+  allocBufferT (Array ((off3,size3) :. (off2, size2) :. (off1, size1) :. (off, size) :. Z) arr) = do
+    buf <- newBufferT
+    setElemSize buf $ sizeOfVal arr
+    setBufferStride  buf    1  size (size*size1) (size*size1*size2)
+    setBufferMin     buf  off  off1         off2              off3
+    setBufferExtents buf size size1        size2             size3
+    case arr of
+      CVector _ p -> setHostPtr buf (castPtr p)
+      _other      -> fail "Halide only supports C arrays currently!"
+    return buf
+  nOfElements ((_,n) :. (_,m) :. (_, o) :. (_, p) :. Z)
+    = fromIntegral n * fromIntegral m * fromIntegral o * fromIntegral p
+  unwrapDimensions [n,m,o,p] = Just (n :. m :. o :. p :. Z)
+  unwrapDimensions _   = Nothing
+  wrapDimensions (n :. m :. o :. p :. Z) = [n,m,o,p]
   isScalar _ = NotScalar
 
 

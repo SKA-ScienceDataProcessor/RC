@@ -1,7 +1,6 @@
 
 module Kernel.IO where
 
-import Control.Applicative
 import Control.Monad
 import Foreign.Storable
 import Foreign.C.Types ( CDouble(..) )
@@ -13,6 +12,7 @@ import Flow.Builder
 import Flow.Domain
 import Flow.Vector
 import Flow.Kernel
+import Flow.Halide
 
 import Kernel.Data
 
@@ -30,8 +30,9 @@ oskarReader dh file freq pol = rangeKernel0 "oskar reader" (rawVisRepr dh) $
 
   -- Allocate buffer for visibilities depending on region. Make sure
   -- that region is in range and aligned.
-  when (domLow < 0 || domHigh >= totalPoints) $
-    fail $ "oskarReader: region out of bounds: " ++ show domLow ++ "-" ++ show domHigh
+  when (domLow < 0 || domHigh > totalPoints) $
+    fail $ "oskarReader: region out of bounds: " ++ show domLow ++ "-" ++ show domHigh ++
+           " (only have " ++ show totalPoints ++ " points)"
   when ((domLow `mod` baselinePoints) /= 0) $
     fail $ "oskarReader: region not baseline-aligned: " ++ show domLow ++ "-" ++ show domHigh
   visVector <- allocCVector (domHigh - domLow)
@@ -57,25 +58,21 @@ oskarReader dh file freq pol = rangeKernel0 "oskar reader" (rawVisRepr dh) $
   return visVector
 
 sorter :: DomainHandle Range -> Flow Vis -> Kernel Vis
-sorter dh = kernel "sorter" (rawVisRepr dh :. Z) (visRepr dh) $ \[(v,_)] _ ->
-
-  -- TODO: We need to make a copy here to keep it from crashing. This
-  -- will get resolved once we have implemented a way for kernels to
-  -- declare that they consume their input.
-  castVector <$> dupCVector (castVector v :: Vector Double)
+sorter dh = kernel "sorter" (halrWrite (rawVisRepr dh) :. Z) (visRepr dh) $ \[(v,_)] _ ->
+  return v
 
 gcfKernel :: GCFPar -> DomainHandle Range -> Flow Tag -> Flow Vis -> Kernel GCFs
 gcfKernel gcfp dh = kernel "gcfs" (planRepr :. visRepr dh :. Z) (gcfsRepr gcfp) $ \_ doms -> do
 
   -- Simply read it from the file
-  let (_, wdt) :. (_, hgt) :. Z = halrDim (gcfsRepr gcfp) doms
-  v <- readCVector (gcfFile gcfp) (fromIntegral $ wdt * hgt) :: IO (Vector Double)
+  let size = nOfElements (halrDim (gcfsRepr gcfp) doms)
+  v <- readCVector (gcfFile gcfp) size :: IO (Vector Double)
   return (castVector v)
 
 imageWriter :: GridPar -> FilePath -> Flow Image -> Kernel Image
 imageWriter gp file = kernel "image writer" (imageRepr gp :. Z) (imageRepr gp) $ \[(v,doms)] _ -> do
 
-  let (_, wdt) :. (_, hgt) :. Z = halrDim (imageRepr gp) doms
-      v' = castVector v :: Vector Double
-  dumpVector' v' 0 (fromIntegral $ wdt * hgt) file
+  let v' = castVector v :: Vector Double
+      size = nOfElements (halrDim (imageRepr gp) doms)
+  dumpVector' v' 0 size file
   return nullVector

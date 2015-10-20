@@ -63,7 +63,7 @@ data KernelBind = KernelBind
   , kernFlow :: FlowI      -- ^ Implemented flow
   , kernName :: String     -- ^ Name
   , kernRepr :: ReprI      -- ^ Data representation produced
-  , kernDeps :: [(KernelId, [DomainId])] -- ^ Kernel dependencies
+  , kernDeps :: [KernelDep]-- ^ Kernel dependencies
   , kernCode :: KernelCode -- ^ Code to execute the kernel
   , kernReprCheck :: ReprI -> Bool
     -- ^ Check whether a sink data representation is compatible with
@@ -72,6 +72,21 @@ data KernelBind = KernelBind
 
 kernDomain :: KernelBind -> [DomainId]
 kernDomain KernelBind{kernRepr=ReprI r} = reprDomain r
+
+-- | Kernel dependency
+data KernelDep = KernelDep
+  { kdepId :: KernelId
+  , kdepRepr :: ReprI
+  }
+  deriving Show
+
+-- | Extracts domain from kernel dependency
+kdepDomain :: KernelDep -> [DomainId]
+kdepDomain (KernelDep {kdepRepr=ReprI rep}) = reprDomain rep
+
+-- | Extracts access from kernel dependency
+kdepAccess :: KernelDep -> ReprAccess
+kdepAccess (KernelDep {kdepRepr=ReprI rep}) = reprAccess rep
 
 -- | Code implementing a kernel
 type KernelCode = [(Vector (), [Domain])] -> [Domain] -> IO (Vector ())
@@ -190,6 +205,7 @@ data ReprAccess
     -- ^ Callee has ownership. Kernel can change the buffer, and must
     -- free it if it is not returned. Might require framework to
     -- duplicate the buffer.
+  deriving (Show, Eq)
 
 data ReprI where
   ReprI :: forall r. DataRepr r => r -> ReprI

@@ -144,7 +144,14 @@ prepareKernel (Kernel kname kcode parReprs retRep ps) (Flow fi) = do
   -- Make kernel, add to kernel list
   i <- freshKernelId
   let typeCheck (ReprI inR) = maybe False (reprCompatible retRep) (cast inR)
-      kern = KernelBind i fi kname (ReprI retRep) kis kcode typeCheck
+      kern = KernelBind { kernId   = i
+                        , kernFlow = fi
+                        , kernName = kname
+                        , kernRepr = ReprI retRep
+                        , kernDeps = kis
+                        , kernCode = kcode
+                        , kernReprCheck = typeCheck
+                        }
   addStep $ KernelStep kern
   return kern
 
@@ -153,8 +160,8 @@ prepareKernel (Kernel kname kcode parReprs retRep ps) (Flow fi) = do
 -- possibly aplying a rule, and finally doing a type-check to ensure
 -- that data representations match.
 prepareDependency :: String -> FlowI -> Int -> (FlowI, ReprI)
-                  -> Strategy (KernelId, [DomainId])
-prepareDependency kname fi parn (p, prep@(ReprI prepi)) = do
+                  -> Strategy KernelDep
+prepareDependency kname fi parn (p, prep) = do
 
   -- Parameter flows must all be in the dependency tree of the flow
   -- to calculate. Yes, this means that theoretically flows are
@@ -169,7 +176,7 @@ prepareDependency kname fi parn (p, prep@(ReprI prepi)) = do
   -- Look up latest kernel ID
   ss <- get
   let check kern
-        | kernReprCheck kern prep = return (kernId kern, reprDomain prepi)
+        | kernReprCheck kern prep = return $ KernelDep (kernId kern) prep
         | otherwise = fail $ concat
             [ "Data representation mismatch when binding kernel "
             , kname, " to implement "

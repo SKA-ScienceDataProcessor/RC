@@ -1,12 +1,17 @@
 {-# LANGUAGE StandaloneDeriving, DeriveDataTypeable #-}
 
 -- | Data representation definitions
-module Kernel.Data where
+module Kernel.Data
+  ( Config(..), GridPar(..), GCFPar(..)
+  , Tag, Vis, UVGrid, Image, GCFs
+  , UVGRepr, ImageRepr, PlanRepr, RawVisRepr, VisRepr, GCFsRepr
+  , uvgRepr, imageRepr, planRepr, rawVisRepr, visRepr, gcfsRepr
+  ) where
 
 import Data.Int
 import Data.Typeable
 
-import Flow.Kernel
+import Flow.Halide
 import Flow.Domain
 
 data Config = Config
@@ -43,32 +48,41 @@ deriving instance Typeable UVGrid
 deriving instance Typeable Image
 deriving instance Typeable GCFs
 
-type UVGridRepr = HalideRepr Dim2 Double UVGrid
-uvgRepr :: GridPar -> UVGridRepr
-uvgRepr gp = HalideRepr $ dim2 0 wdt 0 hgt
-  where wdt = fromIntegral $ 2 * gridWidth gp
-        hgt = fromIntegral $ gridHeight gp
+type UVGRepr = HalideRepr Dim3 Double UVGrid
+uvgRepr :: GridPar -> UVGRepr
+uvgRepr gp = halideRepr $ dimY gp :. dimX gp :. dimCpx :. Z
 
 type ImageRepr = HalideRepr Dim2 Double Image
 imageRepr :: GridPar -> ImageRepr
-imageRepr gp = HalideRepr $ dim2 0 wdt 0 hgt
-  where wdt = fromIntegral $ gridWidth gp
-        hgt = fromIntegral $ gridHeight gp
+imageRepr gp = halideRepr $ dimY gp :. dimX gp :. Z
+
+dimX :: GridPar -> Dim
+dimX gp = (0, fromIntegral $ gridWidth gp)
+
+dimY :: GridPar -> Dim
+dimY gp = (0, fromIntegral $ gridHeight gp)
+
+dimCpx :: Dim
+dimCpx = (0, 2)
 
 type PlanRepr = HalideRepr Dim0 Int32 Tag
 planRepr :: PlanRepr
-planRepr = HalideRepr dim0
+planRepr = halideRepr dim0
 
-type RawVisRepr = DynHalideRepr Double Vis
+type RawVisRepr = DynHalideRepr Dim1 Double Vis
 rawVisRepr :: DomainHandle Range -> RawVisRepr
-rawVisRepr dh = DynHalideRepr dh
+rawVisRepr = dynHalideRepr (dim1 dimVisFields)
 
-type VisRepr = DynHalideRepr Double Vis
-visRepr :: DomainHandle Range -> RawVisRepr
-visRepr dh = DynHalideRepr dh
+type VisRepr = DynHalideRepr Dim1 Double Vis
+visRepr :: DomainHandle Range -> VisRepr
+visRepr = dynHalideRepr (dim1 dimVisFields)
 
-type GCFsRepr = HalideRepr Dim2 Double GCFs
+-- | We have 5 visibility fields: Real, imag, u, v and w.
+dimVisFields :: Dim
+dimVisFields = (0, 5)
+
+type GCFsRepr = HalideRepr Dim4 Double GCFs
 gcfsRepr :: GCFPar -> GCFsRepr
-gcfsRepr gcfp = HalideRepr $ dim2 0 count 0 (size * size * 2)
-  where count = fromIntegral $ gcfOver gcfp * gcfOver gcfp
-        size = fromIntegral $ gcfSize gcfp
+gcfsRepr gcfp = halideRepr $ dimOver :. dimSize :. dimSize :. dimCpx :. Z
+  where dimOver = (0, fromIntegral $ gcfOver gcfp * gcfOver gcfp)
+        dimSize = (0, fromIntegral $ gcfSize gcfp)

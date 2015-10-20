@@ -9,6 +9,7 @@ import Data.Typeable
 
 import Flow
 import Flow.Vector
+import Flow.Halide
 
 -- Needed for FFI to work
 import Data.Vector.HFixed.Class ()
@@ -30,12 +31,12 @@ ddp :: Flow Sum
 ddp = a $ pp f g
 
 -- Vector representation
-type VecRepr = DynHalideRepr Float Vec
+type VecRepr = DynHalideRepr Dim0 Float Vec
 vecRepr :: DomainHandle Range -> VecRepr
-vecRepr = DynHalideRepr
+vecRepr = dynHalideRepr dim0
 type SumRepr = HalideRepr Z Float Sum
 sumRepr :: SumRepr
-sumRepr = HalideRepr Z
+sumRepr = halideRepr Z
 
 -- Kernels
 
@@ -48,9 +49,8 @@ gKern size = halideKernel0 "g" (vecRepr size) kern_generate_g
 foreign import ccall unsafe kern_generate_g :: HalideFun '[] VecRepr
 
 ppKern :: DomainHandle Range -> Flow Vec -> Flow Vec -> Kernel Vec
-ppKern size = halideKernel2 "pp" (vecRepr size) (vecRepr size) (vecRepr size)
-                            kern_dotp
-foreign import ccall unsafe kern_dotp :: HalideFun '[ VecRepr, VecRepr ] VecRepr
+ppKern size = halideKernel1Write "pp" (vecRepr size) (vecRepr size) kern_dotp
+foreign import ccall unsafe kern_dotp :: HalideFun '[ VecRepr ] VecRepr
 
 aKern :: DomainHandle Range -> Flow Vec -> Kernel Sum
 aKern size = halideKernel1 "a" (vecRepr size) sumRepr kern_sum
