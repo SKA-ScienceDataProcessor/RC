@@ -222,4 +222,22 @@ halideKernel1Write name rep0 repR code = kernel name (rep0 :. (halrWrite repR) :
                                (Array (halrDim rep0 d0) (castVector v0))
                                (Array (halrDim repR d1) (castVector v1))
          return $ castVector $ arrayBuffer vecR
-        code' _ _ = fail "halideKernel2: Received wrong number of input buffers!"
+        code' _ _ = fail "halideKernel1Write: Received wrong number of input buffers!"
+
+halideKernel2Write
+  :: forall rr r0 r1. (HalideReprClass rr, HalideReprClass r0, HalideReprClass r1)
+  => String
+  -> r0 -> r1 -> rr
+  -> HalideFun '[r0, r1] rr
+  -> Flow (ReprType r0) -> Flow (ReprType r1) -> Flow (ReprType rr) -> Kernel (ReprType rr)
+halideKernel2Write name rep0 rep1 repR code = kernel name (rep0 :. rep1 :. (halrWrite repR) :. Z) repR code'
+  where code' [(v0,d0),(v1,d1),(v2,d2)] ds = do
+         -- Should hold by construction.
+         when (ds /= d2) $
+           fail $ "halideKernel2Write: Domain mismatch between parameter and return value!"
+         vecR <- halrCallWrite repR (Proxy :: Proxy '[r0, r1]) code
+                               (Array (halrDim rep0 d0) (castVector v0))
+                               (Array (halrDim rep1 d1) (castVector v1))
+                               (Array (halrDim repR d2) (castVector v2))
+         return $ castVector $ arrayBuffer vecR
+        code' _ _ = fail "halideKernel2Write: Received wrong number of input buffers!"
