@@ -1,7 +1,12 @@
 {-# LANGUAGE StandaloneDeriving, DeriveDataTypeable #-}
 
 -- | Data representation definitions
-module Kernel.Data where
+module Kernel.Data
+  ( Config(..), GridPar(..), GCFPar(..)
+  , Tag, Vis, UVGrid, Image, GCFs
+  , UVGRepr, ImageRepr, PlanRepr, RawVisRepr, VisRepr, GCFsRepr
+  , uvgRepr, imageRepr, planRepr, rawVisRepr, visRepr, gcfsRepr
+  ) where
 
 import Data.Int
 import Data.Typeable
@@ -43,17 +48,22 @@ deriving instance Typeable UVGrid
 deriving instance Typeable Image
 deriving instance Typeable GCFs
 
-type UVGridRepr = HalideRepr Dim2 Double UVGrid
-uvgRepr :: GridPar -> UVGridRepr
-uvgRepr gp = halideRepr $ dim2 0 wdt 0 hgt
-  where wdt = fromIntegral $ 2 * gridWidth gp
-        hgt = fromIntegral $ gridHeight gp
+type UVGRepr = HalideRepr Dim3 Double UVGrid
+uvgRepr :: GridPar -> UVGRepr
+uvgRepr gp = halideRepr $ dimCpx :. dimX gp :. dimY gp :. Z
 
 type ImageRepr = HalideRepr Dim2 Double Image
 imageRepr :: GridPar -> ImageRepr
-imageRepr gp = halideRepr $ dim2 0 wdt 0 hgt
-  where wdt = fromIntegral $ gridWidth gp
-        hgt = fromIntegral $ gridHeight gp
+imageRepr gp = halideRepr $ dimX gp :. dimY gp :. Z
+
+dimX :: GridPar -> Dim
+dimX gp = (0, fromIntegral $ gridWidth gp)
+
+dimY :: GridPar -> Dim
+dimY gp = (0, fromIntegral $ gridHeight gp)
+
+dimCpx :: Dim
+dimCpx = (0, 2)
 
 type PlanRepr = HalideRepr Dim0 Int32 Tag
 planRepr :: PlanRepr
@@ -64,11 +74,11 @@ rawVisRepr :: DomainHandle Range -> RawVisRepr
 rawVisRepr dh = dynHalideRepr dh
 
 type VisRepr = DynHalideRepr Double Vis
-visRepr :: DomainHandle Range -> RawVisRepr
+visRepr :: DomainHandle Range -> VisRepr
 visRepr dh = dynHalideRepr dh
 
-type GCFsRepr = HalideRepr Dim2 Double GCFs
+type GCFsRepr = HalideRepr Dim4 Double GCFs
 gcfsRepr :: GCFPar -> GCFsRepr
-gcfsRepr gcfp = halideRepr $ dim2 0 count 0 (size * size * 2)
-  where count = fromIntegral $ gcfOver gcfp * gcfOver gcfp
-        size = fromIntegral $ gcfSize gcfp
+gcfsRepr gcfp = halideRepr $ dimCpx :. dimSize :. dimSize :. dimVis :. Z
+  where dimVis = (0, fromIntegral $ gcfOver gcfp * gcfOver gcfp)
+        dimSize = (0, fromIntegral $ gcfSize gcfp)

@@ -69,14 +69,14 @@ gcfKernel :: GCFPar -> DomainHandle Range -> Flow Tag -> Flow Vis -> Kernel GCFs
 gcfKernel gcfp dh = kernel "gcfs" (planRepr :. visRepr dh :. Z) (gcfsRepr gcfp) $ \_ doms -> do
 
   -- Simply read it from the file
-  let (_, wdt) :. (_, hgt) :. Z = halrDim (gcfsRepr gcfp) doms
-  v <- readCVector (gcfFile gcfp) (fromIntegral $ wdt * hgt) :: IO (Vector Double)
+  let size = nOfElements (halrDim (gcfsRepr gcfp) doms)
+  v <- readCVector (gcfFile gcfp) size :: IO (Vector Double)
   return (castVector v)
 
 imageWriter :: GridPar -> FilePath -> Flow Image -> Kernel Image
 imageWriter gp file = kernel "image writer" (imageRepr gp :. Z) (imageRepr gp) $ \[(v,doms)] _ -> do
 
-  let (_, wdt) :. (_, hgt) :. Z = halrDim (imageRepr gp) doms
-      v' = castVector v :: Vector Double
-  dumpVector' v' 0 (fromIntegral $ wdt * hgt) file
+  let v' = castVector v :: Vector Double
+      size = nOfElements (halrDim (imageRepr gp) doms)
+  dumpVector' v' 0 size file
   return nullVector

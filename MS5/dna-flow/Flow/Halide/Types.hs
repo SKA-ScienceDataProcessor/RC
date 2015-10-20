@@ -35,15 +35,19 @@ data Array dim a = Array
   , arrayBuffer :: Vector a  -- ^ Pointer to buffer
   }
 
+type Dim = (Int32,Int32)
+
 type Dim0 = Z
+type Dim1 = Dim :. Dim0
+type Dim2 = Dim :. Dim1
+type Dim3 = Dim :. Dim2
+type Dim4 = Dim :. Dim3
 dim0 :: Dim0
 dim0 = Z
-type Dim1 = (Int32,Int32) :. Z
-dim1 :: Int32 -> Int32 -> Dim1
-dim1 x y = (x,y) :. Z
-type Dim2 = (Int32,Int32) :. (Int32,Int32) :. Z
-dim2 :: Int32 -> Int32 -> Int32 -> Int32 -> Dim2
-dim2 x0 y0 x1 y1 = (x0,y0) :. (x1,y1) :. Z
+dim1 :: Dim -> Dim1
+dim1 e = e :. Z
+dim2 :: Dim -> Dim -> Dim2
+dim2 e0 e1 = e0 :. e1 :. Z
 
 -- | Type which describes dimension of value
 type family   Extent a

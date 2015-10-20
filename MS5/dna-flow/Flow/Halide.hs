@@ -8,13 +8,17 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module Flow.Halide
-  ( HalideRepr, DynHalideRepr, HalideReprClass(..)
+  ( -- * Data representation
+    HalideRepr, DynHalideRepr, HalideReprClass(..)
   , halideRepr, dynHalideRepr
-  , Dim0, Dim1, Dim2, dim0, dim1, dim2
+    -- * Halide extents
+  , Dim, Dim0, Dim1, Dim2, Dim3, Dim4
+  , dim0, dim1, (:.)(..), Z(..), nOfElements
+    -- * Kernel wrappers
   , halideKernel0, halideKernel1, halideKernel2, halideKernel3
-  , halideKernel1Write
+  , halideKernel1Write, halideKernel2Write
   , halideBind, HalideBind
-  -- * reexports (for FFI)
+    -- * reexports (for FFI)
   , CInt(..), HalideKernel(..)
   ) where
 
@@ -148,7 +152,7 @@ instance ( Typeable val, HalideScalar val
   type HalideFun xs (DynHalideRepr val abs)
     = HalideKernel (KernelParams xs) (Array Dim1 val)
   halrDim _ [RangeDomain (Range low high)]
-    = dim1 (fromIntegral low) (fromIntegral $ high - low)
+    = dim1 (fromIntegral low, fromIntegral $ high - low)
   halrDim r doms
     = error $ "halrDim: Unexpected number of domains for " ++ show r ++ ": " ++ show (length doms)
   halrWrite (DynHalideRepr _ dh)

@@ -264,7 +264,7 @@ withScalarResult action = do
     a <- peek ptr
     return (Scalar a, r)
 
-instance MarshalArray (Z) where
+instance MarshalArray Dim0 where
   allocBufferT (Array Z arr) = do
     buf <- newBufferT
     setElemSize buf $ sizeOfVal arr
@@ -281,7 +281,7 @@ instance MarshalArray (Z) where
   wrapDimensions Z = []
   isScalar _ = IsScalar
 
-instance MarshalArray ((Int32,Int32) :. Z) where
+instance MarshalArray Dim1 where
   allocBufferT (Array ((off,size) :. Z) arr) = do
     buf <- newBufferT
     setElemSize buf $ sizeOfVal arr
@@ -298,7 +298,7 @@ instance MarshalArray ((Int32,Int32) :. Z) where
   wrapDimensions (n :. Z) = [n]
   isScalar _ = NotScalar
 
-instance MarshalArray ((Int32,Int32) :. (Int32,Int32) :. Z) where
+instance MarshalArray Dim2 where
   allocBufferT (Array ((off,size) :. (off1, size1) :. Z) arr) = do
     buf <- newBufferT
     setElemSize buf $ sizeOfVal arr
@@ -313,6 +313,42 @@ instance MarshalArray ((Int32,Int32) :. (Int32,Int32) :. Z) where
   unwrapDimensions [n,m] = Just (n :. m :. Z)
   unwrapDimensions _   = Nothing
   wrapDimensions (n :. m :. Z) = [n,m]
+  isScalar _ = NotScalar
+
+instance MarshalArray Dim3 where
+  allocBufferT (Array ((off,size) :. (off1, size1) :. (off2, size2) :. Z) arr) = do
+    buf <- newBufferT
+    setElemSize buf $ sizeOfVal arr
+    setBufferStride  buf    1  size (size*size1) 0
+    setBufferMin     buf  off  off1         off2 0
+    setBufferExtents buf size size1        size2 0
+    case arr of
+      CVector _ p -> setHostPtr buf (castPtr p)
+      _other      -> fail "Halide only supports C arrays currently!"
+    return buf
+  nOfElements ((_,n) :. (_,m) :. (_, o) :. Z)
+    = fromIntegral n * fromIntegral m * fromIntegral o
+  unwrapDimensions [n,m,o] = Just (n :. m :. o :. Z)
+  unwrapDimensions _   = Nothing
+  wrapDimensions (n :. m :. o :. Z) = [n,m,o]
+  isScalar _ = NotScalar
+
+instance MarshalArray Dim4 where
+  allocBufferT (Array ((off,size) :. (off1, size1) :. (off2, size2) :. (off3, size3) :. Z) arr) = do
+    buf <- newBufferT
+    setElemSize buf $ sizeOfVal arr
+    setBufferStride  buf    1  size (size*size1) (size*size1*size2)
+    setBufferMin     buf  off  off1         off2              off3
+    setBufferExtents buf size size1        size2             size3
+    case arr of
+      CVector _ p -> setHostPtr buf (castPtr p)
+      _other      -> fail "Halide only supports C arrays currently!"
+    return buf
+  nOfElements ((_,n) :. (_,m) :. (_, o) :. (_, p) :. Z)
+    = fromIntegral n * fromIntegral m * fromIntegral o * fromIntegral p
+  unwrapDimensions [n,m,o,p] = Just (n :. m :. o :. p :. Z)
+  unwrapDimensions _   = Nothing
+  wrapDimensions (n :. m :. o :. p :. Z) = [n,m,o,p]
   isScalar _ = NotScalar
 
 
