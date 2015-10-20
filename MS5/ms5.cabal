@@ -56,4 +56,5 @@ executable gridding
     oskar        >= 0.1,
     fixed-vector-hetero
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
+                       kernel/cpu/gridding/init.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lstdc++ -lHalide

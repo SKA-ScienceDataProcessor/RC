@@ -12,8 +12,11 @@ import Kernel.Data
 import Data.Vector.HFixed.Class ()
 import Flow.Halide.Types ()
 
+-- | Gridder grid initialisation. This is separate because
+-- "gridKernel" requires an input to work.
 gridInit :: GridPar -> Kernel UVGrid
-gridInit gp = halideKernel0 "gridInit" (uvgRepr gp) undefined
+gridInit gp = halideKernel0 "gridInit" (uvgRepr gp) kern_init
+foreign import ccall unsafe kern_init :: HalideFun '[] UVGRepr
 
 -- | Gridder kernel binding
 gridKernel :: GridPar -> GCFPar -> DomainHandle Range

@@ -36,7 +36,7 @@ gridderStrat :: Config -> Strategy ()
 gridderStrat cfg = do
 
   -- Make point domain for visibilities
-  dom <- makeRangeDomain 0 (5 * cfgPoints cfg)
+  dom <- makeRangeDomain 0 (cfgPoints cfg)
 
   -- Create data flow for tag, bind it to FFT plans
   let gpar = cfgGrid cfg
@@ -68,7 +68,7 @@ main = do
                      , gridPitch = 1026
                      , gridTheta = 0.04
                      }
-      gcfpar = GCFPar { gcfSize = 3
+      gcfpar = GCFPar { gcfSize = 16
                       , gcfOver = 8
                       , gcfFile = "gcf0.dat"
                       }
