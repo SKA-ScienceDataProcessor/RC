@@ -43,6 +43,7 @@ int main(/* int argc, char **argv */) {
   int
       over = 8
     , grid_size = 2048
+    , max_gcf_size = 128
     ;
 
   Param<double>
@@ -120,14 +121,16 @@ int main(/* int argc, char **argv */) {
   uvg(cmplx, x, y) = undef<double>();
 
   Expr
-      clampedU = clamp(uv(_U, rvis) + rgcfx, 0, grid_size - 1)
-    , clampedV = clamp(uv(_V, rvis) + rgcfy, 0, grid_size - 1)
+      clampedU = clamp(uv(_U, rvis), 0, grid_size - 1 - max_gcf_size)
+    , clampedV = clamp(uv(_V, rvis), 0, grid_size - 1 - max_gcf_size)
+    , U = clampedU + rgcfx
+    , V = clampedV + rgcfy
     ;
 
   uvg(
       rcmplx
-    , _U
-    , _V
+    , U
+    , V
     ) += (visC * gcfC).unpack(rcmplx)
     ;
 
