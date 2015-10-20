@@ -86,6 +86,25 @@ data AnyDH = forall a. Typeable a => AnyDH (DomainHandle a)
 type DataMap = IM.IntMap (ReprI, Map.Map [Domain] (Vector ()))
 type DomainMap = IM.IntMap (AnyDH, [Domain])
 
+dataMapInsert :: KernelId -> [Domain] -> ReprI -> Vector () -> DataMap -> DataMap
+dataMapInsert kid dom repr vec = IM.insertWith update kid (repr, def)
+  where def = Map.singleton dom vec
+        update _ (repr', m) = (repr', Map.insert dom vec m)
+
+dataMapUnion :: DataMap -> DataMap -> DataMap
+dataMapUnion = IM.unionWith combine
+  where combine (repr, bufs) (_, bufs') = (repr, bufs `Map.union` bufs')
+
+dataMapUnions :: [DataMap] -> DataMap
+dataMapUnions = IM.unionsWith combine
+  where combine (repr, bufs) (_, bufs') = (repr, bufs `Map.union` bufs')
+
+dataMapDifference :: DataMap -> DataMap -> DataMap
+dataMapDifference = IM.differenceWith remove
+  where remove (repr, bufs) (_, bufs')
+           = if Map.null diff then Nothing else Just (repr, diff)
+          where diff = bufs `Map.difference` bufs'
+
 findParameters :: KernelId -> [Domain] -> DataMap -> IO (Vector (), [Domain])
 findParameters kid inDoms dataMap = case IM.lookup kid dataMap of
   Just (ReprI repr, bufs)
@@ -115,7 +134,7 @@ type DomainSet = IS.IntSet
 
 -- | Kernel dependencies of a step
 stepKernDeps :: Step -> KernelSet
-stepKernDeps (KernelStep kbind)         = IS.fromList $ map fst $ kernDeps kbind
+stepKernDeps (KernelStep kbind)         = IS.fromList $ map kdepId $ kernDeps kbind
 stepKernDeps (SplitStep _ steps)        = stepsKernDeps steps
 stepKernDeps (DistributeStep _ _ steps) = stepsKernDeps steps
 stepKernDeps _                          = IS.empty
@@ -132,7 +151,7 @@ stepsKernDeps []
 -- | Domain dependencies of a step
 stepDomainDeps :: Step -> DomainSet
 stepDomainDeps (KernelStep kbind)
-  = IS.fromList $ concatMap snd $ kernDeps kbind
+  = IS.fromList $ concatMap kdepDomain $ kernDeps kbind
 stepDomainDeps (SplitStep dh steps)
   = IS.insert (dhId (fromJust (dhParent dh))) $ IS.delete (dhId dh) $ stepsDomainDeps steps
 stepDomainDeps (DistributeStep _ _ steps)
@@ -215,20 +234,26 @@ execStep dataMapRef domainMapRef deps step = case step of
       -- Look up input data
       let lookupUnaryDom = head . snd . lookupDom
       dataMap <- readIORef dataMapRef
-      ins <- forM (kernDeps kbind) $ \(kid, dids) ->
-        findParameters kid (map lookupUnaryDom dids) dataMap
+      ins <- forM (kernDeps kbind) $ \dep -> do
+        par <- findParameters (kdepId dep) (map lookupUnaryDom (kdepDomain dep)) dataMap
+        return (dep, par)
 
       -- Call the kernel using the right regions
       let outRegs = map (head . snd) outDoms
-      res <- kernCode kbind ins outRegs
+      res <- kernCode kbind (map snd ins) outRegs
 
       -- Debug
       putStrLn $ "Calculated result for kernel " ++ show (kernId kbind) ++ " regions " ++ show outRegs
 
+      -- Get inputs that have been written, and therefore should be
+      -- considered freed. TODO: ugly
+      let writtenIns = filter ((== WriteAccess) . kdepAccess . fst) ins
+      forM_ writtenIns $ \(dep, (_, dom)) ->
+        modifyIORef dataMapRef $ flip dataMapDifference $
+          dataMapInsert (kdepId dep) dom (kdepRepr dep) nullVector IM.empty
+
       -- Insert result
-      let bufs = maybe Map.empty snd $ IM.lookup (kernId kbind) dataMap
-          bufs' = Map.insert outRegs res bufs
-      writeIORef dataMapRef $ IM.insert (kernId kbind) (kernRepr kbind, bufs') dataMap
+      modifyIORef dataMapRef $ dataMapInsert (kernId kbind) outRegs (kernRepr kbind) res
 
   SplitStep dh steps -> do
 
@@ -294,14 +319,8 @@ execStep dataMapRef domainMapRef deps step = case step of
     --
     -- 2. We remove all buffers that the children freed (to prevent double-free).
     --    Obviously only a concern because of SM parallelism.
-    let combine (repr, bufs) (_, bufs') = (repr, bufs `Map.union` bufs')
-        dataMapOrig = IM.unionsWith combine (map snd threads)
-        dataMapNew = IM.unionsWith combine dataMapsNew
-        remove (repr, bufs) (_, bufs')
-           = if Map.null diff then Nothing else Just (repr, diff)
-         where diff = bufs `Map.difference` bufs'
-        dataMapRemoved = IM.differenceWith remove dataMapOrig dataMapNew
-    modifyIORef dataMapRef $
-      IM.unionWith combine dataMapNew .
-      flip (IM.differenceWith remove) dataMapRemoved
-
+    let dataMapOrig = dataMapUnions (map snd threads)
+        dataMapNew = dataMapUnions dataMapsNew
+        dataMapRemoved = dataMapDifference dataMapOrig dataMapNew
+    modifyIORef dataMapRef $ dataMapUnion dataMapNew
+                           . flip dataMapDifference dataMapRemoved
