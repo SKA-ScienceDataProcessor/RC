@@ -38,6 +38,7 @@ library
                    Flow.Vector,
                    Flow.Halide.Types
                    Flow.Internal,
+                   Flow.Halide,
                    Flow.Halide.BufferT,
                    Flow.Halide.Marshal
   if flag(cuda)

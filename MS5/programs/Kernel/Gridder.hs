@@ -4,7 +4,7 @@ module Kernel.Gridder where
 
 import Flow.Builder
 import Flow.Domain
-import Flow.Kernel
+import Flow.Halide
 
 import Kernel.Data
 

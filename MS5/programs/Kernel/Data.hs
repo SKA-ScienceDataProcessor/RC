@@ -6,7 +6,7 @@ module Kernel.Data where
 import Data.Int
 import Data.Typeable
 
-import Flow.Kernel
+import Flow.Halide
 import Flow.Domain
 
 data Config = Config
@@ -45,30 +45,30 @@ deriving instance Typeable GCFs
 
 type UVGridRepr = HalideRepr Dim2 Double UVGrid
 uvgRepr :: GridPar -> UVGridRepr
-uvgRepr gp = HalideRepr $ dim2 0 wdt 0 hgt
+uvgRepr gp = halideRepr $ dim2 0 wdt 0 hgt
   where wdt = fromIntegral $ 2 * gridWidth gp
         hgt = fromIntegral $ gridHeight gp
 
 type ImageRepr = HalideRepr Dim2 Double Image
 imageRepr :: GridPar -> ImageRepr
-imageRepr gp = HalideRepr $ dim2 0 wdt 0 hgt
+imageRepr gp = halideRepr $ dim2 0 wdt 0 hgt
   where wdt = fromIntegral $ gridWidth gp
         hgt = fromIntegral $ gridHeight gp
 
 type PlanRepr = HalideRepr Dim0 Int32 Tag
 planRepr :: PlanRepr
-planRepr = HalideRepr dim0
+planRepr = halideRepr dim0
 
 type RawVisRepr = DynHalideRepr Double Vis
 rawVisRepr :: DomainHandle Range -> RawVisRepr
-rawVisRepr dh = DynHalideRepr dh
+rawVisRepr dh = dynHalideRepr dh
 
 type VisRepr = DynHalideRepr Double Vis
 visRepr :: DomainHandle Range -> RawVisRepr
-visRepr dh = DynHalideRepr dh
+visRepr dh = dynHalideRepr dh
 
 type GCFsRepr = HalideRepr Dim2 Double GCFs
 gcfsRepr :: GCFPar -> GCFsRepr
-gcfsRepr gcfp = HalideRepr $ dim2 0 count 0 (size * size * 2)
+gcfsRepr gcfp = halideRepr $ dim2 0 count 0 (size * size * 2)
   where count = fromIntegral $ gcfOver gcfp * gcfOver gcfp
         size = fromIntegral $ gcfSize gcfp

@@ -9,6 +9,7 @@ import Data.Typeable
 
 import Flow
 import Flow.Vector
+import Flow.Halide
 
 -- Needed for FFI to work
 import Data.Vector.HFixed.Class ()
@@ -32,10 +33,10 @@ ddp = a $ pp f g
 -- Vector representation
 type VecRepr = DynHalideRepr Float Vec
 vecRepr :: DomainHandle Range -> VecRepr
-vecRepr = DynHalideRepr
+vecRepr = dynHalideRepr
 type SumRepr = HalideRepr Z Float Sum
 sumRepr :: SumRepr
-sumRepr = HalideRepr Z
+sumRepr = halideRepr Z
 
 -- Kernels
 

@@ -2,7 +2,7 @@
 module Kernel.FFT where
 
 import Flow.Builder
-import Flow.Kernel
+import Flow.Halide
 
 import Kernel.Data
 
