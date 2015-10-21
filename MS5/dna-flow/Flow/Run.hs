@@ -242,6 +242,13 @@ execStep dataMapRef domainMapRef deps step = case step of
       let outRegs = map (head . snd) outDoms
       res <- kernCode kbind (map snd ins) outRegs
 
+      -- Check size
+      case reprSize rep outRegs of
+       Just size | size /= vectorByteSize res ->
+         fail $ "Kernel " ++ kernName kbind ++ " produced " ++ show (vectorByteSize res) ++
+                " bytes of data, but data representation " ++ show rep ++ " has " ++ show size ++ " bytes!"
+       _other -> return ()
+
       -- Debug
       putStrLn $ "Calculated result for kernel " ++ show (kernId kbind) ++ " regions " ++ show outRegs
 

@@ -39,6 +39,7 @@ import Flow.Halide.Marshal
 import Flow.Halide.Types
 
 import Foreign.C ( CInt(..) )
+import Foreign.Storable ( sizeOf )
 
 -- | Common context of all halide data representations: Everything must be
 -- typeable so we can "cast" data representations for the type
@@ -66,6 +67,7 @@ instance HalideCtx dim val abs => DataRepr (HalideRepr dim val abs) where
   reprNop _ = False
   reprAccess (HalideRepr acc _) = acc
   reprCompatible (HalideRepr _ d0) (HalideRepr _ d1) = d0 == d1
+  reprSize r ds = Just $ nOfElements (halrDim r ds) * sizeOf (undefined :: val)
 
 -- | Constructor function for "HalideRepr". Returns a data
 -- representation with "ReadAccess".
@@ -98,6 +100,7 @@ instance (HalideCtx dim val abs, MarshalArray (Dim :. dim))
     return $ Just $ castVector out
   reprMerge r _   doms = error $
     "reprMerge: Unexpected number of domains for " ++ show r ++ ": " ++ show (length doms)
+  reprSize r ds = Just $ nOfElements (halrDim r ds) * sizeOf (undefined :: val)
 
 -- | Constructor function for "DynHalideRepr". Returns a data
 -- representation with "ReadAccess".

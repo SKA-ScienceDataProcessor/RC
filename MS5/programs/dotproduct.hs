@@ -57,7 +57,7 @@ aKern size = halideKernel1 "a" (vecRepr size) sumRepr kern_sum
 foreign import ccall unsafe kern_sum :: HalideFun '[ VecRepr ] SumRepr
 
 printKern :: Flow Sum -> Kernel Sum
-printKern = kernel "print" (sumRepr :. Z) sumRepr $ \case
+printKern = kernel "print" (sumRepr :. Z) NoRepr $ \case
   [(sv,_)]-> \_ -> do
     s <- peekVector (castVector sv :: Vector Float) 0
     putStrLn $ "Sum: " ++ show s

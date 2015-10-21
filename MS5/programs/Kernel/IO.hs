@@ -35,12 +35,12 @@ oskarReader dh file freq pol = rangeKernel0 "oskar reader" (rawVisRepr dh) $
            " (only have " ++ show totalPoints ++ " points)"
   when ((domLow `mod` baselinePoints) /= 0) $
     fail $ "oskarReader: region not baseline-aligned: " ++ show domLow ++ "-" ++ show domHigh
-  visVector <- allocCVector (domHigh - domLow)
 
   -- Go through baselines and collect our data into on big array
   let dblsPerPoint = 5
-      bl0 = domLow `div` baselinePoints `div` dblsPerPoint
-      bl1 = (domHigh - 1) `div` baselinePoints `div` dblsPerPoint
+  visVector <- allocCVector $ dblsPerPoint * (domHigh - domLow)
+  let bl0 = domLow `div` baselinePoints
+      bl1 = (domHigh - 1) `div` baselinePoints
       CVector _ visp = visVector
   forM_ [bl0..bl1] $ \bl -> do
      forM_ [0..baselinePoints-1] $ \p -> do

@@ -196,6 +196,8 @@ class (Show r, Typeable r) => DataRepr r where
   reprDomain _ = []
   reprMerge :: r -> [([Domain], Vector ())] -> [Domain] -> IO (Maybe (Vector ()))
   reprMerge _ _ _ = return Nothing
+  reprSize :: r -> [Domain] -> Maybe Int
+  reprSize _ _ = Nothing
 
 -- | Who has ownership of the data representation?
 data ReprAccess

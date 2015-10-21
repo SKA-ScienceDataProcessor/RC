@@ -13,6 +13,7 @@ import Data.Typeable
 
 import Flow.Halide
 import Flow.Domain
+import Flow.Kernel
 
 data Config = Config
   { cfgInput  :: FilePath
@@ -65,9 +66,9 @@ dimY gp = (0, fromIntegral $ gridHeight gp)
 dimCpx :: Dim
 dimCpx = (0, 2)
 
-type PlanRepr = HalideRepr Dim0 Int32 Tag
+type PlanRepr = NoRepr Tag -- HalideRepr Dim0 Int32 Tag
 planRepr :: PlanRepr
-planRepr = halideRepr dim0
+planRepr = NoRepr -- halideRepr dim0
 
 type RawVisRepr = DynHalideRepr Dim1 Double Vis
 rawVisRepr :: DomainHandle Range -> RawVisRepr
