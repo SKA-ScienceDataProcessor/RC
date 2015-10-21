@@ -87,7 +87,7 @@ int main(/* int argc, char **argv */) {
   overc(uvdim, t, bl) = clamp(cast<int>(round(over * (uvs(uvdim, t, bl) - floor(uvs(uvdim, t, bl))))), 0, 7);
   uv(uvdim, t, bl) = cast<int>(round(uvs(uvdim, t, bl)) + grid_size / 2 - gcf_layer_size / 2);
   gcfoff(t, bl) = (overc(_U, t, bl) * over + overc(_V, t, bl)) * gcf_layer_size * gcf_layer_size;
-  bloff(bl) = ts_ch * vismap(bl);
+  bloff(bl) = clamp(ts_ch * vismap(bl), 0, ts_ch * num_of_baselines);
 
   RDom red(
       0, _CMPLX_SIZE
@@ -96,12 +96,13 @@ int main(/* int argc, char **argv */) {
     , 0, gcf_layer_size
     , 0, num_of_baselines
     );
-  RVar P(rcmplx), P(rgcfx), P(rvis), P(rgcfy), P(rbl);
+  RVar P(rcmplx), P(rgcfx), P(rvis), P(rgcfy), P(rbl0);
   rcmplx = red.x;
   rgcfx  = red.y;
   rvis   = red.z;
   rgcfy  = red.w;
-  rbl    = red[4];
+  rbl0   = red[4];
+  Expr rbl = bloff(rbl0);
 
   Expr gcf_pix_off = gcfoff(rvis, rbl) + rgcfx + rgcfy * gcf_layer_size; 
   Complex gcfC(
