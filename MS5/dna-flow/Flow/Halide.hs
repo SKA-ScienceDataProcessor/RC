@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -39,18 +40,28 @@ import Flow.Halide.Types
 
 import Foreign.C ( CInt(..) )
 
+-- | Common context of all halide data representations: Everything must be
+-- typeable so we can "cast" data representations for the type
+-- check. For the same reason we also need an "Eq" instance for
+-- comparing data dimensions and a "Show" message to provide a helpful
+-- error message.  Finally, we must obviously be able to marshal
+-- arrays with the given dimensions "dim" and underlying values "val".
+type HalideCtx dim val abs =
+  ( Typeable dim, MarshalArray dim, Show dim, Eq dim
+  , Typeable val, HalideScalar val
+  , Typeable abs
+  )
+
 -- | Halide array of statically known (!) size. Scalar type is @val@,
 -- dimensionality is given by @dim@, and @abs@ identifies the abstract
 -- data type.
 data HalideRepr dim val abs = HalideRepr ReprAccess dim
   deriving Typeable
-instance (Typeable dim, Typeable val, Typeable abs, HalideScalar val, Show dim) =>
-         Show (HalideRepr dim val abs) where
+instance HalideCtx dim val abs => Show (HalideRepr dim val abs) where
   showsPrec _ (HalideRepr _ dim)
     = shows (typeOf (undefined :: val)) . showString " halide vector "
     . shows dim . showString " [" . shows (typeOf (undefined :: abs)) . showString "]"
-instance (Typeable dim, Typeable val, Typeable abs, HalideScalar val, Show dim, Eq dim) =>
-         DataRepr (HalideRepr dim val abs) where
+instance HalideCtx dim val abs => DataRepr (HalideRepr dim val abs) where
   type ReprType (HalideRepr dim val abs) = abs
   reprNop _ = False
   reprAccess (HalideRepr acc _) = acc
@@ -64,14 +75,13 @@ halideRepr = HalideRepr ReadAccess
 -- | One-dimensional Halide array of size given by a domain
 data DynHalideRepr dim val abs = DynHalideRepr ReprAccess dim (DomainHandle Range)
   deriving Typeable
-instance (Typeable dim, Typeable val, Typeable abs, HalideScalar val, Show dim) =>
-         Show (DynHalideRepr dim val abs) where
+instance HalideCtx dim val abs => Show (DynHalideRepr dim val abs) where
   showsPrec _ (DynHalideRepr _ dim dom)
     = shows (typeOf (undefined :: val)) . showString " halide vector "
     . shows dim . showString ", " . shows dom
     . showString " [" . shows (typeOf (undefined :: abs)) . showString "]"
-instance (Typeable dim, Typeable val, Typeable abs, HalideScalar val, Show dim, Eq dim) =>
-         DataRepr (DynHalideRepr dim val abs) where
+instance (HalideCtx dim val abs, MarshalArray (Dim :. dim))
+         => DataRepr (DynHalideRepr dim val abs) where
   type ReprType (DynHalideRepr dim val abs) = abs
   reprNop _ = False
   reprAccess (DynHalideRepr acc _ _) = acc
@@ -133,11 +143,7 @@ class (DataRepr r, HalideScalar (HalrVal r), MarshalArray (HalrDim r)) =>
 
 type HalrParam r = Array (HalrDim r) (HalrVal r)
 
-instance ( Typeable dim, MarshalArray dim, Show dim, Eq dim
-         , Typeable val, HalideScalar val
-         , Typeable abs
-         ) =>
-         HalideReprClass (HalideRepr dim val abs) where
+instance HalideCtx dim val abs => HalideReprClass (HalideRepr dim val abs) where
   type HalrDim (HalideRepr dim val abs) = dim
   type HalrVal (HalideRepr dim val abs) = val
   type HalideFun xs (HalideRepr dim val abs)
@@ -148,11 +154,7 @@ instance ( Typeable dim, MarshalArray dim, Show dim, Eq dim
   halrCallWrite _ _ fun    = callWrite fun
 
 -- Here is where we need undecideable instance, regrettably
-instance ( Typeable dim, MarshalArray (Dim :. dim), Show dim, Eq dim
-         , Typeable val, HalideScalar val
-         , Typeable abs
-         ) =>
-         HalideReprClass (DynHalideRepr dim val abs) where
+instance (HalideCtx dim val abs, MarshalArray (Dim :. dim)) => HalideReprClass (DynHalideRepr dim val abs) where
   type HalrDim (DynHalideRepr dim val abs) = Dim :. dim
   type HalrVal (DynHalideRepr dim val abs) = val
   type HalideFun xs (DynHalideRepr dim val abs)
