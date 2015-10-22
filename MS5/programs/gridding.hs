@@ -45,6 +45,12 @@ gridderStrat cfg = do
       gcfpar = cfgGCF cfg
   tag <- bindNew $ fftCreatePlans gpar
 
+  -- Bind kernel rules
+  bindRule gcf (gcfKernel gcfpar dom tag)
+  bindRule createGrid (gridInit gpar)
+  bindRule grid (gridKernel gpar gcfpar dom)
+  bindRule idft (ifftKern gpar tag)
+
   -- Create data flow for visibilities, read in and sort
   let vis = flow "vis" tag
   bind vis $ oskarReader dom (cfgInput cfg) 0 0
@@ -52,10 +58,6 @@ gridderStrat cfg = do
 
   -- Compute the result
   let result = gridder vis (gcf vis)
-  bindRule gcf (gcfKernel gcfpar dom tag)
-  bindRule createGrid (gridInit gpar)
-  bindRule grid (gridKernel gpar gcfpar dom)
-  bindRule idft (ifftKern gpar tag)
   calculate result
 
   -- Write out
@@ -75,7 +77,7 @@ main = do
                       }
       config = Config
         { cfgInput  = "test_p00_s00_f00.vis"
-        , cfgPoints = 32131 * 200
+        , cfgPoints = 10000 * 200 -- TODO: 32131 * 200
         , cfgOutput = "out.img"
         , cfgGrid   = gpar
         , cfgGCF    = gcfpar

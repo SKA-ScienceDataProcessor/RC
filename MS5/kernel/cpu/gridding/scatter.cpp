@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
   Param<double> scale("scale");
 
   // Visibilities: Array of 5-pairs, packed together with UVW
-  enum VisFields { _R = 0, _C, _U, _V, _W,  _VIS_FIELDS };
+  enum VisFields { _U=0, _V, _W, _R, _I,  _VIS_FIELDS };
   ImageParam vis(type_of<double>(), 2, "vis");
   vis.set_min(0,0).set_stride(0,1).set_extent(0,_VIS_FIELDS)
      .set_stride(1,_VIS_FIELDS);
@@ -96,7 +96,7 @@ int main(int argc, char **argv) {
     ;
 
   // Get GCF and visibility as complex numbers
-  Complex visC(vis(_REAL, rvis), vis(_IMAG, rvis));
+  Complex visC(vis(_R, rvis), vis(_I, rvis));
   uvg(rcmplx,
       rgcfx + clamp(uv(_U, rvis), 0, grid_size - 1 - GCF_SIZE),
       rgcfy + clamp(uv(_V, rvis), 0, grid_size - 1 - GCF_SIZE))

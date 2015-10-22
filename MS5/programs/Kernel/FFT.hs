@@ -8,6 +8,10 @@ import Flow.Halide
 
 import Kernel.Data
 
+-- For FFI
+import Data.Vector.HFixed.Class ()
+import Flow.Halide.Types ()
+
 fftCreatePlans :: GridPar -> Kernel Tag
 fftCreatePlans _ = kernel "fftPlans" Z planRepr $ \_ _ ->
   return nullVector
