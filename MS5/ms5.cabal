@@ -57,4 +57,5 @@ executable gridding
     fixed-vector-hetero
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
+                       kernel/cpu/gridding/fft.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lstdc++ -lHalide

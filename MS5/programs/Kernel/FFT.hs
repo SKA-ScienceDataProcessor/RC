@@ -1,14 +1,17 @@
+{-# LANGUAGE DataKinds #-}
 
 module Kernel.FFT where
 
 import Flow.Builder
 import Flow.Vector
+import Flow.Halide
 
 import Kernel.Data
 
 fftCreatePlans :: GridPar -> Kernel Tag
-fftCreatePlans _ = kernel "fftPlans" Z planRepr $ \_ _ -> return nullVector
+fftCreatePlans _ = kernel "fftPlans" Z planRepr $ \_ _ ->
+  return nullVector
 
 ifftKern :: GridPar -> Flow Tag -> Flow UVGrid -> Kernel Image
-ifftKern gp = kernel "ifftKern" (planRepr :. uvgRepr gp :. Z) (imageRepr gp) $ \_ _ ->
-  return nullVector
+ifftKern gp = const $ halideKernel1 "ifftKern" (uvgRepr gp) (imageRepr gp) kern_fft
+foreign import ccall unsafe kern_fft :: HalideFun '[UVGRepr] ImageRepr
