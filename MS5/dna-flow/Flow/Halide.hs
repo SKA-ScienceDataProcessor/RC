@@ -22,6 +22,7 @@ module Flow.Halide
   , halideKernel0, halideKernel1, halideKernel2, halideKernel3
   , halideKernel1Write, halideKernel2Write
   , halideBind, HalideBind
+  , halideDump, halideTextDump2D
     -- * reexports (for FFI)
   , CInt(..), HalideKernel(..)
   ) where
@@ -34,12 +35,15 @@ import Data.Vector.HFixed.Class ( Fn )
 import Flow.Internal
 import Flow.Builder
 import Flow.Vector
+import Flow.Kernel
 
 import Flow.Halide.Marshal
 import Flow.Halide.Types
 
 import Foreign.C ( CInt(..) )
 import Foreign.Storable ( sizeOf )
+
+import System.IO
 
 -- | Common context of all halide data representations: Everything must be
 -- typeable so we can "cast" data representations for the type
@@ -255,3 +259,26 @@ halideKernel2Write name rep0 rep1 repR code = kernel name (rep0 :. rep1 :. (halr
                                (Array (halrDim repR d2) (castVector v2))
          return $ castVector $ arrayBuffer vecR
         code' _ _ = fail "halideKernel2Write: Received wrong number of input buffers!"
+
+-- | Simple kernel that dumps the contents of a channel with Halide
+-- data representation to a file.
+halideDump :: forall r. HalideReprClass r => r -> FilePath -> Flow (ReprType r) -> Kernel ()
+halideDump rep file = kernel (show (typeOf (undefined :: ReprType r)) ++ "-writer")
+                             (rep :. Z) NoRepr $ \[(v,doms)] _ -> do
+  let v' = castVector v :: Vector (HalrVal r)
+      size = nOfElements $ halrDim rep doms
+  dumpVector' v' 0 size file
+  return nullVector
+
+-- | Simple kernel that dumps the contents of a channel with Halide
+-- data representation to a text file
+halideTextDump2D :: forall r. (HalideReprClass r, HalrDim r ~ Dim2, Show (HalrVal r))
+                 => r -> FilePath -> Flow (ReprType r) -> Kernel ()
+halideTextDump2D rep file = kernel "" (rep :. Z) NoRepr $ \[(v,doms)] _ ->
+  withFile file WriteMode $ \h -> do
+    let v' = castVector v :: Vector (HalrVal r)
+        ((_,hgt) :. (_, wdt) :. Z) = halrDim rep doms
+    forM_ [0..hgt-1] $ \y -> do
+      vals <- forM [0..wdt-1] $ \x -> peekVector v' (fromIntegral $ y*wdt+x)
+      hPutStrLn h $ show vals
+    return nullVector

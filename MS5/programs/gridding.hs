@@ -59,7 +59,7 @@ gridderStrat cfg = do
   calculate result
 
   -- Write out
-  rebind result $ imageWriter gpar (cfgOutput cfg)
+  void $ bindNew $ imageWriter gpar (cfgOutput cfg) result
 
 main :: IO ()
 main = do

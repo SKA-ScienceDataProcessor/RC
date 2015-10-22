@@ -44,7 +44,7 @@ oskarReader dh file freq pol = rangeKernel0 "oskar reader" (rawVisRepr dh) $
       CVector _ visp = visVector
   forM_ [bl0..bl1] $ \bl -> do
      forM_ [0..baselinePoints-1] $ \p -> do
-       let off = (bl - bl0) * baselinePoints + p * dblsPerPoint
+       let off = (bl - bl0) * baselinePoints * dblsPerPoint + p * dblsPerPoint
            getUVW uvw = do CDouble d <- peek (tdUVWPtr taskData bl p uvw); return d
        pokeElemOff visp (off + 0) =<< getUVW 0
        pokeElemOff visp (off + 1) =<< getUVW 1
@@ -69,10 +69,8 @@ gcfKernel gcfp dh = kernel "gcfs" (planRepr :. visRepr dh :. Z) (gcfsRepr gcfp) 
   v <- readCVector (gcfFile gcfp) size :: IO (Vector Double)
   return (castVector v)
 
-imageWriter :: GridPar -> FilePath -> Flow Image -> Kernel Image
-imageWriter gp file = kernel "image writer" (imageRepr gp :. Z) NoRepr $ \[(v,doms)] _ -> do
+imageWriter :: GridPar -> FilePath -> Flow Image -> Kernel ()
+imageWriter gp = halideDump (imageRepr gp)
 
-  let v' = castVector v :: Vector Double
-      size = nOfElements (halrDim (imageRepr gp) doms)
-  dumpVector' v' 0 size file
-  return nullVector
+uvgWriter :: GridPar -> FilePath -> Flow UVGrid -> Kernel ()
+uvgWriter gp = halideDump (uvgRepr gp)
