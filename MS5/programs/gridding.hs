@@ -3,6 +3,8 @@
 
 module Main where
 
+import Control.Monad
+
 import Flow
 
 import Kernel.Data
@@ -41,8 +43,7 @@ gridderStrat cfg = do
   -- Create data flow for tag, bind it to FFT plans
   let gpar = cfgGrid cfg
       gcfpar = cfgGCF cfg
-  tag <- uniq (flow "tag")
-  bind tag $ fftCreatePlans gpar
+  tag <- bindNew $ fftCreatePlans gpar
 
   -- Create data flow for visibilities, read in and sort
   let vis = flow "vis" tag

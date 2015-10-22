@@ -12,7 +12,7 @@ module Flow.Builder
   -- * Kernel binding
   , IsReprs(..), IsReprKern(..)
   , kernel, Kernel
-  , bind, rebind, bindRule
+  , bind, rebind, bindRule, bindNew
   -- * Support
   , Z(..), (:.)(..)
   ) where
@@ -332,3 +332,12 @@ implementing (Flow fi) strat = do
   case HM.lookup fi (ssMap ss) of
     Just{}  -> return ()
     Nothing -> fail $ "Flow " ++ show fi ++ " was not implemented!"
+
+-- | Calls a kernel and returns a new unique stream for the result. This is
+-- useful for input streams (the roots of the data flow graph) as well
+-- as output flows, where we do not care about their output values.
+bindNew :: Kernel r -> Strategy (Flow r)
+bindNew kern@(Kernel name _ _ _ inps) = do
+  fl <- uniq (mkFlow (name ++ "-call") (toList inps))
+  bind fl kern
+  return fl

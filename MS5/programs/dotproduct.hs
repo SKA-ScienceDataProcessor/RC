@@ -5,6 +5,7 @@
 
 module Main where
 
+import Control.Monad
 import Data.Typeable
 
 import Flow
@@ -94,7 +95,7 @@ ddpStrat size = do
       bind (pp f g) (ppKern regs f g)
   bindRule a (aKern dom)
   calculate ddp
-  rebind ddp printKern
+  void $ bindNew $ printKern ddp
 
 main :: IO ()
 main = do
