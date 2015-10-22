@@ -231,7 +231,7 @@ Func W(int N, double sign) {
 
 // Compute the N point DFT of dimension 1 (columns) of x using
 // radix R.
-Func fft_dim1(Func x, const std::vector<int> &NR, double sign, int group_size = 8) {
+Func fft_dim1(Func x, const std::vector<int> &NR, double sign, int group_size = 4) {
     int N = product(NR);
     Var n0("n0"), n1("n1");
 
@@ -558,15 +558,34 @@ int main(int argc, char **argv) {
     herm(u,v) = Tuple(uvg(0,u,v) + uvg(0,WIDTH-u-1,HEIGHT-v-1),
                       uvg(1,u,v) - uvg(1,WIDTH-u-1,HEIGHT-v-1));
 
+    // Shift the field
+    Func tiled = BoundaryConditions::repeat_image(herm, 0, WIDTH, 0,HEIGHT);
+    Func shifted("shifted");
+    shifted(u,v) = tiled(u+WIDTH/2,v+HEIGHT/2);
+
     // Compute inverse dft
-    Func image = fft2d_c2r(herm, WIDTH, HEIGHT);
+    Func image = fft2d_c2r(shifted, WIDTH, HEIGHT);
     image.output_buffer()
          .set_min(0,0).set_stride(0,1).set_extent(0,WIDTH)
          .set_min(1,0).set_extent(0,WIDTH);
 
+    // Shift back
+    Func img_tiled = BoundaryConditions::repeat_image(image, 0, WIDTH, 0,HEIGHT);
+    Func img_shifted("img_shifted");
+    img_shifted(u,v) = img_tiled(u+WIDTH/2,v+HEIGHT/2);
+
     // ** Strategy
 
-    // None needed?
+    Var ui, uo, vi, vo;
+    img_shifted.output_buffer()
+        .set_min(0,0).set_stride(0,1).set_extent(0, 1024)
+        .set_min(1,0).set_extent(1, 1024);
+    img_shifted
+        .split(v, vo, vi, HEIGHT/2)
+        .unroll(vo)
+        .split(u, uo, ui, WIDTH/2)
+        .unroll(uo)
+        .vectorize(ui,4);
 
     Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
     Module mod = image.compile_to_module(args, "kern_fft", target);
