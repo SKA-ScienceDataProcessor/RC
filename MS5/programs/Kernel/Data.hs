@@ -8,7 +8,6 @@ module Kernel.Data
   , uvgRepr, imageRepr, planRepr, rawVisRepr, visRepr, gcfsRepr
   ) where
 
-import Data.Int
 import Data.Typeable
 
 import Flow.Halide

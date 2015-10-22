@@ -70,7 +70,7 @@ gcfKernel gcfp dh = kernel "gcfs" (planRepr :. visRepr dh :. Z) (gcfsRepr gcfp) 
   return (castVector v)
 
 imageWriter :: GridPar -> FilePath -> Flow Image -> Kernel Image
-imageWriter gp file = kernel "image writer" (imageRepr gp :. Z) (imageRepr gp) $ \[(v,doms)] _ -> do
+imageWriter gp file = kernel "image writer" (imageRepr gp :. Z) NoRepr $ \[(v,doms)] _ -> do
 
   let v' = castVector v :: Vector Double
       size = nOfElements (halrDim (imageRepr gp) doms)
