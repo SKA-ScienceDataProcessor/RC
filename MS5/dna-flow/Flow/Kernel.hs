@@ -24,7 +24,7 @@ import Flow.Vector
 data NoRepr a = NoRepr
   deriving Typeable
 instance Typeable a => Show (NoRepr a) where
-  show _ = "nothing [" ++ show (typeOf (undefined :: a)) ++ "]"
+  showsPrec _ _ = showString "nothing [" . shows (typeOf (undefined :: a)) . (']':)
 instance Typeable a => DataRepr (NoRepr a) where
   type ReprType (NoRepr a) = a
   reprNop _ = True
@@ -38,7 +38,8 @@ instance Typeable a => DataRepr (NoRepr a) where
 data VectorRepr val abs = VectorRepr ReprAccess
   deriving Typeable
 instance (Typeable val, Typeable abs) => Show (VectorRepr val abs) where
-  show _ = show (typeOf (undefined :: val)) ++ " vector [" ++ show (typeOf (undefined :: abs)) ++ "]"
+  showsPrec _ _ = shows (typeOf (undefined :: abs)) . showString " vector " .
+                  shows (typeOf (undefined :: val)) . showString "[]"
 instance (Typeable val, Typeable abs) => DataRepr (VectorRepr val abs) where
   type ReprType (VectorRepr val abs) = abs
   reprNop _ = False

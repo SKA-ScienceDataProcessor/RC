@@ -1,13 +1,16 @@
 {-# LANGUAGE GADTs, TypeFamilies, RankNTypes, ScopedTypeVariables,
-             TypeOperators, DeriveDataTypeable #-}
+             TypeOperators, DeriveDataTypeable, TypeSynonymInstances,
+             FlexibleInstances, FlexibleContexts
+ #-}
 
 module Flow.Internal where
 
 import Control.Monad.State.Strict
 
 import Data.Function ( on )
-import Data.List     ( sort )
 import Data.Hashable
+import Data.Int
+import Data.List     ( sort )
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
 
@@ -16,10 +19,34 @@ import Flow.Vector
 -- | Simple type-level lists. TODO: Import from an external library?
 -- There are too many to choose from...
 data Z = Z
-  deriving (Show, Typeable, Eq)
+  deriving (Typeable, Eq)
 data (:.) a b = (:.) a b
-  deriving (Show, Typeable, Eq)
+  deriving (Typeable, Eq)
 infixr :.
+
+type Dim = (Int32,Int32)
+
+-- | Dimensions defined using the type-level lists.
+type Dim0 = Z
+type Dim1 = Dim :. Dim0
+type Dim2 = Dim :. Dim1
+type Dim3 = Dim :. Dim2
+type Dim4 = Dim :. Dim3
+dim0 :: Dim0
+dim0 = Z
+dim1 :: Dim -> Dim1
+dim1 e = e :. Z
+dim2 :: Dim -> Dim -> Dim2
+dim2 e0 e1 = e0 :. e1 :. Z
+
+instance Show Dim0 where
+  showsPrec _ Z = showString "[]"
+instance Show Dim1 where
+  showsPrec _ ((m,ext) :. _) =
+    ('[':) . shows m . (':':) . shows (m+ext) . (']':)
+instance Show (Dim :. dim) => Show (Dim :. Dim :. dim) where
+  showsPrec _ ((m,ext) :. ds) =
+    ('[':) . shows m . (':':) . shows (m+ext) . (',':) . tail . shows ds
 
 -- | Internal representation of a data flow.
 data FlowI = FlowI
@@ -78,7 +105,10 @@ data KernelDep = KernelDep
   { kdepId :: KernelId
   , kdepRepr :: ReprI
   }
-  deriving Show
+
+instance Show KernelDep where
+  showsPrec _ kdep =
+    shows (kdepRepr kdep) . showString " from kernel " . shows (kdepId kdep)
 
 -- | Extracts domain from kernel dependency
 kdepDomain :: KernelDep -> [DomainId]
@@ -114,8 +144,7 @@ data DomainHandle a = DomainHandle
   }
 
 instance forall a. Typeable a => Show (DomainHandle a) where
-  showsPrec _ dh = showString "Domain " . shows (dhId dh) . showString " [" .
-                   shows (typeOf (undefined :: a)) . showString "]"
+  showsPrec _ dh = shows (typeOf (undefined :: a)) . showString " domain " . shows (dhId dh)
 instance Eq (DomainHandle a) where
   (==) = (==) `on` dhId
 
@@ -183,7 +212,7 @@ freshDomainId = state $ \ss -> (ssDomainId ss, ss {ssDomainId = 1 + ssDomainId s
 addStep :: Step -> Strategy ()
 addStep step =  modify $ \ss -> ss { ssSteps = step : ssSteps ss }
 
-class (Show r, Typeable r) => DataRepr r where
+class (Show r, Typeable r, Typeable (ReprType r)) => DataRepr r where
   type ReprType r
   -- | Does the representation contain no data? This means that we are
   -- going to ignore it.

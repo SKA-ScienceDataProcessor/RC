@@ -60,8 +60,8 @@ data HalideRepr dim val abs = HalideRepr ReprAccess dim
   deriving Typeable
 instance HalideCtx dim val abs => Show (HalideRepr dim val abs) where
   showsPrec _ (HalideRepr _ dim)
-    = shows (typeOf (undefined :: val)) . showString " halide vector "
-    . shows dim . showString " [" . shows (typeOf (undefined :: abs)) . showString "]"
+    = shows (typeOf (undefined :: abs)) . showString " as halide vector " .
+      shows (typeOf (undefined :: val)) . shows dim
 instance HalideCtx dim val abs => DataRepr (HalideRepr dim val abs) where
   type ReprType (HalideRepr dim val abs) = abs
   reprNop _ = False
@@ -79,9 +79,8 @@ data DynHalideRepr dim val abs = DynHalideRepr ReprAccess dim (DomainHandle Rang
   deriving Typeable
 instance HalideCtx dim val abs => Show (DynHalideRepr dim val abs) where
   showsPrec _ (DynHalideRepr _ dim dom)
-    = shows (typeOf (undefined :: val)) . showString " halide vector "
-    . shows dim . showString ", " . shows dom
-    . showString " [" . shows (typeOf (undefined :: abs)) . showString "]"
+    = shows (typeOf (undefined :: abs)) . showString " as halide vector " .
+      shows (typeOf (undefined :: val)) . ('[':) . shows dom . (',':) . tail . shows dim
 instance (HalideCtx dim val abs, MarshalArray (Dim :. dim))
          => DataRepr (DynHalideRepr dim val abs) where
   type ReprType (DynHalideRepr dim val abs) = abs
