@@ -588,8 +588,7 @@ int main(int argc, char **argv) {
         .vectorize(ui,4);
 
     Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
-    Module mod = image.compile_to_module(args, "kern_fft", target);
+    Module mod = img_shifted.compile_to_module(args, "kern_fft", target);
     compile_module_to_object(mod, argv[1]);
-    compile_module_to_html(mod, "fft.html");
     return 0;
 }

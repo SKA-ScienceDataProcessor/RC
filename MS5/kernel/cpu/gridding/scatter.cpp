@@ -37,7 +37,6 @@ int main(int argc, char **argv) {
   ImageParam vis(type_of<double>(), 2, "vis");
   vis.set_min(0,0).set_stride(0,1).set_extent(0,_VIS_FIELDS)
      .set_stride(1,_VIS_FIELDS);
-  Expr ts_ch = vis.height(); // Number of timesteps
 
   // GCF: Array of OxOxSxS complex numbers. We "fuse" two dimensions
   // as Halide only supports up to 4 dimensions.
@@ -85,7 +84,7 @@ int main(int argc, char **argv) {
   RDom red(
       0, _CPLX_FIELDS
     , 0, GCF_SIZE
-    , 0, ts_ch
+    , vis.top(), vis.height()
     , 0, GCF_SIZE
     );
   RVar
@@ -117,6 +116,7 @@ int main(int argc, char **argv) {
     .unroll(rgcfxc, GCF_SIZE * 2 / 8);
 
   Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
-  compile_module_to_object(uvg.compile_to_module(args, "kern_scatter", target), argv[1]);
+  Module mod = uvg.compile_to_module(args, "kern_scatter", target);
+  compile_module_to_object(mod, argv[1]);
   return 0;
 }
