@@ -208,7 +208,7 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
                  [ halideOpts
                  , map ("-I"++) (PD.includeDirs bi)
                  , map ("-L"++) (PD.extraLibDirs bi)
-                 , [src, "-o", gen]]
+                 , [src, "-o", gen, "-lm"]]
                runProgramInvocation verbose $ simpleProgramInvocation gen [out]
 
        -- Yet again, hackily link the results in.
