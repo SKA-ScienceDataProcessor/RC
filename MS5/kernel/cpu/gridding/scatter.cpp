@@ -63,12 +63,16 @@ int main(int argc, char **argv) {
 
   // ** Helpers
 
-  // Visibility preprocessing
+  // Coordinate preprocessing
   Func uvs("uvs"), uv("uv"), overc("overc");
   Var uvdim("uvdim"), t("t");
   uvs(uvdim, t) = vis(uvdim, t) * scale;
   overc(uvdim, t) = clamp(cast<int>(round(OVER * (uvs(uvdim, t) - floor(uvs(uvdim, t))))), 0, OVER-1);
   uv(uvdim, t) = cast<int>(round(uvs(uvdim, t)) + grid_size / 2 - GCF_SIZE / 2);
+
+  // Visibilities to ignore due to being out of bounds
+  Func inBound("inBound");
+  inBound(t) = abs(uvs(_U,t)) < grid_size/2 && abs(uvs(_V,t)) < grid_size/2;
 
   // GCF lookup for a given visibility
   Func gcf("gcf");
@@ -94,18 +98,23 @@ int main(int argc, char **argv) {
     , rgcfy = red.w
     ;
 
-  // Get GCF and visibility as complex numbers
+  // Get visibility as complex number
   Complex visC(vis(_R, rvis), vis(_I, rvis));
+
+  // Update grid
   uvg(rcmplx,
       rgcfx + clamp(uv(_U, rvis), 0, grid_size - 1 - GCF_SIZE),
       rgcfy + clamp(uv(_V, rvis), 0, grid_size - 1 - GCF_SIZE))
-    += (visC * Complex(gcf(rgcfx, rgcfy, rvis))).unpack(rcmplx);
+    += select(inBound(rvis),
+              (visC * Complex(gcf(rgcfx, rgcfy, rvis))).unpack(rcmplx),
+              cast<double>(0.0f));
 
   // ** Strategy
 
   // Compute UV & oversampling coordinates per visibility
-  overc.compute_at(uvg, rvis).unroll(uvdim);
-  uv.compute_at(uvg,rvis).unroll(uvdim);
+  overc.compute_at(uvg, rvis).vectorize(uvdim);
+  uv.compute_at(uvg,rvis).vectorize(uvdim);
+  inBound.compute_at(uvg,rvis);
 
   // Fuse and vectorise complex calculations of entire GCF rows
   RVar rgcfxc;

@@ -77,7 +77,7 @@ main = do
                       }
       config = Config
         { cfgInput  = "test_p00_s00_f00.vis"
-        , cfgPoints = 10000 * 200 -- TODO: 32131 * 200
+        , cfgPoints = 32131 * 200 -- TODO: 32131 * 200
         , cfgOutput = "out.img"
         , cfgGrid   = gpar
         , cfgGCF    = gcfpar
