@@ -12,6 +12,8 @@
 
 const double pi = 3.14159265f;
 
+const int MAX_UNROLL = 8;
+
 using namespace Halide;
 
 // Complex number arithmetic. Complex numbers are represented with
@@ -420,7 +422,7 @@ Func fft2d_r2c(Func r, const std::vector<int> &R0, const std::vector<int> &R1) {
 // Compute the N0 x N1 2D inverse DFT of x using radixes R0, R1.
 // The DFT domain should have dimensions N0 x N1/2 + 1 due to the
 // conjugate symmetry of real FFTs.
-Func fft2d_c2r(Func c, const std::vector<int> &R0, const std::vector<int> &R1) {
+Func fft2d_c2r(Func c, Func cat, const std::vector<int> &R0, const std::vector<int> &R1) {
     // How many columns to group together in one FFT. This is the
     // vectorization width.
     const int group = 4;
@@ -472,14 +474,14 @@ Func fft2d_c2r(Func c, const std::vector<int> &R0, const std::vector<int> &R1) {
     unzipped(n0, n1, _) = select(n0 < zip_n,
                                  re(dft(n0%zip_n, n1, _)),
                                  im(dft(n0%zip_n, n1, _)));
-    unzipped.bound(n0, 0, N0);
-    unzipped.bound(n1, 0, N1);
+    //unzipped.bound(n0, 0, N0);
+    //unzipped.bound(n1, 0, N1);
 
-    dft0.compute_at(dft, outermost(dft)).vectorize(dft0.args()[0], group).unroll(dft0.args()[0]);
+    dft0.compute_at(dft, outermost(dft)).vectorize(dft0.args()[0], group).unroll(dft0.args()[0],MAX_UNROLL);
     dft0T.compute_at(dft, outermost(dft));
-    dft.compute_at(unzipped, outermost(unzipped));
+    dft.compute_at(cat, outermost(cat));
 
-    unzipped.compute_root().vectorize(n0, group).unroll(n0);
+    //unzipped.compute_root().vectorize(n0, group).unroll(n0,MAX_UNROLL);
     return unzipped;
 }
 
@@ -511,8 +513,8 @@ Func fft2d_c2c(Func c, int N0, int N1, double sign) {
 Func fft2d_r2c(Func r, int N0, int N1) {
     return fft2d_r2c(r, radix_factor(N0), radix_factor(N1));
 }
-Func fft2d_c2r(Func c, int N0, int N1) {
-    return fft2d_c2r(c, radix_factor(N0), radix_factor(N1));
+Func fft2d_c2r(Func c, Func cat, int N0, int N1) {
+    return fft2d_c2r(c, cat, radix_factor(N0), radix_factor(N1));
 }
 
 
@@ -539,8 +541,8 @@ double log2(double x) {
 int main(int argc, char **argv) {
     if (argc < 2) return 1;
 
-    const int WIDTH = 1024
-            , HEIGHT = 1024;
+    const int WIDTH = 8192
+            , HEIGHT = 8192;
 
     // ** Input field
 
@@ -564,28 +566,38 @@ int main(int argc, char **argv) {
     shifted(u,v) = tiled(u+WIDTH/2,v+HEIGHT/2);
 
     // Compute inverse dft
-    Func image = fft2d_c2r(shifted, WIDTH, HEIGHT);
+    Func img_shifted("img_shifted");
+    Func image = fft2d_c2r(shifted, img_shifted, WIDTH, HEIGHT);
     image.output_buffer()
          .set_min(0,0).set_stride(0,1).set_extent(0,WIDTH)
          .set_min(1,0).set_extent(0,WIDTH);
 
     // Shift back
     Func img_tiled = BoundaryConditions::repeat_image(image, 0, WIDTH, 0,HEIGHT);
-    Func img_shifted("img_shifted");
     img_shifted(u,v) = img_tiled(u+WIDTH/2,v+HEIGHT/2);
 
     // ** Strategy
 
     Var ui, uo, vi, vo;
     img_shifted.output_buffer()
-        .set_min(0,0).set_stride(0,1).set_extent(0, 1024)
-        .set_min(1,0).set_extent(1, 1024);
+        .set_min(0,0).set_stride(0,1).set_extent(0, WIDTH)
+        .set_min(1,0).set_extent(1, HEIGHT);
     img_shifted
         .split(v, vo, vi, HEIGHT/2)
         .unroll(vo)
         .split(u, uo, ui, WIDTH/2)
         .unroll(uo)
         .vectorize(ui,4);
+
+    // The above split is *almost* enough to make Halide generate
+    // specialised code for all four quarters of the image. However,
+    // it fails to prove that
+    //
+    //   ((vi * 4) + 4096) % 4096 < 2048
+    //
+    // Is always false for vi < 512. Therefore we end up with a
+    // surplus "select". Let's hope LLVM is smart enough to eliminate
+    // it...
 
     Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
     Module mod = img_shifted.compile_to_module(args, "kern_fft", target);
