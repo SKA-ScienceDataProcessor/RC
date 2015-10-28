@@ -205,10 +205,11 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
                putStrLn $ "Building Halide source " ++ src ++ "..."
                invalidate
                runProgram verbose gcc $ concat
-                 [ halideOpts
-                 , map ("-I"++) (PD.includeDirs bi)
+                 [ map ("-I"++) (PD.includeDirs bi)
                  , map ("-L"++) (PD.extraLibDirs bi)
-                 , [src, "-o", gen]]
+                 , [src, "-o", gen]
+                 , halideOpts
+                 ]
                runProgramInvocation verbose $ simpleProgramInvocation gen [out]
 
        -- Yet again, hackily link the results in.
