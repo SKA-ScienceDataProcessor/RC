@@ -112,13 +112,13 @@ Func dft_dim0(Func x, int N, double sign) {
         // If N is small, unroll the loop.
         Tuple dft = x(0, _);
         for (int k = 1; k < N; k++) {
-            dft = add(dft, mul(expj(cast<double>(sign*2*pi*k)*n/N), x(k, _)));
+            dft = add(dft, mul(expj(cast<double>(float(sign*2*pi)*k)*n/N), x(k, _)));
         }
         X(n, _) = dft;
     } else {
         // If N is larger, we really shouldn't be using this algorithm for the DFT anyways.
         RDom k(0, N);
-        X(n, _) = sumz(mul(expj(cast<double>(sign*2*pi*k)*n/N), x(k, _)));
+        X(n, _) = sumz(mul(expj(cast<double>(float(sign*2*pi)*k)*n/N), x(k, _)));
     }
     X.unroll(n);
     return X;
@@ -157,7 +157,7 @@ Func dft4_dim0(Func x, double sign) {
     FuncRefExpr T1 = T0;
     FuncRefExpr T3 = T2;
     T1 = sub(x0, x2);
-    T3 = mul(sub(x1, x3), Tuple(cast<double>(0.0f), cast<double>(sign))); // W = j*sign
+    T3 = mul(sub(x1, x3), Tuple(cast<double>(0.0f), cast<double>(float(sign)))); // W = j*sign
     X1 = add(T1, T3);
     X3 = sub(T1, T3);
 
@@ -185,19 +185,19 @@ Func dft8_dim0(Func x, double sign) {
     T2 = sub(X0, X2);
 
     X1 = sub(x0, x4);
-    X3 = mul(sub(x2, x6), Tuple(cast<double>(0.0f), cast<double>(sign)));
+    X3 = mul(sub(x2, x6), Tuple(cast<double>(0.0f), cast<double>(float(sign))));
     T1 = add(X1, X3);
     T3 = sub(X1, X3);
 
     X4 = add(x1, x5);
     X6 = add(x3, x7);
     T4 = add(X4, X6);
-    T6 = mul(sub(X4, X6), Tuple(cast<double>(0.0f), cast<double>(sign)));
+    T6 = mul(sub(X4, X6), Tuple(cast<double>(0.0f), cast<double>(float(sign))));
 
     X5 = sub(x1, x5);
-    X7 = mul(sub(x3, x7), Tuple(cast<double>(0.0f), cast<double>(sign)));
-    T5 = mul(add(X5, X7), Tuple(cast<double>(sqrt2_2), cast<double>(sign*sqrt2_2)));
-    T7 = mul(sub(X5, X7), Tuple(cast<double>(-sqrt2_2), cast<double>(sign*sqrt2_2)));
+    X7 = mul(sub(x3, x7), Tuple(cast<double>(0.0f), cast<double>(float(sign))));
+    T5 = mul(add(X5, X7), Tuple(cast<double>(float(sqrt2_2)), cast<double>(float(sign*sqrt2_2))));
+    T7 = mul(sub(X5, X7), Tuple(cast<double>(float(-sqrt2_2)), cast<double>(float(sign*sqrt2_2))));
 
     X0 = add(T0, T4);
     X1 = add(T1, T5);
@@ -221,7 +221,7 @@ Func W(int N, double sign) {
     Var n("n");
     if (!w.defined()) {
         Func W("W");
-        W(n) = expj(cast<double>(sign*2*pi)*n/N);
+        W(n) = expj(cast<double>(float(sign*2*pi))*n/N);
         Realization compute_static = W.realize(N);
         Image<double> reW = compute_static[0];
         Image<double> imW = compute_static[1];
