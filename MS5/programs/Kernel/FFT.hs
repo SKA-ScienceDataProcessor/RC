@@ -17,5 +17,5 @@ fftCreatePlans _ = kernel "fftPlans" Z planRepr $ \_ _ ->
   return nullVector
 
 ifftKern :: GridPar -> Flow Tag -> Flow UVGrid -> Kernel Image
-ifftKern gp = const $ halideKernel1 "ifftKern" (uvgRepr gp) (imageRepr gp) kern_fft
+ifftKern gp ft fu = timeKernel "ifftKern" (const (halideKernel1 "ifftKern" (uvgRepr gp) (imageRepr gp) kern_fft) ft fu)
 foreign import ccall unsafe kern_fft :: HalideFun '[UVGRepr] ImageRepr
