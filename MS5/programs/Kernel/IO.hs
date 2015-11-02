@@ -16,7 +16,7 @@ import Flow.Halide
 
 import Kernel.Data
 
-oskarReader :: DomainHandle Range -> FilePath -> Int -> Int -> Kernel Vis
+oskarReader :: Domain Range -> FilePath -> Int -> Int -> Kernel Vis
 oskarReader dh file freq pol = rangeKernel0 "oskar reader" (rawVisRepr dh) $
  \domLow domHigh -> do
 
@@ -57,11 +57,11 @@ oskarReader dh file freq pol = rangeKernel0 "oskar reader" (rawVisRepr dh) $
   finalizeTaskData taskData
   return visVector
 
-sorter :: DomainHandle Range -> Flow Vis -> Kernel Vis
+sorter :: Domain Range -> Flow Vis -> Kernel Vis
 sorter dh = kernel "sorter" (halrWrite (rawVisRepr dh) :. Z) (visRepr dh) $ \[(v,_)] _ ->
   return v
 
-gcfKernel :: GCFPar -> DomainHandle Range -> Flow Tag -> Flow Vis -> Kernel GCFs
+gcfKernel :: GCFPar -> Domain Range -> Flow Tag -> Flow Vis -> Kernel GCFs
 gcfKernel gcfp dh = kernel "gcfs" (planRepr :. visRepr dh :. Z) (gcfsRepr gcfp) $ \_ doms -> do
 
   -- Simply read it from the file

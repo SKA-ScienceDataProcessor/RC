@@ -70,11 +70,11 @@ planRepr :: PlanRepr
 planRepr = NoRepr -- halideRepr dim0
 
 type RawVisRepr = DynHalideRepr Dim1 Double Vis
-rawVisRepr :: DomainHandle Range -> RawVisRepr
+rawVisRepr :: Domain Range -> RawVisRepr
 rawVisRepr = dynHalideRepr (dim1 dimVisFields)
 
 type VisRepr = DynHalideRepr Dim1 Double Vis
-visRepr :: DomainHandle Range -> VisRepr
+visRepr :: Domain Range -> VisRepr
 visRepr = dynHalideRepr (dim1 dimVisFields)
 
 -- | We have 5 visibility fields: Real, imag, u, v and w.

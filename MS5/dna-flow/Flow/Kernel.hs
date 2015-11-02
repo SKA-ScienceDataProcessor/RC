@@ -51,7 +51,7 @@ rangeKernel0 :: DataRepr r
              -> Kernel (ReprType r)
 rangeKernel0 name retRep code = kernel name Z retRep code'
   where code' _ [] = fail $ "kernel " ++ show name ++ ": Received wrong number of domains!"
-        code' _ ds | RangeDomain (Range low high) <- last ds
+        code' _ ds | RangeRegion (Range low high) <- last ds
                    = castVector <$> code low high
 
 rangeKernel1 :: (DataRepr r, DataRepr r0)
@@ -59,7 +59,7 @@ rangeKernel1 :: (DataRepr r, DataRepr r0)
              -> Flow (ReprType r0) -> Kernel (ReprType r)
 rangeKernel1 name repr0 retRep code = kernel name (repr0 :. Z) retRep code'
   where code' _   [] = fail $ "kernel " ++ show name ++ ": Received wrong number of domains!"
-        code' [v] ds | RangeDomain (Range low high) <- last ds
+        code' [v] ds | RangeRegion (Range low high) <- last ds
                      = castVector <$> code low high (fst v)
         code' _   _  = fail $ "kernel " ++ show name ++ ": Received wrong number of arguments!"
 

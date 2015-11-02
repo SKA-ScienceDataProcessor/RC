@@ -84,11 +84,11 @@ dumpSteps strat = do
 
   forM_ (runStrategy (void strat)) (dump "")
 
-data AnyDH = forall a. Typeable a => AnyDH (DomainHandle a)
-type DataMap = IM.IntMap (ReprI, Map.Map [Domain] (Vector ()))
-type DomainMap = IM.IntMap (AnyDH, [Domain])
+data AnyDH = forall a. Typeable a => AnyDH (Domain a)
+type DataMap = IM.IntMap (ReprI, Map.Map RegionBox (Vector ()))
+type DomainMap = IM.IntMap (AnyDH, RegionBox)
 
-dataMapInsert :: KernelId -> [Domain] -> ReprI -> Vector () -> DataMap -> DataMap
+dataMapInsert :: KernelId -> RegionBox -> ReprI -> Vector () -> DataMap -> DataMap
 dataMapInsert kid dom repr vec = IM.insertWith update kid (repr, def)
   where def = Map.singleton dom vec
         update _ (repr', m) = (repr', Map.insert dom vec m)
@@ -107,7 +107,7 @@ dataMapDifference = IM.differenceWith remove
            = if Map.null diff then Nothing else Just (repr, diff)
           where diff = bufs `Map.difference` bufs'
 
-findParameters :: KernelId -> [Domain] -> DataMap -> IO (Vector (), [Domain])
+findParameters :: KernelId -> RegionBox -> DataMap -> IO (Vector (), RegionBox)
 findParameters kid inDoms dataMap = case IM.lookup kid dataMap of
   Just (ReprI repr, bufs)
     -- Have it for exactly the right domain region?
@@ -119,7 +119,7 @@ findParameters kid inDoms dataMap = case IM.lookup kid dataMap of
     -- ignore the possibility for failure (where in a distributed
     -- implementation parts could be missing).
     | let inps = filter (and . zipWith domainSubset inDoms . fst) $ Map.assocs bufs
-    , Just merged <- domainMerge (map fst inps)
+    , Just merged <- regionMerge (map fst inps)
     , merged == inDoms
     , (_:_) <- inps
     -> do -- Merge the vectors.

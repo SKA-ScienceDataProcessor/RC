@@ -78,8 +78,8 @@ instance HalideCtx dim val abs => DataRepr (HalideRepr dim val abs) where
 halideRepr :: dim -> HalideRepr dim val abs
 halideRepr = HalideRepr ReadAccess
 
--- | One-dimensional Halide array of size given by a domain
-data DynHalideRepr dim val abs = DynHalideRepr ReprAccess dim (DomainHandle Range)
+-- | Halide array where the size in one dimension is given by a domain
+data DynHalideRepr dim val abs = DynHalideRepr ReprAccess dim (Domain Range)
   deriving Typeable
 instance HalideCtx dim val abs => Show (DynHalideRepr dim val abs) where
   showsPrec _ (DynHalideRepr _ dim dom)
@@ -93,21 +93,21 @@ instance (HalideCtx dim val abs, MarshalArray (Dim :. dim))
   reprDomain (DynHalideRepr _ _ d) = [dhId d]
   reprCompatible (DynHalideRepr _ ex0 d0) (DynHalideRepr _ ex1 d1)
     = ex0 == ex1 && d0 `dhIsParent` d1
-  reprMerge _ dvs [RangeDomain (Range low high)] = do
+  reprMerge _ dvs [RangeRegion (Range low high)] = do
     out <- allocCVector (high - low) :: IO (Vector val)
     -- Populate vector. The caller should have made sure that the
     -- ranges actually cover the full vector.
-    forM_ dvs $ \([RangeDomain (Range l h)], v) -> do
+    forM_ dvs $ \([RangeRegion (Range l h)], v) -> do
       forM_ [l..h-1] $ \i -> do
         pokeVector out (i-low) =<< peekVector (castVector v) (i-l)
     return $ Just $ castVector out
   reprMerge r _   doms = error $
-    "reprMerge: Unexpected number of domains for " ++ show r ++ ": " ++ show (length doms)
+    "reprMerge: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
   reprSize r ds = Just $ nOfElements (halrDim r ds) * sizeOf (undefined :: val)
 
 -- | Constructor function for "DynHalideRepr". Returns a data
 -- representation with "ReadAccess".
-dynHalideRepr :: dim -> DomainHandle Range -> DynHalideRepr dim val abs
+dynHalideRepr :: dim -> Domain Range -> DynHalideRepr dim val abs
 dynHalideRepr = DynHalideRepr ReadAccess
 
 type family KernelParams (reprs :: [*]) :: [*]
@@ -128,7 +128,7 @@ class (DataRepr r, HalideScalar (HalrVal r), MarshalArray (HalrDim r)) =>
 
   -- | Get *concrete* dimensions of the Halide data
   -- representation. This might depend on the domain.
-  halrDim :: r -> [Domain] -> HalrDim r
+  halrDim :: r -> RegionBox -> HalrDim r
 
   -- | Change data representation into a writeable one.
   halrWrite :: r -> r
@@ -140,7 +140,7 @@ class (DataRepr r, HalideScalar (HalrVal r), MarshalArray (HalrDim r)) =>
   -- might pass extra data.
   halrCall :: forall xs. MarshalParams (KernelParams xs)
            => r -> Proxy xs
-           -> HalideFun xs r -> [Domain]
+           -> HalideFun xs r -> RegionBox
            -> Fn (KernelParams xs) (IO (HalrParam r))
   halrCallWrite :: forall xs. MarshalParams (KernelParams xs)
                 => r -> Proxy xs
@@ -165,10 +165,10 @@ instance (HalideCtx dim val abs, MarshalArray (Dim :. dim)) => HalideReprClass (
   type HalrVal (DynHalideRepr dim val abs) = val
   type HalideFun xs (DynHalideRepr dim val abs)
     = HalideKernel (KernelParams xs) (Array (Dim :. dim) val)
-  halrDim (DynHalideRepr _ dim _) [RangeDomain (Range low high)]
+  halrDim (DynHalideRepr _ dim _) [RangeRegion (Range low high)]
     = (fromIntegral low, fromIntegral $ high - low) :. dim
   halrDim r doms
-    = error $ "halrDim: Unexpected number of domains for " ++ show r ++ ": " ++ show (length doms)
+    = error $ "halrDim: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
   halrWrite (DynHalideRepr _ dim dh)
     = DynHalideRepr WriteAccess dim dh
   halrCall r _ fun doms

@@ -118,8 +118,12 @@ kdepDomain (KernelDep {kdepRepr=ReprI rep}) = reprDomain rep
 kdepAccess :: KernelDep -> ReprAccess
 kdepAccess (KernelDep {kdepRepr=ReprI rep}) = reprAccess rep
 
+-- | Region box. Refers to the intersection of regions in
+-- zero or more distinct (!) domains.
+type RegionBox = [Region]
+
 -- | Code implementing a kernel
-type KernelCode = [(Vector (), [Domain])] -> [Domain] -> IO (Vector ())
+type KernelCode = [(Vector (), RegionBox)] -> RegionBox -> IO (Vector ())
 
 instance Show KernelBind where
   showsPrec _ (KernelBind kid kflow kname krepr kdeps _ _)
@@ -129,26 +133,26 @@ instance Show KernelBind where
       . showString " using " . shows kdeps
 
 type DomainId = Int
-data DomainHandle a = DomainHandle
+data Domain a = Domain
   { dhId    :: DomainId
     -- | Number of regions this domain is split into
   , dhSize  :: Int
     -- | Produce a new domain handle that is split up @n@ times more
-  , dhSplit  :: Int -> Strategy (DomainHandle a)
+  , dhSplit  :: Int -> Strategy (Domain a)
     -- | Domain this was derived from
-  , dhParent :: Maybe (DomainHandle a)
+  , dhParent :: Maybe (Domain a)
     -- | Creates a new region for this handle
-  , dhCreate :: IO Domain
+  , dhCreate :: IO Region
     -- | Splits a region of the parent domain
-  , dhRegion :: Domain -> IO [Domain]
+  , dhRegion :: Region -> IO [Region]
   }
 
-instance forall a. Typeable a => Show (DomainHandle a) where
+instance forall a. Typeable a => Show (Domain a) where
   showsPrec _ dh = shows (typeOf (undefined :: a)) . showString " domain " . shows (dhId dh)
-instance Eq (DomainHandle a) where
+instance Eq (Domain a) where
   (==) = (==) `on` dhId
 
-dhIsParent :: DomainHandle a -> DomainHandle a -> Bool
+dhIsParent :: Domain a -> Domain a -> Bool
 dhIsParent dh dh1
   | dh == dh1                = True
   | Just dh' <- dhParent dh  = dhIsParent dh' dh1
@@ -156,34 +160,34 @@ dhIsParent dh dh1
 
 -- | Domains are just ranges for now. It is *very* likely that we are
 -- going to have to generalise this in some way.
-data Domain = RangeDomain Range
+data Region = RangeRegion Range
   deriving (Typeable, Eq, Ord, Show)
 
 data Range = Range Int Int
   deriving (Typeable, Eq, Ord, Show)
 
 -- | Checks whether the second domain is a subset of the first
-domainSubset :: Domain -> Domain -> Bool
-domainSubset (RangeDomain (Range low0 high0)) (RangeDomain (Range low1 high1))
+domainSubset :: Region -> Region -> Bool
+domainSubset (RangeRegion (Range low0 high0)) (RangeRegion (Range low1 high1))
   = low0 <= low1 && high0 >= high1
 
--- | Merges a number of domains, if possible. All domains must have
+-- | Merges a number of regions, if possible. All regions must have
 -- the same length!
 --
 -- TODO: Ugly. Write properly
-domainMerge :: [[Domain]] -> Maybe [Domain]
-domainMerge [] = Just []
-domainMerge dss
+regionMerge :: [[Region]] -> Maybe [Region]
+regionMerge [] = Just []
+regionMerge dss
   | not $ all ((==1) . length) dss
   = error "domainMerge: Not implemented yet for domain combinations!"
-  | and $ zipWith no_gaps ds (tail ds)
-  , RangeDomain (Range l _) <- head ds
-  , RangeDomain (Range _ h) <- last ds
-  = Just [RangeDomain $ Range l h]
+  | RangeRegion (Range l _) <- head ds
+  , and $ zipWith no_gaps ds (tail ds)
+  , RangeRegion (Range _ h) <- last ds
+  = Just [RangeRegion $ Range l h]
   | otherwise
   = Nothing
  where ds = sort $ map head dss
-       no_gaps (RangeDomain (Range _ h)) (RangeDomain (Range l _))
+       no_gaps (RangeRegion (Range _ h)) (RangeRegion (Range l _))
          = h == l
 
 type StratMap = HM.HashMap FlowI KernelBind
@@ -223,9 +227,9 @@ class (Show r, Typeable r, Typeable (ReprType r)) => DataRepr r where
   reprCompatible _ _ = True
   reprDomain :: r -> [DomainId]
   reprDomain _ = []
-  reprMerge :: r -> [([Domain], Vector ())] -> [Domain] -> IO (Maybe (Vector ()))
+  reprMerge :: r -> [(RegionBox, Vector ())] -> RegionBox -> IO (Maybe (Vector ()))
   reprMerge _ _ _ = return Nothing
-  reprSize :: r -> [Domain] -> Maybe Int
+  reprSize :: r -> RegionBox -> Maybe Int
   reprSize _ _ = Nothing
 
 -- | Who has ownership of the data representation?
@@ -257,13 +261,13 @@ newtype StratRule = StratRule (FlowI -> Maybe (Strategy ()))
 
 -- | Schedule step
 data Step where
-  DomainStep :: Typeable a => DomainHandle a -> Step
-    -- ^ Create a new domain
-  SplitStep :: Typeable a => DomainHandle a -> [Step] -> Step
+  DomainStep :: Typeable a => Domain a -> Step
+    -- ^ Create a new domain. Might depend on data produced by a kernel.
+  SplitStep :: Typeable a => Domain a -> [Step] -> Step
     -- ^ Split a domain into regions
   KernelStep :: KernelBind -> Step
     -- ^ Execute a kernel for the given domain(s)
-  DistributeStep :: Typeable a => DomainHandle a -> Schedule -> [Step] -> Step
+  DistributeStep :: Typeable a => Domain a -> Schedule -> [Step] -> Step
     -- ^ Distribute steps across the given domain using the given
     -- scheduling policy.
 

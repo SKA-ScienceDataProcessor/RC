@@ -33,7 +33,7 @@ ddp = a $ pp f g
 
 -- Vector representation
 type VecRepr = DynHalideRepr Dim0 Float Vec
-vecRepr :: DomainHandle Range -> VecRepr
+vecRepr :: Domain Range -> VecRepr
 vecRepr = dynHalideRepr dim0
 type SumRepr = HalideRepr Z Float Sum
 sumRepr :: SumRepr
@@ -41,19 +41,19 @@ sumRepr = halideRepr Z
 
 -- Kernels
 
-fKern :: DomainHandle Range -> Kernel Vec
+fKern :: Domain Range -> Kernel Vec
 fKern size = halideKernel0 "f" (vecRepr size) kern_generate_f
 foreign import ccall unsafe kern_generate_f :: HalideFun '[] VecRepr
 
-gKern :: DomainHandle Range -> Kernel Vec
+gKern :: Domain Range -> Kernel Vec
 gKern size = halideKernel0 "g" (vecRepr size) kern_generate_g
 foreign import ccall unsafe kern_generate_g :: HalideFun '[] VecRepr
 
-ppKern :: DomainHandle Range -> Flow Vec -> Flow Vec -> Kernel Vec
+ppKern :: Domain Range -> Flow Vec -> Flow Vec -> Kernel Vec
 ppKern size = halideKernel1Write "pp" (vecRepr size) (vecRepr size) kern_dotp
 foreign import ccall unsafe kern_dotp :: HalideFun '[ VecRepr ] VecRepr
 
-aKern :: DomainHandle Range -> Flow Vec -> Kernel Sum
+aKern :: Domain Range -> Flow Vec -> Kernel Sum
 aKern size = halideKernel1 "a" (vecRepr size) sumRepr kern_sum
 foreign import ccall unsafe kern_sum :: HalideFun '[ VecRepr ] SumRepr
 
