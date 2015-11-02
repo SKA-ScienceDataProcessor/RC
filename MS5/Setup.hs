@@ -207,7 +207,7 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
                runProgram verbose gcc $ concat
                  [ map ("-I"++) (PD.includeDirs bi)
                  , map ("-L"++) (PD.extraLibDirs bi)
-                 , [src, "-o", gen, "-lm"]
+                 , [src, "-o", gen]
                  , halideOpts
                  ]
                runProgramInvocation verbose $ simpleProgramInvocation gen [out]
