@@ -1,4 +1,5 @@
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Flow.Run
   ( dumpStrategy
@@ -18,6 +19,7 @@ import qualified Data.IntSet as IS
 import qualified Data.Map.Strict as Map
 import Data.IORef
 import Data.Ord
+import Data.Time.Clock
 import Data.Typeable
 
 import System.IO
@@ -239,8 +241,10 @@ execStep dataMapRef domainMapRef deps step = case step of
         return (dep, par)
 
       -- Call the kernel using the right regions
-      let outRegs = map (head . snd) outDoms
+      let !outRegs = map (head . snd) outDoms
+      !t0 <- getCurrentTime
       res <- kernCode kbind (map snd ins) outRegs
+      !t1 <- getCurrentTime
 
       -- Check size
       case reprSize rep outRegs of
@@ -250,7 +254,8 @@ execStep dataMapRef domainMapRef deps step = case step of
        _other -> return ()
 
       -- Debug
-      putStrLn $ "Calculated result for kernel " ++ show (kernId kbind) ++ " regions " ++ show outRegs
+      putStrLn $ "Calculated kernel " ++ show (kernId kbind) ++ " regions " ++ show outRegs ++
+                 " in " ++ show (diffUTCTime t1 t0) ++ " ms"
 
       -- Get inputs that have been written, and therefore should be
       -- considered freed. TODO: ugly
