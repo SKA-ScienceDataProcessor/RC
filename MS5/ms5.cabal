@@ -34,7 +34,7 @@ executable dotproduct
                        kernel/cpu/dotproduct/generate_g.cpp
                        kernel/cpu/dotproduct/dotp.cpp
                        kernel/cpu/dotproduct/sum.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lstdc++ -lHalide
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lm -lstdc++ -lHalide
 
 executable imaging
   default-language:    Haskell2010
@@ -47,7 +47,7 @@ executable imaging
 
 executable gridding
   default-language:    Haskell2010
-  ghc-options:         -O2 -Wall
+  ghc-options:         -O2 -Wall -lpthread
   Hs-source-dirs:      programs
   main-is:             gridding.hs
   build-depends:
@@ -58,4 +58,4 @@ executable gridding
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/fft.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lstdc++ -lHalide
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide

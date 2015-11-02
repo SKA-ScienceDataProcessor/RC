@@ -7,8 +7,7 @@
 // This algorithm is more well suited to Halide than in-place
 // algorithms.
 
-#include "Halide.h"
-#include <vector>
+#include "kernels_halide.h"
 
 const double pi = 3.14159265f;
 
@@ -538,11 +537,7 @@ double log2(double x) {
     return log(x)/log(2.0);
 }
 
-int main(int argc, char **argv) {
-    if (argc < 2) return 1;
-
-    const int WIDTH = 8192
-            , HEIGHT = 8192;
+FullFunc genFFTO0() {
 
     // ** Input field
 
@@ -582,25 +577,6 @@ int main(int argc, char **argv) {
     img_shifted.output_buffer()
         .set_min(0,0).set_stride(0,1).set_extent(0, WIDTH)
         .set_min(1,0).set_extent(1, HEIGHT);
-    img_shifted
-        .split(v, vo, vi, HEIGHT/2)
-        .unroll(vo)
-        .split(u, uo, ui, WIDTH/2)
-        .unroll(uo)
-        .vectorize(ui,4);
 
-    // The above split is *almost* enough to make Halide generate
-    // specialised code for all four quarters of the image. However,
-    // it fails to prove that
-    //
-    //   ((vi * 4) + 4096) % 4096 < 2048
-    //
-    // Is always false for vi < 512. Therefore we end up with a
-    // surplus "select". Let's hope LLVM is smart enough to eliminate
-    // it...
-
-    Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
-    Module mod = img_shifted.compile_to_module(args, "kern_fft", target);
-    compile_module_to_object(mod, argv[1]);
-    return 0;
+    return make_pair(std::vector<Argument>(args), img_shifted);
 }

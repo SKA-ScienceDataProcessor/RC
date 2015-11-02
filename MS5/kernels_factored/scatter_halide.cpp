@@ -1,7 +1,4 @@
-
-#include "Halide.h"
-
-using namespace Halide;
+#include "kernels_halide.h"
 
 enum ComplxFields { _REAL = 0, _IMAG,  _CPLX_FIELDS };
 struct Complex {
@@ -21,13 +18,8 @@ struct Complex {
   operator Tuple() { return Tuple(real, imag); }
 };
 
-int main(int argc, char **argv) {
-  if (argc < 2) return 1;
-
+FullFunc genScatter(bool reorderRDom) {
   // GCF size and oversampling are constants for now
-  const int GCF_SIZE = 16
-          , OVER = 8;
-
   // ** Input
 
   Param<double> scale("scale");
@@ -85,6 +77,23 @@ int main(int argc, char **argv) {
 
   // Reduction domain. Note that we iterate over time steps before
   // switching the GCF row in order to increase locality (Romein).
+  typedef std::pair<Expr, Expr> rType;
+  rType
+      cRange = {0, _CPLX_FIELDS}
+    , gRange = {0, GCF_SIZE}
+    , vRange = {vis.top(), vis.height()}
+    ;
+  std::vector<rType> rVec;
+  if (reorderRDom) rVec = {cRange, gRange, gRange, vRange};
+  else rVec = {cRange, gRange, vRange, gRange};
+
+  RDom red(rVec);
+  RVar
+      rcmplx = red.x
+    , rgcfx = red.y
+    , rvis, rgcfy
+    ;
+#if 0
   RDom red(
       0, _CPLX_FIELDS
     , 0, GCF_SIZE
@@ -97,6 +106,14 @@ int main(int argc, char **argv) {
     , rvis  = red.z
     , rgcfy = red.w
     ;
+#endif
+  if (reorderRDom) {
+    rvis = red.w;
+    rgcfy = red.z;
+  } else {
+    rvis = red.z;
+    rgcfy = red.w;
+  }
 
   // Get visibility as complex number
   Complex visC(vis(_R, rvis), vis(_I, rvis));
@@ -116,16 +133,5 @@ int main(int argc, char **argv) {
   uv.compute_at(uvg,rvis).vectorize(uvdim);
   inBound.compute_at(uvg,rvis);
 
-  // Fuse and vectorise complex calculations of entire GCF rows
-  RVar rgcfxc;
-  uvg.update()
-    .allow_race_conditions()
-    .fuse(rgcfx, rcmplx, rgcfxc)
-    .vectorize(rgcfxc, 8)
-    .unroll(rgcfxc, GCF_SIZE * 2 / 8);
-
-  Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
-  Module mod = uvg.compile_to_module(args, "kern_scatter", target);
-  compile_module_to_object(mod, argv[1]);
-  return 0;
+  return make_pair(std::vector<Argument>(args), uvg);
 }

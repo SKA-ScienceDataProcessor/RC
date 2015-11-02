@@ -66,10 +66,10 @@ gridderStrat cfg = do
 main :: IO ()
 main = do
 
-  let gpar = GridPar { gridWidth = 1024
-                     , gridHeight = 1024
-                     , gridPitch = 1026
-                     , gridTheta = 0.04
+  let gpar = GridPar { gridWidth = 8192
+                     , gridHeight = 8192
+                     , gridPitch = 8196
+                     , gridTheta = 0.10
                      }
       gcfpar = GCFPar { gcfSize = 16
                       , gcfOver = 8
@@ -77,7 +77,7 @@ main = do
                       }
       config = Config
         { cfgInput  = "test_p00_s00_f00.vis"
-        , cfgPoints = 10000 * 200 -- TODO: 32131 * 200
+        , cfgPoints = 32131 * 200 -- TODO: 32131 * 200
         , cfgOutput = "out.img"
         , cfgGrid   = gpar
         , cfgGCF    = gcfpar

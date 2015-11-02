@@ -1,5 +1,6 @@
 {-# LANGUAGE GADTs, TypeFamilies, TypeOperators, FlexibleInstances,
-             ScopedTypeVariables, FlexibleContexts, MultiParamTypeClasses #-}
+             ScopedTypeVariables, FlexibleContexts, MultiParamTypeClasses,
+             BangPatterns #-}
 
 module Flow.Builder
   (
@@ -11,7 +12,7 @@ module Flow.Builder
   , uniq, implementing, calculate
   -- * Kernel binding
   , IsReprs(..), IsReprKern(..)
-  , kernel, Kernel
+  , kernel, Kernel, augmentKernel, timeKernel
   , bind, rebind, bindRule, bindNew
   -- * Support
   , Z(..), (:.)(..)
@@ -24,6 +25,8 @@ import Control.Monad.State.Strict
 import qualified Data.HashMap.Strict as HM
 import Data.Maybe
 import Data.Typeable
+
+import Data.Time.Clock
 
 import Flow.Internal
 
@@ -106,6 +109,19 @@ data Kernel a where
          => String -> KernelCode
          -> rs -> r -> ReprFlows rs
          -> Kernel (ReprType r)
+
+augmentKernel :: (KernelCode -> KernelCode) -> Kernel a -> Kernel a
+augmentKernel f k = case k of Kernel a b c d e -> Kernel a (f b) c d e
+
+timeKernel :: String -> Kernel a -> Kernel a
+timeKernel s = augmentKernel doit
+  where
+    doit f doms d = do
+      !t0 <- getCurrentTime
+      !r <- f doms d
+      !t1 <- getCurrentTime
+      putStrLn $ s ++ " duration(ms): " ++ show (diffUTCTime t1 t0)
+      return r
 
 -- | Create a new abstract kernel flow
 flow :: IsCurriedFlows fs => String -> fs

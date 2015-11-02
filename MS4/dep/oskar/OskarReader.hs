@@ -5,6 +5,7 @@
     , DeriveDataTypeable
     , RankNTypes
     , ScopedTypeVariables
+    , CPP
   #-}
 
 module OskarReader
@@ -78,10 +79,17 @@ tdUVWPtr :: TaskData
 tdUVWPtr td bl t o
   = tdUVWs td `advancePtr` (o + 3 * (t + tdTimes td * bl))
 
+#ifdef mingw32_HOST_OS
+foreign import ccall unsafe _aligned_free :: Ptr a -> IO ()
+#else
+_aligned_free :: Ptr a -> IO ()
+_aligned_free = free
+#endif
+
 finalizeTaskData :: TaskData -> IO ()
 finalizeTaskData td = do
   free $ tdBlMaxMin td
-  free $ tdVisibilies td
+  _aligned_free $ tdVisibilies td
   free $ tdUVWs td
 
 readOskarData :: FilePath -> IO TaskData

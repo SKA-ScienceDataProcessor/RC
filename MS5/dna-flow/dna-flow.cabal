@@ -28,6 +28,7 @@ library
     unordered-containers >= 0.2,
     hashable     >= 1.2,
     bytestring   >= 0.10,
+    time,
     fixed-vector-hetero >= 0.2,
     dna          >= 0.5
   Exposed-modules: Flow,

@@ -148,9 +148,9 @@ unmakeVector v off len = do
 -- given number of elements. The returned vector will be aligned
 -- according to "vectorAlign".
 allocCVector :: forall a. Storable a => Int -> IO (Vector a)
-#ifdef _WIN32
+#ifdef mingw32_HOST_OS
 -- On Windows we can use _aligned_malloc directly
-allocCVector n = fmap (CVector vs) $ c_aligned_malloc vectorAlign (fromIntegral vs)
+allocCVector n = fmap (CVector vs) $ c_aligned_malloc (fromIntegral vs) vectorAlign
   where vs = n * sizeOf (undefined :: a)
 foreign import ccall unsafe "_aligned_malloc"
     c_aligned_malloc :: CUInt -> CUInt -> IO (Ptr a)
@@ -185,8 +185,15 @@ allocDeviceVector n = fmap (DeviceVector (n * sizeOf (undefined :: a))) $ CUDA.m
 -- This function will do nothing for vectors obtained using
 -- @nullVector@ or @offsetVector@.
 freeVector :: Vector a -> IO ()
-freeVector (CVector 0 _)        = return ()
-freeVector (CVector _ ptr)      = Foreign.Marshal.Alloc.free ptr
+freeVector (CVector 0 _)   = return ()
+freeVector (CVector _ ptr) =
+#ifndef mingw32_HOST_OS
+   Foreign.Marshal.Alloc.free ptr
+#else 
+   c_aligned_free ptr
+foreign import ccall unsafe "_aligned_free" c_aligned_free :: Ptr a -> IO ()
+#endif
+
 #ifdef USE_CUDA
 freeVector (HostVector 0 _)     = return ()
 freeVector (HostVector _ ptr)   = freeHost ptr
