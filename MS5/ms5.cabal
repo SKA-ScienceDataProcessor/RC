@@ -34,7 +34,7 @@ executable dotproduct
                        kernel/cpu/dotproduct/generate_g.cpp
                        kernel/cpu/dotproduct/dotp.cpp
                        kernel/cpu/dotproduct/sum.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lm -lstdc++ -lHalide
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lm -lstdc++ -lHalide -lLLVM-3.6
 
 executable imaging
   default-language:    Haskell2010
@@ -58,4 +58,4 @@ executable gridding
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/fft.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide -lLLVM-3.6
