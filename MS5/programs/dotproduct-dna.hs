@@ -117,13 +117,21 @@ prettyprint = flip evalState varNames . ppr . fmap Right
                         sg <- ppr g
                         return $ parens $ se <> comma <> sg
       List es     -> pprList es
-      SDom r      -> return $ text $ show r
+      SDom i r      -> return $ text (show r) <> text " " <> int i
       SKern kb vars dom -> do
         vs <- pprList vars
         ds <- pprList dom
         return $ text "Kernel call" $$ nest 2
           (vcat [ text (show kb), vs, ds ])
       SSeq e1 e2 -> liftM2 ($$) (ppr e1) (ppr e2)
+      SSplit e _ steps -> do
+        se <- ppr e
+        ss <- ppr steps
+        return $ (text "Split " <> se) $$ nest 2 ss
+      SDistribute e steps -> do
+        se <- ppr e
+        ss <- ppr steps
+        return $ (text "Distribute " <> se) $$ nest 2 ss
       SBind e lam -> do
         -- Get fresh var
         (v : rest) <- get
