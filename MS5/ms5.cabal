@@ -44,7 +44,9 @@ executable dotproduct-dna
   build-depends:
     base         >= 4.6,
     dna-flow     >= 0.5,
-    groom,
+    mtl,
+    bound,
+    pretty,
     dna,
     fixed-vector-hetero
   x-halide-sources:    kernel/cpu/dotproduct/generate_f.cpp

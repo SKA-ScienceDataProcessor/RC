@@ -1,23 +1,27 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DataKinds                #-}
+{-# LANGUAGE DeriveDataTypeable       #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase               #-}
+{-# LANGUAGE LambdaCase               #-}
 
 module Main where
 
 import Data.Typeable
 
 import Control.Monad
+import Control.Monad.State
+import Data.List
 import Flow
 import Flow.Vector
 import Flow.Halide
-import Text.Groom
+import Text.PrettyPrint
 -- import DNA (dnaRun)
 
 -- Needed for FFI to work
 import Data.Vector.HFixed.Class ()
 import Flow.Halide.Types ()
 import Flow.DnaCompiler
+import Bound
 
 -- Data tags
 data Vec deriving Typeable
@@ -100,6 +104,40 @@ ddpStrat size = do
   calculate ddp
   void $ bindNew $ printKern ddp
 
+prettyprint :: Show a => StepE a -> Doc
+prettyprint = flip evalState varNames . ppr . fmap Right
+  where
+    varNames = map (:[]) ['a' .. 'z']
+    pprList es = do ss <- mapM ppr es
+                    return $ brackets $ hcat $ intersperse comma ss
+    ppr = \case
+      V (Left  v) -> return $ text v
+      V (Right a) -> return $ text (show a)
+      Pair e g    -> do se <- ppr e
+                        sg <- ppr g
+                        return $ parens $ se <> comma <> sg
+      List es     -> pprList es
+      SDom r      -> return $ text $ show r
+      SKern kb vars dom -> do
+        vs <- pprList vars
+        ds <- pprList dom
+        return $ text "Kernel call" $$ nest 2
+          (vcat [ text (show kb), vs, ds ])
+      SSeq e1 e2 -> liftM2 ($$) (ppr e1) (ppr e2)
+      SBind e lam -> do
+        -- Get fresh var
+        (v : rest) <- get
+        put rest
+        --
+        se <- ppr e
+        sl <- ppr $ instantiate1 (V $ Left v) lam
+        return $ vcat
+          [ se <> text (" $ λ"++v++" →")
+          , nest 2 sl
+          ]
+        
+
+
 main :: IO ()
 main = do
   let size  = 1000000
@@ -107,7 +145,8 @@ main = do
   dumpSteps $ dpStrat size
   putStrLn "----------------------------------------------------------------"
   let ast = compileSteps $ runStrategy strat
-  putStrLn $ groom ast
+  putStrLn $ render $ prettyprint ast
+  -- putStrLn $ groom ast
   -- dnaRun id $ do
   --   interpretAST $ 
   --   return ()
