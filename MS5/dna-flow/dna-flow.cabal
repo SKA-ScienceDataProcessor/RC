@@ -30,6 +30,8 @@ library
     bytestring   >= 0.10,
     time,
     fixed-vector-hetero >= 0.2,
+    bound        >= 1.0.6,
+    prelude-extras >= 0.4,
     dna          >= 0.5
   Exposed-modules: Flow,
                    Flow.Builder,
@@ -38,6 +40,7 @@ library
                    Flow.Domain,
                    Flow.Vector,
                    Flow.Halide.Types
+                   Flow.DnaCompiler
                    Flow.Internal,
                    Flow.Halide,
                    Flow.Halide.BufferT,
