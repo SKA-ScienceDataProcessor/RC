@@ -149,7 +149,8 @@ prettyprint = flip evalState varNames . ppr . fmap Right
 main :: IO ()
 main = do
   let size  = 1000000
-      strat = dpStrat size
+      -- strat = dpStrat size
+      strat = ddpStrat size
   dumpSteps $ dpStrat size
   putStrLn "----------------------------------------------------------------"
   let ast = compileSteps $ runStrategy strat

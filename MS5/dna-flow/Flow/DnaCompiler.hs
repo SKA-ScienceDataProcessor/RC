@@ -34,7 +34,7 @@ data StepE a
   | List [StepE a]
     -- ^ List of variables
 
-  | SDom  NewRegion
+  | SDom Int NewRegion
     -- ^ Create domain
   | SKern KernelBind [StepE a] [StepE a]
     -- ^ Kernel call
@@ -81,12 +81,14 @@ instance Applicative StepE where
   (<*>) = ap
 instance Monad StepE where
   return = V
-  V a           >>= f = f a
-  Pair a b      >>= f = Pair (a >>= f) (b >>= f)
-  List xs       >>= f = List (map (>>= f) xs)
-  SKern k xs ys >>= f = SKern k (map (>>= f) xs) (map (>>= f) ys)
-  SSeq  a b     >>= f = SSeq  (a >>= f) (b >>= f)
-  SBind e g     >>= f = SBind (e >>= f) (g >>>= f)
+  V a              >>= f = f a
+  Pair a b         >>= f = Pair (a >>= f) (b >>= f)
+  List xs          >>= f = List (map (>>= f) xs)
+  SKern k xs ys    >>= f = SKern k (map (>>= f) xs) (map (>>= f) ys)
+  SSplit a r ss    >>= f = SSplit (a >>= f) r (ss >>= f)
+  SDistribute a ss >>= f = SDistribute (a >>= f) (ss >>= f)
+  SSeq  a b        >>= f = SSeq  (a >>= f) (b >>= f)
+  SBind e g        >>= f = SBind (e >>= f) (g >>>= f)
 
 
 ----------------------------------------------------------------
@@ -101,29 +103,47 @@ type DomainMap = IM.IntMap (AnyDH, RegionBox)
 
 compileSteps :: [Step] -> StepE V
 compileSteps []     = error "compileSteps: empty list"
-compileSteps [x]    = fst $ singleStep x
+compileSteps [x]    = toStep $ singleStep x
 compileSteps (x:xs) =
-  let (expr,v) = singleStep x
-      rest     = compileSteps xs
-  in expr `SBind` abstract1 v rest
+  let rest = compileSteps xs
+  in case singleStep x of
+       StepVal   expr v -> expr `SBind` abstract1 v rest
+       StepNoVal expr   -> expr `SSeq` rest
 
-singleStep :: Step -> (StepE V, V)
+data StepRes
+  = StepVal   (StepE V) V
+  | StepNoVal (StepE V)
+
+toStep :: StepRes -> StepE V
+toStep = \case
+  StepVal   e _ -> e
+  StepNoVal e   -> e
+
+singleStep :: Step -> StepRes
 singleStep = \case
-  DomainStep dh    -> ( SDom (NewRegion $ dhCreate dh)
-                      , DomVar  (dhId dh))
-  KernelStep kb    ->
-    ( SKern kb
-        -- Parameters
-        [ Pair (V $ KernVar kid)
-               (List $ V . DomVar <$> reprDomain repr)
-        | KernelDep kid (ReprI repr) <- kernDeps kb
-        ]
-        -- Output domains
-        (kbDomList kb)
-    , KernVar (kernId kb)
-    )
-  DistributeStep{} -> error "DistributeStep is not supported"
-  SplitStep{}      -> error "SplitStep is not supported"
+  DomainStep dh    -> StepVal
+                        (SDom (dhId dh) (NewRegion $ dhCreate dh))
+                        (DomVar  (dhId dh))
+  KernelStep kb    -> StepVal
+    (SKern kb
+       -- Parameters
+       [ Pair (V $ KernVar kid)
+              (List $ V . DomVar <$> reprDomain repr)
+       | KernelDep kid (ReprI repr) <- kernDeps kb
+       ]
+       -- Output domains
+       (kbDomList kb))
+    (KernVar (kernId kb))
+  DistributeStep dh _ steps ->
+    StepNoVal $
+      SDistribute
+        (V $ DomVar (dhId dh))
+        (compileSteps steps)
+  SplitStep dh steps ->
+    StepNoVal $ SSplit
+       (V $ DomVar (dhId dh))
+       (RegSplit $ dhRegion dh)
+       (compileSteps steps)
   where
     kbDomList kb = case kernRepr kb of
       ReprI r -> V . DomVar <$> reprDomain r
