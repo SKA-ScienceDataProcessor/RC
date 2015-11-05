@@ -12,6 +12,7 @@ module Flow.Kernel
   , rangeKernel0, rangeKernel1
   , VectorRepr(..)
   , vecKernel0, vecKernel1, vecKernel2, vecKernel3
+  , RegionRepr(..)
   ) where
 
 import Control.Applicative
@@ -34,6 +35,25 @@ instance Typeable a => DataRepr (NoRepr a) where
   reprNop _ = True
   reprAccess _ = ReadAccess
   reprCompatible _ _ = True
+
+-- | Per-region representation: Does not change data representation,
+-- but distributes data so that we have one data object per region.
+data RegionRepr dom rep where
+  RegionRepr :: DataRepr rep => Domain dom -> rep -> RegionRepr dom rep
+ deriving Typeable
+instance (Show (Domain dom), Show rep) => Show (RegionRepr dom rep) where
+  showsPrec _ (RegionRepr dh rep)
+    = shows rep . showString " over " . shows dh
+instance (DataRepr rep, Typeable dom, Typeable rep) => DataRepr (RegionRepr dom rep) where
+  type ReprType (RegionRepr dom rep) = ReprType rep
+  reprNop (RegionRepr _ rep) = reprNop rep
+  reprAccess (RegionRepr _ rep) = reprAccess rep
+  reprCompatible (RegionRepr dh0 rep0) (RegionRepr dh1 rep1)
+    = (dh0 == dh1 || Just dh1 == dhParent dh0) && rep0 `reprCompatible` rep1
+  reprDomain (RegionRepr dh rep) = dhId dh : reprDomain rep
+  reprMerge _ _ _ = fail "reprMerge for region repr undefined!"
+  reprSize (RegionRepr _ rep) (_:ds) = reprSize rep ds
+  reprSize rep                _      = fail $ "Not enough domains passed to reprSize for " ++ show rep ++ "!"
 
 -- | Vector representation: A variable-sized "Vector" with @val@
 -- elements, representing abstract data of type @abs@. This is

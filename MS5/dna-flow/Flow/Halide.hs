@@ -177,6 +177,21 @@ instance (HalideCtx dim val abs, MarshalArray (Dim :. dim)) => HalideReprClass (
   halrCallWrite _ _ fun
     = callWrite fun
 
+
+instance (Typeable dom, Typeable rep, HalideReprClass rep) =>
+         HalideReprClass (RegionRepr dom rep) where
+  type HalrDim (RegionRepr dom rep) = HalrDim rep
+  type HalrVal (RegionRepr dom rep) = HalrVal rep
+  type HalideFun xs (RegionRepr dom rep) = HalideFun xs rep
+  halrDim (RegionRepr _ rep) ds = halrDim rep ds
+  halrWrite (RegionRepr dh rep) = RegionRepr dh (halrWrite rep)
+  halrCall rep _ _ []
+    = error $ "Not enough domains passed to halrCall for " ++ show rep ++ "!"
+  halrCall (RegionRepr _ rep) xs fun (_:doms)
+    = halrCall rep xs fun doms
+  halrCallWrite (RegionRepr _ rep) xs fun
+    = halrCallWrite rep xs fun
+
 halideKernel0 :: HalideReprClass rr
               => String
               -> rr
