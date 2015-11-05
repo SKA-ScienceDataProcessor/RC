@@ -4,11 +4,13 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Flow.Kernel
   ( DataRepr(..), ReprAccess(..)
   , NoRepr(..)
-  , mappingKernel, mergingKernel
+  , mappingKernel, mergingKernel, foldingKernel
   , rangeKernel0, rangeKernel1
   , VectorRepr(..)
   , vecKernel0, vecKernel1, vecKernel2, vecKernel3
@@ -16,6 +18,7 @@ module Flow.Kernel
   ) where
 
 import Control.Applicative
+import Control.Monad
 
 import qualified Data.Map as Map
 import Data.Typeable
@@ -79,21 +82,29 @@ type MappingKernelCode = [RegionData] -> RegionBox -> IO (Vector ())
 -- being worked on. So in effect, this implements a "map".
 mappingKernel :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
           => String -> rs -> r -> MappingKernelCode -> ReprKernFun (ReprType r) rs
-mappingKernel name parReprs retRep code = kernel name parReprs retRep $ \pars -> mapM $ \reg -> do
-  -- Check for parameters corresponding to the output domain, and
-  -- limit them to the region currently worked on.
-  let limit (parRi, par)
-        | repriDomain parRi /= reprDomain retRep  = par
-        | otherwise
-        = case Map.lookup reg par of
-            Just par' -> Map.singleton reg par'
-            Nothing   -> error $ "mapKernel " ++ name ++ " impossible: Asked to produce output " ++
-                                 "for region " ++ show reg ++
-                                 " but this region was not found for parameter " ++ show parRi ++ "!"
-  -- Pair parameters with their data representations. Noop-parameters
-  -- are not passed.
-  let reprs = filter (not . isNoReprI) $ toReprsI parReprs
-  code (map limit (zip reprs pars)) reg
+mappingKernel name parReprs retRep code = kernel name parReprs retRep $ \pars ->
+  mapM $ \reg -> do
+    let limit = limitToRegion ("mappingKernel " ++ name) (reprDomain retRep) reg
+    code (map limit (zipReprs parReprs pars)) reg
+
+-- | Zip kernel parameters with their expected data
+-- representations. Especially filter out NOOP-parameters, as they
+-- will not get passed.
+zipReprs :: IsReprs rs => rs -> [RegionData] -> [(ReprI, RegionData)]
+zipReprs parReprs pars = zip reprs pars
+  where reprs = filter (not . isNoReprI) $ toReprsI parReprs
+
+-- | Limit all incoming parameters that are split in the domain of the
+-- given region to *only* have data for the given region.
+limitToRegion :: String -> [DomainId] -> RegionBox -> (ReprI, RegionData) -> RegionData
+limitToRegion name dom rbox (parRi, par)
+  | repriDomain parRi /= dom
+  = par
+  | Just par' <- Map.lookup rbox par
+  = Map.singleton rbox par'
+  | otherwise
+  = error $ name ++ " impossible: Asked to produce output for region " ++ show rbox ++
+            " but this region was not found for parameter " ++ show parRi ++ "!"
 
 -- | Code implementing a kernel for a single output domain and single parameter
 -- regions. See "mergedKernel".
@@ -124,10 +135,56 @@ mergingKernel name parReprs retRep code = mappingKernel name parReprs retRep $ \
                  show (Map.keys par) ++ " for " ++ show parR ++ "! This is not (yet?) supported..."
   -- Pair parameters with their data representations. Noop-parameters
   -- are not passed.
-  let reprs = filter (not . isNoReprI) $ toReprsI parReprs
-  mergedPars <- mapM merge $ zip reprs pars
+  mergedPars <- mapM merge $ zipReprs parReprs pars
   code mergedPars reg
 
+-- | Code implementing a fold operation for a single input and output
+-- domain. See "foldingKernel".
+type FoldingKernelCode = [(Vector (), RegionBox)] -> Vector() -> RegionBox -> IO (Vector ())
+
+-- | Data family for getting the last (fold) parameter data
+-- representation of a list. As folding kernels iterate over this,
+-- this must also be the return data representation.
+class DataRepr (FoldPar xs) => HasFoldPar xs where
+  type FoldPar xs :: *
+  foldPar :: xs -> FoldPar xs
+instance DataRepr x => HasFoldPar (x :. Z) where
+  type FoldPar (x :. Z) = x
+  foldPar (x :. Z) = x
+instance HasFoldPar (x :. xs) => HasFoldPar (y :. (x :. xs)) where
+  type FoldPar (y :. (x :. xs)) = FoldPar (x :. xs)
+  foldPar (_ :. (x :. xs)) = foldPar (x :. xs)
+
+-- | Kernel producing output by folding over all regions in the input
+-- data (while mapping over the output data). This is an alternative
+-- to "mergingKernel", but only works for kernels that we can
+-- meaningfully apply to data multiple times.
+foldingKernel :: (HasFoldPar rs, IsReprs rs, IsReprKern (ReprType (FoldPar rs)) rs)
+              => String -> rs -> FoldingKernelCode -> ReprKernFun (ReprType (FoldPar rs)) rs
+foldingKernel name parReprs code = mappingKernel name parReprs (foldPar parReprs) $ \pars reg -> do
+
+  -- Get parameter sets we want to pass
+  let iter :: [(ReprI, RegionData)] -> [[(Vector (), RegionBox)]]
+      iter [] = [[]]
+      iter ((parRi, par):rest)
+        | [(rbox, v)] <- Map.toList par
+        = map ((v, rbox):) (iter rest)
+        | otherwise
+        = do (rbox, parv) <- Map.assocs par
+             let limit = limitToRegion ("foldingKernel " ++ name) (repriDomain parRi) rbox
+                 rest' = zip (map fst rest) $ map limit rest
+             map ((parv, rbox):) (iter rest')
+      iterPars = iter $ take (length pars - 1) $ zipReprs parReprs pars
+
+  putStrLn $ "Folding over " ++ show (length iterPars) ++ " parameters..."
+
+  -- Call kernel code for every iteration
+  let fpar0 | [(_rbox, fpar0')] <- Map.toList (last pars)
+                        = fpar0'
+            | otherwise = error $ "foldingKernel " ++ name ++ " impossible: Multiple regions for folding parameter!"
+  (\c -> foldM c fpar0 iterPars) $ \fpar pars' -> do
+    putStrLn $ "Parameter set " ++ show (map snd pars')
+    code pars' fpar reg
 
 rangeKernel0 :: DataRepr r
              => String -> r -> (Int -> Int -> IO (Vector a))

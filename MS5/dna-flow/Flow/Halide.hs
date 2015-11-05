@@ -295,16 +295,13 @@ halideKernel1Write
   -> r0 -> rr
   -> HalideFun '[r0] rr
   -> Flow (ReprType r0) -> Flow (ReprType rr) -> Kernel (ReprType rr)
-halideKernel1Write name rep0 repR code = mergingKernel name (rep0 :. (halrWrite repR) :. Z) repR code'
-  where code' [(v0,d0), (v1,d1)] ds = do
-         -- Should hold by construction.
-         when (ds /= d1) $
-           fail $ "halideKernel1Write: Domain mismatch between parameter and return value!"
+halideKernel1Write name rep0 repR code = foldingKernel name (rep0 :. (halrWrite repR) :. Z) code'
+  where code' [(v0,d0)] v1 ds = do
          vecR <- halrCallWrite repR (Proxy :: Proxy '[r0]) code
                                (Array (halrDim rep0 d0) (castVector v0))
-                               (Array (halrDim repR d1) (castVector v1))
+                               (Array (halrDim repR ds) (castVector v1))
          return $ castVector $ arrayBuffer vecR
-        code' _ _ = fail "halideKernel1Write: Received wrong number of input buffers!"
+        code' _ _ _ = fail "halideKernel1Write: Received wrong number of input buffers!"
 
 halideKernel2Write
   :: forall rr r0 r1. (HalideReprClass rr, HalideReprClass r0, HalideReprClass r1)
@@ -312,17 +309,14 @@ halideKernel2Write
   -> r0 -> r1 -> rr
   -> HalideFun '[r0, r1] rr
   -> Flow (ReprType r0) -> Flow (ReprType r1) -> Flow (ReprType rr) -> Kernel (ReprType rr)
-halideKernel2Write name rep0 rep1 repR code = mergingKernel name (rep0 :. rep1 :. (halrWrite repR) :. Z) repR code'
-  where code' [(v0,d0),(v1,d1),(v2,d2)] ds = do
-         -- Should hold by construction.
-         when (ds /= d2) $
-           fail $ "halideKernel2Write: Domain mismatch between parameter and return value!"
+halideKernel2Write name rep0 rep1 repR code = foldingKernel name (rep0 :. rep1 :. (halrWrite repR) :. Z) code'
+  where code' [(v0,d0),(v1,d1)] v2 ds = do
          vecR <- halrCallWrite repR (Proxy :: Proxy '[r0, r1]) code
                                (Array (halrDim rep0 d0) (castVector v0))
                                (Array (halrDim rep1 d1) (castVector v1))
-                               (Array (halrDim repR d2) (castVector v2))
+                               (Array (halrDim repR ds) (castVector v2))
          return $ castVector $ arrayBuffer vecR
-        code' _ _ = fail "halideKernel2Write: Received wrong number of input buffers!"
+        code' _ _ _ = fail "halideKernel2Write: Received wrong number of input buffers!"
 
 -- | Simple kernel that dumps the contents of a channel with Halide
 -- data representation to a file.
