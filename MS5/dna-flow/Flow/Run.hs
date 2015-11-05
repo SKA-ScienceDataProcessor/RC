@@ -176,8 +176,8 @@ execSteps dataMapRef domainMapRef topDeps steps = do
         (dataMap', discardMap) = IM.partitionWithKey isDep dataMap
     writeIORef dataMapRef dataMap'
     forM_ (IM.assocs discardMap) $ \(kid, (_repr, m)) ->
-      forM_ (Map.assocs m) $ \(dom, v) -> do
-        putStrLn $ "Discarding buffer " ++ show kid ++ " for domain " ++ show dom
+      forM_ (Map.assocs m) $ \(rbox, v) -> do
+        putStrLn $ "Discarding buffer " ++ show kid ++ " for region box " ++ show rbox
         freeVector v
 
 -- | Execute schedule step
@@ -219,9 +219,7 @@ execStep dataMapRef domainMapRef deps step = case step of
     dataMap <- readIORef dataMapRef
     ins <- forM (kernDeps kbind) $ \kdep -> do
       case IM.lookup (kdepId kdep) dataMap of
-        Just (_, bufs) -> do putStrLn $ "Dependency " ++ show (kdepId kdep) ++
-                                        " found with regions " ++ show (Map.keys bufs)
-                             return (kdep, bufs)
+        Just (_, bufs) -> return (kdep, bufs)
         Nothing        -> fail $ "Internal error for kernel " ++ show (kernName kbind) ++ ": Input " ++
                                  show (kdepId kdep) ++ " not found!"
            -- This should never happen
@@ -243,7 +241,8 @@ execStep dataMapRef domainMapRef deps step = case step of
         _other -> return ()
 
     -- Debug
-    putStrLn $ "Calculated kernel " ++ show (kernId kbind) ++ " regions " ++ show outRegs ++
+    putStrLn $ "Calculated kernel " ++ show (kernId kbind) ++ ":" ++ kernName kbind ++
+               " regions " ++ show outRegs ++
                " in " ++ show (1000 * diffUTCTime t1 t0) ++ " ms"
 
     -- Get inputs that have been written, and therefore should be

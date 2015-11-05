@@ -176,14 +176,11 @@ foldingKernel name parReprs code = mappingKernel name parReprs (foldPar parReprs
              map ((parv, rbox):) (iter rest')
       iterPars = iter $ take (length pars - 1) $ zipReprs parReprs pars
 
-  putStrLn $ "Folding over " ++ show (length iterPars) ++ " parameters..."
-
   -- Call kernel code for every iteration
   let fpar0 | [(_rbox, fpar0')] <- Map.toList (last pars)
                         = fpar0'
             | otherwise = error $ "foldingKernel " ++ name ++ " impossible: Multiple regions for folding parameter!"
-  (\c -> foldM c fpar0 iterPars) $ \fpar pars' -> do
-    putStrLn $ "Parameter set " ++ show (map snd pars')
+  (\c -> foldM c fpar0 iterPars) $ \fpar pars' ->
     code pars' fpar reg
 
 rangeKernel0 :: DataRepr r
