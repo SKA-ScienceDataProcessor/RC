@@ -45,20 +45,28 @@ gridderStrat cfg = do
       gcfpar = cfgGCF cfg
   tag <- bindNew $ fftCreatePlans gpar
 
-  -- Bind kernel rules
-  bindRule gcf (gcfKernel gcfpar dom tag)
-  bindRule createGrid (gridInit gpar)
-  bindRule grid (gridKernel gpar gcfpar dom)
-  bindRule idft (ifftKern gpar tag)
-
-  -- Create data flow for visibilities, read in and sort
+  -- Create data flow for visibilities, read in
   let vis = flow "vis" tag
   bind vis $ oskarReader dom (cfgInput cfg) 0 0
-  rebind vis $ sorter dom
 
-  -- Compute the result
-  let result = gridder vis (gcf vis)
-  calculate result
+  -- Create binned domain, bin
+  let low_w = -25000
+      high_w = 25000
+      bins = 10
+      result = gridder vis (gcf vis)
+  binsDom <- makeBinDomain (wBinSizer dom low_w high_w bins vis) low_w high_w
+  split binsDom bins $ \binDom -> do
+    rebind vis $ wBinner dom binDom
+    bindRule gcf (gcfKernel gcfpar binDom tag)
+    calculate $ gcf vis
+
+    -- Bind kernel rules
+    bindRule createGrid (gridInit gpar)
+    bindRule grid (gridKernel gpar gcfpar binDom)
+    bindRule idft (ifftKern gpar tag)
+
+    -- Compute the result
+    calculate result
 
   -- Write out
   void $ bindNew $ imageWriter gpar (cfgOutput cfg) result
@@ -77,7 +85,7 @@ main = do
                       }
       config = Config
         { cfgInput  = "test_p00_s00_f00.vis"
-        , cfgPoints = 32131 * 200 -- TODO: 32131 * 200
+        , cfgPoints = 32131 * 200
         , cfgOutput = "out.img"
         , cfgGrid   = gpar
         , cfgGCF    = gcfpar

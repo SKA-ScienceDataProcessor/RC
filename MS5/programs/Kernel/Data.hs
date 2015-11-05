@@ -73,16 +73,16 @@ type RawVisRepr = DynHalideRepr Dim1 Double Vis
 rawVisRepr :: Domain Range -> RawVisRepr
 rawVisRepr = dynHalideRepr (dim1 dimVisFields)
 
-type VisRepr = DynHalideRepr Dim1 Double Vis
-visRepr :: Domain Range -> VisRepr
-visRepr = dynHalideRepr (dim1 dimVisFields)
+type VisRepr = BinHalideRepr Dim1 Double Vis
+visRepr :: Domain Bins -> VisRepr
+visRepr = binHalideRepr (dim1 dimVisFields)
 
 -- | We have 5 visibility fields: Real, imag, u, v and w.
 dimVisFields :: Dim
 dimVisFields = (0, 5)
 
-type GCFsRepr = HalideRepr Dim4 Double GCFs
-gcfsRepr :: GCFPar -> GCFsRepr
-gcfsRepr gcfp = halideRepr $ dimOver :. dimSize :. dimSize :. dimCpx :. Z
+type GCFsRepr = RegionRepr Bins (HalideRepr Dim4 Double GCFs)
+gcfsRepr :: Domain Bins -> GCFPar -> GCFsRepr
+gcfsRepr dh gcfp = RegionRepr dh $ halideRepr $ dimOver :. dimSize :. dimSize :. dimCpx :. Z
   where dimOver = (0, fromIntegral $ gcfOver gcfp * gcfOver gcfp)
         dimSize = (0, fromIntegral $ gcfSize gcfp)
