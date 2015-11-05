@@ -4,6 +4,7 @@
 module Flow.Run
   ( dumpStrategy
   , dumpStrategyDOT
+  , dumpStep
   , dumpSteps
   , execStrategy
   ) where
@@ -67,22 +68,23 @@ dumpStrategyDOT file strat = do
   hPutStrLn h "}"
   hClose h
 
+
+
+dumpStep ind (DomainStep dh)
+  = putStrLn $ ind ++ "Domain " ++ show dh
+dumpStep ind (SplitStep dh steps)
+  = do putStrLn $ ind ++ "Split Domain " ++ show (dhId (fromJust $ dhParent dh)) ++ " into " ++ show dh
+       forM_ steps (dumpStep ("  " ++ ind))
+dumpStep ind (KernelStep kb@KernelBind{kernRepr=ReprI rep})
+  = putStrLn $ ind ++ "Over " ++ show (reprDomain rep) ++ " run " ++ show kb
+dumpStep ind step@(DistributeStep did sched steps)
+  = do putStrLn $ ind ++ "Distribute " ++ show did ++ " using " ++ show sched ++
+                  " deps " ++ show (stepKernDeps step)
+       forM_ steps (dumpStep ("  " ++ ind))
+
 dumpSteps :: Strategy a -> IO ()
 dumpSteps strat = do
-
-  let dump ind (DomainStep dh)
-        = putStrLn $ ind ++ "Domain " ++ show dh
-      dump ind (SplitStep dh steps)
-        = do putStrLn $ ind ++ "Split Domain " ++ show (dhId (fromJust $ dhParent dh)) ++ " into " ++ show dh
-             forM_ steps (dump ("  " ++ ind))
-      dump ind (KernelStep kb@KernelBind{kernRepr=ReprI rep})
-        = putStrLn $ ind ++ "Over " ++ show (reprDomain rep) ++ " run " ++ show kb
-      dump ind step@(DistributeStep did sched steps)
-        = do putStrLn $ ind ++ "Distribute " ++ show did ++ " using " ++ show sched ++
-                        " deps " ++ show (stepKernDeps step)
-             forM_ steps (dump ("  " ++ ind))
-
-  forM_ (runStrategy (void strat)) (dump "")
+  forM_ (runStrategy (void strat)) (dumpStep "")
 
 data AnyDH = forall a. Typeable a => AnyDH (Domain a)
 type DataMap = IM.IntMap (ReprI, Map.Map RegionBox (Vector ()))

@@ -2,15 +2,16 @@
 {-# LANGUAGE DeriveDataTypeable       #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE LambdaCase               #-}
-{-# LANGUAGE LambdaCase               #-}
 
 module Main where
 
 import Data.Typeable
 
+import Control.Arrow (Arrow(..))
 import Control.Monad
 import Control.Monad.State
 import Data.List
+import Data.Monoid (Monoid(..))
 import Flow
 import Flow.Vector
 import Flow.Halide
@@ -18,9 +19,13 @@ import Text.PrettyPrint
 -- import DNA (dnaRun)
 
 -- Needed for FFI to work
+import qualified Data.HashMap.Strict as HM
+import qualified Data.HashSet        as HS
 import Data.Vector.HFixed.Class ()
+import qualified Data.Foldable as T
 import Flow.Halide.Types ()
 import Flow.DnaCompiler
+import Flow.Internal
 import Bound
 
 -- Data tags
@@ -104,59 +109,70 @@ ddpStrat size = do
   calculate ddp
   void $ bindNew $ printKern ddp
 
-prettyprint :: Show a => StepE a -> Doc
-prettyprint = flip evalState varNames . ppr . fmap Right
-  where
-    varNames = map (:[]) ['a' .. 'z']
-    pprList es = do ss <- mapM ppr es
-                    return $ brackets $ hcat $ intersperse comma ss
-    ppr = \case
-      V (Left  v) -> return $ text v
-      V (Right a) -> return $ text (show a)
-      Pair e g    -> do se <- ppr e
-                        sg <- ppr g
-                        return $ parens $ se <> comma <> sg
-      List es     -> pprList es
-      SDom i r      -> return $ text (show r) <> text " " <> int i
-      SKern kb vars dom -> do
-        vs <- pprList vars
-        ds <- pprList dom
-        return $ text "Kernel call" $$ nest 2
-          (vcat [ text (show kb), vs, ds ])
-      SSeq e1 e2 -> liftM2 ($$) (ppr e1) (ppr e2)
-      SSplit e _ steps -> do
-        se <- ppr e
-        ss <- ppr steps
-        return $ (text "Split " <> se) $$ nest 2 ss
-      SDistribute e steps -> do
-        se <- ppr e
-        ss <- ppr steps
-        return $ (text "Distribute " <> se) $$ nest 2 ss
-      SBind e lam -> do
-        -- Get fresh var
-        (v : rest) <- get
-        put rest
-        --
-        se <- ppr e
-        sl <- ppr $ instantiate1 (V $ Left v) lam
-        return $ vcat
-          [ se <> text (" $ λ"++v++" →")
-          , nest 2 sl
-          ]
-        
 
+dumpES ind (Step s) = dumpStep ind s
+dumpES ind (Call dh pars i) = do
+  putStrLn $ ind ++ "Call " ++ show i ++ " " ++ show pars
+  dumpStep (ind ++ "  ") $ SplitStep dh []
+-- dumpES ind (SplitDistr dh' sched ss) = do
+--   dumpStep ind (DistributeStep dh' sched [])
+--   mapM_ (dumpES (ind++"  ")) ss
+dumpES ind (Expect vs) =
+  putStrLn $ ind ++ "Expect " ++ show vs
+dumpES ind (Yield vs) =
+  putStrLn $ ind ++ "Yield " ++ show vs
+dumpES ind (Gather vs) =
+  putStrLn $ ind ++ "Gather " ++ show vs
+
+
+dumpTreeWith :: (String -> a -> IO ()) -> ActorTree a -> IO ()
+dumpTreeWith out = go ""
+  where
+    go off (ActorTree a m) = do
+      out off a
+      let off' = "  " ++ off
+      forM_ (HM.toList m) $ \(i,a') -> do
+        putStrLn $ off' ++ "[Key=" ++ show i ++ "]"
+        go off' a'
+
+dumpTree :: Show a => ActorTree a -> IO ()
+dumpTree = dumpTreeWith (\off a -> putStr off >> print a)
+  
 
 main :: IO ()
 main = do
+  -- Peter's part
   let size  = 1000000
       -- strat = dpStrat size
       strat = ddpStrat size
-  dumpSteps $ dpStrat size
+      steps = runStrategy strat
   putStrLn "----------------------------------------------------------------"
-  let ast = compileSteps $ runStrategy strat
-  putStrLn $ render $ prettyprint ast
-  -- putStrLn $ groom ast
-  -- dnaRun id $ do
-  --   interpretAST $ 
-  --   return ()
-  -- putStrLn $ "Expected: " ++ show ((size-1)*size`div`20)
+  dumpSteps strat
+  -- Transformation
+  let ast0@(ActorTree ss acts) = makeActorTree steps
+      ast1 = findInOut ast0
+      ast2 = addCommands ast1
+  putStrLn "\n-- Actor split -------------------------------------------------"
+  dumpTreeWith (\off -> mapM_ (dumpES off) . snd) ast0
+  putStrLn "\n-- Used --------------------------------------------------------"
+  dumpTree $ fmap (varsUsed . fst . snd) ast1
+  putStrLn "-- Produced ----------------------------------------------------"
+  dumpTree $ fmap (varsProd . fst . snd) ast1
+  putStrLn "-- Missing -----------------------------------------------------"
+  dumpTree $ fmap (varsMissing . fst . snd) ast1
+  --
+  putStrLn "\n-- Annotated ---------------------------------------------------"  
+  dumpTreeWith (\off -> mapM_ (dumpES (off++"")) . snd . snd) ast2
+  -- Find parameters and return values
+  -- let walk x f (ActorTree v hm)
+  --       = ActorTree x (fmap (go v) hm)
+  --       where
+  --         go a f (ActorTree vv hmm) = ActorTree (f a vv) (fmap (go vv) hmm)
+  -- return ()
+  -- putStrLn "-- Param - -----------------------------------------------------"
+  -- let getp vPar vCh = ( varsProd vPar `HS.intersection` varsMissing vCh
+  --                     , varsMissing vPar `HS.intersection` varsProd vCh
+  --                     )  
+  -- dumpTree $ walkTree (mempty,mempty) getp vars
+  -- Find out what to pass as parameters
+

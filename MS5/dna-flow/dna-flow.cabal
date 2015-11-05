@@ -32,6 +32,7 @@ library
     fixed-vector-hetero >= 0.2,
     bound        >= 1.0.6,
     prelude-extras >= 0.4,
+    pretty,
     dna          >= 0.5
   Exposed-modules: Flow,
                    Flow.Builder,
