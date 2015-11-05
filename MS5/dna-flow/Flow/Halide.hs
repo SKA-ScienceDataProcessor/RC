@@ -29,6 +29,7 @@ module Flow.Halide
 
 import Control.Monad
 
+import qualified Data.Map as Map
 import Data.Typeable
 import Data.Vector.HFixed.Class ( Fn )
 
@@ -93,11 +94,11 @@ instance (HalideCtx dim val abs, MarshalArray (Dim :. dim))
   reprDomain (DynHalideRepr _ _ d) = [dhId d]
   reprCompatible (DynHalideRepr _ ex0 d0) (DynHalideRepr _ ex1 d1)
     = ex0 == ex1 && d0 `dhIsParent` d1
-  reprMerge _ dvs [RangeRegion (Range low high)] = do
+  reprMerge _ dvs [RangeRegion _ (Range low high)] = do
     out <- allocCVector (high - low) :: IO (Vector val)
     -- Populate vector. The caller should have made sure that the
     -- ranges actually cover the full vector.
-    forM_ dvs $ \([RangeRegion (Range l h)], v) -> do
+    forM_ (Map.toList dvs) $ \([RangeRegion _ (Range l h)], v) -> do
       forM_ [l..h-1] $ \i -> do
         pokeVector out (i-low) =<< peekVector (castVector v) (i-l)
     return $ Just $ castVector out
@@ -165,7 +166,7 @@ instance (HalideCtx dim val abs, MarshalArray (Dim :. dim)) => HalideReprClass (
   type HalrVal (DynHalideRepr dim val abs) = val
   type HalideFun xs (DynHalideRepr dim val abs)
     = HalideKernel (KernelParams xs) (Array (Dim :. dim) val)
-  halrDim (DynHalideRepr _ dim _) [RangeRegion (Range low high)]
+  halrDim (DynHalideRepr _ dim _) [RangeRegion _ (Range low high)]
     = (fromIntegral low, fromIntegral $ high - low) :. dim
   halrDim r doms
     = error $ "halrDim: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
@@ -181,7 +182,7 @@ halideKernel0 :: HalideReprClass rr
               -> rr
               -> HalideFun '[] rr
               -> Kernel (ReprType rr)
-halideKernel0 name retR code = kernel name Z retR $ \_ ds -> do
+halideKernel0 name retR code = mergingKernel name Z retR $ \_ ds -> do
   vecR <- halrCall retR (Proxy :: Proxy '[]) code ds
   return $ castVector $ arrayBuffer vecR
 
@@ -190,7 +191,7 @@ halideKernel1 :: forall rr r0. (HalideReprClass rr, HalideReprClass r0)
               -> r0 -> rr
               -> HalideFun '[r0] rr
               -> Flow (ReprType r0) -> Kernel (ReprType rr)
-halideKernel1 name rep0 repR code = kernel name (rep0 :. Z) repR code'
+halideKernel1 name rep0 repR code = mergingKernel name (rep0 :. Z) repR code'
   where code' [(v0,d0)] ds = do
          vecR <- halrCall repR (Proxy :: Proxy '[r0]) code ds
                           (Array (halrDim rep0 d0) (castVector v0))
@@ -202,7 +203,7 @@ halideKernel2 :: forall rr r0 r1. (HalideReprClass rr, HalideReprClass r0, Halid
               -> r0 -> r1 -> rr
               -> HalideFun '[r0, r1] rr
               -> Flow (ReprType r0) -> Flow (ReprType r1) -> Kernel (ReprType rr)
-halideKernel2 name rep0 rep1 repR code = kernel name (rep0 :. rep1 :. Z) repR code'
+halideKernel2 name rep0 rep1 repR code = mergingKernel name (rep0 :. rep1 :. Z) repR code'
   where code' [(v0,d0), (v1,d1)] ds = do
          vecR <- halrCall repR (Proxy :: Proxy '[r0, r1]) code ds
                           (Array (halrDim rep0 d0) (castVector v0))
@@ -216,7 +217,7 @@ halideKernel3 :: forall rr r0 r1 r2. (HalideReprClass rr, HalideReprClass r0,
               -> r0 -> r1 -> r2 -> rr
               -> HalideFun '[r0, r1, r2] rr
               -> Flow (ReprType r0) -> Flow (ReprType r1) -> Flow (ReprType r2) -> Kernel (ReprType rr)
-halideKernel3 name rep0 rep1 rep2 repR code = kernel name (rep0 :. rep1 :. rep2 :. Z) repR code'
+halideKernel3 name rep0 rep1 rep2 repR code = mergingKernel name (rep0 :. rep1 :. rep2 :. Z) repR code'
   where code' [(v0,d0), (v1,d1), (v2, d2)] ds = do
          vecR <- halrCall repR (Proxy :: Proxy '[r0, r1, r2]) code ds
                           (Array (halrDim rep0 d0) (castVector v0))
@@ -231,7 +232,7 @@ halideKernel1Write
   -> r0 -> rr
   -> HalideFun '[r0] rr
   -> Flow (ReprType r0) -> Flow (ReprType rr) -> Kernel (ReprType rr)
-halideKernel1Write name rep0 repR code = kernel name (rep0 :. (halrWrite repR) :. Z) repR code'
+halideKernel1Write name rep0 repR code = mergingKernel name (rep0 :. (halrWrite repR) :. Z) repR code'
   where code' [(v0,d0), (v1,d1)] ds = do
          -- Should hold by construction.
          when (ds /= d1) $
@@ -248,7 +249,7 @@ halideKernel2Write
   -> r0 -> r1 -> rr
   -> HalideFun '[r0, r1] rr
   -> Flow (ReprType r0) -> Flow (ReprType r1) -> Flow (ReprType rr) -> Kernel (ReprType rr)
-halideKernel2Write name rep0 rep1 repR code = kernel name (rep0 :. rep1 :. (halrWrite repR) :. Z) repR code'
+halideKernel2Write name rep0 rep1 repR code = mergingKernel name (rep0 :. rep1 :. (halrWrite repR) :. Z) repR code'
   where code' [(v0,d0),(v1,d1),(v2,d2)] ds = do
          -- Should hold by construction.
          when (ds /= d2) $
@@ -263,8 +264,8 @@ halideKernel2Write name rep0 rep1 repR code = kernel name (rep0 :. rep1 :. (halr
 -- | Simple kernel that dumps the contents of a channel with Halide
 -- data representation to a file.
 halideDump :: forall r. HalideReprClass r => r -> FilePath -> Flow (ReprType r) -> Kernel ()
-halideDump rep file = kernel (show (typeOf (undefined :: ReprType r)) ++ "-writer")
-                             (rep :. Z) NoRepr $ \[(v,doms)] _ -> do
+halideDump rep file = mergingKernel (show (typeOf (undefined :: ReprType r)) ++ "-writer")
+                                    (rep :. Z) NoRepr $ \[(v,doms)] _ -> do
   let v' = castVector v :: Vector (HalrVal r)
       size = nOfElements $ halrDim rep doms
   dumpVector' v' 0 size file
@@ -274,7 +275,8 @@ halideDump rep file = kernel (show (typeOf (undefined :: ReprType r)) ++ "-write
 -- data representation to a text file
 halideTextDump2D :: forall r. (HalideReprClass r, HalrDim r ~ Dim2, Show (HalrVal r))
                  => r -> FilePath -> Flow (ReprType r) -> Kernel ()
-halideTextDump2D rep file = kernel "" (rep :. Z) NoRepr $ \[(v,doms)] _ ->
+halideTextDump2D rep file = mergingKernel (show (typeOf (undefined :: ReprType r)) ++ "-text-writer")
+                                          (rep :. Z) NoRepr $ \[(v,doms)] _ ->
   withFile file WriteMode $ \h -> do
     let v' = castVector v :: Vector (HalrVal r)
         ((_,hgt) :. (_, wdt) :. Z) = halrDim rep doms

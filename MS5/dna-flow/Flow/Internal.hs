@@ -11,6 +11,7 @@ import Data.Function ( on )
 import Data.Hashable
 import Data.Int
 import Data.List     ( sort )
+import qualified Data.Map as Map
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
 
@@ -122,8 +123,13 @@ kdepAccess (KernelDep {kdepRepr=ReprI rep}) = reprAccess rep
 -- zero or more distinct (!) domains.
 type RegionBox = [Region]
 
--- | Code implementing a kernel
-type KernelCode = [(Vector (), RegionBox)] -> RegionBox -> IO (Vector ())
+-- | Region box data. This maps a number of region boxes (assumed to
+-- be belonging to the same domain) to associated data.
+type RegionData = Map.Map RegionBox (Vector ())
+
+-- | Code implementing a kernel. Takes a number of parameters as
+-- "RegionData" and produces data for a given region box(es).
+type KernelCode = [RegionData] -> [RegionBox] -> IO [Vector ()]
 
 instance Show KernelBind where
   showsPrec _ (KernelBind kid kflow kname krepr kdeps _ _)
@@ -151,6 +157,9 @@ instance forall a. Typeable a => Show (Domain a) where
   showsPrec _ dh = shows (typeOf (undefined :: a)) . showString " domain " . shows (dhId dh)
 instance Eq (Domain a) where
   (==) = (==) `on` dhId
+instance Ord (Domain a) where
+  (<=) = (<=) `on` dhId
+  compare = compare `on` dhId
 
 dhIsParent :: Domain a -> Domain a -> Bool
 dhIsParent dh dh1
@@ -158,9 +167,12 @@ dhIsParent dh dh1
   | Just dh' <- dhParent dh  = dhIsParent dh' dh1
   | otherwise                = False
 
+data DomainI where
+  DomainI :: forall a. Domain a -> DomainI
+
 -- | Domains are just ranges for now. It is *very* likely that we are
 -- going to have to generalise this in some way.
-data Region = RangeRegion Range
+data Region = RangeRegion (Domain Range) Range
   deriving (Typeable, Eq, Ord, Show)
 
 data Range = Range Int Int
@@ -168,27 +180,30 @@ data Range = Range Int Int
 
 -- | Checks whether the second domain is a subset of the first
 domainSubset :: Region -> Region -> Bool
-domainSubset (RangeRegion (Range low0 high0)) (RangeRegion (Range low1 high1))
-  = low0 <= low1 && high0 >= high1
+domainSubset (RangeRegion d0 (Range low0 high0)) (RangeRegion d1 (Range low1 high1))
+  = d0 == d1 && low0 <= low1 && high0 >= high1
 
--- | Merges a number of regions, if possible. All regions must have
--- the same length!
+-- | Merges a number of region boxes, if possible. All region boxes must
+-- use the same domains and especially have the same dimensionality!
 --
 -- TODO: Ugly. Write properly
-regionMerge :: [[Region]] -> Maybe [Region]
+regionMerge :: [RegionBox] -> Maybe RegionBox
 regionMerge [] = Just []
 regionMerge dss
   | not $ all ((==1) . length) dss
   = error "domainMerge: Not implemented yet for domain combinations!"
-  | RangeRegion (Range l _) <- head ds
+  | RangeRegion d (Range l _) <- head ds
   , and $ zipWith no_gaps ds (tail ds)
-  , RangeRegion (Range _ h) <- last ds
-  = Just [RangeRegion $ Range l h]
+  , RangeRegion _ (Range _ h) <- last ds
+  = Just [RangeRegion d $ Range l h]
   | otherwise
   = Nothing
  where ds = sort $ map head dss
-       no_gaps (RangeRegion (Range _ h)) (RangeRegion (Range l _))
-         = h == l
+       no_gaps (RangeRegion d0 (Range _ h)) (RangeRegion d1 (Range l _))
+         = d0 == d1 && h == l
+
+regionDomain :: Region -> DomainI
+regionDomain (RangeRegion d _) = DomainI d
 
 type StratMap = HM.HashMap FlowI KernelBind
 type Strategy a = State StratState a
@@ -227,7 +242,7 @@ class (Show r, Typeable r, Typeable (ReprType r)) => DataRepr r where
   reprCompatible _ _ = True
   reprDomain :: r -> [DomainId]
   reprDomain _ = []
-  reprMerge :: r -> [(RegionBox, Vector ())] -> RegionBox -> IO (Maybe (Vector ()))
+  reprMerge :: r -> RegionData -> RegionBox -> IO (Maybe (Vector ()))
   reprMerge _ _ _ = return Nothing
   reprSize :: r -> RegionBox -> Maybe Int
   reprSize _ _ = Nothing
@@ -249,6 +264,8 @@ instance Show ReprI where
 
 isNoReprI :: ReprI -> Bool
 isNoReprI (ReprI repr) = reprNop repr
+repriDomain :: ReprI -> [DomainId]
+repriDomain (ReprI repr) = reprDomain repr
 
 -- | Resource scheduling policy
 data Schedule

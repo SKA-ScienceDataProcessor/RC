@@ -85,13 +85,12 @@ dumpSteps strat = do
   forM_ (runStrategy (void strat)) (dump "")
 
 data AnyDH = forall a. Typeable a => AnyDH (Domain a)
-type DataMap = IM.IntMap (ReprI, Map.Map RegionBox (Vector ()))
-type DomainMap = IM.IntMap (AnyDH, RegionBox)
+type DataMap = IM.IntMap (ReprI, RegionData)
+type DomainMap = IM.IntMap (AnyDH, [Region])
 
-dataMapInsert :: KernelId -> RegionBox -> ReprI -> Vector () -> DataMap -> DataMap
-dataMapInsert kid dom repr vec = IM.insertWith update kid (repr, def)
-  where def = Map.singleton dom vec
-        update _ (repr', m) = (repr', Map.insert dom vec m)
+dataMapInsert :: KernelId -> ReprI -> RegionData -> DataMap -> DataMap
+dataMapInsert kid repr rdata = IM.insertWith update kid (repr, rdata)
+  where update _ (repr', m) = (repr', Map.union rdata m)
 
 dataMapUnion :: DataMap -> DataMap -> DataMap
 dataMapUnion = IM.unionWith combine
@@ -106,30 +105,6 @@ dataMapDifference = IM.differenceWith remove
   where remove (repr, bufs) (_, bufs')
            = if Map.null diff then Nothing else Just (repr, diff)
           where diff = bufs `Map.difference` bufs'
-
-findParameters :: KernelId -> RegionBox -> DataMap -> IO (Vector (), RegionBox)
-findParameters kid inDoms dataMap = case IM.lookup kid dataMap of
-  Just (ReprI repr, bufs)
-    -- Have it for exactly the right domain region?
-    | Just inp <- Map.lookup inDoms bufs
-    -> return (inp, inDoms)
-    -- Have it for the right domain region, but split into
-    -- sub-regions? This is rather ad-hoc, clearly needs a better
-    -- solution. We actually have guarantees here - at least if we
-    -- ignore the possibility for failure (where in a distributed
-    -- implementation parts could be missing).
-    | let inps = filter (and . zipWith domainSubset inDoms . fst) $ Map.assocs bufs
-    , Just merged <- regionMerge (map fst inps)
-    , merged == inDoms
-    , (_:_) <- inps
-    -> do -- Merge the vectors.
-          m_inp' <- reprMerge repr inps inDoms
-          case m_inp' of
-            Just inp' -> return (inp', inDoms)
-            Nothing   -> fail $ "Could not merge data of representation " ++ show repr ++ "!"
-  _other -> fail $ "Internal error: Input " ++ show kid ++
-                   " for domains " ++ show inDoms ++ " not found!"
-           -- This should never happen
 
 type KernelSet = IS.IntSet
 type DomainSet = IS.IntSet
@@ -219,53 +194,57 @@ execStep dataMapRef domainMapRef deps step = case step of
     let lookupDom did = case IM.lookup did domainMap of
           Just dom -> dom
           Nothing  -> error $ "Kernel " ++ show kbind ++ " called for non-existant domain " ++ show did ++ "!"
+
+    -- Construct all output regions (cartesian product of all involved
+    -- domain regions)
+    let cartProd = sequence :: [[Region]] -> [RegionBox]
         outDoms = map lookupDom (reprDomain rep)
+        outRegs = cartProd $ map snd outDoms
 
-    -- Any output domains non-unary and therefore need to be split
-    -- into separate kernel calls?
-    -- TODO: Some kernels might be okay with producing the output
-    -- values for more than one region at the same time. However at
-    -- this point we do not have an interface for this yet, so
-    -- sequentialising things is the easiest choice that is also
-    -- somewhat correct.
-    case filter ((/=1) . length . snd) outDoms of
-     (AnyDH dh, _):_ ->
-      execStep dataMapRef domainMapRef deps $ DistributeStep dh SeqSchedule [step]
+    -- Look up input data. Note that we always pass all available data
+    -- here. This means that we are relying on
+    -- 1) DistributeStep below to restrict the data map
+    -- 2) The kernel being able to work with what we pass it
+    dataMap <- readIORef dataMapRef
+    ins <- forM (kernDeps kbind) $ \kdep -> do
+      case IM.lookup (kdepId kdep) dataMap of
+        Just (_, bufs) -> do putStrLn $ "Dependency " ++ show (kdepId kdep) ++
+                                        " found with regions " ++ show (Map.keys bufs)
+                             return (kdep, bufs)
+        Nothing        -> fail $ "Internal error for kernel " ++ show (kernName kbind) ++ ": Input " ++
+                                 show (kdepId kdep) ++ " not found!"
+           -- This should never happen
 
-     [] -> do
-      -- Look up input data
-      let lookupUnaryDom = head . snd . lookupDom
-      dataMap <- readIORef dataMapRef
-      ins <- forM (kernDeps kbind) $ \dep -> do
-        par <- findParameters (kdepId dep) (map lookupUnaryDom (kdepDomain dep)) dataMap
-        return (dep, par)
+    -- Important TODO: Duplicate data that is written here, but read later!
 
-      -- Call the kernel using the right regions
-      let !outRegs = map (head . snd) outDoms
-      !t0 <- getCurrentTime
-      res <- kernCode kbind (map snd ins) outRegs
-      !t1 <- getCurrentTime
+    -- Call the kernel using the right regions
+    !t0 <- getCurrentTime
+    results <- kernCode kbind (map snd ins) outRegs
+    !t1 <- getCurrentTime
 
-      -- Check size
-      case reprSize rep outRegs of
-       Just size | size /= vectorByteSize res ->
-         fail $ "Kernel " ++ kernName kbind ++ " produced " ++ show (vectorByteSize res) ++
-                " bytes of data, but data representation " ++ show rep ++ " has " ++ show size ++ " bytes!"
-       _other -> return ()
+    -- Check size
+    let expectedSizes = map (reprSize rep) outRegs
+    forM_ (zip results expectedSizes) $ \(res, m_size) ->
+      case m_size of
+        Just size | size /= vectorByteSize res ->
+          fail $ "Kernel " ++ kernName kbind ++ " produced " ++ show (vectorByteSize res) ++
+                 " bytes of data, but data representation " ++ show rep ++ " has " ++ show size ++ " bytes!"
+        _other -> return ()
 
-      -- Debug
-      putStrLn $ "Calculated kernel " ++ show (kernId kbind) ++ " regions " ++ show outRegs ++
-                 " in " ++ show (diffUTCTime t1 t0) ++ " ms"
+    -- Debug
+    putStrLn $ "Calculated kernel " ++ show (kernId kbind) ++ " regions " ++ show outRegs ++
+               " in " ++ show (1000 * diffUTCTime t1 t0) ++ " ms"
 
-      -- Get inputs that have been written, and therefore should be
-      -- considered freed. TODO: ugly
-      let writtenIns = filter ((== WriteAccess) . kdepAccess . fst) ins
-      forM_ writtenIns $ \(dep, (_, dom)) ->
-        modifyIORef dataMapRef $ flip dataMapDifference $
-          dataMapInsert (kdepId dep) dom (kdepRepr dep) nullVector IM.empty
+    -- Get inputs that have been written, and therefore should be
+    -- considered freed. TODO: ugly
+    let writtenIns = filter ((== WriteAccess) . kdepAccess . fst) ins
+    forM_ writtenIns $ \(dep, rdata) -> forM_ (Map.keys rdata) $ \rbox ->
+      modifyIORef dataMapRef $ flip dataMapDifference $
+        dataMapInsert (kdepId dep) (kdepRepr dep) (Map.singleton rbox nullVector) IM.empty
 
-      -- Insert result
-      modifyIORef dataMapRef $ dataMapInsert (kernId kbind) outRegs (kernRepr kbind) res
+    -- Insert result
+    let resultMap = Map.fromList $ zip outRegs results
+    modifyIORef dataMapRef $ dataMapInsert (kernId kbind) (kernRepr kbind) resultMap
 
   SplitStep dh steps -> do
 
@@ -305,18 +284,24 @@ execStep dataMapRef domainMapRef deps step = case step of
       domainMapRef' <- newIORef $ IM.insert (dhId dh) (AnyDH dh, [reg]) domainMap'
 
       -- Also filter data so we only send data for the appropriate region
-      let filterData (ri@(ReprI repr), bufs)
-            | dhId dh `elem` reprDomain repr
-            = (ri, Map.filterWithKey (\ds _ -> reg `elem` ds) bufs)
-            | otherwise
-            = (ri, bufs)
+      let usesRegion (ReprI repr) = dhId dh `elem` reprDomain repr
+          filterData (ri, bufs) =
+            (ri, if usesRegion ri
+                 then Map.filterWithKey (\ds _ -> reg `elem` ds) bufs
+                 else bufs)
           dataMap'' = IM.map filterData dataMap'
       dataMapRef' <- newIORef dataMap''
+
+      -- Especially add extra dependencies for all data that is not
+      -- local to our region. Otherwise one iteration might end up
+      -- discarding data that another needs. (We will discard this
+      -- data after the loop in that case).
+      let extraDeps = IM.keysSet $ IM.filter (\(ri, _) -> not (usesRegion ri)) dataMap''
 
       -- Execute steps
       result <- newEmptyMVar
       (if sched == SeqSchedule then id else void . forkOS) $ do
-        execSteps dataMapRef' domainMapRef' deps steps
+        execSteps dataMapRef' domainMapRef' (deps `IS.union` extraDeps) steps
         putMVar result =<< readIORef dataMapRef'
       return (result, dataMap'')
 
