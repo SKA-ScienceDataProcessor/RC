@@ -13,8 +13,8 @@
 
 module Flow.Halide
   ( -- * Data representation
-    HalideRepr, DynHalideRepr, HalideReprClass(..)
-  , halideRepr, dynHalideRepr
+    HalideRepr, DynHalideRepr, BinHalideRepr, HalideReprClass(..)
+  , halideRepr, dynHalideRepr, binHalideRepr
     -- * Halide extents
   , Dim, Dim0, Dim1, Dim2, Dim3, Dim4
   , dim0, dim1, (:.)(..), Z(..), nOfElements
@@ -106,10 +106,37 @@ instance (HalideCtx dim val abs, MarshalArray (Dim :. dim))
     "reprMerge: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
   reprSize r ds = Just $ nOfElements (halrDim r ds) * sizeOf (undefined :: val)
 
+-- | Halide array where the size in one dimension is given by a bin domain
+data BinHalideRepr dim val abs = BinHalideRepr ReprAccess dim (Domain Bins)
+  deriving Typeable
+instance HalideCtx dim val abs => Show (BinHalideRepr dim val abs) where
+  showsPrec _ (BinHalideRepr _ dim dom)
+    = shows (typeOf (undefined :: abs)) . showString " as halide vector " .
+      shows (typeOf (undefined :: val)) . ('[':) . shows dom . (',':) . tail . shows dim
+instance (HalideCtx dim val abs, MarshalArray (Dim :. dim))
+         => DataRepr (BinHalideRepr dim val abs) where
+  type ReprType (BinHalideRepr dim val abs) = abs
+  reprNop _ = False
+  reprAccess (BinHalideRepr acc _ _) = acc
+  reprDomain (BinHalideRepr _ _ d) = [dhId d]
+  reprCompatible (BinHalideRepr _ ex0 d0) (BinHalideRepr _ ex1 d1)
+    = ex0 == ex1 && d0 `dhIsParent` d1
+  reprMerge _ _ [BinRegion _ _bins] =
+    -- TODO
+    fail "reprMerge not implemented yet on BinHalideRepr!"
+  reprMerge r _   doms = error $
+    "reprMerge: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
+  reprSize r ds = Just $ nOfElements (halrDim r ds) * sizeOf (undefined :: val)
+
 -- | Constructor function for "DynHalideRepr". Returns a data
 -- representation with "ReadAccess".
 dynHalideRepr :: dim -> Domain Range -> DynHalideRepr dim val abs
 dynHalideRepr = DynHalideRepr ReadAccess
+
+-- | Constructor function for "BinHalideRepr". Returns a data
+-- representation with "ReadAccess".
+binHalideRepr :: dim -> Domain Bins -> BinHalideRepr dim val abs
+binHalideRepr = BinHalideRepr ReadAccess
 
 type family KernelParams (reprs :: [*]) :: [*]
 type instance KernelParams '[] = '[]
@@ -177,6 +204,27 @@ instance (HalideCtx dim val abs, MarshalArray (Dim :. dim)) => HalideReprClass (
   halrCallWrite _ _ fun
     = callWrite fun
 
+instance (HalideCtx dim val abs, MarshalArray (Dim :. dim)) =>
+         HalideReprClass (BinHalideRepr dim val abs) where
+  type HalrDim (BinHalideRepr dim val abs) = Dim :. dim
+  type HalrVal (BinHalideRepr dim val abs) = val
+  type HalideFun xs (BinHalideRepr dim val abs)
+    = HalideKernel (KernelParams xs) (Array (Dim :. dim) val)
+  halrDim (BinHalideRepr _ dim _) [BinRegion _ (Bins binMap)]
+    | [size] <- Map.elems binMap
+    = (0, fromIntegral size) :. dim
+    -- Note that in contrast to DynHalideRepr, we cannot communicate
+    -- the array transformation to Halide here (after all, it is
+    -- decidedly non-linear). Instead we base every bin at index 0 -
+    -- a minor inconsistency?
+  halrDim r doms
+    = error $ "halrDim: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
+  halrWrite (BinHalideRepr _ dim dh)
+    = BinHalideRepr WriteAccess dim dh
+  halrCall r _ fun doms
+    = call fun (halrDim r doms)
+  halrCallWrite _ _ fun
+    = callWrite fun
 
 instance (Typeable dom, Typeable rep, HalideReprClass rep) =>
          HalideReprClass (RegionRepr dom rep) where

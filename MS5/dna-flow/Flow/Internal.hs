@@ -141,16 +141,16 @@ instance Show KernelBind where
 type DomainId = Int
 data Domain a = Domain
   { dhId    :: DomainId
-    -- | Number of regions this domain is split into
-  , dhSize  :: Int
     -- | Produce a new domain handle that is split up @n@ times more
   , dhSplit  :: Int -> Strategy (Domain a)
-    -- | Domain this was derived from
-  , dhParent :: Maybe (Domain a)
-    -- | Creates a new region for this handle
-  , dhCreate :: IO Region
-    -- | Splits a region of the parent domain
+    -- | Creates the domain from given data. This is how you construct
+    -- root domains (those without parents).
+  , dhCreate :: Maybe (Vector ()) -> IO Region
+    -- | Splits out regions from the parent domain. This is used for
+    -- constructing sub-domains.
   , dhRegion :: Region -> IO [Region]
+    -- | Get domain this one was derived from. Not set for root domains.
+  , dhParent :: Maybe (Domain a)
   }
 
 instance forall a. Typeable a => Show (Domain a) where
@@ -173,15 +173,22 @@ data DomainI where
 -- | Domains are just ranges for now. It is *very* likely that we are
 -- going to have to generalise this in some way.
 data Region = RangeRegion (Domain Range) Range
+            | BinRegion (Domain Bins) Bins
   deriving (Typeable, Eq, Ord, Show)
 
 data Range = Range Int Int
+  deriving (Typeable, Eq, Ord, Show)
+data Bins = Bins (Map.Map (Double, Double) Int)
   deriving (Typeable, Eq, Ord, Show)
 
 -- | Checks whether the second domain is a subset of the first
 domainSubset :: Region -> Region -> Bool
 domainSubset (RangeRegion d0 (Range low0 high0)) (RangeRegion d1 (Range low1 high1))
   = d0 == d1 && low0 <= low1 && high0 >= high1
+domainSubset (BinRegion d0 (Bins bins0)) (BinRegion d1 (Bins bins1))
+  = d0 == d1 && all (`Map.member` bins1) (Map.keys bins0)
+domainSubset _ _
+  = False
 
 -- | Merges a number of region boxes, if possible. All region boxes must
 -- use the same domains and especially have the same dimensionality!
@@ -201,9 +208,11 @@ regionMerge dss
  where ds = sort $ map head dss
        no_gaps (RangeRegion d0 (Range _ h)) (RangeRegion d1 (Range l _))
          = d0 == d1 && h == l
+       no_gaps _ _ = error "domainMerge: Mixed domain types...?"
 
 regionDomain :: Region -> DomainI
 regionDomain (RangeRegion d _) = DomainI d
+regionDomain (BinRegion d _)   = DomainI d
 
 type StratMap = HM.HashMap FlowI KernelBind
 type Strategy a = State StratState a
@@ -278,7 +287,7 @@ newtype StratRule = StratRule (FlowI -> Maybe (Strategy ()))
 
 -- | Schedule step
 data Step where
-  DomainStep :: Typeable a => Domain a -> Step
+  DomainStep :: Typeable a => Maybe KernelId -> Domain a -> Step
     -- ^ Create a new domain. Might depend on data produced by a kernel.
   SplitStep :: Typeable a => Domain a -> [Step] -> Step
     -- ^ Split a domain into regions

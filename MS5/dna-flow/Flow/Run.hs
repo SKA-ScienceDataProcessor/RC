@@ -70,8 +70,8 @@ dumpStrategyDOT file strat = do
 dumpSteps :: Strategy a -> IO ()
 dumpSteps strat = do
 
-  let dump ind (DomainStep dh)
-        = putStrLn $ ind ++ "Domain " ++ show dh
+  let dump ind (DomainStep m_kid dh)
+        = putStrLn $ ind ++ "Domain " ++ show dh ++ maybe "" (\kid -> " from kernel " ++ show kid) m_kid
       dump ind (SplitStep dh steps)
         = do putStrLn $ ind ++ "Split Domain " ++ show (dhId (fromJust $ dhParent dh)) ++ " into " ++ show dh
              forM_ steps (dump ("  " ++ ind))
@@ -111,6 +111,7 @@ type DomainSet = IS.IntSet
 
 -- | Kernel dependencies of a step
 stepKernDeps :: Step -> KernelSet
+stepKernDeps (DomainStep (Just kid) _)  = IS.singleton kid
 stepKernDeps (KernelStep kbind)         = IS.fromList $ map kdepId $ kernDeps kbind
 stepKernDeps (SplitStep _ steps)        = stepsKernDeps steps
 stepKernDeps (DistributeStep _ _ steps) = stepsKernDeps steps
@@ -138,7 +139,7 @@ stepDomainDeps _
 
 -- | Domain dependencies of a series of steps
 stepsDomainDeps :: [Step] -> DomainSet
-stepsDomainDeps (step@(DomainStep dh) : steps)
+stepsDomainDeps (step@(DomainStep _ dh) : steps)
   = IS.delete (dhId dh) $ stepDomainDeps step `IS.union` stepsDomainDeps steps
 stepsDomainDeps (step : steps)
   = stepDomainDeps step `IS.union` stepsDomainDeps steps
@@ -182,9 +183,19 @@ execSteps dataMapRef domainMapRef topDeps steps = do
 -- | Execute schedule step
 execStep :: IORef DataMap -> IORef DomainMap -> KernelSet -> Step -> IO ()
 execStep dataMapRef domainMapRef deps step = case step of
-  DomainStep dh -> do
+  DomainStep m_kid dh -> do
+
+    -- Look up input data
+    dataMap <- readIORef dataMapRef
+    let m_buf = do
+          kid <- m_kid
+          (_rep, bufs) <- IM.lookup kid dataMap
+          case Map.elems bufs of
+           [buf] -> return buf
+           _     -> fail $ "Could not find buffer for constructing domain " ++ show (dhId dh) ++ "!"
+
     -- Primitive domains have exactly one region on construction
-    dom <- dhCreate dh
+    dom <- dhCreate dh m_buf
     modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, [dom])
 
   KernelStep kbind@KernelBind{kernRepr=ReprI rep} -> do
