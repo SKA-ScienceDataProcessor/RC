@@ -156,7 +156,7 @@ gcfsRepr = VectorRepr ReadAccess
 
 dummy :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
       => String -> rs -> r -> ReprKernFun (ReprType r) rs
-dummy name rs r = mapKernel name rs r code
+dummy name rs r = mappingKernel name rs r code
   where code _ _ = putStrLn name >> return nullVector
 
 halideWrapper :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)

@@ -83,7 +83,6 @@ mappingKernel name parReprs retRep code = kernel name parReprs retRep $ \pars ->
   -- Check for parameters corresponding to the output domain, and
   -- limit them to the region currently worked on.
   let limit (parRi, par)
-        | trace (show (repriDomain parRi) ++ " vs " ++ show (reprDomain retRep)) False = undefined
         | repriDomain parRi /= reprDomain retRep  = par
         | otherwise
         = case Map.lookup reg par of

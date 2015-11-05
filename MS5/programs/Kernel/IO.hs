@@ -58,11 +58,11 @@ oskarReader dh file freq pol = rangeKernel0 "oskar reader" (rawVisRepr dh) $
   return visVector
 
 sorter :: Domain Range -> Flow Vis -> Kernel Vis
-sorter dh = kernel "sorter" (halrWrite (rawVisRepr dh) :. Z) (visRepr dh) $ \[(v,_)] _ ->
+sorter dh = mergingKernel "sorter" (halrWrite (rawVisRepr dh) :. Z) (visRepr dh) $ \[(v,_)] _ ->
   return v
 
 gcfKernel :: GCFPar -> Domain Range -> Flow Tag -> Flow Vis -> Kernel GCFs
-gcfKernel gcfp dh = kernel "gcfs" (planRepr :. visRepr dh :. Z) (gcfsRepr gcfp) $ \_ doms -> do
+gcfKernel gcfp dh = mappingKernel "gcfs" (planRepr :. visRepr dh :. Z) (gcfsRepr gcfp) $ \_ doms -> do
 
   -- Simply read it from the file
   let size = nOfElements (halrDim (gcfsRepr gcfp) doms)
