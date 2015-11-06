@@ -2,6 +2,8 @@
 
 module Kernel.Gridder where
 
+import Data.Int
+
 import Flow.Builder
 import Flow.Domain
 import Flow.Halide
@@ -26,6 +28,6 @@ gridKernel :: GridPar -> GCFPar -> Domain Bins
 -- it to be updated!
 gridKernel gp gcfp dh =
   halideKernel2Write "gridKernel" (visRepr dh) (gcfsRepr dh gcfp) (uvgRepr gp) $
-  halideBind kern_scatter (gridTheta gp)
+  kern_scatter `halideBind` gridTheta gp `halideBind` fromIntegral (gridHeight gp)
 foreign import ccall unsafe kern_scatter
-  :: HalideBind Double (HalideFun '[VisRepr, GCFsRepr] UVGRepr)
+  :: HalideBind Double (HalideBind Int32 (HalideFun '[VisRepr, GCFsRepr] UVGRepr))

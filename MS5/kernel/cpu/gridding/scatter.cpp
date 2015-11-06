@@ -31,6 +31,7 @@ int main(int argc, char **argv) {
   // ** Input
 
   Param<double> scale("scale");
+  Param<int> grid_size("grid_size");
 
   // Visibilities: Array of 5-pairs, packed together with UVW
   enum VisFields { _U=0, _V, _W, _R, _I,  _VIS_FIELDS };
@@ -47,7 +48,7 @@ int main(int argc, char **argv) {
      .set_min(2,0).set_stride(2,_CPLX_FIELDS*GCF_SIZE).set_extent(2,GCF_SIZE)
      .set_min(3,0).set_stride(3,_CPLX_FIELDS*GCF_SIZE*GCF_SIZE).set_extent(3,OVER*OVER);
 
-  std::vector<Halide::Argument> args = { scale, vis, gcf_fused };
+  std::vector<Halide::Argument> args = { scale, grid_size, vis, gcf_fused };
 
   // ** Output
 
@@ -57,9 +58,15 @@ int main(int argc, char **argv) {
   uvg(cmplx, x, y) = undef<double>();
 
   uvg.output_buffer()
-    .set_min(0,0).set_stride(0,1).set_extent(0,_CPLX_FIELDS)
-    .set_min(1,0).set_stride(1,_CPLX_FIELDS);
-  Expr grid_size = uvg.output_buffer().height();
+    .set_stride(0,1).set_extent(0,_CPLX_FIELDS)
+    .set_stride(1,_CPLX_FIELDS);
+
+  // Get grid limits. This limits the uv pixel coordinates we accept
+  // for the top-left corner of the GCF.
+  Expr min_u = uvg.output_buffer().min(1);
+  Expr max_u = uvg.output_buffer().min(1) + uvg.output_buffer().extent(1) - GCF_SIZE - 1;
+  Expr min_v = uvg.output_buffer().min(2);
+  Expr max_v = uvg.output_buffer().min(2) + uvg.output_buffer().extent(2) - GCF_SIZE - 1;
 
   // ** Helpers
 
@@ -72,7 +79,8 @@ int main(int argc, char **argv) {
 
   // Visibilities to ignore due to being out of bounds
   Func inBound("inBound");
-  inBound(t) = abs(uvs(_U,t)) < grid_size/2 && abs(uvs(_V,t)) < grid_size/2;
+  inBound(t) = uv(_U, t) >= min_u && uv(_U, t) <= max_u &&
+               uv(_V, t) >= min_v && uv(_V, t) <= max_v;
 
   // GCF lookup for a given visibility
   Func gcf("gcf");
@@ -103,11 +111,11 @@ int main(int argc, char **argv) {
 
   // Update grid
   uvg(rcmplx,
-      rgcfx + clamp(uv(_U, rvis), 0, grid_size - 1 - GCF_SIZE),
-      rgcfy + clamp(uv(_V, rvis), 0, grid_size - 1 - GCF_SIZE))
+      rgcfx + clamp(uv(_U, rvis), min_u, max_u),
+      rgcfy + clamp(uv(_V, rvis), min_v, max_v))
     += select(inBound(rvis),
               (visC * Complex(gcf(rgcfx, rgcfy, rvis))).unpack(rcmplx),
-              cast<double>(0.0f));
+              undef<double>());
 
   // ** Strategy
 
