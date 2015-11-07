@@ -60,10 +60,14 @@ gridderStrat cfg = do
     bindRule gcf (gcfKernel gcfpar binDom tag)
     calculate $ gcf vis
 
+    -- Create ranged domains for grid coordinates
+    ydom <- makeRangeDomain 0 (gridHeight gpar)
+    xdom <- makeRangeDomain 0 (gridWidth gpar)
+
     -- Bind kernel rules
-    bindRule createGrid (gridInit gpar)
-    bindRule grid (gridKernel gpar gcfpar binDom)
-    bindRule idft (ifftKern gpar tag)
+    bindRule createGrid (gridInit ydom xdom)
+    bindRule grid (gridKernel gpar gcfpar ydom xdom binDom)
+    bindRule idft (ifftKern gpar ydom xdom tag)
 
     -- Compute the result
     calculate result

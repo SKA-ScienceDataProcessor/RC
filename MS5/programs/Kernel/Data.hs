@@ -48,9 +48,9 @@ deriving instance Typeable UVGrid
 deriving instance Typeable Image
 deriving instance Typeable GCFs
 
-type UVGRepr = HalideRepr Dim3 Double UVGrid
-uvgRepr :: GridPar -> UVGRepr
-uvgRepr gp = halideRepr $ dimY gp :. dimX gp :. dimCpx :. Z
+type UVGRepr = RangeRepr (RangeRepr (HalideRepr Dim1 Double UVGrid))
+uvgRepr :: Domain Range -> Domain Range -> UVGRepr
+uvgRepr ydom xdom = RangeRepr ydom $ RangeRepr xdom $ halideRepr (dim1 dimCpx)
 
 type ImageRepr = HalideRepr Dim2 Double Image
 imageRepr :: GridPar -> ImageRepr

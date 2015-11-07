@@ -152,5 +152,5 @@ gcfKernel gcfp dh = mergingKernel "gcfs" (planRepr :. visRepr dh :. Z) (gcfsRepr
 imageWriter :: GridPar -> FilePath -> Flow Image -> Kernel ()
 imageWriter gp = halideDump (imageRepr gp)
 
-uvgWriter :: GridPar -> FilePath -> Flow UVGrid -> Kernel ()
-uvgWriter gp = halideDump (uvgRepr gp)
+uvgWriter :: Domain Range -> Domain Range -> FilePath -> Flow UVGrid -> Kernel ()
+uvgWriter ydom xdom = halideDump (uvgRepr ydom xdom)
