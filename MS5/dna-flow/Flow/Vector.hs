@@ -11,6 +11,7 @@ module Flow.Vector
   , offsetVector
   , peekVector, pokeVector
   , makeVector, unmakeVector
+  , copyVector
   -- * Memory Management
   , allocCVector
 #ifdef USE_CUDA
@@ -143,6 +144,19 @@ unmakeVector (DeviceVector _ p) off len = do
 unmakeVector v off len = do
   (CVector _ p) <- toCVector v
   mapM (peekElemOff p) [off..off+len-1]
+
+-- | Copies a portion of one vector into another vector
+copyVector :: forall a. Storable a
+           => Vector a -- ^ Output vector
+           -> Int      -- ^ Output offset
+           -> Vector a -- ^ Input vector
+           -> Int      -- ^ Input offset
+           -> Int      -- ^ Input length
+           -> IO ()
+copyVector (CVector _ outp) outoff (CVector _ inp) inoff inl
+  = copyBytes (outp `advancePtr` outoff) (inp `advancePtr` inoff) (inl * sizeOf (undefined :: a))
+copyVector _ _ _ _ _
+  = fail "copyVector only supported to C vectors so far - TODO!"
 
 -- | Allocate a C vector using @malloc@ that is large enough for the
 -- given number of elements. The returned vector will be aligned

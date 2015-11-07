@@ -252,7 +252,19 @@ class (Show r, Typeable r, Typeable (ReprType r)) => DataRepr r where
   reprDomain :: r -> [DomainId]
   reprDomain _ = []
   reprMerge :: r -> RegionData -> RegionBox -> IO (Maybe (Vector ()))
-  reprMerge _ _ _ = return Nothing
+  reprMerge r rd rb
+    | Just size <- reprSize r rb
+    = do v <- allocCVector size :: IO (Vector Int8)
+         reprMergeCopy r rd rb v 0
+         return $ Just $ castVector v
+    | otherwise
+    = return Nothing
+  reprMergeCopy :: r -> RegionData -> RegionBox -> Vector Int8 -> Int -> IO ()
+  reprMergeCopy r rd [] outv outoff
+    | Just size <- reprSize r [],
+      Just inv <- Map.lookup [] rd
+    = copyVector outv outoff (castVector inv) 0 size
+  reprMergeCopy _ _  _  _    _  = fail "reprMerge unimplemented!"
   reprSize :: r -> RegionBox -> Maybe Int
   reprSize _ _ = Nothing
 

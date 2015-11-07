@@ -80,63 +80,20 @@ halideRepr :: dim -> HalideRepr dim val abs
 halideRepr = HalideRepr ReadAccess
 
 -- | Halide array where the size in one dimension is given by a domain
-data DynHalideRepr dim val abs = DynHalideRepr ReprAccess dim (Domain Range)
-  deriving Typeable
-instance HalideCtx dim val abs => Show (DynHalideRepr dim val abs) where
-  showsPrec _ (DynHalideRepr _ dim dom)
-    = shows (typeOf (undefined :: abs)) . showString " as halide vector " .
-      shows (typeOf (undefined :: val)) . ('[':) . shows dom . (',':) . tail . shows dim
-instance (HalideCtx dim val abs, MarshalArray (Dim :. dim))
-         => DataRepr (DynHalideRepr dim val abs) where
-  type ReprType (DynHalideRepr dim val abs) = abs
-  reprNop _ = False
-  reprAccess (DynHalideRepr acc _ _) = acc
-  reprDomain (DynHalideRepr _ _ d) = [dhId d]
-  reprCompatible (DynHalideRepr _ ex0 d0) (DynHalideRepr _ ex1 d1)
-    = ex0 == ex1 && d0 `dhIsParent` d1
-  reprMerge _ dvs [RangeRegion _ (Range low high)] = do
-    out <- allocCVector (high - low) :: IO (Vector val)
-    -- Populate vector. The caller should have made sure that the
-    -- ranges actually cover the full vector.
-    forM_ (Map.toList dvs) $ \([RangeRegion _ (Range l h)], v) -> do
-      forM_ [l..h-1] $ \i -> do
-        pokeVector out (i-low) =<< peekVector (castVector v) (i-l)
-    return $ Just $ castVector out
-  reprMerge r _   doms = error $
-    "reprMerge: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
-  reprSize r ds = Just $ nOfElements (halrDim r ds) * sizeOf (undefined :: val)
+type DynHalideRepr dim val abs = RangeRepr (HalideRepr dim val abs)
 
 -- | Halide array where the size in one dimension is given by a bin domain
-data BinHalideRepr dim val abs = BinHalideRepr ReprAccess dim (Domain Bins)
-  deriving Typeable
-instance HalideCtx dim val abs => Show (BinHalideRepr dim val abs) where
-  showsPrec _ (BinHalideRepr _ dim dom)
-    = shows (typeOf (undefined :: abs)) . showString " as halide vector " .
-      shows (typeOf (undefined :: val)) . ('[':) . shows dom . (',':) . tail . shows dim
-instance (HalideCtx dim val abs, MarshalArray (Dim :. dim))
-         => DataRepr (BinHalideRepr dim val abs) where
-  type ReprType (BinHalideRepr dim val abs) = abs
-  reprNop _ = False
-  reprAccess (BinHalideRepr acc _ _) = acc
-  reprDomain (BinHalideRepr _ _ d) = [dhId d]
-  reprCompatible (BinHalideRepr _ ex0 d0) (BinHalideRepr _ ex1 d1)
-    = ex0 == ex1 && d0 `dhIsParent` d1
-  reprMerge _ _ [BinRegion _ _bins] =
-    -- TODO
-    fail "reprMerge not implemented yet on BinHalideRepr!"
-  reprMerge r _   doms = error $
-    "reprMerge: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
-  reprSize r ds = Just $ nOfElements (halrDim r ds) * sizeOf (undefined :: val)
+type BinHalideRepr dim val abs = BinRepr (HalideRepr dim val abs)
 
 -- | Constructor function for "DynHalideRepr". Returns a data
 -- representation with "ReadAccess".
 dynHalideRepr :: dim -> Domain Range -> DynHalideRepr dim val abs
-dynHalideRepr = DynHalideRepr ReadAccess
+dynHalideRepr dim dom = RangeRepr dom (HalideRepr ReadAccess dim)
 
 -- | Constructor function for "BinHalideRepr". Returns a data
 -- representation with "ReadAccess".
 binHalideRepr :: dim -> Domain Bins -> BinHalideRepr dim val abs
-binHalideRepr = BinHalideRepr ReadAccess
+binHalideRepr dim dom = BinRepr dom (HalideRepr ReadAccess dim)
 
 type family KernelParams (reprs :: [*]) :: [*]
 type instance KernelParams '[] = '[]
@@ -187,45 +144,6 @@ instance HalideCtx dim val abs => HalideReprClass (HalideRepr dim val abs) where
   halrCall      r _ fun ds = call fun (halrDim r ds)
   halrCallWrite _ _ fun    = callWrite fun
 
--- Here is where we need undecideable instance, regrettably
-instance (HalideCtx dim val abs, MarshalArray (Dim :. dim)) => HalideReprClass (DynHalideRepr dim val abs) where
-  type HalrDim (DynHalideRepr dim val abs) = Dim :. dim
-  type HalrVal (DynHalideRepr dim val abs) = val
-  type HalideFun xs (DynHalideRepr dim val abs)
-    = HalideKernel (KernelParams xs) (Array (Dim :. dim) val)
-  halrDim (DynHalideRepr _ dim _) [RangeRegion _ (Range low high)]
-    = (fromIntegral low, fromIntegral $ high - low) :. dim
-  halrDim r doms
-    = error $ "halrDim: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
-  halrWrite (DynHalideRepr _ dim dh)
-    = DynHalideRepr WriteAccess dim dh
-  halrCall r _ fun doms
-    = call fun (halrDim r doms)
-  halrCallWrite _ _ fun
-    = callWrite fun
-
-instance (HalideCtx dim val abs, MarshalArray (Dim :. dim)) =>
-         HalideReprClass (BinHalideRepr dim val abs) where
-  type HalrDim (BinHalideRepr dim val abs) = Dim :. dim
-  type HalrVal (BinHalideRepr dim val abs) = val
-  type HalideFun xs (BinHalideRepr dim val abs)
-    = HalideKernel (KernelParams xs) (Array (Dim :. dim) val)
-  halrDim (BinHalideRepr _ dim _) [BinRegion _ (Bins binMap)]
-    | [size] <- Map.elems binMap
-    = (0, fromIntegral size) :. dim
-    -- Note that in contrast to DynHalideRepr, we cannot communicate
-    -- the array transformation to Halide here (after all, it is
-    -- decidedly non-linear). Instead we base every bin at index 0 -
-    -- a minor inconsistency?
-  halrDim r doms
-    = error $ "halrDim: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
-  halrWrite (BinHalideRepr _ dim dh)
-    = BinHalideRepr WriteAccess dim dh
-  halrCall r _ fun doms
-    = call fun (halrDim r doms)
-  halrCallWrite _ _ fun
-    = callWrite fun
-
 instance (Typeable dom, Typeable rep, HalideReprClass rep) =>
          HalideReprClass (RegionRepr dom rep) where
   type HalrDim (RegionRepr dom rep) = HalrDim rep
@@ -235,10 +153,41 @@ instance (Typeable dom, Typeable rep, HalideReprClass rep) =>
   halrWrite (RegionRepr dh rep) = RegionRepr dh (halrWrite rep)
   halrCall rep _ _ []
     = error $ "Not enough domains passed to halrCall for " ++ show rep ++ "!"
-  halrCall (RegionRepr _ rep) xs fun (_:doms)
-    = halrCall rep xs fun doms
-  halrCallWrite (RegionRepr _ rep) xs fun
-    = halrCallWrite rep xs fun
+  halrCall      (RegionRepr _ rep) xs fun (_:doms) = halrCall rep xs fun doms
+  halrCallWrite (RegionRepr _ rep) xs fun          = halrCallWrite rep xs fun
+
+-- Here is where we need undecideable instance, regrettably
+instance (HalideReprClass rep, MarshalArray (Dim :. HalrDim rep)) =>
+         HalideReprClass (RangeRepr rep) where
+  type HalrDim (RangeRepr rep) = Dim :. HalrDim rep
+  type HalrVal (RangeRepr rep) = HalrVal rep
+  type HalideFun xs (RangeRepr rep)
+    = HalideKernel (KernelParams xs) (Array (Dim :. HalrDim rep) (HalrVal rep))
+  halrDim (RangeRepr _ rep) ((RangeRegion _ (Range low high)):rbox)
+    = (fromIntegral low, fromIntegral $ high - low) :. halrDim rep rbox
+  halrDim r doms
+     = error $ "halrDim: number/types of domains for " ++ show r ++ ": " ++ show doms
+  halrWrite (RangeRepr dh rep) = RangeRepr dh (halrWrite rep)
+  halrCall      r _ fun doms = call fun (halrDim r doms)
+  halrCallWrite _ _ fun      = callWrite fun
+
+instance (HalideReprClass rep, MarshalArray (Dim :. HalrDim rep)) =>
+         HalideReprClass (BinRepr rep) where
+  type HalrDim (BinRepr rep) = Dim :. HalrDim rep
+  type HalrVal (BinRepr rep) = HalrVal rep
+  type HalideFun xs (BinRepr rep)
+    = HalideKernel (KernelParams xs) (Array (Dim :. HalrDim rep) (HalrVal rep))
+  halrDim (BinRepr _ rep) ((BinRegion _ (Bins binMap)):ds)
+    = (0, fromIntegral $ sum $ Map.elems binMap) :. halrDim rep ds
+    -- Note that in contrast to RangeRepr, we cannot communicate
+    -- the array transformation to Halide here (after all, it is
+    -- decidedly non-linear). Instead we base every bin at index 0 -
+    -- a minor inconsistency?
+  halrDim r doms
+    = error $ "halrDim: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
+  halrWrite (BinRepr dh rep) = BinRepr dh (halrWrite rep)
+  halrCall      r _ fun doms = call fun (halrDim r doms)
+  halrCallWrite _ _ fun      = callWrite fun
 
 halideKernel0 :: HalideReprClass rr
               => String

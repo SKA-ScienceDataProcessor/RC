@@ -10,16 +10,19 @@
 module Flow.Kernel
   ( DataRepr(..), ReprAccess(..)
   , NoRepr(..)
+  , RegionRepr(..), RangeRepr(..), BinRepr(..)
   , mappingKernel, mergingKernel, foldingKernel
   , rangeKernel0, rangeKernel1
   , VectorRepr(..)
   , vecKernel0, vecKernel1, vecKernel2, vecKernel3
-  , RegionRepr(..)
   ) where
 
 import Control.Applicative
 import Control.Monad
 
+import Data.Function
+import Data.Int
+import Data.List
 import qualified Data.Map as Map
 import Data.Typeable
 
@@ -40,7 +43,9 @@ instance Typeable a => DataRepr (NoRepr a) where
   reprCompatible _ _ = True
 
 -- | Per-region representation: Does not change data representation,
--- but distributes data so that we have one data object per region.
+-- but distributes data so that we have one data object per
+-- region. Every region is supposed to correspond to exactly one
+-- buffer in the underlying data representation.
 data RegionRepr dom rep where
   RegionRepr :: DataRepr rep => Domain dom -> rep -> RegionRepr dom rep
  deriving Typeable
@@ -57,6 +62,66 @@ instance (DataRepr rep, Typeable dom, Typeable rep) => DataRepr (RegionRepr dom 
   reprMerge _ _ _ = fail "reprMerge for region repr undefined!"
   reprSize (RegionRepr _ rep) (_:ds) = reprSize rep ds
   reprSize rep                _      = fail $ "Not enough domains passed to reprSize for " ++ show rep ++ "!"
+
+-- | Per-range representation: Similar to "RegionRepr", but instead of
+-- one object, the data is a vector with the range's size. The given
+-- data representation describes the value layout.
+data RangeRepr rep = RangeRepr (Domain Range) rep
+  deriving Typeable
+instance Show rep => Show (RangeRepr rep) where
+  showsPrec _ (RangeRepr rep dom)
+    = shows rep . ('[':) . shows dom . (']':)
+instance DataRepr rep => DataRepr (RangeRepr rep) where
+  type ReprType (RangeRepr rep) = ReprType rep
+  reprNop _ = False
+  reprAccess (RangeRepr _ rep) = reprAccess rep
+  reprDomain (RangeRepr d rep) = dhId d : reprDomain rep
+  reprCompatible (RangeRepr d0 rep0) (RangeRepr d1 rep1)
+    = d0 `dhIsParent` d1 && reprCompatible rep0 rep1
+  reprMergeCopy = rangeMergeCopy
+  reprSize (RangeRepr _ rep) (RangeRegion _ (Range l h):ds)
+    = fmap (* (h-l)) (reprSize rep ds)
+  reprSize rep                _      = fail $ "Not enough domains passed to reprSize for " ++ show rep ++ "!"
+
+rangeMergeCopy :: DataRepr rep => RangeRepr rep -> RegionData -> RegionBox -> Vector Int8 -> Int -> IO ()
+rangeMergeCopy (RangeRepr _ rep) rd ((RangeRegion _ (Range low _)):ds) outv outoff
+  | Just subSize <- reprSize rep ds
+  = do -- Go through top-level regions
+       forM_ (groupBy ((==) `on` head . fst) $ Map.toList rd) $ \grp -> do
+         -- Get the sub-range to calculate the offset. Must be the
+         -- same for all region boxes in the group per groupBy
+         -- definition. Then construct the local region data.
+         let RangeRegion _ (Range l h) = head (fst (head grp))
+             rd' = Map.fromList $ map (\(rbox, v) -> (tail rbox, v)) grp
+         -- Call rangeMergeCopy recursively
+         forM_ [l-low..h-low-1] $ \i ->
+           reprMergeCopy rep rd' ds outv (outoff + subSize * i)
+rangeMergeCopy r _ rbox _ _ = fail $
+  "reprMerge: Unexpected number/types of domains for " ++ show r ++ ": " ++ show rbox
+
+-- | Per-bin representation: Similar to "RangeRepr", but instead of using a
+-- range, the vector size is given by the size associated with a
+-- bin. The data representation again describes the element layout.
+data BinRepr rep = BinRepr (Domain Bins) rep
+  deriving Typeable
+instance Show rep => Show (BinRepr rep) where
+  showsPrec _ (BinRepr rep dom)
+    = shows rep . ('[':) . shows dom . (']':)
+instance DataRepr rep => DataRepr (BinRepr rep) where
+  type ReprType (BinRepr rep) = ReprType rep
+  reprNop (BinRepr _ rep) = reprNop rep
+  reprAccess (BinRepr _ rep) = reprAccess rep
+  reprDomain (BinRepr d rep) = dhId d : reprDomain rep
+  reprCompatible (BinRepr d0 rep0) (BinRepr d1 rep1)
+    = d0 `dhIsParent` d1 && reprCompatible rep0 rep1
+  reprMerge _ _ [BinRegion _ _bins] =
+    -- TODO
+    fail "reprMerge not implemented yet on BinRepr!"
+  reprMerge r _   doms = error $
+    "reprMerge: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
+  reprSize (BinRepr _ rep) ((BinRegion _ (Bins bins)):ds)
+    = fmap (* (sum $ Map.elems bins)) (reprSize rep ds)
+  reprSize rep _ = fail $ "Not enough domains passed to reprSize for " ++ show rep ++ "!"
 
 -- | Vector representation: A variable-sized "Vector" with @val@
 -- elements, representing abstract data of type @abs@. This is
@@ -129,7 +194,8 @@ mergingKernel name parReprs retRep code = mappingKernel name parReprs retRep $ \
              case mvec of
                Just vec -> return (vec, merged)
                Nothing  -> fail $ "mergingKernel " ++ name ++ ": Failed to merge regions " ++
-                                  show (Map.keys par) ++ " into region " ++ show merged ++ "!"
+                                  show (Map.keys par) ++ " into region " ++ show merged ++
+                                  " size" ++ show (reprSize parR merged) ++ "!"
         | otherwise
         = fail $ "mergingKernel " ++ name ++ ": Attempted to merge regions " ++
                  show (Map.keys par) ++ " for " ++ show parR ++ "! This is not (yet?) supported..."
