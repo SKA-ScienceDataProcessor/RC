@@ -97,7 +97,6 @@ import Profiling.Linux.Perf.Stat
 
 import System.IO
 import System.IO.Unsafe   (unsafePerformIO)
-import System.Locale      (defaultTimeLocale)
 import System.Mem         (performGC)
 
 import DNA.Types          (AID,VirtualCAD)

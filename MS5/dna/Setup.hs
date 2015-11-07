@@ -125,7 +125,6 @@ cudaBuildInfo doBuild lbi verbose buildDir bi = do
       cudaOpts = concat $ parseOpt (sepBy parseTokenQ' (munch1 isSpace)) cudaOptLine
 
   -- Prepare for building
-  (nvcc,_) <- requireProgram verbose nvccProgram (withPrograms lbi)
   let mkOutput ext = (buildDir </>) . flip replaceExtension ext . takeFileName
   when doBuild $ createDirectoryIfMissingVerbose verbose True buildDir
 
@@ -139,6 +138,7 @@ cudaBuildInfo doBuild lbi verbose buildDir bi = do
   cubins <- case lookup "x-cuda-sources-cubin" (customFieldsBI bi) of
     Nothing          -> return []
     Just cudaSrcLine -> do
+       (nvcc,_) <- requireProgram verbose nvccProgram (withPrograms lbi)
        let parses = parseOpt (parseOptCommaList parseFilePathQ) cudaSrcLine
            cudaSources = head parses
        when (null parses) $ die "Failed to parse x-cuda-sources-cubin field."
@@ -154,6 +154,7 @@ cudaBuildInfo doBuild lbi verbose buildDir bi = do
   case lookup "x-cuda-sources" (customFieldsBI bi) of
      Nothing          -> return (bi, cubins)
      Just cudaSrcLine -> do
+       (nvcc,_) <- requireProgram verbose nvccProgram (withPrograms lbi)
        let parses = parseOpt (parseOptCommaList parseFilePathQ) cudaSrcLine
            cudaSources = head parses
        when (null parses) $ die "Failed to parse x-cuda-sources field."

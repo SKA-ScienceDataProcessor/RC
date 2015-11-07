@@ -40,7 +40,6 @@ library
     base         >=4.6,
     unix,
     time,
-    old-locale,
     random,
     bytestring   >= 0.10,
     binary,
