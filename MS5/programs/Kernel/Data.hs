@@ -4,8 +4,8 @@
 module Kernel.Data
   ( Config(..), GridPar(..), GCFPar(..)
   , Tag, Vis, UVGrid, Image, GCFs
-  , UVGRepr, ImageRepr, PlanRepr, RawVisRepr, VisRepr, GCFsRepr
-  , uvgRepr, imageRepr, planRepr, rawVisRepr, visRepr, gcfsRepr
+  , UVGRepr, UVGMarginRepr, ImageRepr, PlanRepr, RawVisRepr, VisRepr, GCFsRepr
+  , uvgRepr, uvgMarginRepr, imageRepr, planRepr, rawVisRepr, visRepr, gcfsRepr
   ) where
 
 import Data.Typeable
@@ -51,6 +51,13 @@ deriving instance Typeable GCFs
 type UVGRepr = RangeRepr (RangeRepr (HalideRepr Dim1 Double UVGrid))
 uvgRepr :: Domain Range -> Domain Range -> UVGRepr
 uvgRepr ydom xdom = RangeRepr ydom $ RangeRepr xdom $ halideRepr (dim1 dimCpx)
+
+type UVGMarginRepr = MarginRepr (MarginRepr (HalideRepr Dim1 Double UVGrid))
+uvgMarginRepr :: GCFPar -> Domain Range -> Domain Range -> UVGMarginRepr
+uvgMarginRepr gcfp ydom xdom =
+  marginRepr ydom (gcfSize gcfp `div` 2) $
+  marginRepr xdom (gcfSize gcfp `div` 2) $
+  halideRepr (dim1 dimCpx)
 
 type ImageRepr = HalideRepr Dim2 Double Image
 imageRepr :: GridPar -> ImageRepr

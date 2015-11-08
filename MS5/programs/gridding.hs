@@ -53,7 +53,9 @@ gridderStrat cfg = do
   let low_w = -25000
       high_w = 25000
       bins = 10
-      result = gridder vis (gcf vis)
+      gcfs = gcf vis
+      gridded = grid vis gcfs createGrid
+      result = gridder vis gcfs
   binsDom <- makeBinDomain (wBinSizer dom low_w high_w bins vis) low_w high_w
   split binsDom bins $ \binDom -> do
     rebind vis $ wBinner dom binDom
@@ -63,11 +65,18 @@ gridderStrat cfg = do
     -- Create ranged domains for grid coordinates
     ydom <- makeRangeDomain 0 (gridHeight gpar)
     xdom <- makeRangeDomain 0 (gridWidth gpar)
+    split ydom 8 $ \yreg -> split xdom 8 $ \xreg -> do
 
-    -- Bind kernel rules
-    bindRule createGrid (gridInit ydom xdom)
-    bindRule grid (gridKernel gpar gcfpar ydom xdom binDom)
-    bindRule idft (ifftKern gpar ydom xdom tag)
+      -- Bind kernel rules
+      bindRule createGrid (gridInit gcfpar yreg xreg)
+      bindRule grid (gridKernel gpar gcfpar yreg xreg binDom)
+
+      distribute yreg ParSchedule $ distribute xreg ParSchedule $ do
+        calculate gridded
+
+      bind createGrid (gridInitDetile ydom xdom)
+      bind gridded (gridDetiling gcfpar (yreg, xreg) (ydom, xdom) gridded createGrid)
+      bindRule idft (ifftKern gpar ydom xdom tag)
 
     -- Compute the result
     calculate result
