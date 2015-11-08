@@ -171,8 +171,8 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
   bi' <- case lookup "x-cuda-sources" (customFieldsBI bi) of
      Nothing          -> return bi
      Just cudaSrcLine -> do
-      (nvcc,_) <- requireProgram verbose nvccProgram (withPrograms lbi)
-      let parses = parseOpt (parseOptCommaList parseFilePathQ) cudaSrcLine
+       (nvcc,_) <- requireProgram verbose nvccProgram (withPrograms lbi)
+       let parses = parseOpt (parseOptCommaList parseFilePathQ) cudaSrcLine
            cudaSources = head parses
        when (null parses) $ die "Failed to parse x-cuda-sources field."
 
