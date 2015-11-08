@@ -22,7 +22,7 @@ module Flow.Halide
   , halideKernel0, halideKernel1, halideKernel2, halideKernel3
   , halideKernel1Write, halideKernel2Write
   , halideBind, HalideBind
-  , halideDump, halideTextDump2D
+  , halidePrint, halideDump, halideTextDump2D
     -- * reexports (for FFI)
   , CInt(..), HalideKernel(..)
   ) where
@@ -266,6 +266,17 @@ halideKernel2Write name rep0 rep1 repR code = foldingKernel name (rep0 :. rep1 :
                                (Array (halrDim repR ds) (castVector v2))
          return $ castVector $ arrayBuffer vecR
         code' _ _ _ = fail "halideKernel2Write: Received wrong number of input buffers!"
+
+-- | Simple kernel that shows the contents of a buffer as text
+halidePrint :: forall r. (HalideReprClass r, Show (HalrVal r))
+            => r -> String -> Flow (ReprType r) -> Kernel ()
+halidePrint rep caption = mergingKernel (show (typeOf (undefined :: ReprType r)) ++ "-printer")
+                                        (rep :. Z) NoRepr $ \[(v,rbox)] _ -> do
+  let v' = castVector v :: Vector (HalrVal r)
+      size = nOfElements $ halrDim rep rbox
+  elems <- unmakeVector v' 0 size
+  putStrLn $ caption ++ " (" ++ show rep ++ ", region box " ++ show rbox ++ "): " ++ show elems
+  return nullVector
 
 -- | Simple kernel that dumps the contents of a channel with Halide
 -- data representation to a file.
