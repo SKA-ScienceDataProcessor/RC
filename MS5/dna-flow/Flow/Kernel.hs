@@ -46,8 +46,7 @@ instance Typeable a => DataRepr (NoRepr a) where
 -- but distributes data so that we have one data object per
 -- region. Every region is supposed to correspond to exactly one
 -- buffer in the underlying data representation.
-data RegionRepr dom rep where
-  RegionRepr :: DataRepr rep => Domain dom -> rep -> RegionRepr dom rep
+data RegionRepr dom rep = RegionRepr (Domain dom) rep
  deriving Typeable
 instance (Show (Domain dom), Show rep) => Show (RegionRepr dom rep) where
   showsPrec _ (RegionRepr dh rep)
@@ -83,21 +82,24 @@ instance DataRepr rep => DataRepr (RangeRepr rep) where
     = fmap (* (h-l)) (reprSize rep ds)
   reprSize rep                _      = fail $ "Not enough domains passed to reprSize for " ++ show rep ++ "!"
 
-rangeMergeCopy :: DataRepr rep => RangeRepr rep -> RegionData -> RegionBox -> Vector Int8 -> Int -> IO ()
-rangeMergeCopy (RangeRepr _ rep) rd ((RangeRegion _ (Range low _)):ds) outv outoff
-  | Just subSize <- reprSize rep ds
+rangeMergeCopy :: DataRepr rep => RangeRepr rep -> RegionBox
+               -> RegionData -> Int
+               -> Vector Int8 -> Int -> IO ()
+rangeMergeCopy rrep@(RangeRepr _ rep) rbox rd inoff outv outoff
+  | ((RangeRegion _ (Range low _)):ds) <- rbox
+  , Just subSize <- reprSize rep ds
   = do -- Go through top-level regions
        forM_ (groupBy ((==) `on` head . fst) $ Map.toList rd) $ \grp -> do
          -- Get the sub-range to calculate the offset. Must be the
          -- same for all region boxes in the group per groupBy
          -- definition. Then construct the local region data.
          let RangeRegion _ (Range l h) = head (fst (head grp))
-             rd' = Map.fromList $ map (\(rbox, v) -> (tail rbox, v)) grp
+             rd' = Map.fromList $ map (\(rb, v) -> (tail rb, v)) grp
          -- Call rangeMergeCopy recursively
          forM_ [l-low..h-low-1] $ \i ->
-           reprMergeCopy rep rd' ds outv (outoff + subSize * i)
-rangeMergeCopy r _ rbox _ _ = fail $
-  "reprMerge: Unexpected number/types of domains for " ++ show r ++ ": " ++ show rbox
+           reprMergeCopy rep ds rd' (inoff + subSize * (i-(l-low))) outv (outoff + subSize * i)
+  | otherwise
+  = fail $ "reprMerge: Unexpected number/types of domains for " ++ show rrep ++ ": " ++ show rbox
 
 -- | Per-bin representation: Similar to "RangeRepr", but instead of using a
 -- range, the vector size is given by the size associated with a

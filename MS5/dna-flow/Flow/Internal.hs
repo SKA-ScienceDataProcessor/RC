@@ -10,7 +10,7 @@ import Control.Monad.State.Strict
 import Data.Function ( on )
 import Data.Hashable
 import Data.Int
-import Data.List     ( sort )
+import Data.List     ( sort, groupBy )
 import qualified Data.Map as Map
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
@@ -193,21 +193,25 @@ domainSubset _ _
 -- | Merges a number of region boxes, if possible. All region boxes must
 -- use the same domains and especially have the same dimensionality!
 --
--- TODO: Ugly. Write properly
+-- TODO: Support for something else besides "RangeRegion"
 regionMerge :: [RegionBox] -> Maybe RegionBox
-regionMerge [] = Just []
-regionMerge dss
-  | not $ all ((==1) . length) dss
-  = error "domainMerge: Not implemented yet for domain combinations!"
-  | RangeRegion d (Range l _) <- head ds
-  , and $ zipWith no_gaps ds (tail ds)
-  , RangeRegion _ (Range _ h) <- last ds
-  = Just [RangeRegion d $ Range l h]
+regionMerge []   = Nothing
+regionMerge [[]] = Just []
+regionMerge boxes
+  | Just merged' <- merged
+  , (RangeRegion d (Range l _):ds_head) <- head merged'
+  , and $ zipWith no_gaps merged' (tail merged')
+  , (RangeRegion _ (Range _ h):ds_last) <- last merged'
+  , ds_head == ds_last
+  = Just (RangeRegion d (Range l h):ds_head)
   | otherwise
   = Nothing
- where ds = sort $ map head dss
-       no_gaps (RangeRegion d0 (Range _ h)) (RangeRegion d1 (Range l _))
-         = d0 == d1 && h == l
+ where grouped = groupBy ((==) `on` head) (sort boxes)
+       merged = mapM merge grouped
+       merge :: [RegionBox] -> Maybe RegionBox
+       merge boxGrp = fmap (head (head boxGrp) :) $ regionMerge $ map tail boxGrp
+       no_gaps (RangeRegion d0 (Range _ h):ds0) (RangeRegion d1 (Range l _):ds1)
+         = d0 == d1 && h == l && ds0 == ds1
        no_gaps _ _ = error "domainMerge: Mixed domain types...?"
 
 regionDomain :: Region -> DomainI
@@ -255,16 +259,19 @@ class (Show r, Typeable r, Typeable (ReprType r)) => DataRepr r where
   reprMerge r rd rb
     | Just size <- reprSize r rb
     = do v <- allocCVector size :: IO (Vector Int8)
-         reprMergeCopy r rd rb v 0
+         reprMergeCopy r rb rd 0 v 0
          return $ Just $ castVector v
     | otherwise
     = return Nothing
-  reprMergeCopy :: r -> RegionData -> RegionBox -> Vector Int8 -> Int -> IO ()
-  reprMergeCopy r rd [] outv outoff
+  reprMergeCopy :: r -> RegionBox     -- ^ Region box to fill
+                -> RegionData -> Int  -- ^ Input data & offset
+                -> Vector Int8 -> Int -- ^ Output vector & offset
+                -> IO ()
+  reprMergeCopy r [] rd inoff outv outoff
     | Just size <- reprSize r [],
       Just inv <- Map.lookup [] rd
-    = copyVector outv outoff (castVector inv) 0 size
-  reprMergeCopy _ _  _  _    _  = fail "reprMerge unimplemented!"
+    = copyVector outv outoff (castVector inv) inoff size
+  reprMergeCopy _ _  _  _     _    _ = fail "reprMerge unimplemented!"
   reprSize :: r -> RegionBox -> Maybe Int
   reprSize _ _ = Nothing
 
