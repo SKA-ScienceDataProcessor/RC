@@ -35,7 +35,6 @@ import Data.Typeable
 import Data.Vector.HFixed.Class ( Fn )
 
 import Flow.Internal
-import Flow.Builder
 import Flow.Vector
 import Flow.Kernel
 
@@ -89,6 +88,7 @@ type BinHalideRepr dim val abs = BinRepr (HalideRepr dim val abs)
 -- | Like "RangeRepr", but with all regions getting the given extra
 -- margin from Halide's point of view.
 data MarginRepr rep = MarginRepr Int (RangeRepr rep)
+  deriving Typeable
 instance (Show rep) => Show (MarginRepr rep) where
   showsPrec _ (MarginRepr ov rep)
     = shows rep . showString "(overlapping x" . shows ov . (')':)

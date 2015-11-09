@@ -84,8 +84,16 @@ mkFlow :: String -> [FlowI] -> Flow a
 mkFlow name fis = Flow $ FlowI (hash (name, fis, noWild)) name fis noWild
   where noWild = Nothing :: Maybe Int
 
+-- | Kernel frontend representation
+data Kernel a where
+  Kernel :: DataRepr r
+         => String -> KernelCode
+         -> [(FlowI, ReprI)] -> r
+         -> Kernel (ReprType r)
+
 type KernelId = Int
 
+-- | Kernel backend representation
 data KernelBind = KernelBind
   { kernId   :: KernelId   -- ^ Unique number identifiying this kernel
   , kernFlow :: FlowI      -- ^ Implemented flow
