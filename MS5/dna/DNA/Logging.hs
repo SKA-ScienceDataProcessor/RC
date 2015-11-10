@@ -75,6 +75,7 @@ import Control.Monad.Except        (ExceptT)
 import Control.Monad.Trans.Class
 
 import Data.Time
+import Data.Time.Format
 import Data.Maybe         (fromMaybe)
 import Data.IORef
 import Data.Tuple         (swap)

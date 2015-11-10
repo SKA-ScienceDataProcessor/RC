@@ -30,7 +30,7 @@ Flag network-uri
 
 Flag cuda
    description: Build with support for CUDA
-   default: True
+   default: False
 
 ----------------------------------------------------------------
 library
@@ -39,7 +39,7 @@ library
   build-depends:
     base         >=4.6,
     unix,
-    time,
+    time         >=1.5,
     random,
     bytestring   >= 0.10,
     binary,
