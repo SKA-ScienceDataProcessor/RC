@@ -12,6 +12,7 @@ module Flow.Kernel
   , NoRepr(..)
   , RegionRepr(..), RangeRepr(..), BinRepr(..)
   , mappingKernel, mergingKernel, foldingKernel
+  , regionKernel, IsKernelDef
   , rangeKernel0, rangeKernel1
   , VectorRepr(..)
   , vecKernel0, vecKernel1, vecKernel2, vecKernel3
@@ -23,6 +24,7 @@ import Control.Monad
 import Data.Function
 import Data.Int
 import Data.List
+import qualified Data.IntMap as IM
 import qualified Data.Map as Map
 import Data.Typeable
 
@@ -152,26 +154,40 @@ mappingKernel :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
 mappingKernel name parReprs retRep code = kernel name parReprs retRep $ \pars ->
   mapM $ \reg -> do
     let limit = limitToRegion ("mappingKernel " ++ name) (reprDomain retRep) reg
-    code (map limit (zipReprs parReprs pars)) reg
+    code (map limit (zipReprs (toReprsI parReprs) pars)) reg
 
 -- | Zip kernel parameters with their expected data
 -- representations. Especially filter out NOOP-parameters, as they
 -- will not get passed.
-zipReprs :: IsReprs rs => rs -> [RegionData] -> [(ReprI, RegionData)]
+zipReprs :: [ReprI] -> [RegionData] -> [(ReprI, RegionData)]
 zipReprs parReprs pars = zip reprs pars
-  where reprs = filter (not . isNoReprI) $ toReprsI parReprs
+  where reprs = filter (not . isNoReprI) parReprs
 
--- | Limit all incoming parameters that are split in the domain of the
--- given region to *only* have data for the given region.
+-- | Limit all incoming parameters that are split in a domain of the
+-- given region box to *only* have data for region in question.
 limitToRegion :: String -> [DomainId] -> RegionBox -> (ReprI, RegionData) -> RegionData
 limitToRegion name dom rbox (parRi, par)
-  | repriDomain parRi /= dom
+  -- No domains in common? Nothing to do
+  | not $ any (flip IM.member rboxMap) (repriDomain parRi)
   = par
-  | Just par' <- Map.lookup rbox par
+  -- Same domains? Then we should be able to look up the region
+  -- box. This is a fairly common case, so it is a good idea to
+  -- optimise it.
+  | repriDomain parRi == dom, Just par' <- Map.lookup rbox par
   = Map.singleton rbox par'
-  | otherwise
+  -- No regions left after filtering?
+  | Map.null par_filtered
   = error $ name ++ " impossible: Asked to produce output for region " ++ show rbox ++
-            " but this region was not found for parameter " ++ show parRi ++ "!"
+            " but this region was not found for parameter " ++ show parRi ++ "!" ++
+            " Got regions: " ++ show (Map.keys par)
+  | otherwise
+  = par_filtered
+ where dhiId (DomainI d) = dhId d
+       rboxMap = IM.fromList $ map (\r -> (dhiId $ regionDomain r, r)) rbox
+       inRBox reg = case IM.lookup (dhiId $ regionDomain reg) rboxMap of
+         Just reg' -> reg == reg'
+         Nothing   -> True
+       par_filtered = Map.filterWithKey (\prbox _ -> all inRBox prbox) par
 
 -- | Code implementing a kernel for a single output domain and single parameter
 -- regions. See "mergedKernel".
@@ -203,7 +219,7 @@ mergingKernel name parReprs retRep code = mappingKernel name parReprs retRep $ \
                  show (Map.keys par) ++ " for " ++ show parR ++ "! This is not (yet?) supported..."
   -- Pair parameters with their data representations. Noop-parameters
   -- are not passed.
-  mergedPars <- mapM merge $ zipReprs parReprs pars
+  mergedPars <- mapM merge $ zipReprs (toReprsI parReprs) pars
   code mergedPars reg
 
 -- | Code implementing a fold operation for a single input and output
@@ -242,7 +258,7 @@ foldingKernel name parReprs code = mappingKernel name parReprs (foldPar parReprs
              let limit = limitToRegion ("foldingKernel " ++ name) (repriDomain parRi) rbox
                  rest' = zip (map fst rest) $ map limit rest
              map ((parv, rbox):) (iter rest')
-      iterPars = iter $ take (length pars - 1) $ zipReprs parReprs pars
+      iterPars = iter $ take (length pars - 1) $ zipReprs (toReprsI parReprs) pars
 
   -- Call kernel code for every iteration
   let fpar0 | [(_rbox, fpar0')] <- Map.toList (last pars)
@@ -250,6 +266,40 @@ foldingKernel name parReprs code = mappingKernel name parReprs (foldPar parReprs
             | otherwise = error $ "foldingKernel " ++ name ++ " impossible: Multiple regions for folding parameter!"
   (\c -> foldM c fpar0 iterPars) $ \fpar pars' ->
     code pars' fpar reg
+
+-- | Functions going from "Flow"s to a "Kernel". Useful for modifing
+-- kernel code.
+class IsKernelDef kf where
+  type KernelDefRet kf
+  mapKernelDef :: (Kernel (KernelDefRet kf) -> Kernel (KernelDefRet kf)) -> kf -> kf
+instance IsKernelDef (Kernel r) where
+  type KernelDefRet (Kernel r) = r
+  mapKernelDef = id
+instance IsKernelDef kf => IsKernelDef (Flow f -> kf) where
+  type KernelDefRet (Flow f -> kf) = KernelDefRet kf
+  mapKernelDef f kf = \x -> mapKernelDef f (kf x)
+
+-- | Kernel modificator to have it work on a all regions in an
+-- isolated fashion. This is roughly the same ideas as with
+-- @mappingKernel@, but here we impose this behaviour on top of an
+-- existing kernel (which might not be a mapping kernel itself).
+regionKernel :: (Typeable d, IsKernelDef kf) => Domain d -> kf -> kf
+regionKernel dom = mapKernelDef $ \(Kernel name code parReprs retRepr) ->
+  let addReg (fl, ReprI rep) = (fl, ReprI $ RegionRepr dom rep)
+      parReprs' = map addReg parReprs
+      retRepr' = RegionRepr dom retRepr
+      code' pars boxes = do
+        -- Go through regions sorted by top-level boxes
+        let boxGroups = groupBy ((==) `on` head) boxes
+            zpars = zipReprs (map snd parReprs') pars
+        results <- forM boxGroups $ \boxes' -> do
+          let reg = head $ head boxes'
+              limit = limitToRegion ("regionKernel " ++ name) [dhId dom] [reg]
+              pars' = map limit zpars
+              pars'' = map (Map.mapKeysMonotonic tail) pars'
+          code pars'' (map tail boxes')
+        return $ concat results
+   in Kernel name code' parReprs' retRepr'
 
 rangeKernel0 :: DataRepr r
              => String -> r -> (Int -> Int -> IO (Vector a))
