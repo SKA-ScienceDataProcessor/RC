@@ -85,27 +85,6 @@ type DynHalideRepr dim val abs = RangeRepr (HalideRepr dim val abs)
 -- | Halide array where the size in one dimension is given by a bin domain
 type BinHalideRepr dim val abs = BinRepr (HalideRepr dim val abs)
 
--- | Like "RangeRepr", but with all regions getting the given extra
--- margin from Halide's point of view.
-data MarginRepr rep = MarginRepr Int (RangeRepr rep)
-  deriving Typeable
-instance (Show rep) => Show (MarginRepr rep) where
-  showsPrec _ (MarginRepr ov rep)
-    = shows rep . showString "(overlapping x" . shows ov . (')':)
-instance DataRepr rep => DataRepr (MarginRepr rep) where
-  type ReprType (MarginRepr rep) = ReprType (RangeRepr rep)
-  reprNop (MarginRepr _ rep) = reprNop rep
-  reprAccess (MarginRepr _ rep) = reprAccess rep
-  reprCompatible (MarginRepr ov0 rep0) (MarginRepr ov1 rep1)
-    = ov0 == ov1 && rep0 `reprCompatible` rep1
-  reprDomain (MarginRepr _ rep) = reprDomain rep
-  reprMerge _ _ _ = fail "reprMerge for region repr undefined!"
-  reprSize (MarginRepr ov rrep@(RangeRepr _ rep)) rds@(_:ds)
-    | Just size <- reprSize rrep rds
-    , Just ovSize <- reprSize rep ds
-    = Just $ size + 2 * ov * ovSize
-  reprSize _ _ = Nothing
-
 -- | Constructor function for "DynHalideRepr". Returns a data
 -- representation with "ReadAccess".
 dynHalideRepr :: dim -> Domain Range -> DynHalideRepr dim val abs
@@ -115,11 +94,6 @@ dynHalideRepr dim dom = RangeRepr dom (HalideRepr ReadAccess dim)
 -- representation with "ReadAccess".
 binHalideRepr :: dim -> Domain Bins -> BinHalideRepr dim val abs
 binHalideRepr dim dom = BinRepr dom (HalideRepr ReadAccess dim)
-
--- | Constructor function for "MarginRepr". Returns a data
--- representation with "ReadAccess".
-marginRepr :: DataRepr rep => Domain Range -> Int -> rep -> MarginRepr rep
-marginRepr dom ov = MarginRepr ov . RangeRepr dom
 
 type family KernelParams (reprs :: [*]) :: [*]
 type instance KernelParams '[] = '[]
