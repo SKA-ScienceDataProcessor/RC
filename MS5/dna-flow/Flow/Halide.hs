@@ -178,7 +178,7 @@ instance (HalideReprClass rep, MarshalArray (Dim :. HalrDim rep)) =>
   type HalideFun xs (BinRepr rep)
     = HalideKernel (KernelParams xs) (Array (Dim :. HalrDim rep) (HalrVal rep))
   halrDim (BinRepr _ rep) ((BinRegion _ (Bins binMap)):ds)
-    = (0, fromIntegral $ sum $ Map.elems binMap) :. halrDim rep ds
+    = (0, fromIntegral $ sum $ map (sum . Map.elems) $ Map.elems binMap) :. halrDim rep ds
     -- Note that in contrast to RangeRepr, we cannot communicate
     -- the array transformation to Halide here (after all, it is
     -- decidedly non-linear). Instead we base every bin at index 0 -

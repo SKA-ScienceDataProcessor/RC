@@ -13,7 +13,7 @@ import Control.Applicative
 import Control.Concurrent
 
 import Data.List
-import Data.Maybe ( fromMaybe, fromJust )
+import Data.Maybe ( fromMaybe, fromJust, mapMaybe )
 import qualified Data.IntMap as IM
 import qualified Data.IntSet as IS
 import qualified Data.Map.Strict as Map
@@ -85,6 +85,10 @@ dumpSteps strat = do
   forM_ (runStrategy (void strat)) (dump "")
 
 data AnyDH = forall a. Typeable a => AnyDH (Domain a)
+
+adhFilterBox :: AnyDH -> RegionBox -> Region -> Maybe Region
+adhFilterBox (AnyDH dom) = dhFilterBox dom
+
 type DataMap = IM.IntMap (ReprI, RegionData)
 type DomainMap = IM.IntMap (AnyDH, [Region])
 
@@ -190,12 +194,10 @@ execStep dataMapRef domainMapRef deps step = case step of
     let m_buf = do
           kid <- m_kid
           (_rep, bufs) <- IM.lookup kid dataMap
-          case Map.elems bufs of
-           [buf] -> return buf
-           _     -> fail $ "Could not find buffer for constructing domain " ++ show (dhId dh) ++ "!"
+          return bufs
 
     -- Primitive domains have exactly one region on construction
-    dom <- dhCreate dh m_buf
+    dom <- dhCreate dh (fromMaybe Map.empty m_buf)
     modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, [dom])
 
   KernelStep kbind@KernelBind{kernRepr=ReprI rep} -> do
@@ -211,6 +213,15 @@ execStep dataMapRef domainMapRef deps step = case step of
     let cartProd = sequence :: [[Region]] -> [RegionBox]
         outDoms = map lookupDom (reprDomain rep)
         outRegs = cartProd $ map snd outDoms
+
+    -- Filter boxes (yeah, ugly & slow)
+    let filteredRegs :: [RegionBox]
+        filteredRegs = foldr filterBox outRegs $ zip [0..] $ map fst outDoms
+        filterBox (i, dom) = mapMaybe $ \box ->
+          let (pre,reg:post) = splitAt i box
+           in case adhFilterBox dom (pre ++ post) reg of
+                Just reg' -> Just $ pre ++ reg':post
+                Nothing   -> Nothing
 
     -- Look up input data. Note that we always pass all available data
     -- here. This means that we are relying on
@@ -228,11 +239,11 @@ execStep dataMapRef domainMapRef deps step = case step of
 
     -- Call the kernel using the right regions
     !t0 <- getCurrentTime
-    results <- kernCode kbind (map snd ins) outRegs
+    results <- kernCode kbind (map snd ins) filteredRegs
     !t1 <- getCurrentTime
 
     -- Check size
-    let expectedSizes = map (reprSize rep) outRegs
+    let expectedSizes = map (reprSize rep) filteredRegs
     forM_ (zip results expectedSizes) $ \(res, m_size) ->
       case m_size of
         Just size | size /= vectorByteSize res ->
@@ -242,7 +253,7 @@ execStep dataMapRef domainMapRef deps step = case step of
 
     -- Debug
     putStrLn $ "Calculated kernel " ++ show (kernId kbind) ++ ":" ++ kernName kbind ++
-               " regions " ++ show outRegs ++
+               " regions " ++ show filteredRegs ++
                " in " ++ show (1000 * diffUTCTime t1 t0) ++ " ms"
 
     -- Get inputs that have been written, and therefore should be
@@ -253,7 +264,7 @@ execStep dataMapRef domainMapRef deps step = case step of
         dataMapInsert (kdepId dep) (kdepRepr dep) (Map.singleton rbox nullVector) IM.empty
 
     -- Insert result
-    let resultMap = Map.fromList $ zip outRegs results
+    let resultMap = Map.fromList $ zip filteredRegs results
     modifyIORef dataMapRef $ dataMapInsert (kernId kbind) (kernRepr kbind) resultMap
 
   SplitStep dh steps -> do

@@ -131,7 +131,7 @@ instance DataRepr rep => DataRepr (BinRepr rep) where
   reprMerge r _   doms = error $
     "reprMerge: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
   reprSize (BinRepr _ rep) ((BinRegion _ (Bins bins)):ds)
-    = fmap (* (sum $ Map.elems bins)) (reprSize rep ds)
+    = fmap (* (sum $ map (sum . Map.elems) $ Map.elems bins)) (reprSize rep ds)
   reprSize rep _ = fail $ "Not enough domains passed to reprSize for " ++ show rep ++ "!"
 
 -- | Like "RangeRepr", but with all regions getting the given extra
@@ -210,12 +210,11 @@ limitToRegion name dom rbox (parRi, par)
   -- No regions left after filtering?
   | Map.null par_filtered
   = error $ name ++ " impossible: Asked to produce output for region " ++ show rbox ++
-            " but this region was not found for parameter " ++ show parRi ++ "!" ++
+            " but this region was not found for parameter with representation " ++ show parRi ++ "!" ++
             " Got regions: " ++ show (Map.keys par)
   | otherwise
   = par_filtered
- where dhiId (DomainI d) = dhId d
-       rboxMap = IM.fromList $ map (\r -> (dhiId $ regionDomain r, r)) rbox
+ where rboxMap = IM.fromList $ map (\r -> (dhiId $ regionDomain r, r)) rbox
        inRBox reg = case IM.lookup (dhiId $ regionDomain reg) rboxMap of
          Just reg' -> reg == reg'
          Nothing   -> True
