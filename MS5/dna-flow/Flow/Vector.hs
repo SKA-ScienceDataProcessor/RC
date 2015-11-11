@@ -313,13 +313,13 @@ unsafeToByteString' (DeviceVector _ p) off size =
 -- | Write vector to a file (raw)
 dumpVector :: Storable a => Vector a -> FilePath ->  IO ()
 dumpVector v file =
-  withFile file WriteMode $ \h ->
+  withBinaryFile file WriteMode $ \h ->
     hPut h =<< unsafeToByteString v
 
 -- | Write vector to a file (raw)
 dumpVector' :: Storable a => Vector a -> Int -> Int -> FilePath ->  IO ()
 dumpVector' v off size file = do
-  withFile file WriteMode $ \h ->
+  withBinaryFile file WriteMode $ \h ->
     hPut h =<< unsafeToByteString' v off size
 
 -- | Read vector from a file (raw)
