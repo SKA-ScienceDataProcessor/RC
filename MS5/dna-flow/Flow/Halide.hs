@@ -149,7 +149,7 @@ instance (Typeable dom, Typeable rep, HalideReprClass rep) =>
   type HalrDim (RegionRepr dom rep) = HalrDim rep
   type HalrVal (RegionRepr dom rep) = HalrVal rep
   type HalideFun xs (RegionRepr dom rep) = HalideFun xs rep
-  halrDim (RegionRepr _ rep) ds = halrDim rep ds
+  halrDim (RegionRepr _ rep) (_:ds) = halrDim rep ds
   halrWrite (RegionRepr dh rep) = RegionRepr dh (halrWrite rep)
   halrCall rep _ _ []
     = error $ "Not enough domains passed to halrCall for " ++ show rep ++ "!"
