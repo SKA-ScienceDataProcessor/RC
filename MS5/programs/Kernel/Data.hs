@@ -4,8 +4,13 @@
 module Kernel.Data
   ( Config(..), GridPar(..), GCFPar(..)
   , Tag, Vis, UVGrid, Image, GCFs
-  , UVGRepr, UVGMarginRepr, ImageRepr, PlanRepr, RawVisRepr, VisRepr, GCFsRepr
-  , uvgRepr, uvgMarginRepr, imageRepr, planRepr, rawVisRepr, visRepr, gcfsRepr
+  -- * Data representations
+  , UDom, VDom, WDom
+  , UVGRepr, UVGMarginRepr, ImageRepr, PlanRepr, GCFsRepr
+  , uvgRepr, uvgMarginRepr, imageRepr, planRepr, gcfsRepr
+  -- * Visibility data representations
+  , RawVisRepr, VisRepr
+  , rawVisRepr, visRepr
   ) where
 
 import Data.Typeable
@@ -48,15 +53,22 @@ deriving instance Typeable UVGrid
 deriving instance Typeable Image
 deriving instance Typeable GCFs
 
+type UDom = Domain Range -- ^ Domain used for the u dimension
+type VDom = Domain Range -- ^ Domain used for the v dimension
+type WDom = Domain Bins  -- ^ Domain used for the w dimension
+
 type UVGRepr = RangeRepr (RangeRepr (HalideRepr Dim1 Double UVGrid))
-uvgRepr :: Domain Range -> Domain Range -> UVGRepr
-uvgRepr ydom xdom = RangeRepr ydom $ RangeRepr xdom $ halideRepr (dim1 dimCpx)
+uvgRepr :: UDom -> VDom -> UVGRepr
+uvgRepr udom vdom =
+  RangeRepr vdom $
+  RangeRepr udom $
+  halideRepr (dim1 dimCpx)
 
 type UVGMarginRepr = MarginRepr (MarginRepr (HalideRepr Dim1 Double UVGrid))
-uvgMarginRepr :: GCFPar -> Domain Range -> Domain Range -> UVGMarginRepr
-uvgMarginRepr gcfp ydom xdom =
-  marginRepr ydom (gcfSize gcfp `div` 2) $
-  marginRepr xdom (gcfSize gcfp `div` 2) $
+uvgMarginRepr :: GCFPar -> UDom -> VDom -> UVGMarginRepr
+uvgMarginRepr gcfp udom vdom =
+  marginRepr vdom (gcfSize gcfp `div` 2) $
+  marginRepr udom (gcfSize gcfp `div` 2) $
   halideRepr (dim1 dimCpx)
 
 type ImageRepr = HalideRepr Dim2 Double Image
@@ -76,20 +88,24 @@ type PlanRepr = NoRepr Tag -- HalideRepr Dim0 Int32 Tag
 planRepr :: PlanRepr
 planRepr = NoRepr -- halideRepr dim0
 
+-- | Raw visibilities: Dynamically sized list of visibility records
+-- (see "dimVisFields").
 type RawVisRepr = DynHalideRepr Dim1 Double Vis
 rawVisRepr :: Domain Range -> RawVisRepr
 rawVisRepr = dynHalideRepr (dim1 dimVisFields)
 
-type VisRepr = BinHalideRepr Dim1 Double Vis
-visRepr :: Domain Bins -> VisRepr
-visRepr = binHalideRepr (dim1 dimVisFields)
+type VisRepr = RegionRepr Range (RegionRepr Range (BinRepr (HalideRepr Dim1 Double Vis)))
+visRepr :: UDom -> VDom -> WDom -> VisRepr
+visRepr udom vdom wdom =
+  RegionRepr udom $ RegionRepr vdom $ BinRepr wdom $
+  halideRepr (dim1 dimVisFields)
 
--- | We have 5 visibility fields: Real, imag, u, v and w.
+-- | We have 5 visibility fields: u, v and w, Real, imag
 dimVisFields :: Dim
 dimVisFields = (0, 5)
 
 type GCFsRepr = RegionRepr Bins (HalideRepr Dim4 Double GCFs)
-gcfsRepr :: Domain Bins -> GCFPar -> GCFsRepr
-gcfsRepr dh gcfp = RegionRepr dh $ halideRepr $ dimOver :. dimSize :. dimSize :. dimCpx :. Z
+gcfsRepr :: WDom -> GCFPar -> GCFsRepr
+gcfsRepr wdom gcfp = RegionRepr wdom $ halideRepr $ dimOver :. dimSize :. dimSize :. dimCpx :. Z
   where dimOver = (0, fromIntegral $ gcfOver gcfp * gcfOver gcfp)
         dimSize = (0, fromIntegral $ gcfSize gcfp)

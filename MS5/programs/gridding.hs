@@ -7,6 +7,7 @@ import Control.Monad
 
 import Flow
 
+import Kernel.Binning
 import Kernel.Data
 import Kernel.FFT
 import Kernel.Gridder
@@ -49,34 +50,41 @@ gridderStrat cfg = do
   let vis = flow "vis" tag
   bind vis $ oskarReader dom (cfgInput cfg) 0 0
 
-  -- Create binned domain, bin
-  let low_w = -25000
-      high_w = 25000
-      bins = 10
-      gcfs = gcf vis
+  let gcfs = gcf vis
       gridded = grid vis gcfs createGrid
       result = gridder vis gcfs
-  binsDom <- makeBinDomain (wBinSizer dom low_w high_w bins vis) low_w high_w
-  split binsDom bins $ \binDom -> do
-    rebind vis $ wBinner dom binDom
-    bindRule gcf (gcfKernel gcfpar binDom tag)
-    calculate $ gcf vis
 
-    -- Create ranged domains for grid coordinates
-    ydom <- makeRangeDomain 0 (gridHeight gpar)
-    xdom <- makeRangeDomain 0 (gridWidth gpar)
-    split ydom 8 $ \yreg -> split xdom 8 $ \xreg -> do
+  -- Create ranged domains for grid coordinates
+  udoms <- makeRangeDomain 0 (gridWidth gpar)
+  vdoms <- makeRangeDomain 0 (gridHeight gpar)
+
+  -- Split coordinate domain
+  let tiles = 8 -- per dimension
+  split vdoms tiles $ \vdom -> split udoms tiles $ \udom -> do
+
+    -- Create w-binned domain, split
+    let low_w = -25000
+        high_w = 25000
+        bins = 10
+    wdoms <- makeBinDomain (binSizer gpar dom udom vdom low_w high_w bins vis) low_w high_w
+    split wdoms bins $ \wdom -> do
+
+      -- Load GCFs
+      bind gcfs (gcfKernel gcfpar wdom)
+
+      -- Bin visibilities
+      rebind vis (binner gpar dom udom vdom wdom)
 
       -- Bind kernel rules
-      bindRule createGrid (gridInit gcfpar yreg xreg)
-      bindRule grid (gridKernel gpar gcfpar yreg xreg binDom)
+      bindRule createGrid (gridInit gcfpar udom vdom)
+      bindRule grid (gridKernel gpar gcfpar udoms vdoms wdom udom vdom)
 
-      distribute yreg ParSchedule $ distribute xreg ParSchedule $ do
+      distribute vdom SeqSchedule $ distribute udom SeqSchedule $ do
         calculate gridded
 
-      bind createGrid (gridInitDetile ydom xdom)
-      bind gridded (gridDetiling gcfpar (yreg, xreg) (ydom, xdom) gridded createGrid)
-      bindRule idft (ifftKern gpar ydom xdom tag)
+      bind createGrid (gridInitDetile udoms vdoms)
+      bind gridded (gridDetiling gcfpar (udom, vdom) (udoms, vdoms) gridded createGrid)
+      bindRule idft (ifftKern gpar udoms vdoms tag)
 
     -- Compute the result
     calculate result

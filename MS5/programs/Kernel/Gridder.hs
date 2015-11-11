@@ -7,7 +7,6 @@ import Data.Int
 import Flow.Builder
 import Flow.Domain
 import Flow.Halide
-import Flow.Domain
 
 import Kernel.Data
 
@@ -22,11 +21,15 @@ gridInit gcfp ydom xdom = halideKernel0 "gridInit" (uvgMarginRepr gcfp ydom xdom
 foreign import ccall unsafe kern_init :: HalideFun '[] UVGRepr
 
 -- | Gridder kernel binding
-gridKernel :: GridPar -> GCFPar -> Domain Range -> Domain Range -> Domain Bins
+gridKernel :: GridPar -> GCFPar                           -- ^ Configuration
+           -> Domain Range -> Domain Range -> Domain Bins -- ^ u/v/w visibility domains
+           -> Domain Range -> Domain Range                -- ^ u/v grid domains
            -> Flow Vis -> Flow GCFs -> Flow UVGrid
            -> Kernel UVGrid
-gridKernel gp gcfp ydom xdom dh =
-  halideKernel2Write "gridKernel" (visRepr dh) (gcfsRepr dh gcfp) (uvgMarginRepr gcfp ydom xdom) $
+gridKernel gp gcfp udom vdom wdom udom' vdom' =
+  halideKernel2Write "gridKernel" (visRepr udom vdom wdom)
+                                  (gcfsRepr wdom gcfp)
+                                  (uvgMarginRepr gcfp udom' vdom') $
   kern_scatter `halideBind` gridTheta gp `halideBind` fromIntegral (gridHeight gp)
 foreign import ccall unsafe kern_scatter
   :: HalideBind Double (HalideBind Int32 (HalideFun '[VisRepr, GCFsRepr] UVGMarginRepr))
