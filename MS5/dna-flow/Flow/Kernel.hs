@@ -16,6 +16,7 @@ module Flow.Kernel
     -- * Kernel types
     -- ** Primitive
   , kernel, mappingKernel, mergingKernel, foldingKernel
+  , allocReturns
     -- ** Combinator
   , regionKernel, IsKernelDef
     -- ** Range
@@ -38,6 +39,8 @@ import Data.Typeable
 import Flow.Internal
 import Flow.Builder
 import Flow.Vector
+
+import Foreign.Storable
 
 -- | No representation: Either don't produce anything (= nobody can use
 -- result) or don't care about input (= accept any input).
@@ -386,3 +389,15 @@ vecKernel3 name repr0 repr1 repr2 rrepr code = mergingKernel name (repr0 :. repr
     []     -> castVector <$> code (castVector (fst vec)) (castVector (fst vec1)) (castVector (fst vec2))
     _other -> fail "vecKernel3: Called for wrong number of domains!"
   _other          -> fail "vecKernel3: Received wrong number of input buffers!"
+
+-- | Helper to automatically allocate output buffers according to data
+-- representation produced and region boxes requested. Only works for
+-- data representations that support "reprSize".
+allocReturns :: forall rep a. (DataRepr rep, Storable a)
+             => (Int -> IO (Vector a)) -> rep -> [RegionBox] -> IO [(RegionBox, Vector a)]
+allocReturns alloc rep = mapM $ \rbox -> case reprSize rep rbox of
+  Just size  | let elemSize = sizeOf (undefined :: a)
+             , size `mod` elemSize == 0
+             -> fmap ((,) rbox) $ alloc (size `div` elemSize)
+  other -> fail $ "allocReturnBufs: Could not automatically allocate return data for " ++
+                  "data representation " ++ show rep ++ " size " ++ show other ++ "!"
