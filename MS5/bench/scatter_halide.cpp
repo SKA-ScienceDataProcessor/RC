@@ -131,8 +131,9 @@ SGridder& SGridder::setDims(){
   return *this;
 }
 
-void SGsetDims(SGridder * sp){
+SGridder * SGsetDims(SGridder * sp){
   sp->setDims();
+  return sp;
 }
 
 SGridder& SGridder::strategy1(){
@@ -143,8 +144,9 @@ SGridder& SGridder::strategy1(){
   return *this;
 }
 
-void SGstrategy1(SGridder * sp){
+SGridder * SGstrategy1(SGridder * sp){
   sp->strategy1();
+  return sp;
 }
 
 SGridder& SGridder::strategy2(){
@@ -157,6 +159,7 @@ SGridder& SGridder::strategy2(){
   return *this;
 }
 
-void SGstrategy2(SGridder * sp){
+SGridder * SGstrategy2(SGridder * sp){
   sp->strategy2();
+  return sp;
 }

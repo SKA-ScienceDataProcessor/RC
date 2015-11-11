@@ -54,8 +54,8 @@ extern "C" {
 SGridder * genSGridder(int cpos, int xpos, int ypos, int vpos);
 void finSGridder(SGridder * sp);
 
-void SGsetDims(SGridder * sp);
-void SGstrategy1(SGridder * sp);
-void SGstrategy2(SGridder * sp);
+SGridder * SGsetDims(SGridder * sp);
+SGridder * SGstrategy1(SGridder * sp);
+SGridder * SGstrategy2(SGridder * sp);
 
 }
