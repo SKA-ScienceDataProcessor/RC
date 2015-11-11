@@ -100,17 +100,6 @@ SGridder::SGridder(int cpos, int xpos, int ypos, int vpos) {
     += select(inBound(rvis),
               (visC * Complex(gcf(rgcfx, rgcfy, rvis))).unpack(rcmplx),
               undef<double>());
-
-  /*
-  SGridder * r = new SGridder;
-  *r = {
-  	  scale
-  	, grid_size
-  	, vis, gcf_fused
-    , rcmplx, rgcfx, rgcfy, rvis
-  	, uvg, uv, inBound, overc
-  	};
-  return r; */
 }
 
 SGridder * genSGridder(int cpos, int xpos, int ypos, int vpos){
