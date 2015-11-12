@@ -147,8 +147,8 @@ split :: Typeable a => Domain a -> Int -> (Domain a -> Strategy ()) -> Strategy 
 split dh parts sub = modify $ \ss0 ->
   let (dh', ss1) = flip runState ss0 (dhSplit dh parts)
       ((), ss2) = flip runState ss1{ ssSteps = [] } (sub dh')
-      splitStep = SplitStep dh' $ reverse $ ssSteps ss2
-  in ss2{ ssSteps = splitStep : ssSteps ss1 }
+      splitStep = DomainStep Nothing dh'
+  in ss2{ ssSteps = ssSteps ss2 ++ splitStep : ssSteps ss1 }
 
 -- | Perform computation in a distributed fashion.
 distribute :: Typeable a => Domain a -> Schedule -> Strategy () -> Strategy ()

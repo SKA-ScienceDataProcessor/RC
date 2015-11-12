@@ -350,8 +350,6 @@ newtype StratRule = StratRule (FlowI -> Maybe (Strategy ()))
 data Step where
   DomainStep :: Typeable a => Maybe KernelId -> Domain a -> Step
     -- ^ Create a new domain. Might depend on data produced by a kernel.
-  SplitStep :: Typeable a => Domain a -> [Step] -> Step
-    -- ^ Split a domain into regions
   KernelStep :: KernelBind -> Step
     -- ^ Execute a kernel for the given domain(s)
   DistributeStep :: Typeable a => Domain a -> Schedule -> [Step] -> Step

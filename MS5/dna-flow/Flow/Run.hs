@@ -71,10 +71,9 @@ dumpSteps :: Strategy a -> IO ()
 dumpSteps strat = do
 
   let dump ind (DomainStep m_kid dh)
-        = putStrLn $ ind ++ "Domain " ++ show dh ++ maybe "" (\kid -> " from kernel " ++ show kid) m_kid
-      dump ind (SplitStep dh steps)
-        = do putStrLn $ ind ++ "Split Domain " ++ show (dhId (fromJust $ dhParent dh)) ++ " into " ++ show dh
-             forM_ steps (dump ("  " ++ ind))
+        = putStrLn $ ind ++ "Domain " ++ show dh ++
+                     maybe "" (\kid -> " from kernel " ++ show kid) m_kid ++
+                     maybe "" (\dom -> " split from " ++ show dom) (dhParent dh)
       dump ind (KernelStep kb@KernelBind{kernRepr=ReprI rep})
         = putStrLn $ ind ++ "Over " ++ show (reprDomain rep) ++ " run " ++ show kb
       dump ind step@(DistributeStep did sched steps)
@@ -117,7 +116,6 @@ type DomainSet = IS.IntSet
 stepKernDeps :: Step -> KernelSet
 stepKernDeps (DomainStep (Just kid) _)  = IS.singleton kid
 stepKernDeps (KernelStep kbind)         = IS.fromList $ map kdepId $ kernDeps kbind
-stepKernDeps (SplitStep _ steps)        = stepsKernDeps steps
 stepKernDeps (DistributeStep _ _ steps) = stepsKernDeps steps
 stepKernDeps _                          = IS.empty
 
@@ -135,8 +133,9 @@ stepDomainDeps :: Step -> DomainSet
 stepDomainDeps (KernelStep kbind)
   = (IS.fromList $ kernDomain kbind) `IS.union`
     (IS.fromList $ concatMap kdepDomain $ kernDeps kbind)
-stepDomainDeps (SplitStep dh steps)
-  = IS.insert (dhId (fromJust (dhParent dh))) $ IS.delete (dhId dh) $ stepsDomainDeps steps
+stepDomainDeps (DomainStep _ dh)
+  | Just parent <- dhParent dh
+  = IS.singleton (dhId parent)
 stepDomainDeps (DistributeStep _ _ steps)
   = stepsDomainDeps steps
 stepDomainDeps _
@@ -198,8 +197,25 @@ execStep dataMapRef domainMapRef deps step = case step of
           return bufs
 
     -- Primitive domains have exactly one region on construction
-    dom <- dhCreate dh (fromMaybe Map.empty m_buf)
-    modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, [dom])
+    regs' <- case dhParent dh of
+
+      -- No parent: Straight-forward creation
+      Nothing -> do
+        reg <- dhCreate dh (fromMaybe Map.empty m_buf)
+        return [reg]
+
+      -- Otherwise: Split an existing domain
+      Just parDh -> do
+
+         -- Get domain to split up
+        let err = error $ "Could not find domain " ++ show (dhId dh) ++ " to split!"
+        (_, regs) <- fromMaybe err . IM.lookup (dhId parDh) <$> readIORef domainMapRef
+
+        -- Perform split
+        concat <$> mapM (dhRegion dh) regs
+
+    -- Add to map
+    modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, regs')
 
   KernelStep kbind@KernelBind{kernRepr=ReprI rep} -> do
 
@@ -267,21 +283,6 @@ execStep dataMapRef domainMapRef deps step = case step of
     -- Insert result
     let resultMap = Map.fromList $ zip filteredRegs results
     modifyIORef dataMapRef $ dataMapInsert (kernId kbind) (kernRepr kbind) resultMap
-
-  SplitStep dh steps -> do
-
-    -- Get domain to split up
-    let parDh = fromJust $ dhParent dh
-    (_, regs)
-      <- fromMaybe (error $ "Could not find domain " ++ show (dhId dh) ++ " to split!") .
-         IM.lookup (dhId parDh) <$> readIORef domainMapRef
-
-    -- Perform split
-    regs' <- concat <$> mapM (dhRegion dh) regs
-    modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, regs')
-
-    -- Execute nested steps
-    execSteps dataMapRef domainMapRef deps steps
 
   DistributeStep dh sched steps -> do
 
