@@ -59,13 +59,13 @@ gridderStrat cfg = do
   vdoms <- makeRangeDomain 0 (gridHeight gpar)
 
   -- Split coordinate domain
-  let tiles = 8 -- per dimension
+  let tiles = 16 -- per dimension
   split vdoms tiles $ \vdom -> split udoms tiles $ \udom -> do
 
     -- Create w-binned domain, split
     let low_w = -25000
         high_w = 25000
-        bins = 10
+        bins = 16
     wdoms <- makeBinDomain (binSizer gpar dom udom vdom low_w high_w bins vis) low_w high_w
     split wdoms bins $ \wdom -> do
 
@@ -79,7 +79,7 @@ gridderStrat cfg = do
       bindRule createGrid (gridInit gcfpar udom vdom)
       bindRule grid (gridKernel gpar gcfpar udoms vdoms wdom udom vdom)
 
-      distribute vdom SeqSchedule $ distribute udom SeqSchedule $ do
+      distribute vdom ParSchedule $ distribute udom ParSchedule $ do
         calculate gridded
 
       bind createGrid (gridInitDetile udoms vdoms)
