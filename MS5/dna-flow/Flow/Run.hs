@@ -133,7 +133,8 @@ stepsKernDeps []
 -- | Domain dependencies of a step
 stepDomainDeps :: Step -> DomainSet
 stepDomainDeps (KernelStep kbind)
-  = IS.fromList $ concatMap kdepDomain $ kernDeps kbind
+  = (IS.fromList $ kernDomain kbind) `IS.union`
+    (IS.fromList $ concatMap kdepDomain $ kernDeps kbind)
 stepDomainDeps (SplitStep dh steps)
   = IS.insert (dhId (fromJust (dhParent dh))) $ IS.delete (dhId dh) $ stepsDomainDeps steps
 stepDomainDeps (DistributeStep _ _ steps)
