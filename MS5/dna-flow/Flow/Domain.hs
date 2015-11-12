@@ -109,7 +109,7 @@ unpackBinRegion dh rlow rhigh rdata = do
           ((rlow + fromIntegral i * (rhigh - rlow) / fromIntegral bins,
             rlow + fromIntegral (i+1) * (rhigh - rlow) / fromIntegral bins),
            fromIntegral size)
-        regs = Map.fromList $ zipWith reg [(0::Int)..] binSizes
+        regs = Map.filter (>0) $ Map.fromList $ zipWith reg [(0::Int)..] binSizes
     return (rbox, regs)
 
 -- | Check whether a region box is permissable for the given bin
@@ -118,10 +118,10 @@ unpackBinRegion dh rlow rhigh rdata = do
 -- compatible with any region box.
 filterBoxBin :: RegionBox -> Region -> Maybe Region
 filterBoxBin rbox (BinRegion dom (Bins bins))
-  | Map.null bins' = Nothing
-  | otherwise      = Just $ BinRegion dom (Bins bins')
- where bins' = Map.filter (not . Map.null) $
-               Map.map (Map.filterWithKey hasDeps) bins
+  | Map.null (Map.filter (not . Map.null) bins')
+               = Nothing
+  | otherwise  = Just $ BinRegion dom (Bins bins')
+ where bins' = Map.map (Map.filterWithKey hasDeps) bins
        doms = map regionDomain rbox
        hasDeps deps _ = not $ any incompatible deps
        incompatible dep = (regionDomain dep `elem` doms) && not (dep `elem` rbox)
