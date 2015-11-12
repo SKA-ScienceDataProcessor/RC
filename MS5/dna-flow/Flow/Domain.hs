@@ -143,12 +143,11 @@ regionBins _ = error "regionBins: Not a bin domain!"
 
 -- | Split a domain into sub-regions. This creates a new partitioned region, which
 -- can be used to distribute both computation as well as data.
-split :: Typeable a => Domain a -> Int -> (Domain a -> Strategy ()) -> Strategy ()
-split dh parts sub = modify $ \ss0 ->
+split :: Typeable a => Domain a -> Int -> Strategy (Domain a)
+split dh parts = state $ \ss0 ->
   let (dh', ss1) = flip runState ss0 (dhSplit dh parts)
-      ((), ss2) = flip runState ss1{ ssSteps = [] } (sub dh')
       splitStep = DomainStep Nothing dh'
-  in ss2{ ssSteps = ssSteps ss2 ++ splitStep : ssSteps ss1 }
+  in (dh', ss1{ ssSteps = splitStep : ssSteps ss1 })
 
 -- | Perform computation in a distributed fashion.
 distribute :: Typeable a => Domain a -> Schedule -> Strategy () -> Strategy ()

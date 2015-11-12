@@ -50,6 +50,7 @@ gridderStrat cfg = do
   let vis = flow "vis" tag
   bind vis $ oskarReader dom (cfgInput cfg) 0 0
 
+  -- Data flows we want to calculate
   let gcfs = gcf vis
       gridded = grid vis gcfs createGrid
       result = gridder vis gcfs
@@ -60,34 +61,36 @@ gridderStrat cfg = do
 
   -- Split coordinate domain
   let tiles = 16 -- per dimension
-  split vdoms tiles $ \vdom -> split udoms tiles $ \udom -> do
+  vdom <- split vdoms tiles
+  udom <- split udoms tiles
 
-    -- Create w-binned domain, split
-    let low_w = -25000
-        high_w = 25000
-        bins = 16
-    wdoms <- makeBinDomain (binSizer gpar dom udom vdom low_w high_w bins vis) low_w high_w
-    split wdoms bins $ \wdom -> do
+  -- Create w-binned domain, split
+  let low_w = -25000
+      high_w = 25000
+      bins = 16
+  wdoms <- makeBinDomain (binSizer gpar dom udom vdom low_w high_w bins vis) low_w high_w
+  wdom <- split wdoms bins
 
-      -- Load GCFs
-      bind gcfs (gcfKernel gcfpar wdom)
+  -- Load GCFs
+  distribute wdom ParSchedule $
+    bind gcfs (gcfKernel gcfpar wdom)
 
-      -- Bin visibilities
-      rebind vis (binner gpar dom udom vdom wdom)
+  -- Bin visibilities (could distribute, but there's no benefit)
+  rebind vis (binner gpar dom udom vdom wdom)
 
-      -- Bind kernel rules
-      bindRule createGrid (gridInit gcfpar udom vdom)
-      bindRule grid (gridKernel gpar gcfpar udoms vdoms wdom udom vdom)
+  -- Bind kernel rules
+  bindRule createGrid (gridInit gcfpar udom vdom)
+  bindRule grid (gridKernel gpar gcfpar udoms vdoms wdom udom vdom)
 
-      distribute vdom ParSchedule $ distribute udom ParSchedule $ do
-        calculate gridded
+  -- Run gridding distributed
+  distribute vdom ParSchedule $ distribute udom ParSchedule $ do
+    calculate gridded
 
-      bind createGrid (gridInitDetile udoms vdoms)
-      bind gridded (gridDetiling gcfpar (udom, vdom) (udoms, vdoms) gridded createGrid)
-      bindRule idft (ifftKern gpar udoms vdoms tag)
-
-    -- Compute the result
-    calculate result
+  -- Compute the result by detiling & iFFT on result tiles
+  bind createGrid (gridInitDetile udoms vdoms)
+  bind gridded (gridDetiling gcfpar (udom, vdom) (udoms, vdoms) gridded createGrid)
+  bindRule idft (ifftKern gpar udoms vdoms tag)
+  calculate result
 
   -- Write out
   void $ bindNew $ imageWriter gpar (cfgOutput cfg) result

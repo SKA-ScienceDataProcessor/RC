@@ -276,25 +276,25 @@ scatterImagingMain cfg = do
 
   -- Split by datasets
   let result = majorLoopSum (cfgMajorLoops cfg) vis
-  split dom dataSets $ \ds -> distribute ds ParSchedule $ void $ do
+  ds <- split dom dataSets
+  distribute ds ParSchedule $ void $ do
 
     -- Split by number of runs.
     -- TODO: Number of runs should depend on data set!
-    split ds 3 $ \rep -> do
+    rep <- split ds 3
+    distribute rep SeqSchedule $ void $ do
 
-      distribute rep SeqSchedule $ void $ do
+      -- Read in visibilities. The domain handle passed in tells the
+      -- kernel which of the datasets to load.
+      bind vis $ oskarReader rep $ cfgInput cfg
 
-        -- Read in visibilities. The domain handle passed in tells the
-        -- kernel which of the datasets to load.
-        bind vis $ oskarReader rep $ cfgInput cfg
+      -- Implement this data flow
+      scatterImaging cfg rep tag vis
+      -- calculate $ fst $ majorLoop (cfgMajorLoops cfg) vis
 
-        -- Implement this data flow
-        scatterImaging cfg rep tag vis
-        -- calculate $ fst $ majorLoop (cfgMajorLoops cfg) vis
-
-      -- Sum up local images (TODO: accumulate?)
-      bindRule imageSum (imageSumKernel rep)
-      calculate result
+    -- Sum up local images (TODO: accumulate?)
+    bindRule imageSum (imageSumKernel rep)
+    calculate result
 
   -- Sum and write out the result
   rebind result $ imageWriter (cfgOutput cfg)
