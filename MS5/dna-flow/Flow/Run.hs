@@ -13,7 +13,7 @@ import Control.Applicative
 import Control.Concurrent
 
 import Data.List
-import Data.Maybe ( fromMaybe, fromJust )
+import Data.Maybe ( fromMaybe, fromJust, mapMaybe )
 import qualified Data.IntMap as IM
 import qualified Data.IntSet as IS
 import qualified Data.Map.Strict as Map
@@ -71,10 +71,9 @@ dumpSteps :: Strategy a -> IO ()
 dumpSteps strat = do
 
   let dump ind (DomainStep m_kid dh)
-        = putStrLn $ ind ++ "Domain " ++ show dh ++ maybe "" (\kid -> " from kernel " ++ show kid) m_kid
-      dump ind (SplitStep dh steps)
-        = do putStrLn $ ind ++ "Split Domain " ++ show (dhId (fromJust $ dhParent dh)) ++ " into " ++ show dh
-             forM_ steps (dump ("  " ++ ind))
+        = putStrLn $ ind ++ "Domain " ++ show dh ++
+                     maybe "" (\kid -> " from kernel " ++ show kid) m_kid ++
+                     maybe "" (\dom -> " split from " ++ show dom) (dhParent dh)
       dump ind (KernelStep kb@KernelBind{kernRepr=ReprI rep})
         = putStrLn $ ind ++ "Over " ++ show (reprDomain rep) ++ " run " ++ show kb
       dump ind step@(DistributeStep did sched steps)
@@ -85,6 +84,10 @@ dumpSteps strat = do
   forM_ (runStrategy (void strat)) (dump "")
 
 data AnyDH = forall a. Typeable a => AnyDH (Domain a)
+
+adhFilterBox :: AnyDH -> RegionBox -> Region -> Maybe Region
+adhFilterBox (AnyDH dom) = dhFilterBox dom
+
 type DataMap = IM.IntMap (ReprI, RegionData)
 type DomainMap = IM.IntMap (AnyDH, [Region])
 
@@ -113,7 +116,6 @@ type DomainSet = IS.IntSet
 stepKernDeps :: Step -> KernelSet
 stepKernDeps (DomainStep (Just kid) _)  = IS.singleton kid
 stepKernDeps (KernelStep kbind)         = IS.fromList $ map kdepId $ kernDeps kbind
-stepKernDeps (SplitStep _ steps)        = stepsKernDeps steps
 stepKernDeps (DistributeStep _ _ steps) = stepsKernDeps steps
 stepKernDeps _                          = IS.empty
 
@@ -129,9 +131,11 @@ stepsKernDeps []
 -- | Domain dependencies of a step
 stepDomainDeps :: Step -> DomainSet
 stepDomainDeps (KernelStep kbind)
-  = IS.fromList $ concatMap kdepDomain $ kernDeps kbind
-stepDomainDeps (SplitStep dh steps)
-  = IS.insert (dhId (fromJust (dhParent dh))) $ IS.delete (dhId dh) $ stepsDomainDeps steps
+  = (IS.fromList $ kernDomain kbind) `IS.union`
+    (IS.fromList $ concatMap kdepDomain $ kernDeps kbind)
+stepDomainDeps (DomainStep _ dh)
+  | Just parent <- dhParent dh
+  = IS.singleton (dhId parent)
 stepDomainDeps (DistributeStep _ _ steps)
   = stepsDomainDeps steps
 stepDomainDeps _
@@ -190,13 +194,28 @@ execStep dataMapRef domainMapRef deps step = case step of
     let m_buf = do
           kid <- m_kid
           (_rep, bufs) <- IM.lookup kid dataMap
-          case Map.elems bufs of
-           [buf] -> return buf
-           _     -> fail $ "Could not find buffer for constructing domain " ++ show (dhId dh) ++ "!"
+          return bufs
 
     -- Primitive domains have exactly one region on construction
-    dom <- dhCreate dh m_buf
-    modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, [dom])
+    regs' <- case dhParent dh of
+
+      -- No parent: Straight-forward creation
+      Nothing -> do
+        reg <- dhCreate dh (fromMaybe Map.empty m_buf)
+        return [reg]
+
+      -- Otherwise: Split an existing domain
+      Just parDh -> do
+
+         -- Get domain to split up
+        let err = error $ "Could not find domain " ++ show (dhId dh) ++ " to split!"
+        (_, regs) <- fromMaybe err . IM.lookup (dhId parDh) <$> readIORef domainMapRef
+
+        -- Perform split
+        concat <$> mapM (dhRegion dh) regs
+
+    -- Add to map
+    modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, regs')
 
   KernelStep kbind@KernelBind{kernRepr=ReprI rep} -> do
 
@@ -211,6 +230,15 @@ execStep dataMapRef domainMapRef deps step = case step of
     let cartProd = sequence :: [[Region]] -> [RegionBox]
         outDoms = map lookupDom (reprDomain rep)
         outRegs = cartProd $ map snd outDoms
+
+    -- Filter boxes (yeah, ugly & slow)
+    let filteredRegs :: [RegionBox]
+        filteredRegs = foldr filterBox outRegs $ zip [0..] $ map fst outDoms
+        filterBox (i, dom) = mapMaybe $ \box ->
+          let (pre,reg:post) = splitAt i box
+           in case adhFilterBox dom (pre ++ post) reg of
+                Just reg' -> Just $ pre ++ reg':post
+                Nothing   -> Nothing
 
     -- Look up input data. Note that we always pass all available data
     -- here. This means that we are relying on
@@ -228,11 +256,11 @@ execStep dataMapRef domainMapRef deps step = case step of
 
     -- Call the kernel using the right regions
     !t0 <- getCurrentTime
-    results <- kernCode kbind (map snd ins) outRegs
+    results <- kernCode kbind (map snd ins) filteredRegs
     !t1 <- getCurrentTime
 
     -- Check size
-    let expectedSizes = map (reprSize rep) outRegs
+    let expectedSizes = map (reprSize rep) filteredRegs
     forM_ (zip results expectedSizes) $ \(res, m_size) ->
       case m_size of
         Just size | size /= vectorByteSize res ->
@@ -242,7 +270,7 @@ execStep dataMapRef domainMapRef deps step = case step of
 
     -- Debug
     putStrLn $ "Calculated kernel " ++ show (kernId kbind) ++ ":" ++ kernName kbind ++
-               " regions " ++ show outRegs ++
+               " regions " ++ show filteredRegs ++
                " in " ++ show (1000 * diffUTCTime t1 t0) ++ " ms"
 
     -- Get inputs that have been written, and therefore should be
@@ -253,23 +281,8 @@ execStep dataMapRef domainMapRef deps step = case step of
         dataMapInsert (kdepId dep) (kdepRepr dep) (Map.singleton rbox nullVector) IM.empty
 
     -- Insert result
-    let resultMap = Map.fromList $ zip outRegs results
+    let resultMap = Map.fromList $ zip filteredRegs results
     modifyIORef dataMapRef $ dataMapInsert (kernId kbind) (kernRepr kbind) resultMap
-
-  SplitStep dh steps -> do
-
-    -- Get domain to split up
-    let parDh = fromJust $ dhParent dh
-    (_, regs)
-      <- fromMaybe (error $ "Could not find domain " ++ show (dhId dh) ++ " to split!") .
-         IM.lookup (dhId parDh) <$> readIORef domainMapRef
-
-    -- Perform split
-    regs' <- concat <$> mapM (dhRegion dh) regs
-    modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, regs')
-
-    -- Execute nested steps
-    execSteps dataMapRef domainMapRef deps steps
 
   DistributeStep dh sched steps -> do
 

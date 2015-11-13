@@ -14,7 +14,7 @@ description:
 
 Flag cuda
    description: Build with support for CUDA
-   default: True
+   default: False
 
 ----------------------------------------------------------------
 library

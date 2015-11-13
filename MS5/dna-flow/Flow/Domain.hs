@@ -1,10 +1,10 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 
 module Flow.Domain
-  ( Domain
+  ( Domain, Region, RegionBox
   , Schedule(..)
-  , Range, makeRangeDomain
-  , Bins, makeBinDomain, getBins
+  , Range, makeRangeDomain, regionRange
+  , Bins, makeBinDomain, regionBins
   , split, distribute
   ) where
 
@@ -39,6 +39,7 @@ makeRangeDomain' rlow rhigh size parDh nsplit = do
        , dhParent = parDh
        , dhCreate = const $ return $ RangeRegion dh' (Range rlow rhigh)
        , dhRegion = \d -> return $ map (RangeRegion dh' . region d) [0..nsplit-1]
+       , dhFilterBox = \_ -> Just -- no dependencies
        }
   return dh'
 
@@ -60,6 +61,7 @@ makeBinDomain kern rlow rhigh = do
            , dhParent = Nothing
            , dhCreate = unpackBinRegion dh' rlow rhigh
            , dhRegion = fail "dhRegion called on bin root domain!"
+           , dhFilterBox = filterBoxBin
            }
       addStep $ DomainStep (Just (kernId k)) dh'
       return dh'
@@ -81,43 +83,71 @@ makeBinSubDomain parent nsplit = do
         , dhCreate = const $ fail "dhCreate called on bin sub domain!"
         , dhRegion = return . region
         , dhParent = Just parent
+        , dhFilterBox = filterBoxBin
         }
   return dh'
 
-unpackBinRegion :: Domain Bins -> Double -> Double -> Maybe (Vector ()) -> IO Region
-unpackBinRegion _  _    _     Nothing =
-  fail $ "unpackBinRegion: Expected buffer!"
-unpackBinRegion dh rlow rhigh (Just vec) = do
+unpackBinRegion :: Domain Bins -> Double -> Double -> RegionData -> IO Region
+unpackBinRegion dh rlow rhigh rdata = do
 
-  -- Vector is bin sizes, unpack accordingly. Note that we even derive
-  -- the number of bins from the buffer size here - probably not the
-  -- right way to do it.
-  let vec' = castVector vec :: Vector Int32
-      bins = vectorSize vec'
-  binSizes <- unmakeVector vec' 0 bins
+  -- The input might be split up by regions, unpack accordingly
+  let mapTranspose = Map.unionsWith Map.union .
+                     map (\(rbox, wmap) -> Map.map (Map.singleton rbox) wmap) .
+                     Map.toList
+  fmap (BinRegion dh . Bins . mapTranspose . Map.fromList) $ forM (Map.toList rdata) $ \(rbox, vec) -> do
 
-  -- Make regions
-  let reg i size =
-        ((rlow + fromIntegral i * (rhigh - rlow) / fromIntegral bins,
-          rlow + fromIntegral (i+1) * (rhigh - rlow) / fromIntegral bins),
-         fromIntegral size)
-      regs = Map.fromList $ zipWith reg [(0::Int)..] binSizes
-  return $ BinRegion dh (Bins regs)
+    -- Vector is bin sizes, unpack accordingly. Note that we even derive
+    -- the number of bins from the buffer size here - probably not the
+    -- right way to do it.
+    let vec' = castVector vec :: Vector Int32
+        bins = vectorSize vec'
+    binSizes <- unmakeVector vec' 0 bins
+
+    -- Make regions. This would all be nicer if this was simply part of
+    -- the vector. TODO...
+    let reg i size =
+          ((rlow + fromIntegral i * (rhigh - rlow) / fromIntegral bins,
+            rlow + fromIntegral (i+1) * (rhigh - rlow) / fromIntegral bins),
+           fromIntegral size)
+        regs = Map.filter (>0) $ Map.fromList $ zipWith reg [(0::Int)..] binSizes
+    return (rbox, regs)
+
+-- | Check whether a region box is permissable for the given bin
+-- region. This is the case if all dependencies are fulfilled for any
+-- box. Note that if a bin region has no dependencies, it is trivially
+-- compatible with any region box.
+filterBoxBin :: RegionBox -> Region -> Maybe Region
+filterBoxBin rbox (BinRegion dom (Bins bins))
+  | Map.null (Map.filter (not . Map.null) bins')
+               = Nothing
+  | otherwise  = Just $ BinRegion dom (Bins bins')
+ where bins' = Map.map (Map.filterWithKey hasDeps) bins
+       doms = map regionDomain rbox
+       hasDeps deps _ = not $ any incompatible deps
+       incompatible dep = (regionDomain dep `elem` doms) && not (dep `elem` rbox)
+filterBoxBin other _
+  = error $ "filterBoxBin: Expected bin region, but got " ++ show other ++ "!"
+
+-- | Return the region of a region domain
+regionRange :: Region -> (Int, Int)
+regionRange (RangeRegion _ (Range low high))
+               = (low, high)
+regionRange _  = error "regionRange: Not a range region!"
 
 -- | Return the bins in a bin domain
-getBins :: Region -> [(Double, Double, Int)]
-getBins (BinRegion _ (Bins bins))
-          = map (\((low, high), size) -> (low, high, size)) $ Map.assocs bins
-getBins _ = error "getBins: Not a bin domain!"
+regionBins :: Region -> [(Double, Double, Int)]
+regionBins (BinRegion _ (Bins bins))
+             = let sumBin ((low, high), m) = (low, high, sum $ Map.elems m)
+               in map sumBin (Map.toList bins)
+regionBins _ = error "regionBins: Not a bin domain!"
 
 -- | Split a domain into sub-regions. This creates a new partitioned region, which
 -- can be used to distribute both computation as well as data.
-split :: Typeable a => Domain a -> Int -> (Domain a -> Strategy ()) -> Strategy ()
-split dh parts sub = modify $ \ss0 ->
+split :: Typeable a => Domain a -> Int -> Strategy (Domain a)
+split dh parts = state $ \ss0 ->
   let (dh', ss1) = flip runState ss0 (dhSplit dh parts)
-      ((), ss2) = flip runState ss1{ ssSteps = [] } (sub dh')
-      splitStep = SplitStep dh' $ reverse $ ssSteps ss2
-  in ss2{ ssSteps = splitStep : ssSteps ss1 }
+      splitStep = DomainStep Nothing dh'
+  in (dh', ss1{ ssSteps = splitStep : ssSteps ss1 })
 
 -- | Perform computation in a distributed fashion.
 distribute :: Typeable a => Domain a -> Schedule -> Strategy () -> Strategy ()

@@ -88,11 +88,11 @@ ddpStrat size = do
   dom <- makeRangeDomain 0 size
 
   -- Calculate ddp for the whole domain
-  split dom 10 $ \regs ->
-    distribute regs ParSchedule $ do
-      bind f (fKern regs)
-      bind g (gKern regs)
-      bind (pp f g) (ppKern regs f g)
+  regs <- split dom 10
+  distribute regs ParSchedule $ do
+    bind f (fKern regs)
+    bind g (gKern regs)
+    bind (pp f g) (ppKern regs f g)
   bindRule a (aKern dom)
   calculate ddp
   void $ bindNew $ printKern ddp

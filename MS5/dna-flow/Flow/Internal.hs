@@ -12,6 +12,7 @@ import Data.Hashable
 import Data.Int
 import Data.List     ( sort, groupBy )
 import qualified Data.Map as Map
+import Data.Monoid
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
 
@@ -84,8 +85,16 @@ mkFlow :: String -> [FlowI] -> Flow a
 mkFlow name fis = Flow $ FlowI (hash (name, fis, noWild)) name fis noWild
   where noWild = Nothing :: Maybe Int
 
+-- | Kernel frontend representation
+data Kernel a where
+  Kernel :: DataRepr r
+         => String -> KernelCode
+         -> [(FlowI, ReprI)] -> r
+         -> Kernel (ReprType r)
+
 type KernelId = Int
 
+-- | Kernel backend representation
 data KernelBind = KernelBind
   { kernId   :: KernelId   -- ^ Unique number identifiying this kernel
   , kernFlow :: FlowI      -- ^ Implemented flow
@@ -145,12 +154,15 @@ data Domain a = Domain
   , dhSplit  :: Int -> Strategy (Domain a)
     -- | Creates the domain from given data. This is how you construct
     -- root domains (those without parents).
-  , dhCreate :: Maybe (Vector ()) -> IO Region
+  , dhCreate :: RegionData -> IO Region
     -- | Splits out regions from the parent domain. This is used for
     -- constructing sub-domains.
   , dhRegion :: Region -> IO [Region]
     -- | Get domain this one was derived from. Not set for root domains.
   , dhParent :: Maybe (Domain a)
+    -- | Check whether a a region of this domain is permissible in the
+    -- context of a given region box
+  , dhFilterBox :: RegionBox -> Region -> Maybe Region
   }
 
 instance forall a. Typeable a => Show (Domain a) where
@@ -170,16 +182,46 @@ dhIsParent dh dh1
 data DomainI where
   DomainI :: forall a. Domain a -> DomainI
 
+dhiId :: DomainI -> DomainId
+dhiId (DomainI di) = dhId di
+
+instance Eq DomainI where
+  di0 == di1  = dhiId di0 == dhiId di1
+
 -- | Domains are just ranges for now. It is *very* likely that we are
 -- going to have to generalise this in some way.
 data Region = RangeRegion (Domain Range) Range
             | BinRegion (Domain Bins) Bins
-  deriving (Typeable, Eq, Ord, Show)
+  deriving Typeable
+
+instance Show Region where
+  showsPrec _ (RangeRegion dom r) = showString "Region<" . shows (dhId dom) . ('>':) . shows r
+  showsPrec _ (BinRegion dom bins) = showString "Region<" . shows (dhId dom) . ('>':) . shows bins
+
+-- These instances are important because we are going to use regions
+-- in order to index maps (often in the form of
+-- "RegionBox"). Therefore we must especially make sure that regions
+-- that only differ in terms of "meta-data" are equal!
+-- TODO: ugly
+instance Ord Region where
+  compare (RangeRegion d0 r0) (RangeRegion d1 r1)
+    = compare d0 d1 `mappend` compare r0 r1
+  compare (BinRegion d0 (Bins bins0)) (BinRegion d1 (Bins bins1))
+    = compare d0 d1 `mappend` mconcat (zipWith compare (Map.keys bins0) (Map.keys bins1))
+  compare RangeRegion{} BinRegion{} = LT
+  compare BinRegion{} RangeRegion{} = GT
+instance Eq Region where
+  r0 == r1  = compare r0 r1 == EQ
 
 data Range = Range Int Int
-  deriving (Typeable, Eq, Ord, Show)
-data Bins = Bins (Map.Map (Double, Double) Int)
-  deriving (Typeable, Eq, Ord, Show)
+  deriving (Typeable, Eq, Ord)
+instance Show Range where
+  showsPrec _ (Range low high) = shows low . (':':) . shows high
+data Bins = Bins (Map.Map (Double, Double) (Map.Map RegionBox Int))
+  deriving (Typeable, Eq, Ord)
+instance Show Bins where
+  showsPrec _ (Bins bins) = showString "Bins" . flip (foldr f) (Map.toList bins)
+    where f ((low, high), m) = (' ':) . shows low . (':':) . shows high . shows (Map.elems m)
 
 -- | Checks whether the second domain is a subset of the first
 domainSubset :: Region -> Region -> Bool
@@ -308,8 +350,6 @@ newtype StratRule = StratRule (FlowI -> Maybe (Strategy ()))
 data Step where
   DomainStep :: Typeable a => Maybe KernelId -> Domain a -> Step
     -- ^ Create a new domain. Might depend on data produced by a kernel.
-  SplitStep :: Typeable a => Domain a -> [Step] -> Step
-    -- ^ Split a domain into regions
   KernelStep :: KernelBind -> Step
     -- ^ Execute a kernel for the given domain(s)
   DistributeStep :: Typeable a => Domain a -> Schedule -> [Step] -> Step

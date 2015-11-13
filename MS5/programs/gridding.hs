@@ -7,6 +7,7 @@ import Control.Monad
 
 import Flow
 
+import Kernel.Binning
 import Kernel.Data
 import Kernel.FFT
 import Kernel.Gridder
@@ -49,37 +50,47 @@ gridderStrat cfg = do
   let vis = flow "vis" tag
   bind vis $ oskarReader dom (cfgInput cfg) 0 0
 
-  -- Create binned domain, bin
-  let low_w = -25000
-      high_w = 25000
-      bins = 10
-      gcfs = gcf vis
+  -- Data flows we want to calculate
+  let gcfs = gcf vis
       gridded = grid vis gcfs createGrid
       result = gridder vis gcfs
-  binsDom <- makeBinDomain (wBinSizer dom low_w high_w bins vis) low_w high_w
-  split binsDom bins $ \binDom -> do
-    rebind vis $ wBinner dom binDom
-    bindRule gcf (gcfKernel gcfpar binDom tag)
-    calculate $ gcf vis
 
-    -- Create ranged domains for grid coordinates
-    ydom <- makeRangeDomain 0 (gridHeight gpar)
-    xdom <- makeRangeDomain 0 (gridWidth gpar)
-    split ydom 8 $ \yreg -> split xdom 8 $ \xreg -> do
+  -- Create ranged domains for grid coordinates
+  udoms <- makeRangeDomain 0 (gridWidth gpar)
+  vdoms <- makeRangeDomain 0 (gridHeight gpar)
 
-      -- Bind kernel rules
-      bindRule createGrid (gridInit gcfpar yreg xreg)
-      bindRule grid (gridKernel gpar gcfpar yreg xreg binDom)
+  -- Split coordinate domain
+  let tiles = 16 -- per dimension
+  vdom <- split vdoms tiles
+  udom <- split udoms tiles
 
-      distribute yreg ParSchedule $ distribute xreg ParSchedule $ do
-        calculate gridded
+  -- Create w-binned domain, split
+  let low_w = -25000
+      high_w = 25000
+      bins = 16
+  wdoms <- makeBinDomain (binSizer gpar dom udom vdom low_w high_w bins vis) low_w high_w
+  wdom <- split wdoms bins
 
-      bind createGrid (gridInitDetile ydom xdom)
-      bind gridded (gridDetiling gcfpar (yreg, xreg) (ydom, xdom) gridded createGrid)
-      bindRule idft (ifftKern gpar ydom xdom tag)
+  -- Load GCFs
+  distribute wdom ParSchedule $
+    bind gcfs (gcfKernel gcfpar wdom)
 
-    -- Compute the result
-    calculate result
+  -- Bin visibilities (could distribute, but there's no benefit)
+  rebind vis (binner gpar dom udom vdom wdom)
+
+  -- Bind kernel rules
+  bindRule createGrid (gridInit gcfpar udom vdom)
+  bindRule grid (gridKernel gpar gcfpar udoms vdoms wdom udom vdom)
+
+  -- Run gridding distributed
+  distribute vdom ParSchedule $ distribute udom ParSchedule $ do
+    calculate gridded
+
+  -- Compute the result by detiling & iFFT on result tiles
+  bind createGrid (gridInitDetile udoms vdoms)
+  bind gridded (gridDetiling gcfpar (udom, vdom) (udoms, vdoms) gridded createGrid)
+  bindRule idft (ifftKern gpar udoms vdoms tag)
+  calculate result
 
   -- Write out
   void $ bindNew $ imageWriter gpar (cfgOutput cfg) result

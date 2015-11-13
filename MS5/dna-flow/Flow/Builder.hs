@@ -101,13 +101,6 @@ instance (DataRepr r, IsReprKern a rs) => IsReprKern a (r :. rs) where
   type ReprKernFun a (r :. rs) = Flow (ReprType r) -> ReprKernFun a rs
   curryReprs _ f fl = curryReprs (undefined :: rs) (f . (fl :.))
 
--- | Kernel implementation, with parameters bound to flows
-data Kernel a where
-  Kernel :: (IsReprs rs, IsReprKern (ReprType r) rs, DataRepr r)
-         => String -> KernelCode
-         -> rs -> r -> ReprFlows rs
-         -> Kernel (ReprType r)
-
 -- | Create a new abstract kernel flow
 flow :: IsCurriedFlows fs => String -> fs
 flow name = curryFlow (mkFlow name . toList)
@@ -125,18 +118,14 @@ uniq (Flow fi) = state $ \ss ->
 kernel :: forall r rs. (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
        => String -> rs -> r -> KernelCode -> ReprKernFun (ReprType r) rs
 kernel name parReprs retRep code
-  = curryReprs (undefined :: rs) (Kernel name code parReprs retRep)
+  = curryReprs (undefined :: rs) $ \fs ->
+    Kernel name code (zip (toList fs) (toReprsI parReprs)) retRep
 
 -- | Prepares the given kernel. This means checking its parameters and
 -- adding it to the kernel list. However, it will not automatically be
 -- added to the current scope.
 prepareKernel :: Kernel r -> Flow r -> Strategy KernelBind
-prepareKernel (Kernel kname kcode parReprs retRep ps) (Flow fi) = do
-
-  -- Get parameters + representation. Filter out the ones marked as
-  -- "don't care".
-  let parReprsI = toReprsI parReprs
-      pars = zip (toList ps) parReprsI
+prepareKernel (Kernel kname kcode pars retRep) (Flow fi) = do
 
   -- Look up dependencies
   kis <- mapM (uncurry (prepareDependency kname fi)) $
@@ -338,7 +327,7 @@ implementing (Flow fi) strat = do
 -- useful for input streams (the roots of the data flow graph) as well
 -- as output flows, where we do not care about their output values.
 bindNew :: Kernel r -> Strategy (Flow r)
-bindNew kern@(Kernel name _ _ _ inps) = do
-  fl <- uniq (mkFlow (name ++ "-call") (toList inps))
+bindNew kern@(Kernel name _ inps _) = do
+  fl <- uniq (mkFlow (name ++ "-call") (map fst inps))
   bind fl kern
   return fl
