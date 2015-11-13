@@ -117,12 +117,10 @@ dumpES ind (Call dh pars i) = do
 -- dumpES ind (SplitDistr dh' sched ss) = do
 --   dumpStep ind (DistributeStep dh' sched [])
 --   mapM_ (dumpES (ind++"  ")) ss
-dumpES ind (Expect vs) =
-  putStrLn $ ind ++ "Expect " ++ show vs
+dumpES ind (Expect i vs) =
+  putStrLn $ ind ++ "Expect " ++ show i ++ " " ++ show vs
 dumpES ind (Yield vs) =
   putStrLn $ ind ++ "Yield " ++ show vs
-dumpES ind (Gather vs) =
-  putStrLn $ ind ++ "Gather " ++ show vs
 
 
 dumpTreeWith :: (String -> a -> IO ()) -> ActorTree a -> IO ()
@@ -152,6 +150,7 @@ main = do
   let ast0@(ActorTree ss acts) = makeActorTree steps
       ast1 = findInOut ast0
       ast2 = addCommands ast1
+      ast3 = compileProgram ast2
   putStrLn "\n-- Actor split -------------------------------------------------"
   dumpTreeWith (\off -> mapM_ (dumpES off) . snd) ast0
   putStrLn "\n-- Used --------------------------------------------------------"
@@ -162,17 +161,17 @@ main = do
   dumpTree $ fmap (varsMissing . fst . snd) ast1
   --
   putStrLn "\n-- Annotated ---------------------------------------------------"  
-  dumpTreeWith (\off -> mapM_ (dumpES (off++"")) . snd . snd) ast2
-  -- Find parameters and return values
-  -- let walk x f (ActorTree v hm)
-  --       = ActorTree x (fmap (go v) hm)
-  --       where
-  --         go a f (ActorTree vv hmm) = ActorTree (f a vv) (fmap (go vv) hmm)
-  -- return ()
-  -- putStrLn "-- Param - -----------------------------------------------------"
-  -- let getp vPar vCh = ( varsProd vPar `HS.intersection` varsMissing vCh
-  --                     , varsMissing vPar `HS.intersection` varsProd vCh
-  --                     )  
-  -- dumpTree $ walkTree (mempty,mempty) getp vars
-  -- Find out what to pass as parameters
+  dumpTreeWith (\off (ty,(_,as))-> do putStr off >> putStr ">> " >> print ty
+                                      mapM_ (dumpES off) as
+               ) ast2
+  -- Dump AST
+  putStrLn "\n-- AST ---------------------------------------------------------"
+  let renderAST = \case
+        MainActor   aa  -> putStrLn $ render $ prettyprint aa
+        RemoteActor lam -> putStrLn $ render $ prettyprintLam lam
 
+  case ast3 of
+    (a,hm) -> do renderAST a
+                 forM_ (HM.toList hm) $ \(i,aa) -> do
+                   putStrLn $ "== " ++ show i ++ " ================"
+                   renderAST aa
