@@ -1,16 +1,13 @@
 #include "Halide.h"
 using namespace Halide;
 
+#include "cfg.h"
+	
 enum ComplxFields {
     _REAL = 0
   , _IMAG
   , _CPLX_FIELDS
   };
-
-const int
-    GCF_SIZE = 16
-  , OVER = 8
-  ;
 
 enum VisFields {
 	_U=0

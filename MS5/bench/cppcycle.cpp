@@ -6,6 +6,7 @@
 
 #include "kernels_halide.h"
 #include "mkHalideBuf.h"
+#include "cfg.h"
 
 using namespace std;
 
