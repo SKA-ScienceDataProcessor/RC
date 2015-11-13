@@ -8,16 +8,22 @@
 #include "mkHalideBuf.h"
 #include "cfg.h"
 
+#ifdef GCF32
+#define GCF_FILE "gcf32.dat"
+#else
+#define GCF_FILE "gcf16.dat"
+#endif
+
 using namespace std;
 
 typedef complex<double> complexd;
 
 // Config
 const double t2 = 0.2/2.0;
-const int over = 8;
+const int over = OVER;
 const int pad = 0;
 const int over2 = over*over;
-const int gcfSize = 16;
+const int gcfSize = GCF_SIZE;
 const int gcfStorageSize = over * gcfSize * (over * gcfSize + pad);
 const int gridSize = 8192;
 const int gridPad = 0;
@@ -25,7 +31,7 @@ const int gridPad = 0;
 const int gridPitch = gridSize + gridPad;
 const int fullSize = gridPitch * gridSize;
 
-const int numOfVis = 32131 * 200;
+const int numOfVis = num_baselines * num_times;
 const int numOfDoubles = numOfVis * 5;
 
 template <typename T>
@@ -83,13 +89,13 @@ int main(/* int argc, char * argv[] */)
   res = readFileToVector(vis, "vis.dat"); __CK
   vecd gcf(gcfStorageSize * 2); // complex
   printf("Read GCF!\n");
-  res = readFileToVector(gcf, "gcf0.dat"); __CK
+  res = readFileToVector(gcf, GCF_FILE); __CK
 
   vecd uvg(fullSize * 2); // complex
 
   buffer_t
       vis_buffer = mkHalideBuf<double>(numOfVis,5)
-    , gcf_buffer = mkHalideBuf<double>(over*over, gcfSize, gcfSize, 2)
+    , gcf_buffer = mkHalideBuf<double>(over2, gcfSize, gcfSize, 2)
     , uvg_buffer = mkHalideBuf<double>(gridSize, gridSize, 2)
     ;
   vis_buffer.host = tohost(vis.data());
