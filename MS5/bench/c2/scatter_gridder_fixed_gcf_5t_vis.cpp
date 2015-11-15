@@ -93,10 +93,13 @@ void gridKernel_scatter(
     gcfl * gcflp = new gcfl[tms];
     preover * pov = new preover[tms];
     preuv * puv = new preuv[tms];
+    bool * inbound = new bool[tms];
     #pragma omp for schedule(dynamic)
     for(int n = 0; n < tms; n++) {
       prep(grid_size, scale, data[n], pov[n], puv[n]);
       gcflp[n] = &gcf[pov[n].overu][pov[n].overv];
+      inbound[n] = puv[n].u >= 0 && puv[n].u < grid_size - GCF_SIZE
+                && puv[n].v >= 0 && puv[n].v < grid_size - GCF_SIZE;
     }
     #pragma omp for schedule(dynamic)
     for (int su = 0; su < GCF_SIZE; su++) { // Moved from 2-levels below according to Romein
@@ -105,14 +108,12 @@ void gridKernel_scatter(
         gcfp = (*gcflp[i])[su];
         for (int sv = 0; sv < GCF_SIZE; sv++) {
           // Don't forget our u v are already translated by -max_supp_here/2
-          int gsu, gsv;
-          gsu = puv[i].u + su;
-          gsv = puv[i].v + sv;
-          if (gsu < 0 || gsu >= grid_size || gsv < 0 || gsv >= grid_size) continue;
-          grid[gsu * grid_size + gsv] += data[i].amp * gcfp[sv];
+          if (inbound[i])
+            grid[(puv[i].u + su) * grid_size + (puv[i].v + sv)] += data[i].amp * gcfp[sv];
         }
       }
     }
+    delete [] inbound;
     delete [] puv;
     delete [] pov;
     delete [] gcflp;

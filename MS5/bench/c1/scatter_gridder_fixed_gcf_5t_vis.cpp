@@ -91,10 +91,13 @@ void gridKernel_scatter(
       typedef const complexd gcfl[GCF_SIZE][GCF_SIZE];
       gcfl * gcflp[num_times];
       pre pa[num_times];
+      bool inbound[num_times];
 
       for(int n=0; n < num_times; n++){
         pa[n] = prep(grid_size, scale, data[bl][n]);
         gcflp[n] = &gcf[pa[n].overu][pa[n].overv];
+        inbound[n] = pa[n].u >= 0 && pa[n].u < grid_size - GCF_SIZE
+                  && pa[n].v >= 0 && pa[n].v < grid_size - GCF_SIZE;
       }
       for (int su = 0; su < GCF_SIZE; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < num_times; i++) {
@@ -102,11 +105,8 @@ void gridKernel_scatter(
           gcfp = (*gcflp[i])[su];
           for (int sv = 0; sv < GCF_SIZE; sv++) {
             // Don't forget our u v are already translated by -max_supp_here/2
-            int gsu, gsv;
-            gsu = pa[i].u + su;
-            gsv = pa[i].v + sv;
-            if (gsu < 0 || gsu >= grid_size || gsv < 0 || gsv >= grid_size) continue;
-            grid[gsu * grid_size + gsv] += data[bl][i].amp * gcfp[sv];
+            if (inbound[i])
+              grid[(pa[i].u + su) * grid_size + (pa[i].v + sv)] += data[bl][i].amp * gcfp[sv];
           }
         }
       }
