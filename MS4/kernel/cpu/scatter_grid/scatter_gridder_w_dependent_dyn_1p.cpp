@@ -201,9 +201,9 @@ ull gridKernel_scatter_full(
   , int grid_size
   , int gcf_supps[]
   ) {
+  int nthreads;
 #if defined _OPENMP
   int siz = grid_size*grid_pitch;
-  int nthreads;
 
 #pragma omp parallel
 #pragma omp single
@@ -225,6 +225,8 @@ ull gridKernel_scatter_full(
   addGrids(grid, tmpgrids, nthreads, grid_pitch, grid_size);
   _aligned_free(tmpgrids);
 #else
+  nthreads = 1;
+  ull counters[1];
   gridKernel_scatter<
       over
     , is_half_gcf
