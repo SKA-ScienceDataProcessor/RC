@@ -96,10 +96,12 @@ void gridKernel_scatter(
       Pregridded pa[ts_ch];
       complexd * gcflp[ts_ch];
       int gcfsupp[ts_ch];
+      bool not_inbound[ts_ch];
 #else
       std::vector<Pregridded> pa(ts_ch);
       std::vector<complexd*> gcflp(ts_ch);
       std::vector<int> gcfsupp(ts_ch);
+      std::vector<bool> not_inbound(ts_ch);
 #endif
 #ifndef __DEGRID
       // Clang doesn't allow non-POD types in VLAs,
@@ -136,6 +138,10 @@ void gridKernel_scatter(
         // Correction
         gcfsupp[n] = gcf_supps[pa[n].w_plane];
         gcflp[n] += (gcfsupp[n] - max_supp_here) / 2 * (gcfsupp[n] + 1);
+  
+        not_inbound[n] =
+             pa[n].u < 0 || pa[n].u >= grid_size - max_supp_here
+          || pa[n].v < 0 || pa[n].v >= grid_size - max_supp_here;
       }
       for (int su = 0; su < max_supp_here; su++) { // Moved from 2-levels below according to Romein
         for (int i = 0; i < ts_ch; i++) {
@@ -146,7 +152,7 @@ void gridKernel_scatter(
             int gsu, gsv;
             gsu = p.u + su;
             gsv = p.v + sv;
-            if (gsu < 0 || gsu >= grid_size || gsv < 0 || gsv >= grid_size) continue;
+            if (not_inbound[i]) continue;
 
             complexd supportPixel;
             #define __layeroff su * gcfsupp[i] + sv
