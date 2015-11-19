@@ -89,10 +89,10 @@ int main(/* int argc, char * argv[] */)
 {
   int res;
   vecd vis(numOfDoubles);
-  printf("Read visibilities!\n");
+  printf("Read visibilities!\n"); fflush(stdout);
   res = readFileToVector(vis, "vis.dat"); __CK
   vecd gcf(gcfStorageSize * 2); // complex
-  printf("Read GCF!\n");
+  printf("Read GCF!\n"); fflush(stdout);
   res = readFileToVector(gcf, GCF_FILE); __CK
 
   vecd uvg(fullSize * 2); // complex
@@ -111,7 +111,8 @@ int main(/* int argc, char * argv[] */)
   for (int pos = 0; pos < 2; pos++) {
   for (int dim = 0; dim < (1 << _DIM_CONFIGS); dim++) {
   for (int upd = 0; upd <= _UPD_FUSE_UNROLL; upd++) {
-  for (int vector = 2; vector <= 32; vector*=2) {
+  if (upd == 2) continue;
+  for (int vector = 2; vector <= 16; vector*=2) {
   if (upd < _UPD_FUSE && vector > 2) break;
 
   SGridderConfig cfg;
@@ -135,11 +136,11 @@ int main(/* int argc, char * argv[] */)
   gridder.uvg.compile_jit(target_plain);
   printf("\t%ld\t -", clock() - ti);
 
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < 4; i++) {
       memset(uvg.data(), 0, fullSize * 2 * sizeof(double));
       ti = clock();
       gridder.uvg.realize(Buffer(Float(64), &uvg_buffer, "uvg"));
-      printf("\t%ld", clock() - ti);
+      printf("\t%ld", clock() - ti); fflush(stdout);
   }
   puts("");
   }}}}
