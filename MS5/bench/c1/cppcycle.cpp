@@ -113,7 +113,7 @@ int main(/* int argc, char * argv[] */)
     );
 
   printf("Write!\n");
-  writeImgToDisk("grid.dat", uvg.data());
+  writeImgToDisk("grid.dat", reinterpret_cast<complexd*>(uvg.data()));
 
   return 0;
 }
