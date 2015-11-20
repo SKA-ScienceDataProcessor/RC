@@ -33,6 +33,7 @@ library
     bound        >= 1.0.6,
     prelude-extras >= 0.4,
     pretty,
+    distributed-process >= 0.5.5,
     dna          >= 0.5
   Exposed-modules: Flow,
                    Flow.Builder,

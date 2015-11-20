@@ -28,6 +28,8 @@ import Flow.DnaCompiler
 import Flow.Internal
 import Bound
 
+import DNA (dnaRun,logMessage)
+
 -- Data tags
 data Vec deriving Typeable
 data Sum deriving Typeable
@@ -175,3 +177,10 @@ main = do
                  forM_ (HM.toList hm) $ \(i,aa) -> do
                    putStrLn $ "== " ++ show i ++ " ================"
                    renderAST aa
+  -- Run program
+  case ast3 of
+    (MainActor dna, amap) ->
+      let (rtable,prog) = interpretAST amap dna
+      in dnaRun rtable $ do logMessage "START"
+                            void prog
+                            logMessage "END"

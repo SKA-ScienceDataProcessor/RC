@@ -1,9 +1,10 @@
-{-# LANGUAGE DeriveFoldable    #-}
-{-# LANGUAGE DeriveFunctor     #-}
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE GADTs             #-}
-{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveFoldable     #-}
+{-# LANGUAGE DeriveFunctor      #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE DeriveTraversable  #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE LambdaCase         #-}
 -- |
 -- Compilation @[Step] → AST@
 module Flow.DnaCompiler (
@@ -30,6 +31,8 @@ module Flow.DnaCompiler (
     -- ** Pretty-printing
   , prettyprint
   , prettyprintLam
+    -- * Interpretation
+  , interpretAST
   ) where
 
 import Control.Arrow (Arrow(..))
@@ -37,9 +40,12 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.State.Strict
 import Control.Monad.Writer
+import Control.Distributed.Process         (RemoteTable)
+import Control.Distributed.Process.Closure (mkClosureValSingle,MkTDict)
 import qualified Data.HashMap.Strict as HM
 import           Data.HashMap.Strict ((!))
 import qualified Data.HashSet        as HS
+import qualified Data.Binary as Bin
 import Data.Typeable
 import Data.Hashable
 import Data.List
@@ -55,6 +61,9 @@ import Flow
 import Flow.Internal
 import Flow.Vector
 import DNA
+
+import Debug.Trace
+
 
 
 ----------------------------------------------------------------
@@ -186,7 +195,6 @@ addCommands
         steps' = flip concatMap steps $ \case
           Call dh _ i -> let ActorTree (p,rv,_) _ = children' ! i
                          in [ Call dh (HS.toList p) i
-                              -- FIXME: - Here we ignore wrong domain
                             , Expect i [ case v of
                                            DVar{} -> (Nothing, v)
                                            KVar kid _ -> ( getFirst $ mconcat $ map (findReprForK kid) steps
@@ -228,7 +236,7 @@ withExtStep f = \case
 findReprForK' :: Int -> Step -> First ReprI
 findReprForK' i = \case
   KernelStep kb
-    | kernId kb == i -> First $ Just $ kernRepr kb
+    | kernId kb == i -> First $ Just (kernRepr kb)
     | otherwise      -> mconcat $ map fromKDep $ kernDeps kb
   _ -> mempty
   where
@@ -290,6 +298,7 @@ data StepE a
     -- * Kernel description
     -- * Parameters
     -- * Output domain
+  | SSplit RegSplit (StepE a)
 
   | SSeq  (StepE a) (StepE a)
     -- ^ Sequence two monadic actions
@@ -301,7 +310,11 @@ data StepE a
     --
     -- * Actor ID
     -- * Input parameters
-  | SActorRecvK ReprI (StepE a)
+  | SActorRecvK ReprI (StepE a) (StepE a)
+    --
+    -- * Representation of resulting vector
+    -- * Channel variable
+    -- * Region of whole vector
   | SActorRecvD (StepE a)
     -- ^ Receive data from actors
   deriving (Show,Functor,Foldable,Traversable,Generic)
@@ -327,12 +340,13 @@ instance Monad StepE where
   Pair a b         >>= f = Pair (a >>= f) (b >>= f)
   List xs          >>= f = List (map (>>= f) xs)
   SDom  i d        >>= _ = SDom i d
+  SSplit s e       >>= f = SSplit s (e >>= f)
   SKern k xs ys    >>= f = SKern k (map (>>= f) xs) (map (>>= f) ys)
   SSeq  a b        >>= f = SSeq  (a >>= f) (b >>= f)
   SBind e g        >>= f = SBind (e >>= f) (g >>>= f)
-  SActorGrp i xs   >>= f = SActorGrp i (map (>>= f) xs)
-  SActorRecvK r a  >>= f = SActorRecvK r (a >>= f)
-  SActorRecvD   a  >>= f = SActorRecvD (a >>= f)
+  SActorGrp i xs    >>= f = SActorGrp i (map (>>= f) xs)
+  SActorRecvK r a b >>= f = SActorRecvK r (a >>= f) (b >>= f)
+  SActorRecvD   a   >>= f = SActorRecvD (a >>= f)
 
 
 
@@ -385,10 +399,13 @@ compileSteps (x:xs) =
   let rest = compileSteps xs
   in case singleStep x of
        StepVal   expr v -> expr `SBind` abstract1 v rest
+       Step2Val  e1 v1 e2 v2 ->
+         e1 `SBind` abstract1 v1 (e2 `SBind` abstract1 v2 rest)
        StepNoVal expr   -> expr `SSeq` rest
 
 data StepRes
   = StepVal   (StepE V) V
+  | Step2Val  (StepE V) V (StepE V) V
   | StepNoVal (StepE V)
 
 toStep :: StepRes -> StepE V
@@ -417,17 +434,27 @@ singleStep = \case
     _ -> error "Other steps should not appear in transformed program"
   ----------------------------------------
   -- Call actor
-  Call _ pars i -> StepVal
-                   (SActorGrp i [ case p of
-                                    DVar n   -> V (DomVar n)
-                                    KVar n _ -> V (error "A")
-                                | p <- pars ])
-                   (ChanVar i)
+  Call dh pars i ->
+    let dhp = case dhParent dh of
+              Just d  -> d
+              Nothing -> error "Parent??"
+    in Step2Val
+       (SSplit (RegSplit $ dhRegion dhp) (V $ DomVar $ dhId dhp))
+       (DomVar $ dhId dh)
+       (SActorGrp i [ case p of
+                        DVar n   -> V (DomVar n)
+                        KVar n _ -> V (error "A")
+                    | p <- pars ])
+       (ChanVar i)
   -- Gather results from vector and build full vector from it.
-  Expect _ [(Nothing,DVar di)]   -> undefined
-  Expect _ [(Just r, KVar ki _)] -> StepVal
-                                    ( SActorRecvK r (V $ KernVar ki))
-                                    ( KernVar ki )
+  Expect _ [(Nothing,DVar di)]   -> error "Expecting domain is not implemented"
+  Expect i [(Just r@(ReprI repr), KVar ki _)] ->
+    let [did] = reprDomain repr
+    in StepVal ( SActorRecvK r
+                   (V $ ChanVar i)
+                   (V $ DomVar  did)
+               )
+               ( KernVar ki )
   Expect{} -> error "Do not support expecting more than 1 element"
   -- Yield result
   Yield [KVar ki _] -> let v = KernVar ki in StepVal (V v) v
@@ -444,50 +471,91 @@ singleStep = \case
 ----------------------------------------------------------------
 
 data Box
-  = VReg RegionBox
-  | VVec (Vector ())
+  = VReg  RegionBox
+  | VVec  RegionBox (Vector ())
+  | VChan (DNA.Group Box)
+  deriving (Typeable)
+
+instance Bin.Binary Box where
+  put = undefined
+  get = undefined
 
 interpretAST
-  :: HM.HashMap Int (StepE V) -> StepE V -> DNA Box
+  :: HM.HashMap Int DnaActor -> StepE V -> (RemoteTable -> RemoteTable, DNA Box)
 interpretAST actorMap mainActor = case closed mainActor of
   Nothing -> error "interpretAST: expression is not closed!"
-  Just e  -> undefined
-  where
-    Just amap = sequenceA $ fmap closed actorMap
-
-{-
-interpretAST :: StepE V -> DNA Box
-interpretAST e = case closed e of
-  Just e' -> go e'
-  Nothing -> error "interpretAST: expression is not closed!"
+  Just e  -> (rtable,go e)
   where
     go = \case
-      V{}    -> error "Naked variable at the top level"
+      V a    -> return a
       Pair{} -> error "Naked pair at the top level"
-      -- List{} -> error "Naked list at the top level"
-      -- Create new domain
-      SDom  dom         ->
-        DNA.kernel "dom" [] $ liftIO $ VReg <$> dom
-      -- Call kernel
-      {-
+      List{} -> error "Naked list at the top level"
+      -- Domains
+      SDom _ (NewRegion dom) ->
+        DNA.kernel "dom" [] $ liftIO $ VReg . pure <$> dom
+      SSplit (RegSplit split) reg ->
+        case toDom reg of
+          [r] -> do DNA.kernel "split" [] $ liftIO $ VReg <$> split r
+          _   -> error "Non unary domain!"
+      -- Kernel
       SKern kb deps dom ->
-        let toDom = \case
-              V (VReg d) -> d
-              V (VVec _) -> error "Vector where domain expected"
-              _          -> error "Only variables expected"
-            toParam = \case
-              Pair (V (VVec v)) (List p) -> (v, map toDom p)
-              _                          -> error "Ill formed parameters"
-            xs  = map toParam deps
-            out = map toDom   dom
-        in DNA.kernel "kern" [] $ liftIO $ VVec <$> kernCode kb xs out
--}
+        let xs  = map toParam deps
+            out = toDom =<< dom
+        in DNA.kernel "kern" [] $ liftIO $ VVec out <$> kernCode kb xs out
       -- Monadic bind
       SBind expr lam ->
         let dnaE = go expr
             lamE = \a -> go $ instantiate1 (V a) lam
         in dnaE >>= lamE
--}
+      SSeq e1 e2 -> go e1 >> go e2
+      -- Actor spawning
+      SActorGrp actID [par] -> do
+        let regs = toDom par
+            n    = length regs
+            (clos,_) = amap ! actID
+        logMessage $ show regs
+        sh  <- startGroup (N n) (NNodes 1) $ return clos
+        grp <- delayGroup sh
+        return $ VChan grp
+      SActorGrp _ _ -> error "Only actor with one parameter are supported"
+      -- Receiving of parameters
+      SActorRecvK (ReprI repr) vCh vReg -> do
+        let ch  = toGrp vCh
+            reg = toDom vReg
+        xs <- gather ch (flip (:)) []
+        let pars = flip map xs $ \case
+                     VVec v p -> (v,p)
+                     _        -> error "Only vector expected!"
+        DNA.kernel "merge" [] $ liftIO $ do
+          Just vec <- reprMerge repr pars reg
+          return $ VVec reg vec
+        undefined
+      SActorRecvD{} -> error "Receiving of domains is not implemented"
+    --
+    toDom = \case
+      V (VReg d) -> d
+      V  VVec{}  -> error "Vector where domain expected"
+      _          -> error "Only variables expected"
+    toParam = \case
+      Pair (V (VVec _ v)) (List p) -> (v, toDom =<< p)
+      _                            -> error "Ill formed parameters"
+    toGrp = \case
+      V (VChan ch) -> ch
+      V _          -> error "Not a chan var"
+      _            -> error "Only variables expected"
+    --
+    runActor :: DnaActor -> DNA.Actor Box Box
+    runActor = \case
+      MainActor   a   -> error "Not supported"
+      RemoteActor lam ->
+        let Just lam' = closed lam
+        in  DNA.actor $ \x -> go (instantiate1 (V x) lam')
+    --
+    Endo rtable = foldMap (Endo . snd) amap
+    amap = HM.mapWithKey (\i a -> let (clos,reg) = mkClosureValSingle ("DNA_NAME_" ++ show i) $ \_ -> a
+                                  in (clos (), reg)
+                         )
+         $ fmap runActor actorMap
 
 
 
@@ -533,6 +601,12 @@ ppr = \case
     return $ text "Kernel call" $$ nest 2
       (vcat [ text (show kb), vs, ds ])
   SSeq e1 e2 -> liftM2 ($$) (ppr e1) (ppr e2)
+  SSplit _ e -> do
+    s <- ppr e
+    return $ hcat [ text "SSplit {"
+                  , s
+                  , text "}"
+                  ]
   SBind e lam -> do
     v  <- fresh
     se <- ppr e
@@ -548,12 +622,14 @@ ppr = \case
                   , text " "
                   , xs
                   ]
-  SActorRecvK r v -> do
-    s <- ppr v
+  SActorRecvK r vCh vReg  -> do
+    sCh  <- ppr vCh
+    sReg <- ppr vReg
     return $ hcat [ text "Actor recv K "
-                  , text (show r)
+                  , text $ " {"++(show r)++"} "
+                  , sCh
                   , text " "
-                  , s
+                  , sReg
                   ]
   SActorRecvD v -> do
     s <- ppr v

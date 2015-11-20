@@ -38,7 +38,7 @@ executable dotproduct
 
 executable dotproduct-dna
   default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded -rtsopts
+  ghc-options:         -O2 -Wall -threaded -eventlog -rtsopts
   Hs-source-dirs:      programs
   main-is:             dotproduct-dna.hs
   build-depends:
@@ -48,6 +48,7 @@ executable dotproduct-dna
     bound,
     pretty,
     dna,
+    unordered-containers,
     fixed-vector-hetero
   x-halide-sources:    kernel/cpu/dotproduct/generate_f.cpp
                        kernel/cpu/dotproduct/generate_g.cpp

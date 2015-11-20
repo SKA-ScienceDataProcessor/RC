@@ -1,6 +1,6 @@
 {-# LANGUAGE GADTs, TypeFamilies, RankNTypes, ScopedTypeVariables,
              TypeOperators, DeriveDataTypeable, TypeSynonymInstances,
-             FlexibleInstances, FlexibleContexts
+             FlexibleInstances, FlexibleContexts, DeriveGeneric
  #-}
 
 module Flow.Internal where
@@ -11,8 +11,10 @@ import Data.Function ( on )
 import Data.Hashable
 import Data.Int
 import Data.List     ( sort )
+import Data.Binary (Binary)
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
+import GHC.Generics (Generic)
 
 import Flow.Vector
 
@@ -161,10 +163,12 @@ dhIsParent dh dh1
 -- | Domains are just ranges for now. It is *very* likely that we are
 -- going to have to generalise this in some way.
 data Region = RangeRegion Range
-  deriving (Typeable, Eq, Ord, Show)
+  deriving (Typeable, Eq, Ord, Show, Generic)
+instance Binary Region
 
 data Range = Range Int Int
-  deriving (Typeable, Eq, Ord, Show)
+  deriving (Typeable, Eq, Ord, Show, Generic)
+instance Binary Range
 
 -- | Checks whether the second domain is a subset of the first
 domainSubset :: Region -> Region -> Bool
