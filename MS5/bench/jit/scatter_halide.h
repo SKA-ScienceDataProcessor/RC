@@ -9,14 +9,18 @@ enum DimConfig {
 };
 
 enum UpdConfig {
-    _UPD_NONE, _UPD_VECT, _UPD_FUSE, _UPD_FUSE_UNROLL
+    _UPD_NONE, _UPD_VECT, _UPD_FUSE, _UPD_FUSE_UNROLL, _UPD_UNROLL
 };
 
 struct SGridderConfig {
-    int cpos, xpos, ypos, vpos;
+    int gcfSize;
+    int gridSize;
+    int cpos, xpos, ypos, vpos, blpos; // complex, uvgx, uvgy, vis, bl
     int dim;
     UpdConfig upd;
     int vector;
+    int steps; // visibilities per baseline
+    int chunks; // baselines per task
 };
 
 enum ComplxFields {
@@ -47,7 +51,8 @@ struct SGridder {
       rcmplx
     , rgcfx
     , rgcfy
-    , rvis
+    , rbl
+    , rstep
     ;
   Func
       uvg
@@ -56,9 +61,6 @@ struct SGridder {
     , overc
     ;
 
-  SGridder& setDims();
-  SGridder& strategy1();
-  SGridder& strategy2();
 };
 
 extern "C" {
