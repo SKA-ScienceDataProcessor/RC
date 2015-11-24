@@ -138,6 +138,7 @@ makeActorTree steps
     go (x:xs) = do
       x' <- case x of
         --
+        {-
         (SplitStep dh [DistributeStep dh' _sched ss]) -> do
           n <- get
           put $! n+1
@@ -148,6 +149,7 @@ makeActorTree steps
                  $ go ss
           tell [(n , child)]
           return (Call dh [] n)
+        -}
         --
         _ -> return (Step x)
       xs' <- go xs
@@ -230,7 +232,7 @@ findReprForK i = withExtStep (findReprForK' i)
 withExtStep :: Monoid t => (Step -> t) -> ExtStep -> t
 withExtStep f = \case
   Step s      -> f s
-  Call dh _ _ -> f (SplitStep dh [])
+  -- Call dh _ _ -> f (SplitStep dh [])
   _           -> mempty
 
 findReprForK' :: Int -> Step -> First ReprI
@@ -253,10 +255,10 @@ collectReferencedVars' = \case
     | KernelDep kid (ReprI repr) <- kernDeps kb
     ]
   -- singleton $ KernVar $ kernId kb
-  SplitStep  dh ss ->
-    let Just parD = dhParent dh
-    in    (HS.singleton $ DVar $ dhId parD)
-       <> foldMap collectReferencedVars' ss
+  -- SplitStep  dh ss ->
+  --   let Just parD = dhParent dh
+  --   in    (HS.singleton $ DVar $ dhId parD)
+  --      <> foldMap collectReferencedVars' ss
   DistributeStep dh _ ss -> (HS.singleton $ DVar $ dhId dh)
                    <> foldMap collectReferencedVars' ss
 
@@ -266,8 +268,8 @@ collectProducedVars' = \case
   DomainStep dh -> HS.singleton $ DVar $ dhId dh
   KernelStep kb -> case kernRepr kb of
     ReprI repr -> HS.singleton $ KVar (kernId kb) (reprDomain repr)
-  SplitStep  dh ss       -> (HS.singleton $ DVar $ dhId dh)
-                         <> foldMap collectProducedVars' ss
+  -- SplitStep  dh ss       -> (HS.singleton $ DVar $ dhId dh)
+  --                        <> foldMap collectProducedVars' ss
   DistributeStep _ _ ss  -> foldMap collectProducedVars' ss
 
 
