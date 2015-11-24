@@ -11,7 +11,7 @@ import Data.Function ( on )
 import Data.Hashable
 import Data.Int
 import Data.List     ( sort, groupBy )
-import Data.Binary (Binary)
+import Data.Binary (Binary(..))
 import qualified Data.Map as Map
 import Data.Monoid
 import qualified Data.HashMap.Strict as HM
@@ -167,6 +167,10 @@ data Domain a = Domain
   , dhFilterBox :: RegionBox -> Region -> Maybe Region
   }
 
+instance Binary (Domain a) where
+  put _ = return ()
+  get = return $ error "No sane Binary instance for Domain"
+
 instance forall a. Typeable a => Show (Domain a) where
   showsPrec _ dh = shows (typeOf (undefined :: a)) . showString " domain " . shows (dhId dh)
 instance Eq (Domain a) where
@@ -194,7 +198,7 @@ instance Eq DomainI where
 -- going to have to generalise this in some way.
 data Region = RangeRegion (Domain Range) Range
             | BinRegion (Domain Bins) Bins
-  deriving (Typeable, Eq, Ord, Show, Generic)
+  deriving (Typeable, Generic)
 instance Binary Region
 
 instance Show Region where
@@ -218,10 +222,16 @@ instance Eq Region where
 
 data Range = Range Int Int
   deriving (Typeable, Eq, Ord, Generic)
+
+instance Binary Range
 instance Show Range where
   showsPrec _ (Range low high) = shows low . (':':) . shows high
+
 data Bins = Bins (Map.Map (Double, Double) (Map.Map RegionBox Int))
-  deriving (Typeable, Eq, Ord)
+  deriving (Typeable, Eq, Ord, Generic)
+
+instance Binary Bins
+
 instance Show Bins where
   showsPrec _ (Bins bins) = showString "Bins" . flip (foldr f) (Map.toList bins)
     where f ((low, high), m) = (' ':) . shows low . (':':) . shows high . shows (Map.elems m)

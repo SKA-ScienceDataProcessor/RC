@@ -68,21 +68,20 @@ dumpStrategyDOT file strat = do
   hPutStrLn h "}"
   hClose h
 
+dumpStep ind (DomainStep m_kid dh)
+  = putStrLn $ ind ++ "Domain " ++ show dh ++
+               maybe "" (\kid -> " from kernel " ++ show kid) m_kid ++
+               maybe "" (\dom -> " split from " ++ show dom) (dhParent dh)
+dumpStep ind (KernelStep kb@KernelBind{kernRepr=ReprI rep})
+  = putStrLn $ ind ++ "Over " ++ show (reprDomain rep) ++ " run " ++ show kb
+dumpStep ind step@(DistributeStep did sched steps)
+  = do putStrLn $ ind ++ "Distribute " ++ show did ++ " using " ++ show sched ++
+                  " deps " ++ show (stepKernDeps step)
+       forM_ steps (dumpStep ("  " ++ ind))
+
 dumpSteps :: Strategy a -> IO ()
 dumpSteps strat = do
-
-  let dump ind (DomainStep m_kid dh)
-        = putStrLn $ ind ++ "Domain " ++ show dh ++
-                     maybe "" (\kid -> " from kernel " ++ show kid) m_kid ++
-                     maybe "" (\dom -> " split from " ++ show dom) (dhParent dh)
-      dump ind (KernelStep kb@KernelBind{kernRepr=ReprI rep})
-        = putStrLn $ ind ++ "Over " ++ show (reprDomain rep) ++ " run " ++ show kb
-      dump ind step@(DistributeStep did sched steps)
-        = do putStrLn $ ind ++ "Distribute " ++ show did ++ " using " ++ show sched ++
-                        " deps " ++ show (stepKernDeps step)
-             forM_ steps (dump ("  " ++ ind))
-
-  forM_ (runStrategy (void strat)) (dump "")
+  forM_ (runStrategy (void strat)) (dumpStep "")
 
 data AnyDH = forall a. Typeable a => AnyDH (Domain a)
 
