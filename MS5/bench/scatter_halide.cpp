@@ -1,9 +1,5 @@
+#include "scatter_halide.h"
 
-#include "Halide.h"
-
-using namespace Halide;
-
-enum ComplxFields { _REAL = 0, _IMAG,  _CPLX_FIELDS };
 struct Complex {
   Expr real, imag;
   Complex(Expr r, Expr i) : real(r), imag(i) {}
@@ -21,45 +17,26 @@ struct Complex {
   operator Tuple() { return Tuple(real, imag); }
 };
 
-int main(int argc, char **argv) {
-  if (argc < 2) return 1;
+#define Q(a) a(#a)
+#define F(a) a = Func(#a)
 
-  // GCF size and oversampling are constants for now
-  const int GCF_SIZE = 16
-          , OVER = 8;
+Var Q(cmplx), Q(x), Q(y), Q(uvdim), Q(t);
 
+SGridder::SGridder(int cpos, int xpos, int ypos, int vpos) {
   // ** Input
-
-  Param<double> scale("scale");
-  Param<int> grid_size("grid_size");
-
-  // Visibilities: Array of 5-pairs, packed together with UVW
-  enum VisFields { _U=0, _V, _W, _R, _I,  _VIS_FIELDS };
-  ImageParam vis(type_of<double>(), 2, "vis");
-  vis.set_min(0,0).set_stride(0,1).set_extent(0,_VIS_FIELDS)
-     .set_stride(1,_VIS_FIELDS);
+  scale = Param<double>("scale");
+  grid_size = Param<int>("grid_size");
+  vis = ImageParam(type_of<double>(), 2, "vis");
 
   // GCF: Array of OxOxSxS complex numbers. We "fuse" two dimensions
   // as Halide only supports up to 4 dimensions.
-  ImageParam gcf_fused(type_of<double>(), 4, "gcf");
-  gcf_fused
-     .set_min(0,0).set_stride(0,1).set_extent(0,_CPLX_FIELDS)
-     .set_min(1,0).set_stride(1,_CPLX_FIELDS).set_extent(1,GCF_SIZE)
-     .set_min(2,0).set_stride(2,_CPLX_FIELDS*GCF_SIZE).set_extent(2,GCF_SIZE)
-     .set_min(3,0).set_stride(3,_CPLX_FIELDS*GCF_SIZE*GCF_SIZE).set_extent(3,OVER*OVER);
-
-  std::vector<Halide::Argument> args = { scale, grid_size, vis, gcf_fused };
+  gcf_fused = ImageParam(type_of<double>(), 4, "gcf");
 
   // ** Output
 
   // Grid starts out undefined so we can update the output buffer
-  Func uvg("uvg");
-  Var cmplx("cmplx"), x("x"), y("y");
+  F(uvg);
   uvg(cmplx, x, y) = undef<double>();
-
-  uvg.output_buffer()
-    .set_stride(0,1).set_extent(0,_CPLX_FIELDS)
-    .set_stride(1,_CPLX_FIELDS);
 
   // Get grid limits. This limits the uv pixel coordinates we accept
   // for the top-left corner of the GCF.
@@ -71,19 +48,19 @@ int main(int argc, char **argv) {
   // ** Helpers
 
   // Coordinate preprocessing
-  Func uvs("uvs"), uv("uv"), overc("overc");
-  Var uvdim("uvdim"), t("t");
+  Func Q(uvs);
+  F(uv), F(overc);
   uvs(uvdim, t) = vis(uvdim, t) * scale;
   overc(uvdim, t) = clamp(cast<int>(round(OVER * (uvs(uvdim, t) - floor(uvs(uvdim, t))))), 0, OVER-1);
   uv(uvdim, t) = cast<int>(round(uvs(uvdim, t)) + grid_size / 2 - GCF_SIZE / 2);
 
   // Visibilities to ignore due to being out of bounds
-  Func inBound("inBound");
+  F(inBound);
   inBound(t) = uv(_U, t) >= min_u && uv(_U, t) <= max_u &&
                uv(_V, t) >= min_v && uv(_V, t) <= max_v;
 
   // GCF lookup for a given visibility
-  Func gcf("gcf");
+  Func Q(gcf);
   Var suppx("suppx"), suppy("suppy"), overx("overx"), overy("overy");
   gcf(suppx, suppy, t)
       = Complex(gcf_fused(_REAL, suppx, suppy, overc(_U, t) + OVER * overc(_V, t)),
@@ -93,18 +70,25 @@ int main(int argc, char **argv) {
 
   // Reduction domain. Note that we iterate over time steps before
   // switching the GCF row in order to increase locality (Romein).
-  RDom red(
-      0, _CPLX_FIELDS
-    , 0, GCF_SIZE
-    , vis.top(), vis.height()
-    , 0, GCF_SIZE
-    );
-  RVar
-      rcmplx = red.x
-    , rgcfx = red.y
-    , rvis  = red.z
-    , rgcfy = red.w
+  typedef std::pair<Expr, Expr> rType;
+  rType
+      cRange = {0, _CPLX_FIELDS}
+    , gRange = {0, GCF_SIZE}
+    , vRange = {vis.top(), vis.height()}
     ;
+
+  std::vector<rType> rVec(4);
+  rVec[cpos] = cRange;
+  rVec[xpos] = gRange;
+  rVec[ypos] = gRange;
+  rVec[vpos] = vRange;
+
+  RDom red(rVec);
+    rcmplx = red[cpos]
+  , rgcfx  = red[xpos]
+  , rgcfy  = red[ypos]
+  , rvis   = red[vpos]
+  ;
 
   // Get visibility as complex number
   Complex visC(vis(_R, rvis), vis(_I, rvis));
@@ -116,24 +100,66 @@ int main(int argc, char **argv) {
     += select(inBound(rvis),
               (visC * Complex(gcf(rgcfx, rgcfy, rvis))).unpack(rcmplx),
               undef<double>());
+}
 
-  // ** Strategy
+SGridder * genSGridder(int cpos, int xpos, int ypos, int vpos){
+  return new SGridder(cpos, xpos, ypos, vpos);
+}
 
+	
+void finSGridder(SGridder * sp){
+  delete sp;
+}
+
+SGridder& SGridder::setDims(){
+  vis
+    .set_min(0,0).set_stride(0,1).set_extent(0,_VIS_FIELDS)
+    .set_stride(1,_VIS_FIELDS)
+    ;
+
+  gcf_fused
+    .set_min(0,0).set_stride(0,1).set_extent(0,_CPLX_FIELDS)
+    .set_min(1,0).set_stride(1,_CPLX_FIELDS).set_extent(1,GCF_SIZE)
+    .set_min(2,0).set_stride(2,_CPLX_FIELDS*GCF_SIZE).set_extent(2,GCF_SIZE)
+    .set_min(3,0).set_stride(3,_CPLX_FIELDS*GCF_SIZE*GCF_SIZE).set_extent(3,OVER*OVER)
+    ;
+
+  uvg.output_buffer()
+    .set_stride(0,1).set_extent(0,_CPLX_FIELDS)
+    .set_stride(1,_CPLX_FIELDS);
+
+  return *this;
+}
+
+SGridder * SGsetDims(SGridder * sp){
+  sp->setDims();
+  return sp;
+}
+
+SGridder& SGridder::strategy1(){
   // Compute UV & oversampling coordinates per visibility
   overc.compute_at(uvg, rvis).vectorize(uvdim);
   uv.compute_at(uvg,rvis).vectorize(uvdim);
   inBound.compute_at(uvg,rvis);
+  return *this;
+}
 
-  // Fuse and vectorise complex calculations of entire GCF rows
+SGridder * SGstrategy1(SGridder * sp){
+  sp->strategy1();
+  return sp;
+}
+
+SGridder& SGridder::strategy2(){
   RVar rgcfxc;
   uvg.update()
     .allow_race_conditions()
     .fuse(rgcfx, rcmplx, rgcfxc)
     .vectorize(rgcfxc, 8)
     .unroll(rgcfxc, GCF_SIZE * 2 / 8);
+  return *this;
+}
 
-  Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
-  Module mod = uvg.compile_to_module(args, "kern_scatter", target);
-  compile_module_to_object(mod, argv[1]);
-  return 0;
+SGridder * SGstrategy2(SGridder * sp){
+  sp->strategy2();
+  return sp;
 }

@@ -75,6 +75,7 @@ import Control.Monad.Except        (ExceptT)
 import Control.Monad.Trans.Class
 
 import Data.Time
+import Data.Time.Format
 import Data.Maybe         (fromMaybe)
 import Data.IORef
 import Data.Tuple         (swap)
@@ -97,7 +98,6 @@ import Profiling.Linux.Perf.Stat
 
 import System.IO
 import System.IO.Unsafe   (unsafePerformIO)
-import System.Locale      (defaultTimeLocale)
 import System.Mem         (performGC)
 
 import DNA.Types          (AID,VirtualCAD)

@@ -58,7 +58,7 @@ aKern size = halideKernel1 "a" (vecRepr size) sumRepr kern_sum
 foreign import ccall unsafe kern_sum :: HalideFun '[ VecRepr ] SumRepr
 
 printKern :: Flow Sum -> Kernel Sum
-printKern = kernel "print" (sumRepr :. Z) NoRepr $ \case
+printKern = mergingKernel "print" (sumRepr :. Z) NoRepr $ \case
   [(sv,_)]-> \_ -> do
     s <- peekVector (castVector sv :: Vector Float) 0
     putStrLn $ "Sum: " ++ show s
@@ -88,11 +88,11 @@ ddpStrat size = do
   dom <- makeRangeDomain 0 size
 
   -- Calculate ddp for the whole domain
-  split dom 10 $ \regs ->
-    distribute regs ParSchedule $ do
-      bind f (fKern regs)
-      bind g (gKern regs)
-      bind (pp f g) (ppKern regs f g)
+  regs <- split dom 10
+  distribute regs ParSchedule $ do
+    bind f (fKern regs)
+    bind g (gKern regs)
+    bind (pp f g) (ppKern regs f g)
   bindRule a (aKern dom)
   calculate ddp
   void $ bindNew $ printKern ddp

@@ -14,7 +14,7 @@ import Control.Applicative
 import Control.Concurrent
 
 import Data.List
-import Data.Maybe ( fromMaybe, fromJust )
+import Data.Maybe ( fromMaybe, fromJust, mapMaybe )
 import qualified Data.IntMap as IM
 import qualified Data.IntSet as IS
 import qualified Data.Map.Strict as Map
@@ -68,32 +68,33 @@ dumpStrategyDOT file strat = do
   hPutStrLn h "}"
   hClose h
 
-
-
-dumpStep ind (DomainStep dh)
-  = putStrLn $ ind ++ "Domain " ++ show dh
-dumpStep ind (SplitStep dh steps)
-  = do putStrLn $ ind ++ "Split Domain " ++ show (dhId (fromJust $ dhParent dh)) ++ " into " ++ show dh
-       forM_ steps (dumpStep ("  " ++ ind))
-dumpStep ind (KernelStep kb@KernelBind{kernRepr=ReprI rep})
-  = putStrLn $ ind ++ "Over " ++ show (reprDomain rep) ++ " run " ++ show kb
-dumpStep ind step@(DistributeStep did sched steps)
-  = do putStrLn $ ind ++ "Distribute " ++ show did ++ " using " ++ show sched ++
-                  " deps " ++ show (stepKernDeps step)
-       forM_ steps (dumpStep ("  " ++ ind))
-
 dumpSteps :: Strategy a -> IO ()
 dumpSteps strat = do
-  forM_ (runStrategy (void strat)) (dumpStep "")
+
+  let dump ind (DomainStep m_kid dh)
+        = putStrLn $ ind ++ "Domain " ++ show dh ++
+                     maybe "" (\kid -> " from kernel " ++ show kid) m_kid ++
+                     maybe "" (\dom -> " split from " ++ show dom) (dhParent dh)
+      dump ind (KernelStep kb@KernelBind{kernRepr=ReprI rep})
+        = putStrLn $ ind ++ "Over " ++ show (reprDomain rep) ++ " run " ++ show kb
+      dump ind step@(DistributeStep did sched steps)
+        = do putStrLn $ ind ++ "Distribute " ++ show did ++ " using " ++ show sched ++
+                        " deps " ++ show (stepKernDeps step)
+             forM_ steps (dump ("  " ++ ind))
+
+  forM_ (runStrategy (void strat)) (dump "")
 
 data AnyDH = forall a. Typeable a => AnyDH (Domain a)
-type DataMap = IM.IntMap (ReprI, Map.Map RegionBox (Vector ()))
-type DomainMap = IM.IntMap (AnyDH, RegionBox)
 
-dataMapInsert :: KernelId -> RegionBox -> ReprI -> Vector () -> DataMap -> DataMap
-dataMapInsert kid dom repr vec = IM.insertWith update kid (repr, def)
-  where def = Map.singleton dom vec
-        update _ (repr', m) = (repr', Map.insert dom vec m)
+adhFilterBox :: AnyDH -> RegionBox -> Region -> Maybe Region
+adhFilterBox (AnyDH dom) = dhFilterBox dom
+
+type DataMap = IM.IntMap (ReprI, RegionData)
+type DomainMap = IM.IntMap (AnyDH, [Region])
+
+dataMapInsert :: KernelId -> ReprI -> RegionData -> DataMap -> DataMap
+dataMapInsert kid repr rdata = IM.insertWith update kid (repr, rdata)
+  where update _ (repr', m) = (repr', Map.union rdata m)
 
 dataMapUnion :: DataMap -> DataMap -> DataMap
 dataMapUnion = IM.unionWith combine
@@ -109,37 +110,13 @@ dataMapDifference = IM.differenceWith remove
            = if Map.null diff then Nothing else Just (repr, diff)
           where diff = bufs `Map.difference` bufs'
 
-findParameters :: KernelId -> RegionBox -> DataMap -> IO (Vector (), RegionBox)
-findParameters kid inDoms dataMap = case IM.lookup kid dataMap of
-  Just (ReprI repr, bufs)
-    -- Have it for exactly the right domain region?
-    | Just inp <- Map.lookup inDoms bufs
-    -> return (inp, inDoms)
-    -- Have it for the right domain region, but split into
-    -- sub-regions? This is rather ad-hoc, clearly needs a better
-    -- solution. We actually have guarantees here - at least if we
-    -- ignore the possibility for failure (where in a distributed
-    -- implementation parts could be missing).
-    | let inps = filter (and . zipWith domainSubset inDoms . fst) $ Map.assocs bufs
-    , Just merged <- regionMerge (map fst inps)
-    , merged == inDoms
-    , (_:_) <- inps
-    -> do -- Merge the vectors.
-          m_inp' <- reprMerge repr inps inDoms
-          case m_inp' of
-            Just inp' -> return (inp', inDoms)
-            Nothing   -> fail $ "Could not merge data of representation " ++ show repr ++ "!"
-  _other -> fail $ "Internal error: Input " ++ show kid ++
-                   " for domains " ++ show inDoms ++ " not found!"
-           -- This should never happen
-
 type KernelSet = IS.IntSet
 type DomainSet = IS.IntSet
 
 -- | Kernel dependencies of a step
 stepKernDeps :: Step -> KernelSet
+stepKernDeps (DomainStep (Just kid) _)  = IS.singleton kid
 stepKernDeps (KernelStep kbind)         = IS.fromList $ map kdepId $ kernDeps kbind
-stepKernDeps (SplitStep _ steps)        = stepsKernDeps steps
 stepKernDeps (DistributeStep _ _ steps) = stepsKernDeps steps
 stepKernDeps _                          = IS.empty
 
@@ -155,9 +132,11 @@ stepsKernDeps []
 -- | Domain dependencies of a step
 stepDomainDeps :: Step -> DomainSet
 stepDomainDeps (KernelStep kbind)
-  = IS.fromList $ concatMap kdepDomain $ kernDeps kbind
-stepDomainDeps (SplitStep dh steps)
-  = IS.insert (dhId (fromJust (dhParent dh))) $ IS.delete (dhId dh) $ stepsDomainDeps steps
+  = (IS.fromList $ kernDomain kbind) `IS.union`
+    (IS.fromList $ concatMap kdepDomain $ kernDeps kbind)
+stepDomainDeps (DomainStep _ dh)
+  | Just parent <- dhParent dh
+  = IS.singleton (dhId parent)
 stepDomainDeps (DistributeStep _ _ steps)
   = stepsDomainDeps steps
 stepDomainDeps _
@@ -165,7 +144,7 @@ stepDomainDeps _
 
 -- | Domain dependencies of a series of steps
 stepsDomainDeps :: [Step] -> DomainSet
-stepsDomainDeps (step@(DomainStep dh) : steps)
+stepsDomainDeps (step@(DomainStep _ dh) : steps)
   = IS.delete (dhId dh) $ stepDomainDeps step `IS.union` stepsDomainDeps steps
 stepsDomainDeps (step : steps)
   = stepDomainDeps step `IS.union` stepsDomainDeps steps
@@ -202,17 +181,42 @@ execSteps dataMapRef domainMapRef topDeps steps = do
         (dataMap', discardMap) = IM.partitionWithKey isDep dataMap
     writeIORef dataMapRef dataMap'
     forM_ (IM.assocs discardMap) $ \(kid, (_repr, m)) ->
-      forM_ (Map.assocs m) $ \(dom, v) -> do
-        putStrLn $ "Discarding buffer " ++ show kid ++ " for domain " ++ show dom
+      forM_ (Map.assocs m) $ \(rbox, v) -> do
+        putStrLn $ "Discarding buffer " ++ show kid ++ " for region box " ++ show rbox
         freeVector v
 
 -- | Execute schedule step
 execStep :: IORef DataMap -> IORef DomainMap -> KernelSet -> Step -> IO ()
 execStep dataMapRef domainMapRef deps step = case step of
-  DomainStep dh -> do
+  DomainStep m_kid dh -> do
+
+    -- Look up input data
+    dataMap <- readIORef dataMapRef
+    let m_buf = do
+          kid <- m_kid
+          (_rep, bufs) <- IM.lookup kid dataMap
+          return bufs
+
     -- Primitive domains have exactly one region on construction
-    dom <- dhCreate dh
-    modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, [dom])
+    regs' <- case dhParent dh of
+
+      -- No parent: Straight-forward creation
+      Nothing -> do
+        reg <- dhCreate dh (fromMaybe Map.empty m_buf)
+        return [reg]
+
+      -- Otherwise: Split an existing domain
+      Just parDh -> do
+
+         -- Get domain to split up
+        let err = error $ "Could not find domain " ++ show (dhId dh) ++ " to split!"
+        (_, regs) <- fromMaybe err . IM.lookup (dhId parDh) <$> readIORef domainMapRef
+
+        -- Perform split
+        concat <$> mapM (dhRegion dh) regs
+
+    -- Add to map
+    modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, regs')
 
   KernelStep kbind@KernelBind{kernRepr=ReprI rep} -> do
 
@@ -221,68 +225,65 @@ execStep dataMapRef domainMapRef deps step = case step of
     let lookupDom did = case IM.lookup did domainMap of
           Just dom -> dom
           Nothing  -> error $ "Kernel " ++ show kbind ++ " called for non-existant domain " ++ show did ++ "!"
+
+    -- Construct all output regions (cartesian product of all involved
+    -- domain regions)
+    let cartProd = sequence :: [[Region]] -> [RegionBox]
         outDoms = map lookupDom (reprDomain rep)
+        outRegs = cartProd $ map snd outDoms
 
-    -- Any output domains non-unary and therefore need to be split
-    -- into separate kernel calls?
-    -- TODO: Some kernels might be okay with producing the output
-    -- values for more than one region at the same time. However at
-    -- this point we do not have an interface for this yet, so
-    -- sequentialising things is the easiest choice that is also
-    -- somewhat correct.
-    case filter ((/=1) . length . snd) outDoms of
-     (AnyDH dh, _):_ ->
-      execStep dataMapRef domainMapRef deps $ DistributeStep dh SeqSchedule [step]
+    -- Filter boxes (yeah, ugly & slow)
+    let filteredRegs :: [RegionBox]
+        filteredRegs = foldr filterBox outRegs $ zip [0..] $ map fst outDoms
+        filterBox (i, dom) = mapMaybe $ \box ->
+          let (pre,reg:post) = splitAt i box
+           in case adhFilterBox dom (pre ++ post) reg of
+                Just reg' -> Just $ pre ++ reg':post
+                Nothing   -> Nothing
 
-     [] -> do
-      -- Look up input data
-      let lookupUnaryDom = head . snd . lookupDom
-      dataMap <- readIORef dataMapRef
-      ins <- forM (kernDeps kbind) $ \dep -> do
-        par <- findParameters (kdepId dep) (map lookupUnaryDom (kdepDomain dep)) dataMap
-        return (dep, par)
+    -- Look up input data. Note that we always pass all available data
+    -- here. This means that we are relying on
+    -- 1) DistributeStep below to restrict the data map
+    -- 2) The kernel being able to work with what we pass it
+    dataMap <- readIORef dataMapRef
+    ins <- forM (kernDeps kbind) $ \kdep -> do
+      case IM.lookup (kdepId kdep) dataMap of
+        Just (_, bufs) -> return (kdep, bufs)
+        Nothing        -> fail $ "Internal error for kernel " ++ show (kernName kbind) ++ ": Input " ++
+                                 show (kdepId kdep) ++ " not found!"
+           -- This should never happen
 
-      -- Call the kernel using the right regions
-      let !outRegs = map (head . snd) outDoms
-      !t0 <- getCurrentTime
-      res <- kernCode kbind (map snd ins) outRegs
-      !t1 <- getCurrentTime
+    -- Important TODO: Duplicate data that is written here, but read later!
 
-      -- Check size
-      case reprSize rep outRegs of
-       Just size | size /= vectorByteSize res ->
-         fail $ "Kernel " ++ kernName kbind ++ " produced " ++ show (vectorByteSize res) ++
-                " bytes of data, but data representation " ++ show rep ++ " has " ++ show size ++ " bytes!"
-       _other -> return ()
+    -- Call the kernel using the right regions
+    !t0 <- getCurrentTime
+    results <- kernCode kbind (map snd ins) filteredRegs
+    !t1 <- getCurrentTime
 
-      -- Debug
-      putStrLn $ "Calculated kernel " ++ show (kernId kbind) ++ " regions " ++ show outRegs ++
-                 " in " ++ show (diffUTCTime t1 t0) ++ " ms"
+    -- Check size
+    let expectedSizes = map (reprSize rep) filteredRegs
+    forM_ (zip results expectedSizes) $ \(res, m_size) ->
+      case m_size of
+        Just size | size /= vectorByteSize res ->
+          fail $ "Kernel " ++ kernName kbind ++ " produced " ++ show (vectorByteSize res) ++
+                 " bytes of data, but data representation " ++ show rep ++ " has " ++ show size ++ " bytes!"
+        _other -> return ()
 
-      -- Get inputs that have been written, and therefore should be
-      -- considered freed. TODO: ugly
-      let writtenIns = filter ((== WriteAccess) . kdepAccess . fst) ins
-      forM_ writtenIns $ \(dep, (_, dom)) ->
-        modifyIORef dataMapRef $ flip dataMapDifference $
-          dataMapInsert (kdepId dep) dom (kdepRepr dep) nullVector IM.empty
+    -- Debug
+    putStrLn $ "Calculated kernel " ++ show (kernId kbind) ++ ":" ++ kernName kbind ++
+               " regions " ++ show filteredRegs ++
+               " in " ++ show (1000 * diffUTCTime t1 t0) ++ " ms"
 
-      -- Insert result
-      modifyIORef dataMapRef $ dataMapInsert (kernId kbind) outRegs (kernRepr kbind) res
+    -- Get inputs that have been written, and therefore should be
+    -- considered freed. TODO: ugly
+    let writtenIns = filter ((== WriteAccess) . kdepAccess . fst) ins
+    forM_ writtenIns $ \(dep, rdata) -> forM_ (Map.keys rdata) $ \rbox ->
+      modifyIORef dataMapRef $ flip dataMapDifference $
+        dataMapInsert (kdepId dep) (kdepRepr dep) (Map.singleton rbox nullVector) IM.empty
 
-  SplitStep dh steps -> do
-
-    -- Get domain to split up
-    let parDh = fromJust $ dhParent dh
-    (_, regs)
-      <- fromMaybe (error $ "Could not find domain " ++ show (dhId dh) ++ " to split!") .
-         IM.lookup (dhId parDh) <$> readIORef domainMapRef
-
-    -- Perform split
-    regs' <- concat <$> mapM (dhRegion dh) regs
-    modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, regs')
-
-    -- Execute nested steps
-    execSteps dataMapRef domainMapRef deps steps
+    -- Insert result
+    let resultMap = Map.fromList $ zip filteredRegs results
+    modifyIORef dataMapRef $ dataMapInsert (kernId kbind) (kernRepr kbind) resultMap
 
   DistributeStep dh sched steps -> do
 
@@ -307,18 +308,24 @@ execStep dataMapRef domainMapRef deps step = case step of
       domainMapRef' <- newIORef $ IM.insert (dhId dh) (AnyDH dh, [reg]) domainMap'
 
       -- Also filter data so we only send data for the appropriate region
-      let filterData (ri@(ReprI repr), bufs)
-            | dhId dh `elem` reprDomain repr
-            = (ri, Map.filterWithKey (\ds _ -> reg `elem` ds) bufs)
-            | otherwise
-            = (ri, bufs)
+      let usesRegion (ReprI repr) = dhId dh `elem` reprDomain repr
+          filterData (ri, bufs) =
+            (ri, if usesRegion ri
+                 then Map.filterWithKey (\ds _ -> reg `elem` ds) bufs
+                 else bufs)
           dataMap'' = IM.map filterData dataMap'
       dataMapRef' <- newIORef dataMap''
+
+      -- Especially add extra dependencies for all data that is not
+      -- local to our region. Otherwise one iteration might end up
+      -- discarding data that another needs. (We will discard this
+      -- data after the loop in that case).
+      let extraDeps = IM.keysSet $ IM.filter (\(ri, _) -> not (usesRegion ri)) dataMap''
 
       -- Execute steps
       result <- newEmptyMVar
       (if sched == SeqSchedule then id else void . forkOS) $ do
-        execSteps dataMapRef' domainMapRef' deps steps
+        execSteps dataMapRef' domainMapRef' (deps `IS.union` extraDeps) steps
         putMVar result =<< readIORef dataMapRef'
       return (result, dataMap'')
 

@@ -10,8 +10,10 @@ import Control.Monad.State.Strict
 import Data.Function ( on )
 import Data.Hashable
 import Data.Int
-import Data.List     ( sort )
+import Data.List     ( sort, groupBy )
 import Data.Binary (Binary)
+import qualified Data.Map as Map
+import Data.Monoid
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
 import GHC.Generics (Generic)
@@ -85,8 +87,16 @@ mkFlow :: String -> [FlowI] -> Flow a
 mkFlow name fis = Flow $ FlowI (hash (name, fis, noWild)) name fis noWild
   where noWild = Nothing :: Maybe Int
 
+-- | Kernel frontend representation
+data Kernel a where
+  Kernel :: DataRepr r
+         => String -> KernelCode
+         -> [(FlowI, ReprI)] -> r
+         -> Kernel (ReprType r)
+
 type KernelId = Int
 
+-- | Kernel backend representation
 data KernelBind = KernelBind
   { kernId   :: KernelId   -- ^ Unique number identifiying this kernel
   , kernFlow :: FlowI      -- ^ Implemented flow
@@ -124,8 +134,13 @@ kdepAccess (KernelDep {kdepRepr=ReprI rep}) = reprAccess rep
 -- zero or more distinct (!) domains.
 type RegionBox = [Region]
 
--- | Code implementing a kernel
-type KernelCode = [(Vector (), RegionBox)] -> RegionBox -> IO (Vector ())
+-- | Region box data. This maps a number of region boxes (assumed to
+-- be belonging to the same domain) to associated data.
+type RegionData = Map.Map RegionBox (Vector ())
+
+-- | Code implementing a kernel. Takes a number of parameters as
+-- "RegionData" and produces data for a given region box(es).
+type KernelCode = [RegionData] -> [RegionBox] -> IO [Vector ()]
 
 instance Show KernelBind where
   showsPrec _ (KernelBind kid kflow kname krepr kdeps _ _)
@@ -137,22 +152,28 @@ instance Show KernelBind where
 type DomainId = Int
 data Domain a = Domain
   { dhId    :: DomainId
-    -- | Number of regions this domain is split into
-  , dhSize  :: Int
     -- | Produce a new domain handle that is split up @n@ times more
   , dhSplit  :: Int -> Strategy (Domain a)
-    -- | Domain this was derived from
-  , dhParent :: Maybe (Domain a)
-    -- | Creates a new region for this handle
-  , dhCreate :: IO Region
-    -- | Splits a region of the parent domain
+    -- | Creates the domain from given data. This is how you construct
+    -- root domains (those without parents).
+  , dhCreate :: RegionData -> IO Region
+    -- | Splits out regions from the parent domain. This is used for
+    -- constructing sub-domains.
   , dhRegion :: Region -> IO [Region]
+    -- | Get domain this one was derived from. Not set for root domains.
+  , dhParent :: Maybe (Domain a)
+    -- | Check whether a a region of this domain is permissible in the
+    -- context of a given region box
+  , dhFilterBox :: RegionBox -> Region -> Maybe Region
   }
 
 instance forall a. Typeable a => Show (Domain a) where
   showsPrec _ dh = shows (typeOf (undefined :: a)) . showString " domain " . shows (dhId dh)
 instance Eq (Domain a) where
   (==) = (==) `on` dhId
+instance Ord (Domain a) where
+  (<=) = (<=) `on` dhId
+  compare = compare `on` dhId
 
 dhIsParent :: Domain a -> Domain a -> Bool
 dhIsParent dh dh1
@@ -160,39 +181,87 @@ dhIsParent dh dh1
   | Just dh' <- dhParent dh  = dhIsParent dh' dh1
   | otherwise                = False
 
+data DomainI where
+  DomainI :: forall a. Domain a -> DomainI
+
+dhiId :: DomainI -> DomainId
+dhiId (DomainI di) = dhId di
+
+instance Eq DomainI where
+  di0 == di1  = dhiId di0 == dhiId di1
+
 -- | Domains are just ranges for now. It is *very* likely that we are
 -- going to have to generalise this in some way.
-data Region = RangeRegion Range
+data Region = RangeRegion (Domain Range) Range
+            | BinRegion (Domain Bins) Bins
   deriving (Typeable, Eq, Ord, Show, Generic)
 instance Binary Region
 
+instance Show Region where
+  showsPrec _ (RangeRegion dom r) = showString "Region<" . shows (dhId dom) . ('>':) . shows r
+  showsPrec _ (BinRegion dom bins) = showString "Region<" . shows (dhId dom) . ('>':) . shows bins
+
+-- These instances are important because we are going to use regions
+-- in order to index maps (often in the form of
+-- "RegionBox"). Therefore we must especially make sure that regions
+-- that only differ in terms of "meta-data" are equal!
+-- TODO: ugly
+instance Ord Region where
+  compare (RangeRegion d0 r0) (RangeRegion d1 r1)
+    = compare d0 d1 `mappend` compare r0 r1
+  compare (BinRegion d0 (Bins bins0)) (BinRegion d1 (Bins bins1))
+    = compare d0 d1 `mappend` mconcat (zipWith compare (Map.keys bins0) (Map.keys bins1))
+  compare RangeRegion{} BinRegion{} = LT
+  compare BinRegion{} RangeRegion{} = GT
+instance Eq Region where
+  r0 == r1  = compare r0 r1 == EQ
+
 data Range = Range Int Int
-  deriving (Typeable, Eq, Ord, Show, Generic)
-instance Binary Range
+  deriving (Typeable, Eq, Ord, Generic)
+instance Show Range where
+  showsPrec _ (Range low high) = shows low . (':':) . shows high
+data Bins = Bins (Map.Map (Double, Double) (Map.Map RegionBox Int))
+  deriving (Typeable, Eq, Ord)
+instance Show Bins where
+  showsPrec _ (Bins bins) = showString "Bins" . flip (foldr f) (Map.toList bins)
+    where f ((low, high), m) = (' ':) . shows low . (':':) . shows high . shows (Map.elems m)
 
 -- | Checks whether the second domain is a subset of the first
 domainSubset :: Region -> Region -> Bool
-domainSubset (RangeRegion (Range low0 high0)) (RangeRegion (Range low1 high1))
-  = low0 <= low1 && high0 >= high1
+domainSubset (RangeRegion d0 (Range low0 high0)) (RangeRegion d1 (Range low1 high1))
+  = d0 == d1 && low0 <= low1 && high0 >= high1
+domainSubset (BinRegion d0 (Bins bins0)) (BinRegion d1 (Bins bins1))
+  = d0 == d1 && all (`Map.member` bins1) (Map.keys bins0)
+domainSubset _ _
+  = False
 
--- | Merges a number of regions, if possible. All regions must have
--- the same length!
+-- | Merges a number of region boxes, if possible. All region boxes must
+-- use the same domains and especially have the same dimensionality!
 --
--- TODO: Ugly. Write properly
-regionMerge :: [[Region]] -> Maybe [Region]
-regionMerge [] = Just []
-regionMerge dss
-  | not $ all ((==1) . length) dss
-  = error "domainMerge: Not implemented yet for domain combinations!"
-  | RangeRegion (Range l _) <- head ds
-  , and $ zipWith no_gaps ds (tail ds)
-  , RangeRegion (Range _ h) <- last ds
-  = Just [RangeRegion $ Range l h]
+-- TODO: Support for something else besides "RangeRegion"
+regionMerge :: [RegionBox] -> Maybe RegionBox
+regionMerge []   = Nothing
+regionMerge [[]] = Just []
+regionMerge boxes
+  | Just merged' <- merged
+  , (RangeRegion d (Range l _):ds_head) <- head merged'
+  , and $ zipWith no_gaps merged' (tail merged')
+  , (RangeRegion _ (Range _ h):ds_last) <- last merged'
+  , ds_head == ds_last
+  = Just (RangeRegion d (Range l h):ds_head)
   | otherwise
   = Nothing
- where ds = sort $ map head dss
-       no_gaps (RangeRegion (Range _ h)) (RangeRegion (Range l _))
-         = h == l
+ where grouped = groupBy ((==) `on` head) (sort boxes)
+       merged = mapM merge grouped
+       merge :: [RegionBox] -> Maybe RegionBox
+       merge boxGrp = fmap (head (head boxGrp) :) $ regionMerge $ map tail boxGrp
+       no_gaps (RangeRegion d0 (Range _ h):ds0) (RangeRegion d1 (Range l _):ds1)
+         = d0 == d1 && h == l && ds0 == ds1
+       no_gaps _ _ = error "domainMerge: Mixed domain types...?"
+
+regionDomain :: Region -> DomainI
+regionDomain (RangeRegion d _) = DomainI d
+regionDomain (BinRegion d _)   = DomainI d
 
 type StratMap = HM.HashMap FlowI KernelBind
 type Strategy a = State StratState a
@@ -231,8 +300,23 @@ class (Show r, Typeable r, Typeable (ReprType r)) => DataRepr r where
   reprCompatible _ _ = True
   reprDomain :: r -> [DomainId]
   reprDomain _ = []
-  reprMerge :: r -> [(RegionBox, Vector ())] -> RegionBox -> IO (Maybe (Vector ()))
-  reprMerge _ _ _ = return Nothing
+  reprMerge :: r -> RegionData -> RegionBox -> IO (Maybe (Vector ()))
+  reprMerge r rd rb
+    | Just size <- reprSize r rb
+    = do v <- allocCVector size :: IO (Vector Int8)
+         reprMergeCopy r rb rd 0 v 0
+         return $ Just $ castVector v
+    | otherwise
+    = return Nothing
+  reprMergeCopy :: r -> RegionBox     -- ^ Region box to fill
+                -> RegionData -> Int  -- ^ Input data & offset
+                -> Vector Int8 -> Int -- ^ Output vector & offset
+                -> IO ()
+  reprMergeCopy r [] rd inoff outv outoff
+    | Just size <- reprSize r [],
+      Just inv <- Map.lookup [] rd
+    = copyVector outv outoff (castVector inv) inoff size
+  reprMergeCopy _ _  _  _     _    _ = fail "reprMerge unimplemented!"
   reprSize :: r -> RegionBox -> Maybe Int
   reprSize _ _ = Nothing
 
@@ -253,6 +337,8 @@ instance Show ReprI where
 
 isNoReprI :: ReprI -> Bool
 isNoReprI (ReprI repr) = reprNop repr
+repriDomain :: ReprI -> [DomainId]
+repriDomain (ReprI repr) = reprDomain repr
 
 -- | Resource scheduling policy
 data Schedule
@@ -265,10 +351,8 @@ newtype StratRule = StratRule (FlowI -> Maybe (Strategy ()))
 
 -- | Schedule step
 data Step where
-  DomainStep :: Typeable a => Domain a -> Step
+  DomainStep :: Typeable a => Maybe KernelId -> Domain a -> Step
     -- ^ Create a new domain. Might depend on data produced by a kernel.
-  SplitStep :: Typeable a => Domain a -> [Step] -> Step
-    -- ^ Split a domain into regions
   KernelStep :: KernelBind -> Step
     -- ^ Execute a kernel for the given domain(s)
   DistributeStep :: Typeable a => Domain a -> Schedule -> [Step] -> Step

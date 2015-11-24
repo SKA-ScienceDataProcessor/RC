@@ -156,7 +156,7 @@ gcfsRepr = VectorRepr ReadAccess
 
 dummy :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
       => String -> rs -> r -> ReprKernFun (ReprType r) rs
-dummy name rs r = kernel name rs r code
+dummy name rs r = mappingKernel name rs r code
   where code _ _ = putStrLn name >> return nullVector
 
 halideWrapper :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
@@ -166,8 +166,8 @@ cWrapper :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
          => String -> rs -> r -> ReprKernFun (ReprType r) rs
 cWrapper _ = dummy "c"
 
-oskarReader :: [(FilePath, Int)] -> Kernel Vis
-oskarReader _ = dummy "oskar" Z rawVisRepr
+oskarReader :: Typeable d => Domain d -> [(FilePath, Int)] -> Kernel Vis
+oskarReader d _ = dummy "oskar" Z (RegionRepr d rawVisRepr)
 sorter :: Flow Vis -> Kernel Vis
 sorter = dummy "sorter" (rawVisRepr :. Z) visRepr
 
@@ -202,8 +202,8 @@ splitModel = dummy "splitModel" (cleanResRepr :. Z) imgRepr
 splitResidual :: Flow CleanResult -> Kernel Image
 splitResidual = dummy "splitResidual" (cleanResRepr :. Z) imgRepr
 
-imageSumKernel :: Flow Image -> Kernel Image
-imageSumKernel = dummy "image summation" (imgRepr :. Z) imgRepr
+imageSumKernel :: Typeable d => Domain d -> Flow Image -> Kernel Image
+imageSumKernel dom = dummy "image summation" (RegionRepr dom imgRepr :. Z) imgRepr
 imageWriter :: FilePath -> Flow Image -> Kernel Image
 imageWriter _ = dummy "image writer" (imgRepr :. Z) NoRepr
 
@@ -211,37 +211,39 @@ imageWriter _ = dummy "image writer" (imgRepr :. Z) NoRepr
 -- ---                               Strategy                               ---
 -- ----------------------------------------------------------------------------
 
-scatterImaging :: Config -> Domain d -> Flow Tag -> Flow Vis
+scatterImaging :: Typeable d => Config -> Domain d -> Flow Tag -> Flow Vis
                -> Strategy ()
 scatterImaging cfg dh tag vis =
  implementing (fst $ majorLoop (cfgMajorLoops cfg) vis) $ do
 
   -- Sort visibility data
-  rebind vis sorter
+  let addDom :: IsKernelDef kf => kf -> kf
+      addDom = regionKernel dh
+  rebind vis $ addDom sorter
 
   -- Initialise FFTs
   let gpar = cfgGrid cfg
-  bind tag (fftCreatePlans gpar)
+  bind tag $ addDom $ fftCreatePlans gpar
 
   -- Generate GCF
   let gcfs = gcf vis
-  bind gcfs (gcfKernel gpar tag vis)
+  bind gcfs $ addDom $ gcfKernel gpar tag vis
 
   -- Make rules
-  bindRule idft (ifftKern gpar tag)
-  bindRule dft (fftKern gpar tag)
-  bindRule createGrid (gridInit gpar)
-  bindRule grid (gridKernel gpar)
-  bindRule degrid (degridKernel gpar)
-  bindRule clean cleanKernel
-  bindRule cleanResidual splitResidual
-  bindRule cleanModel splitModel
+  bindRule idft (addDom $ ifftKern gpar tag)
+  bindRule dft (addDom $ fftKern gpar tag)
+  bindRule createGrid (addDom $ gridInit gpar)
+  bindRule grid (addDom $ gridKernel gpar)
+  bindRule degrid (addDom $ degridKernel gpar)
+  bindRule clean (addDom cleanKernel)
+  bindRule cleanResidual (addDom splitResidual)
+  bindRule cleanModel (addDom splitModel)
 
   -- PSF. Note that we bind a kernel here that implements *two*
   -- abstract kernel nodes!
   --let psfg = grid (psfVis vis) gcfs createGrid
   --bind psfg (psfGridKernel gpar vis gcfs createGrid)
-  bindRule (grid . psfVis) (psfGridKernel gpar)
+  bindRule (grid . psfVis) (addDom $ psfGridKernel gpar)
   calculate $ psfGrid vis gcfs
 
   -- Loop
@@ -274,26 +276,27 @@ scatterImagingMain cfg = do
 
   -- Split by datasets
   let result = majorLoopSum (cfgMajorLoops cfg) vis
-  split dom dataSets $ \ds -> distribute ds SeqSchedule $ void $ do
+  ds <- split dom dataSets
+  distribute ds ParSchedule $ void $ do
 
     -- Split by number of runs.
     -- TODO: Number of runs should depend on data set!
-    split ds 300 $ \rep -> distribute rep SeqSchedule $ void $ do
+    rep <- split ds 3
+    distribute rep SeqSchedule $ void $ do
 
       -- Read in visibilities. The domain handle passed in tells the
       -- kernel which of the datasets to load.
-      bind vis $ oskarReader $ cfgInput cfg
+      bind vis $ oskarReader rep $ cfgInput cfg
 
       -- Implement this data flow
       scatterImaging cfg rep tag vis
+      -- calculate $ fst $ majorLoop (cfgMajorLoops cfg) vis
 
     -- Sum up local images (TODO: accumulate?)
-    bindRule imageSum imageSumKernel
+    bindRule imageSum (imageSumKernel rep)
     calculate result
 
   -- Sum and write out the result
-  bindRule imageSum imageSumKernel
-  calculate result
   rebind result $ imageWriter (cfgOutput cfg)
 
 -- Strategy implements imaging loop for a number of data sets
@@ -307,22 +310,22 @@ scatterSimple  cfg = do
 
   -- Read in visibilities. The domain handle passed in tells the
   -- kernel which of the datasets to load.
-  bind vis $ oskarReader $ cfgInput cfg
+  dom <- makeRangeDomain 0 1
+  bind vis $ oskarReader dom $ cfgInput cfg
 
   -- Implement this data flow
-  dom <- makeRangeDomain 0 1
   scatterImaging cfg dom tag vis
 
   -- Sum and write out the result
-  bindRule imageSum imageSumKernel
+  bindRule imageSum (imageSumKernel dom)
   let result = majorLoopSum (cfgMajorLoops cfg) vis
   rebind result (imageWriter (cfgOutput cfg))
 
 testStrat :: Strategy ()
 testStrat = scatterImagingMain $ Config
-    [("input.vis", 300),
-     ("input2.vis", 300),
-     ("input3.vis", 300)]
+    [("input.vis", 3),
+     ("input2.vis", 3),
+     ("input3.vis", 3)]
     "output.img"
     1
     GridPar

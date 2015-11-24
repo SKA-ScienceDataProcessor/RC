@@ -1,9 +1,10 @@
+{-# LANGUAGE GADTs #-}
 
 module Kernel.IO where
 
 import Control.Monad
-import Foreign.Storable
 import Foreign.C.Types ( CDouble(..) )
+import Foreign.Storable
 import Data.Complex
 
 import OskarReader
@@ -57,20 +58,17 @@ oskarReader dh file freq pol = rangeKernel0 "oskar reader" (rawVisRepr dh) $
   finalizeTaskData taskData
   return visVector
 
-sorter :: Domain Range -> Flow Vis -> Kernel Vis
-sorter dh = kernel "sorter" (halrWrite (rawVisRepr dh) :. Z) (visRepr dh) $ \[(v,_)] _ ->
-  return v
-
-gcfKernel :: GCFPar -> Domain Range -> Flow Tag -> Flow Vis -> Kernel GCFs
-gcfKernel gcfp dh = kernel "gcfs" (planRepr :. visRepr dh :. Z) (gcfsRepr gcfp) $ \_ doms -> do
+gcfKernel :: GCFPar -> Domain Bins -> Kernel GCFs
+gcfKernel gcfp wdom =
+ mergingKernel "gcfs" Z (gcfsRepr wdom gcfp) $ \_ doms -> do
 
   -- Simply read it from the file
-  let size = nOfElements (halrDim (gcfsRepr gcfp) doms)
+  let size = nOfElements (halrDim (gcfsRepr wdom gcfp) doms)
   v <- readCVector (gcfFile gcfp) size :: IO (Vector Double)
   return (castVector v)
 
 imageWriter :: GridPar -> FilePath -> Flow Image -> Kernel ()
 imageWriter gp = halideDump (imageRepr gp)
 
-uvgWriter :: GridPar -> FilePath -> Flow UVGrid -> Kernel ()
-uvgWriter gp = halideDump (uvgRepr gp)
+uvgWriter :: Domain Range -> Domain Range -> FilePath -> Flow UVGrid -> Kernel ()
+uvgWriter ydom xdom = halideDump (uvgRepr ydom xdom)

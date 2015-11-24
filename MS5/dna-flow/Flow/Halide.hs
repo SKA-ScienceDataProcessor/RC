@@ -13,8 +13,9 @@
 
 module Flow.Halide
   ( -- * Data representation
-    HalideRepr, DynHalideRepr, HalideReprClass(..)
-  , halideRepr, dynHalideRepr
+    HalideReprClass(..)
+  , HalideRepr, DynHalideRepr, BinHalideRepr, MarginRepr
+  , halideRepr, dynHalideRepr, binHalideRepr, marginRepr
     -- * Halide extents
   , Dim, Dim0, Dim1, Dim2, Dim3, Dim4
   , dim0, dim1, (:.)(..), Z(..), nOfElements
@@ -22,18 +23,18 @@ module Flow.Halide
   , halideKernel0, halideKernel1, halideKernel2, halideKernel3
   , halideKernel1Write, halideKernel2Write
   , halideBind, HalideBind
-  , halideDump, halideTextDump2D
+  , halidePrint, halideDump, halideTextDump2D
     -- * reexports (for FFI)
   , CInt(..), HalideKernel(..)
   ) where
 
 import Control.Monad
 
+import qualified Data.Map as Map
 import Data.Typeable
 import Data.Vector.HFixed.Class ( Fn )
 
 import Flow.Internal
-import Flow.Builder
 import Flow.Vector
 import Flow.Kernel
 
@@ -79,36 +80,20 @@ halideRepr :: dim -> HalideRepr dim val abs
 halideRepr = HalideRepr ReadAccess
 
 -- | Halide array where the size in one dimension is given by a domain
-data DynHalideRepr dim val abs = DynHalideRepr ReprAccess dim (Domain Range)
-  deriving Typeable
-instance HalideCtx dim val abs => Show (DynHalideRepr dim val abs) where
-  showsPrec _ (DynHalideRepr _ dim dom)
-    = shows (typeOf (undefined :: abs)) . showString " as halide vector " .
-      shows (typeOf (undefined :: val)) . ('[':) . shows dom . (',':) . tail . shows dim
-instance (HalideCtx dim val abs, MarshalArray (Dim :. dim))
-         => DataRepr (DynHalideRepr dim val abs) where
-  type ReprType (DynHalideRepr dim val abs) = abs
-  reprNop _ = False
-  reprAccess (DynHalideRepr acc _ _) = acc
-  reprDomain (DynHalideRepr _ _ d) = [dhId d]
-  reprCompatible (DynHalideRepr _ ex0 d0) (DynHalideRepr _ ex1 d1)
-    = ex0 == ex1 && d0 `dhIsParent` d1
-  reprMerge _ dvs [RangeRegion (Range low high)] = do
-    out <- allocCVector (high - low) :: IO (Vector val)
-    -- Populate vector. The caller should have made sure that the
-    -- ranges actually cover the full vector.
-    forM_ dvs $ \([RangeRegion (Range l h)], v) -> do
-      forM_ [l..h-1] $ \i -> do
-        pokeVector out (i-low) =<< peekVector (castVector v) (i-l)
-    return $ Just $ castVector out
-  reprMerge r _   doms = error $
-    "reprMerge: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
-  reprSize r ds = Just $ nOfElements (halrDim r ds) * sizeOf (undefined :: val)
+type DynHalideRepr dim val abs = RangeRepr (HalideRepr dim val abs)
+
+-- | Halide array where the size in one dimension is given by a bin domain
+type BinHalideRepr dim val abs = BinRepr (HalideRepr dim val abs)
 
 -- | Constructor function for "DynHalideRepr". Returns a data
 -- representation with "ReadAccess".
 dynHalideRepr :: dim -> Domain Range -> DynHalideRepr dim val abs
-dynHalideRepr = DynHalideRepr ReadAccess
+dynHalideRepr dim dom = RangeRepr dom (HalideRepr ReadAccess dim)
+
+-- | Constructor function for "BinHalideRepr". Returns a data
+-- representation with "ReadAccess".
+binHalideRepr :: dim -> Domain Bins -> BinHalideRepr dim val abs
+binHalideRepr dim dom = BinRepr dom (HalideRepr ReadAccess dim)
 
 type family KernelParams (reprs :: [*]) :: [*]
 type instance KernelParams '[] = '[]
@@ -159,29 +144,70 @@ instance HalideCtx dim val abs => HalideReprClass (HalideRepr dim val abs) where
   halrCall      r _ fun ds = call fun (halrDim r ds)
   halrCallWrite _ _ fun    = callWrite fun
 
+instance (Typeable dom, Typeable rep, HalideReprClass rep) =>
+         HalideReprClass (RegionRepr dom rep) where
+  type HalrDim (RegionRepr dom rep) = HalrDim rep
+  type HalrVal (RegionRepr dom rep) = HalrVal rep
+  type HalideFun xs (RegionRepr dom rep) = HalideFun xs rep
+  halrDim (RegionRepr _ rep) (_:ds) = halrDim rep ds
+  halrWrite (RegionRepr dh rep) = RegionRepr dh (halrWrite rep)
+  halrCall rep _ _ []
+    = error $ "Not enough domains passed to halrCall for " ++ show rep ++ "!"
+  halrCall      (RegionRepr _ rep) xs fun (_:doms) = halrCall rep xs fun doms
+  halrCallWrite (RegionRepr _ rep) xs fun          = halrCallWrite rep xs fun
+
 -- Here is where we need undecideable instance, regrettably
-instance (HalideCtx dim val abs, MarshalArray (Dim :. dim)) => HalideReprClass (DynHalideRepr dim val abs) where
-  type HalrDim (DynHalideRepr dim val abs) = Dim :. dim
-  type HalrVal (DynHalideRepr dim val abs) = val
-  type HalideFun xs (DynHalideRepr dim val abs)
-    = HalideKernel (KernelParams xs) (Array (Dim :. dim) val)
-  halrDim (DynHalideRepr _ dim _) [RangeRegion (Range low high)]
-    = (fromIntegral low, fromIntegral $ high - low) :. dim
+instance (HalideReprClass rep, MarshalArray (Dim :. HalrDim rep)) =>
+         HalideReprClass (RangeRepr rep) where
+  type HalrDim (RangeRepr rep) = Dim :. HalrDim rep
+  type HalrVal (RangeRepr rep) = HalrVal rep
+  type HalideFun xs (RangeRepr rep)
+    = HalideKernel (KernelParams xs) (Array (Dim :. HalrDim rep) (HalrVal rep))
+  halrDim (RangeRepr _ rep) ((RangeRegion _ (Range low high)):rbox)
+    = (fromIntegral low, fromIntegral $ high - low) :. halrDim rep rbox
+  halrDim r doms
+     = error $ "halrDim: number/types of domains for " ++ show r ++ ": " ++ show doms
+  halrWrite (RangeRepr dh rep) = RangeRepr dh (halrWrite rep)
+  halrCall      r _ fun doms = call fun (halrDim r doms)
+  halrCallWrite _ _ fun      = callWrite fun
+
+instance (HalideReprClass rep, MarshalArray (Dim :. HalrDim rep)) =>
+         HalideReprClass (BinRepr rep) where
+  type HalrDim (BinRepr rep) = Dim :. HalrDim rep
+  type HalrVal (BinRepr rep) = HalrVal rep
+  type HalideFun xs (BinRepr rep)
+    = HalideKernel (KernelParams xs) (Array (Dim :. HalrDim rep) (HalrVal rep))
+  halrDim (BinRepr _ rep) ((BinRegion _ (Bins binMap)):ds)
+    = (0, fromIntegral $ sum $ map (sum . Map.elems) $ Map.elems binMap) :. halrDim rep ds
+    -- Note that in contrast to RangeRepr, we cannot communicate
+    -- the array transformation to Halide here (after all, it is
+    -- decidedly non-linear). Instead we base every bin at index 0 -
+    -- a minor inconsistency?
   halrDim r doms
     = error $ "halrDim: Unexpected number/types of domains for " ++ show r ++ ": " ++ show doms
-  halrWrite (DynHalideRepr _ dim dh)
-    = DynHalideRepr WriteAccess dim dh
-  halrCall r _ fun doms
-    = call fun (halrDim r doms)
-  halrCallWrite _ _ fun
-    = callWrite fun
+  halrWrite (BinRepr dh rep) = BinRepr dh (halrWrite rep)
+  halrCall      r _ fun doms = call fun (halrDim r doms)
+  halrCallWrite _ _ fun      = callWrite fun
+
+instance (HalideReprClass rep, MarshalArray (Dim :. HalrDim rep)) =>
+         HalideReprClass (MarginRepr rep) where
+  type HalrDim (MarginRepr rep) = HalrDim (RangeRepr rep)
+  type HalrVal (MarginRepr rep) = HalrVal (RangeRepr rep)
+  type HalideFun xs (MarginRepr rep)
+    = HalideKernel (KernelParams xs) (Array (HalrDim (RangeRepr rep)) (HalrVal rep))
+  halrDim (MarginRepr ov rep) rbox
+    = let (off, ext) :. dims = halrDim rep rbox
+       in (off-fromIntegral ov, ext+2*fromIntegral ov) :. dims
+  halrWrite (MarginRepr dh rep) = MarginRepr dh (halrWrite rep)
+  halrCall      r _ fun doms = call fun (halrDim r doms)
+  halrCallWrite _ _ fun      = callWrite fun
 
 halideKernel0 :: HalideReprClass rr
               => String
               -> rr
               -> HalideFun '[] rr
               -> Kernel (ReprType rr)
-halideKernel0 name retR code = kernel name Z retR $ \_ ds -> do
+halideKernel0 name retR code = mergingKernel name Z retR $ \_ ds -> do
   vecR <- halrCall retR (Proxy :: Proxy '[]) code ds
   return $ castVector $ arrayBuffer vecR
 
@@ -190,7 +216,7 @@ halideKernel1 :: forall rr r0. (HalideReprClass rr, HalideReprClass r0)
               -> r0 -> rr
               -> HalideFun '[r0] rr
               -> Flow (ReprType r0) -> Kernel (ReprType rr)
-halideKernel1 name rep0 repR code = kernel name (rep0 :. Z) repR code'
+halideKernel1 name rep0 repR code = mergingKernel name (rep0 :. Z) repR code'
   where code' [(v0,d0)] ds = do
          vecR <- halrCall repR (Proxy :: Proxy '[r0]) code ds
                           (Array (halrDim rep0 d0) (castVector v0))
@@ -202,7 +228,7 @@ halideKernel2 :: forall rr r0 r1. (HalideReprClass rr, HalideReprClass r0, Halid
               -> r0 -> r1 -> rr
               -> HalideFun '[r0, r1] rr
               -> Flow (ReprType r0) -> Flow (ReprType r1) -> Kernel (ReprType rr)
-halideKernel2 name rep0 rep1 repR code = kernel name (rep0 :. rep1 :. Z) repR code'
+halideKernel2 name rep0 rep1 repR code = mergingKernel name (rep0 :. rep1 :. Z) repR code'
   where code' [(v0,d0), (v1,d1)] ds = do
          vecR <- halrCall repR (Proxy :: Proxy '[r0, r1]) code ds
                           (Array (halrDim rep0 d0) (castVector v0))
@@ -216,7 +242,7 @@ halideKernel3 :: forall rr r0 r1 r2. (HalideReprClass rr, HalideReprClass r0,
               -> r0 -> r1 -> r2 -> rr
               -> HalideFun '[r0, r1, r2] rr
               -> Flow (ReprType r0) -> Flow (ReprType r1) -> Flow (ReprType r2) -> Kernel (ReprType rr)
-halideKernel3 name rep0 rep1 rep2 repR code = kernel name (rep0 :. rep1 :. rep2 :. Z) repR code'
+halideKernel3 name rep0 rep1 rep2 repR code = mergingKernel name (rep0 :. rep1 :. rep2 :. Z) repR code'
   where code' [(v0,d0), (v1,d1), (v2, d2)] ds = do
          vecR <- halrCall repR (Proxy :: Proxy '[r0, r1, r2]) code ds
                           (Array (halrDim rep0 d0) (castVector v0))
@@ -231,16 +257,13 @@ halideKernel1Write
   -> r0 -> rr
   -> HalideFun '[r0] rr
   -> Flow (ReprType r0) -> Flow (ReprType rr) -> Kernel (ReprType rr)
-halideKernel1Write name rep0 repR code = kernel name (rep0 :. (halrWrite repR) :. Z) repR code'
-  where code' [(v0,d0), (v1,d1)] ds = do
-         -- Should hold by construction.
-         when (ds /= d1) $
-           fail $ "halideKernel1Write: Domain mismatch between parameter and return value!"
+halideKernel1Write name rep0 repR code = foldingKernel name (rep0 :. (halrWrite repR) :. Z) code'
+  where code' [(v0,d0)] v1 ds = do
          vecR <- halrCallWrite repR (Proxy :: Proxy '[r0]) code
                                (Array (halrDim rep0 d0) (castVector v0))
-                               (Array (halrDim repR d1) (castVector v1))
+                               (Array (halrDim repR ds) (castVector v1))
          return $ castVector $ arrayBuffer vecR
-        code' _ _ = fail "halideKernel1Write: Received wrong number of input buffers!"
+        code' _ _ _ = fail "halideKernel1Write: Received wrong number of input buffers!"
 
 halideKernel2Write
   :: forall rr r0 r1. (HalideReprClass rr, HalideReprClass r0, HalideReprClass r1)
@@ -248,23 +271,31 @@ halideKernel2Write
   -> r0 -> r1 -> rr
   -> HalideFun '[r0, r1] rr
   -> Flow (ReprType r0) -> Flow (ReprType r1) -> Flow (ReprType rr) -> Kernel (ReprType rr)
-halideKernel2Write name rep0 rep1 repR code = kernel name (rep0 :. rep1 :. (halrWrite repR) :. Z) repR code'
-  where code' [(v0,d0),(v1,d1),(v2,d2)] ds = do
-         -- Should hold by construction.
-         when (ds /= d2) $
-           fail $ "halideKernel2Write: Domain mismatch between parameter and return value!"
+halideKernel2Write name rep0 rep1 repR code = foldingKernel name (rep0 :. rep1 :. (halrWrite repR) :. Z) code'
+  where code' [(v0,d0),(v1,d1)] v2 ds = do
          vecR <- halrCallWrite repR (Proxy :: Proxy '[r0, r1]) code
                                (Array (halrDim rep0 d0) (castVector v0))
                                (Array (halrDim rep1 d1) (castVector v1))
-                               (Array (halrDim repR d2) (castVector v2))
+                               (Array (halrDim repR ds) (castVector v2))
          return $ castVector $ arrayBuffer vecR
-        code' _ _ = fail "halideKernel2Write: Received wrong number of input buffers!"
+        code' _ _ _ = fail "halideKernel2Write: Received wrong number of input buffers!"
+
+-- | Simple kernel that shows the contents of a buffer as text
+halidePrint :: forall r. (HalideReprClass r, Show (HalrVal r))
+            => r -> String -> Flow (ReprType r) -> Kernel ()
+halidePrint rep caption = mergingKernel (show (typeOf (undefined :: ReprType r)) ++ "-printer")
+                                        (rep :. Z) NoRepr $ \[(v,rbox)] _ -> do
+  let v' = castVector v :: Vector (HalrVal r)
+      size = nOfElements $ halrDim rep rbox
+  elems <- unmakeVector v' 0 size
+  putStrLn $ caption ++ " (" ++ show rep ++ ", region box " ++ show rbox ++ "): " ++ show elems
+  return nullVector
 
 -- | Simple kernel that dumps the contents of a channel with Halide
 -- data representation to a file.
 halideDump :: forall r. HalideReprClass r => r -> FilePath -> Flow (ReprType r) -> Kernel ()
-halideDump rep file = kernel (show (typeOf (undefined :: ReprType r)) ++ "-writer")
-                             (rep :. Z) NoRepr $ \[(v,doms)] _ -> do
+halideDump rep file = mergingKernel (show (typeOf (undefined :: ReprType r)) ++ "-writer")
+                                    (rep :. Z) NoRepr $ \[(v,doms)] _ -> do
   let v' = castVector v :: Vector (HalrVal r)
       size = nOfElements $ halrDim rep doms
   dumpVector' v' 0 size file
@@ -274,7 +305,8 @@ halideDump rep file = kernel (show (typeOf (undefined :: ReprType r)) ++ "-write
 -- data representation to a text file
 halideTextDump2D :: forall r. (HalideReprClass r, HalrDim r ~ Dim2, Show (HalrVal r))
                  => r -> FilePath -> Flow (ReprType r) -> Kernel ()
-halideTextDump2D rep file = kernel "" (rep :. Z) NoRepr $ \[(v,doms)] _ ->
+halideTextDump2D rep file = mergingKernel (show (typeOf (undefined :: ReprType r)) ++ "-text-writer")
+                                          (rep :. Z) NoRepr $ \[(v,doms)] _ ->
   withFile file WriteMode $ \h -> do
     let v' = castVector v :: Vector (HalrVal r)
         ((_,hgt) :. (_, wdt) :. Z) = halrDim rep doms

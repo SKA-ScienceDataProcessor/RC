@@ -7,6 +7,7 @@ import Control.Monad
 
 import Flow
 
+import Kernel.Binning
 import Kernel.Data
 import Kernel.FFT
 import Kernel.Gridder
@@ -45,19 +46,50 @@ gridderStrat cfg = do
       gcfpar = cfgGCF cfg
   tag <- bindNew $ fftCreatePlans gpar
 
-  -- Bind kernel rules
-  bindRule gcf (gcfKernel gcfpar dom tag)
-  bindRule createGrid (gridInit gpar)
-  bindRule grid (gridKernel gpar gcfpar dom)
-  bindRule idft (ifftKern gpar tag)
-
-  -- Create data flow for visibilities, read in and sort
+  -- Create data flow for visibilities, read in
   let vis = flow "vis" tag
   bind vis $ oskarReader dom (cfgInput cfg) 0 0
-  rebind vis $ sorter dom
 
-  -- Compute the result
-  let result = gridder vis (gcf vis)
+  -- Data flows we want to calculate
+  let gcfs = gcf vis
+      gridded = grid vis gcfs createGrid
+      result = gridder vis gcfs
+
+  -- Create ranged domains for grid coordinates
+  udoms <- makeRangeDomain 0 (gridWidth gpar)
+  vdoms <- makeRangeDomain 0 (gridHeight gpar)
+
+  -- Split coordinate domain
+  let tiles = 16 -- per dimension
+  vdom <- split vdoms tiles
+  udom <- split udoms tiles
+
+  -- Create w-binned domain, split
+  let low_w = -25000
+      high_w = 25000
+      bins = 16
+  wdoms <- makeBinDomain (binSizer gpar dom udom vdom low_w high_w bins vis) low_w high_w
+  wdom <- split wdoms bins
+
+  -- Load GCFs
+  distribute wdom ParSchedule $
+    bind gcfs (gcfKernel gcfpar wdom)
+
+  -- Bin visibilities (could distribute, but there's no benefit)
+  rebind vis (binner gpar dom udom vdom wdom)
+
+  -- Bind kernel rules
+  bindRule createGrid (gridInit gcfpar udom vdom)
+  bindRule grid (gridKernel gpar gcfpar udoms vdoms wdom udom vdom)
+
+  -- Run gridding distributed
+  distribute vdom ParSchedule $ distribute udom ParSchedule $ do
+    calculate gridded
+
+  -- Compute the result by detiling & iFFT on result tiles
+  bind createGrid (gridInitDetile udoms vdoms)
+  bind gridded (gridDetiling gcfpar (udom, vdom) (udoms, vdoms) gridded createGrid)
+  bindRule idft (ifftKern gpar udoms vdoms tag)
   calculate result
 
   -- Write out
@@ -77,7 +109,7 @@ main = do
                       }
       config = Config
         { cfgInput  = "test_p00_s00_f00.vis"
-        , cfgPoints = 32131 * 200 -- TODO: 32131 * 200
+        , cfgPoints = 32131 * 200
         , cfgOutput = "out.img"
         , cfgGrid   = gpar
         , cfgGCF    = gcfpar
