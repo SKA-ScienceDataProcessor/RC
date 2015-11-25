@@ -167,10 +167,6 @@ data Domain a = Domain
   , dhFilterBox :: RegionBox -> Region -> Maybe Region
   }
 
-instance Binary (Domain a) where
-  put _ = return ()
-  get = return $ error "No sane Binary instance for Domain"
-
 instance forall a. Typeable a => Show (Domain a) where
   showsPrec _ dh = shows (typeOf (undefined :: a)) . showString " domain " . shows (dhId dh)
 instance Eq (Domain a) where
@@ -199,7 +195,6 @@ instance Eq DomainI where
 data Region = RangeRegion (Domain Range) Range
             | BinRegion (Domain Bins) Bins
   deriving (Typeable, Generic)
-instance Binary Region
 
 instance Show Region where
   showsPrec _ (RangeRegion dom r) = showString "Region<" . shows (dhId dom) . ('>':) . shows r
@@ -230,7 +225,6 @@ instance Show Range where
 data Bins = Bins (Map.Map (Double, Double) (Map.Map RegionBox Int))
   deriving (Typeable, Eq, Ord, Generic)
 
-instance Binary Bins
 
 instance Show Bins where
   showsPrec _ (Bins bins) = showString "Bins" . flip (foldr f) (Map.toList bins)

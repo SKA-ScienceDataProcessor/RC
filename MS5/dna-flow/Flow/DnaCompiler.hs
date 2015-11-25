@@ -481,24 +481,28 @@ interpretAST
   :: HM.HashMap Int DnaActor -> StepE V -> (RemoteTable -> RemoteTable, DNA Box)
 interpretAST actorMap mainActor = case closed mainActor of
   Nothing -> error "interpretAST: expression is not closed!"
-  Just e  -> (rtable,go e)
+  Just e  -> (rtable, go e)
   where
     go = \case
       V a    -> return a
       Pair{} -> error "Naked pair at the top level"
       List{} -> error "Naked list at the top level"
-      -- Domains
-      -- SDom _ (NewRegion dom) ->
-      --   DNA.kernel "dom" [] $ liftIO $ VReg . pure <$> dom
+      -- Domains       
+      SDom _ me (NewRegion dom) -> do
+        -- FIXME: SDom is not correctly handled
+        let m = case me of Nothing -> Map.empty
+                           Just e  -> error "FIXME: region lookup is not implemented"
+        DNA.kernel "dom" [] $ liftIO $ VReg . pure <$> dom
       SSplit (RegSplit split) reg ->
         case toDom reg of
           [r] -> do DNA.kernel "split" [] $ liftIO $ VReg <$> split r
           _   -> error "Non unary domain!"
       -- Kernel
-      -- SKern kb deps dom ->
-      --   let xs  = map toParam deps
-      --       out = toDom =<< dom
-      --   in DNA.kernel "kern" [] $ liftIO $ VVec out <$> kernCode kb xs out
+      SKern kb deps dom -> do
+        let xs  = map (Map.fromList . (:[]) . toParam) deps
+            out = toDom =<< dom
+        [v] <- DNA.kernel "kern" [] $ liftIO $ kernCode kb xs [out] -- FIXME: wrong
+        return $ VVec out v
       -- Monadic bind
       SBind expr lam ->
         let dnaE = go expr
@@ -516,25 +520,24 @@ interpretAST actorMap mainActor = case closed mainActor of
         return $ VChan grp
       SActorGrp _ _ -> error "Only actor with one parameter are supported"
       -- Receiving of parameters
-      -- SActorRecvK (ReprI repr) vCh vReg -> do
-      --   let ch  = toGrp vCh
-      --       reg = toDom vReg
-      --   xs <- gather ch (flip (:)) []
-      --   let pars = flip map xs $ \case
-      --                VVec v p -> (v,p)
-      --                _        -> error "Only vector expected!"
-      --   DNA.kernel "merge" [] $ liftIO $ do
-      --     Just vec <- reprMerge repr pars reg
-      --     return $ VVec reg vec
-      --   undefined
-      -- SActorRecvD{} -> error "Receiving of domains is not implemented"
+      SActorRecvK (ReprI repr) vCh vReg -> do
+        let ch  = toGrp vCh
+            reg = toDom vReg
+        xs <- gather ch (flip (:)) []
+        let pars = flip map xs $ \case
+                     VVec v p -> (v,p)
+                     _        -> error "Only vector expected!"
+        DNA.kernel "merge" [] $ liftIO $ do
+          Just vec <- reprMerge repr (Map.fromList pars) reg
+          return $ VVec reg vec
+      SActorRecvD{} -> error "Receiving of domains is not implemented"
     --
     toDom = \case
       V (VReg d) -> d
       V  VVec{}  -> error "Vector where domain expected"
       _          -> error "Only variables expected"
     toParam = \case
-      Pair (V (VVec _ v)) (List p) -> (v, toDom =<< p)
+      Pair (V (VVec _ v)) (List p) -> (toDom =<< p, v)
       _                            -> error "Ill formed parameters"
     toGrp = \case
       V (VChan ch) -> ch
