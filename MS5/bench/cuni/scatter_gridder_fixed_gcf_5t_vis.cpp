@@ -30,6 +30,25 @@ typedef __m128d __mdType;
 
 #include "scatter_gridder_fixed_gcf_5t_vis.h"
 
+#ifndef _WIN32
+#define TTF "%ld"
+static timespec ts;
+void clock_start(){
+  clock_gettime(CLOCK_REALTIME, &ts);
+}
+time_t clock_diff() {
+  timespec ts2;
+  clock_gettime(CLOCK_REALTIME, &ts2);
+  return (time_t)(ts2.tv_sec - ts.tv_sec) * 1000000000 +
+         (time_t)(ts2.tv_nsec - ts.tv_nsec);
+}
+#else
+#define TTF "%lld"
+static time_t t;
+void clock_start(){t = clock();}
+time_t clock_diff() {return clock() - t;}
+#endif
+
 inline
 void addGrids(
     complexd dst[]
@@ -195,7 +214,6 @@ void gridKernel_scatter_full(
   ) {
   int siz = grid_size*grid_size;
   int nthreads;
-  clock_t ti;
 #ifdef _OPENMP
 #pragma omp parallel
 #pragma omp single
@@ -203,21 +221,21 @@ void gridKernel_scatter_full(
   complexd * tmpgrids = alignedMallocArray<complexd>(siz * nthreads, 32);
   memset(grid, 0, sizeof(complexd) * siz);
   // Moved here from the kernel
-  ti = clock();
+  clock_start();
 #pragma omp parallel
   memset(tmpgrids + omp_get_thread_num() * siz, 0, sizeof(complexd) * siz);
-  printf("gcf size %d: %ld+", gcf_size, clock() - ti);
-  ti = clock();
+  printf("gcf size %d: " TTF "+", gcf_size, clock_diff());
+  clock_start();
   kern(scale, tmpgrids, gcf, data, grid_size);
-  printf("%ld+", clock() - ti);
-  ti = clock();
+  printf(TTF "+", clock_diff());
+  clock_start();
   addGrids(grid, tmpgrids, nthreads, grid_size);
-  printf("%ld\n", clock() - ti);
+  printf(TTF "\n", clock_diff());
   _aligned_free(tmpgrids);
 #else
-  ti = clock();
+  clock_start();
   kern(scale, grid, gcf, data, grid_size);
-  printf("%ld\n", clock() - ti);
+  printf(TTF "\n", clock_diff());
 #endif
 }
 
