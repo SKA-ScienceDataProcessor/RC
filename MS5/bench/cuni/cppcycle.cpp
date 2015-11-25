@@ -118,7 +118,7 @@ int main(/* int argc, char * argv[] */)
   bench<false, 16, gridKernel_scatter_full16>(vis, gcf16, uvg);
   bench<true, 32, gridKernel_scatter_full_chunked32>(vis, gcf32, uvg);
   bench<false, 32, gridKernel_scatter_full32>(vis, gcf32, uvg);
-	
+
 #if 0
   normalizeCPU(
       reinterpret_cast<complexd*>(uvg.data())
