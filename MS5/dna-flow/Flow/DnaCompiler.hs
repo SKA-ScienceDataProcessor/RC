@@ -46,6 +46,7 @@ import qualified Data.HashMap.Strict as HM
 import           Data.HashMap.Strict ((!))
 import qualified Data.HashSet        as HS
 import qualified Data.Binary as Bin
+import qualified Data.Map    as Map
 import Data.Typeable
 import Data.Hashable
 import Data.List
@@ -138,18 +139,16 @@ makeActorTree steps
     go (x:xs) = do
       x' <- case x of
         --
-        {-
-        (SplitStep dh [DistributeStep dh' _sched ss]) -> do
+        DistributeStep dh' _sched ss -> do
           n <- get
           put $! n+1
-          let Just pdom = dhParent dh
+          let Just pdom = dhParent dh'
           child <- lift
                  $ run
                  $ fmap ((,) (DistrActor (dhId pdom) (dhId dh')))
                  $ go ss
           tell [(n , child)]
-          return (Call dh [] n)
-        -}
+          return (Call dh' [] n)
         --
         _ -> return (Step x)
       xs' <- go xs
@@ -248,28 +247,22 @@ findReprForK' i = \case
 -- Collect variables referenced by step
 collectReferencedVars' :: Step -> HS.HashSet VV
 collectReferencedVars' = \case
-  DomainStep _dh   -> mempty
+  DomainStep (Just kid) _ -> HS.singleton (KVar kid [])
+  DomainStep _ _          -> mempty
   KernelStep kb    -> HS.fromList $ concat
     [ KVar kid (reprDomain repr)
     : (DVar <$> reprDomain repr)
     | KernelDep kid (ReprI repr) <- kernDeps kb
     ]
-  -- singleton $ KernVar $ kernId kb
-  -- SplitStep  dh ss ->
-  --   let Just parD = dhParent dh
-  --   in    (HS.singleton $ DVar $ dhId parD)
-  --      <> foldMap collectReferencedVars' ss
   DistributeStep dh _ ss -> (HS.singleton $ DVar $ dhId dh)
                    <> foldMap collectReferencedVars' ss
 
 -- Collect variables produced by step
 collectProducedVars' :: Step -> HS.HashSet VV
 collectProducedVars' = \case
-  DomainStep dh -> HS.singleton $ DVar $ dhId dh
+  DomainStep _ dh -> HS.singleton $ DVar $ dhId dh
   KernelStep kb -> case kernRepr kb of
     ReprI repr -> HS.singleton $ KVar (kernId kb) (reprDomain repr)
-  -- SplitStep  dh ss       -> (HS.singleton $ DVar $ dhId dh)
-  --                        <> foldMap collectProducedVars' ss
   DistributeStep _ _ ss  -> foldMap collectProducedVars' ss
 
 
@@ -289,7 +282,7 @@ data StepE a
     -- ^ List of variables
 
 
-  | SDom Int NewRegion
+  | SDom Int (Maybe (StepE a)) NewRegion
     -- ^ Create domain
     --
     -- * Domain ID
@@ -341,7 +334,7 @@ instance Monad StepE where
   V a              >>= f = f a
   Pair a b         >>= f = Pair (a >>= f) (b >>= f)
   List xs          >>= f = List (map (>>= f) xs)
-  SDom  i d        >>= _ = SDom i d
+  SDom  i m d      >>= f = SDom i ((>>= f) <$> m) d
   SSplit s e       >>= f = SSplit s (e >>= f)
   SKern k xs ys    >>= f = SKern k (map (>>= f) xs) (map (>>= f) ys)
   SSeq  a b        >>= f = SSeq  (a >>= f) (b >>= f)
@@ -420,9 +413,11 @@ singleStep = \case
   ----------------------------------------
   -- Single step
   Step s -> case s of
-    DomainStep dh    -> StepVal
-                        (SDom (dhId dh) (NewRegion $ dhCreate dh))
-                        (DomVar  (dhId dh))
+    DomainStep mkid dh ->
+      let m = V . KernVar <$> mkid
+      in StepVal
+           (SDom (dhId dh) m (NewRegion $ dhCreate dh Map.empty)) -- FIXME 
+           (DomVar  (dhId dh))
     KernelStep kb    -> StepVal
       (SKern kb
          -- Parameters
@@ -493,17 +488,17 @@ interpretAST actorMap mainActor = case closed mainActor of
       Pair{} -> error "Naked pair at the top level"
       List{} -> error "Naked list at the top level"
       -- Domains
-      SDom _ (NewRegion dom) ->
-        DNA.kernel "dom" [] $ liftIO $ VReg . pure <$> dom
+      -- SDom _ (NewRegion dom) ->
+      --   DNA.kernel "dom" [] $ liftIO $ VReg . pure <$> dom
       SSplit (RegSplit split) reg ->
         case toDom reg of
           [r] -> do DNA.kernel "split" [] $ liftIO $ VReg <$> split r
           _   -> error "Non unary domain!"
       -- Kernel
-      SKern kb deps dom ->
-        let xs  = map toParam deps
-            out = toDom =<< dom
-        in DNA.kernel "kern" [] $ liftIO $ VVec out <$> kernCode kb xs out
+      -- SKern kb deps dom ->
+      --   let xs  = map toParam deps
+      --       out = toDom =<< dom
+      --   in DNA.kernel "kern" [] $ liftIO $ VVec out <$> kernCode kb xs out
       -- Monadic bind
       SBind expr lam ->
         let dnaE = go expr
@@ -521,18 +516,18 @@ interpretAST actorMap mainActor = case closed mainActor of
         return $ VChan grp
       SActorGrp _ _ -> error "Only actor with one parameter are supported"
       -- Receiving of parameters
-      SActorRecvK (ReprI repr) vCh vReg -> do
-        let ch  = toGrp vCh
-            reg = toDom vReg
-        xs <- gather ch (flip (:)) []
-        let pars = flip map xs $ \case
-                     VVec v p -> (v,p)
-                     _        -> error "Only vector expected!"
-        DNA.kernel "merge" [] $ liftIO $ do
-          Just vec <- reprMerge repr pars reg
-          return $ VVec reg vec
-        undefined
-      SActorRecvD{} -> error "Receiving of domains is not implemented"
+      -- SActorRecvK (ReprI repr) vCh vReg -> do
+      --   let ch  = toGrp vCh
+      --       reg = toDom vReg
+      --   xs <- gather ch (flip (:)) []
+      --   let pars = flip map xs $ \case
+      --                VVec v p -> (v,p)
+      --                _        -> error "Only vector expected!"
+      --   DNA.kernel "merge" [] $ liftIO $ do
+      --     Just vec <- reprMerge repr pars reg
+      --     return $ VVec reg vec
+      --   undefined
+      -- SActorRecvD{} -> error "Receiving of domains is not implemented"
     --
     toDom = \case
       V (VReg d) -> d
@@ -596,7 +591,10 @@ ppr = \case
                     sg <- ppr g
                     return $ parens $ se <> comma <> sg
   List es     -> pprList es
-  SDom i r    -> return $ text (show r) <> text " " <> int i
+  SDom i m r  -> do ss <- case m of
+                      Nothing -> return $ text "-"
+                      Just v  -> ppr v
+                    return $ text (show r) <> text " " <> int i
   SKern kb vars dom -> do
     vs <- pprList vars
     ds <- pprList dom
