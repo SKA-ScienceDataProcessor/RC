@@ -41,9 +41,9 @@ SGridder::SGridder(SGridderConfig cfg) {
   // Get grid limits. This limits the uv pixel coordinates we accept
   // for the top-left corner of the GCF.
   Expr min_u = uvg.output_buffer().min(1);
-  Expr max_u = uvg.output_buffer().min(1) + uvg.output_buffer().extent(1) - GCF_SIZE - 1;
+  Expr max_u = uvg.output_buffer().min(1) + uvg.output_buffer().extent(1) - cfg.gcfSize - 1;
   Expr min_v = uvg.output_buffer().min(2);
-  Expr max_v = uvg.output_buffer().min(2) + uvg.output_buffer().extent(2) - GCF_SIZE - 1;
+  Expr max_v = uvg.output_buffer().min(2) + uvg.output_buffer().extent(2) - cfg.gcfSize - 1;
 
   // ** Helpers
 
@@ -52,7 +52,7 @@ SGridder::SGridder(SGridderConfig cfg) {
   F(uv), F(overc);
   uvs(uvdim, t) = vis(uvdim, t) * scale;
   overc(uvdim, t) = clamp(cast<int>(round(OVER * (uvs(uvdim, t) - floor(uvs(uvdim, t))))), 0, OVER-1);
-  uv(uvdim, t) = cast<int>(round(uvs(uvdim, t)) + grid_size / 2 - GCF_SIZE / 2);
+  uv(uvdim, t) = cast<int>(floor(uvs(uvdim, t)) + grid_size / 2 - cfg.gcfSize / 2);
 
   // Visibilities to ignore due to being out of bounds
   F(inBound);
@@ -73,22 +73,26 @@ SGridder::SGridder(SGridderConfig cfg) {
   typedef std::pair<Expr, Expr> rType;
   rType
       cRange = {0, _CPLX_FIELDS}
-    , gRange = {0, GCF_SIZE}
-    , vRange = {vis.top(), vis.height()}
+    , gRange = {0, cfg.gcfSize}
+    , vRange = {0, cfg.steps}
+    , blRange = {0, vis.height() / cfg.steps}
     ;
 
-  std::vector<rType> rVec(4);
+  std::vector<rType> rVec(5);
   rVec[cfg.cpos] = cRange;
   rVec[cfg.xpos] = gRange;
   rVec[cfg.ypos] = gRange;
   rVec[cfg.vpos] = vRange;
+  rVec[cfg.blpos] = blRange;
 
   RDom red(rVec);
     rcmplx = red[cfg.cpos]
   , rgcfx  = red[cfg.xpos]
   , rgcfy  = red[cfg.ypos]
-  , rvis   = red[cfg.vpos]
+  , rstep  = red[cfg.vpos]
+  , rbl    = red[cfg.blpos]
   ;
+  Expr rvis = vis.top() + cfg.steps * rbl + rstep;
 
   // Get visibility as complex number
   Complex visC(vis(_R, rvis), vis(_I, rvis));
@@ -105,22 +109,23 @@ SGridder::SGridder(SGridderConfig cfg) {
   if (cfg.dim & (1 << _VIS1)) vis.set_stride(1,_VIS_FIELDS);
 
   if (cfg.dim & (1 << _GCF0)) gcf_fused.set_min(0,0).set_stride(0,1).set_extent(0,_CPLX_FIELDS);
-  if (cfg.dim & (1 << _GCF1)) gcf_fused.set_min(1,0).set_stride(1,_CPLX_FIELDS).set_extent(1,GCF_SIZE);
-  if (cfg.dim & (1 << _GCF2)) gcf_fused.set_min(2,0).set_stride(2,_CPLX_FIELDS*GCF_SIZE).set_extent(2,GCF_SIZE);
-  if (cfg.dim & (1 << _GCF3)) gcf_fused.set_min(3,0).set_stride(3,_CPLX_FIELDS*GCF_SIZE*GCF_SIZE).set_extent(3,OVER*OVER);
+  if (cfg.dim & (1 << _GCF1)) gcf_fused.set_min(1,0).set_stride(1,_CPLX_FIELDS).set_extent(1,cfg.gcfSize);
+  if (cfg.dim & (1 << _GCF2)) gcf_fused.set_min(2,0).set_stride(2,_CPLX_FIELDS*cfg.gcfSize).set_extent(2,cfg.gcfSize);
+  if (cfg.dim & (1 << _GCF3)) gcf_fused.set_min(3,0).set_stride(3,_CPLX_FIELDS*cfg.gcfSize*cfg.gcfSize).set_extent(3,OVER*OVER);
 
   if (cfg.dim & (1 << _UVG0)) uvg.output_buffer().set_stride(0,1).set_extent(0,_CPLX_FIELDS);
   if (cfg.dim & (1 << _UVG1)) uvg.output_buffer().set_stride(1,_CPLX_FIELDS);
 
   // Compute UV & oversampling coordinates per visibility
-  overc.compute_at(uvg, rvis).vectorize(uvdim);
-  uv.compute_at(uvg,rvis).vectorize(uvdim);
-  inBound.compute_at(uvg,rvis);
+  overc.compute_at(uvg, rstep).vectorize(uvdim);
+  uv.compute_at(uvg, rstep).vectorize(uvdim);
+  inBound.compute_at(uvg, rstep);
 
   RVar rgcfxc("rgcfxc");
   switch(cfg.upd)
   {
-  case _UPD_NONE: break;
+  case _UPD_NONE:
+      break;
   case _UPD_VECT:
       uvg.update()
           .allow_race_conditions()
@@ -137,7 +142,11 @@ SGridder::SGridder(SGridderConfig cfg) {
           .allow_race_conditions()
           .fuse(rgcfx, rcmplx, rgcfxc)
           .vectorize(rgcfxc, cfg.vector)
-          .unroll(rgcfxc, GCF_SIZE * 2 / cfg.vector);
+          .unroll(rgcfxc, cfg.gcfSize * 2 / cfg.vector);
+      break;
+  case _UPD_UNROLL:
+      uvg.update()
+          .unroll(rcmplx);
       break;
   }
 }

@@ -10,12 +10,6 @@
 #include "cfg.h"
 #include "Halide.h"
 
-#ifdef GCF32
-#define GCF_FILE "gcf32.dat"
-#else
-#define GCF_FILE "gcf16.dat"
-#endif
-
 using namespace std;
 using namespace Halide;
 
@@ -26,8 +20,6 @@ const double t2 = 0.2/2.0;
 const int over = OVER;
 const int pad = 0;
 const int over2 = over*over;
-const int gcfSize = GCF_SIZE;
-const int gcfStorageSize = over * gcfSize * (over * gcfSize + pad);
 const int gridSize = 8192;
 const int gridPad = 0;
 
@@ -114,47 +106,9 @@ int64_t clock_diff(struct timespec *ts) {
            (int64_t)(ts2.tv_nsec - ts->tv_nsec);
 }
 
-int main(/* int argc, char * argv[] */)
+void runGridder(int nthreads, SGridderConfig cfg, const vecd &vis,
+                const vecd &gcf, const vecd &uvg)
 {
-  // Get number of threads from environment
-  int nthreads;
-  if (getenv("OMP_NUM_THREADS")) {
-      sscanf(getenv("OMP_NUM_THREADS"), "%d", &nthreads);
-  } else {
-      nthreads = 4;
-  }
-  printf("Thread count: %d\n", nthreads);
-  int nchunks = nthreads;
-
-  // Data set-up
-  int res;
-  vecd vis(numOfDoubles);
-  printf("Read visibilities!\n"); fflush(stdout);
-  res = readFileToVector(vis, "vis.dat"); __CK;
-  vecd gcf(gcfStorageSize * 2); // complex
-  printf("Read GCF!\n"); fflush(stdout);
-  res = readFileToVector(gcf, GCF_FILE); __CK;
-
-  // Create a uv-grid for every thread
-  vecd uvg(fullSize * 2 * nthreads); // complex, per thread
-
-  // Loop through configurations
-  for (int pos = 0; pos < 2; pos++) {
-  for (int dim = 0; dim < (1 << _DIM_CONFIGS); dim++) {
-  for (int upd = 0; upd <= _UPD_FUSE_UNROLL; upd++) {
-  if (upd == 2) continue;
-  for (int vector = 2; vector <= 16; vector*=2) {
-  if (upd < _UPD_FUSE && vector > 2) break;
-
-  // Create a gridder for the current configuration
-  SGridderConfig cfg;
-  switch(pos) {
-  case 0: cfg.cpos = 0; cfg.xpos = 1; cfg.ypos = 2; cfg.vpos = 3; break;
-  case 1: cfg.cpos = 0; cfg.xpos = 1; cfg.ypos = 3; cfg.vpos = 2; break;
-  }
-  cfg.dim = dim;
-  cfg.upd = (UpdConfig) upd;
-  cfg.vector = vector;
   SGridder gridder(cfg);
 
   // Use this to figure out the argument order for the kernel. The
@@ -167,49 +121,123 @@ int main(/* int argc, char * argv[] */)
   //for( Argument a : gridder.uvg.infer_arguments() ) { printf("%s ", a.name.data()); }
   //puts("");
 
-  printf("pos %d dim %d upd %d vector %d -", pos, dim, upd, vector); fflush(stdout);
-
   // Compile. We measure the time, for sanity-checks
   Target target_plain(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
+  target_plain.set_feature(Target::NoAsserts, true);
   timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
   kernfun_t kernfun = reinterpret_cast<kernfun_t>(gridder.uvg.compile_jit(target_plain));
   printf("\t%ld\t -", clock_diff(&ts)); fflush(stdout);
 
-  for (int i = 0; i < 4; i++) {
+  // Calculate number of chunks
+  int nchunks = numOfVis / cfg.steps / cfg.chunks;
 
+  for (int i = 0; i < 4; i++) {
     clock_gettime(CLOCK_REALTIME, &ts);
 
 #pragma omp parallel for num_threads(nthreads)
-    for (int chunk = 0; chunk < nchunks; chunk++){
+    for (int j = 0; j < nthreads; j++) {
+        memset(tohost(uvg.data() + j * fullSize * 2), 0, fullSize * 2 * sizeof(double));
+    }
+
+#pragma omp parallel for schedule(dynamic) num_threads(nthreads)
+    for (int chunk = nchunks-1; chunk >= 0; chunk--){
 
       // Set input and output buffers for Halide. It should only use
       // an appropriate chunk of visibilities and output to its own grid.
-      int vis0 = chunk * numOfVis / nchunks;
-      int vis1 = (chunk + 1) * numOfVis / nchunks;
+      int vis0 = cfg.steps * cfg.chunks * chunk;
+      int vis1 = cfg.steps * cfg.chunks * (chunk + 1);
+      if (chunk == nchunks - 1) vis1 = numOfVis;
 
       buffer_t
           vis_buffer = mkHalideBuf<double>(vis1 - vis0,5)
-        , gcf_buffer = mkHalideBuf<double>(over2, gcfSize, gcfSize, 2)
-        , uvg_buffer = mkHalideBuf<double>(gridSize, gridSize, 2)
+        , gcf_buffer = mkHalideBuf<double>(over2, cfg.gcfSize, cfg.gcfSize, 2)
+        , uvg_buffer = mkHalideBuf<double>(cfg.gridSize, cfg.gridSize, 2)
         ;
       vis_buffer.host = tohost(vis.data() + 5 * vis0);
       vis_buffer.min[1] = vis0;
       gcf_buffer.host = tohost(gcf.data());
-      uvg_buffer.host = tohost(uvg.data());
+      uvg_buffer.host = tohost(uvg.data() + omp_get_thread_num() * fullSize * 2);
 
-      memset(uvg_buffer.host, 0, fullSize * 2 * sizeof(double));
-      JITUserContext jit_context;
-      kernfun(&gcf_buffer, &vis_buffer, gridSize, t2, &jit_context, &uvg_buffer);
+      JITUserContext jit_context; timespec ts2;
+      clock_gettime(CLOCK_REALTIME, &ts2);
+      kernfun(&gcf_buffer, &vis_buffer, cfg.gridSize, t2, &jit_context, &uvg_buffer);
     }
 
     printf("\t%ld", clock_diff(&ts)); fflush(stdout);
 
   }
 
-  puts("");
+}
 
-  }}}}
+int main(/* int argc, char * argv[] */)
+{
+  // Get number of threads from environment
+  int nthreads;
+  if (getenv("OMP_NUM_THREADS")) {
+      sscanf(getenv("OMP_NUM_THREADS"), "%d", &nthreads);
+  } else {
+      nthreads = 4;
+  }
+  printf("Thread count: %d\n", nthreads);
 
+  // Data set-up
+  int res;
+  vecd vis(numOfDoubles);
+  printf("Read visibilities!\n"); fflush(stdout);
+  res = readFileToVector(vis, "vis.dat"); __CK;
+
+  // Create a uv-grid for every thread
+  vecd uvg(fullSize * 2 * nthreads); // complex, per thread
+
+  // Loop through configurations
+  for (int gcfSize = 16; gcfSize <= 64; gcfSize *= 2) {
+    const int gcfStorageSize = over * gcfSize * (over * gcfSize + pad);
+    vecd gcf(gcfStorageSize * 2); // complex
+    printf("Read GCF!\n"); fflush(stdout);
+
+    char name[32];
+    sprintf(name, "gcf%d.dat", gcfSize);
+    res = readFileToVector(gcf, name); __CK;
+    for (int dim = 0; dim < (1 << _DIM_CONFIGS); dim++) {
+
+    // These are generally beneficial
+    if (!(dim & (1 << _UVG0))) continue;
+    if (!(dim & (1 << _UVG1))) continue;
+    if (!(dim & (1 << _GCF0))) continue;
+    if (!(dim & (1 << _GCF1))) continue;
+    for (int upd = 0; upd <= _UPD_UNROLL; upd++) {
+
+    // Update strategy 2 never seems to win out
+    if (upd == _UPD_FUSE) continue;
+
+    for (int vector = 2; vector <= 8; vector*=2) {
+    if (upd < _UPD_FUSE && vector > 2) break;
+    for (int pos = 0; pos < 3; pos++) {
+    for (int chunks = 20; chunks < 40; chunks += 5) {
+
+      // Create a gridder configuration
+      SGridderConfig cfg;
+      cfg.gcfSize = gcfSize;
+      cfg.gridSize = gridSize;
+      switch(pos) {
+      case 0: cfg.cpos = 0; cfg.xpos = 1; cfg.ypos = 2; cfg.vpos = 3; cfg.blpos = 4; break;
+      case 1: cfg.cpos = 0; cfg.xpos = 1; cfg.ypos = 4; cfg.vpos = 2; cfg.blpos = 3; break;
+      case 2: cfg.cpos = 0; cfg.xpos = 1; cfg.ypos = 3; cfg.vpos = 2; cfg.blpos = 4; break;
+      }
+      cfg.dim = dim;
+      cfg.upd = (UpdConfig) upd;
+      cfg.vector = vector;
+      cfg.steps = 200;
+      cfg.chunks = chunks;
+
+      // Run
+      printf("pos %d dim %d upd %d vector %d steps %d chunks %d -", pos, cfg.dim, cfg.upd, cfg.vector, cfg.steps, cfg.chunks); fflush(stdout);
+      runGridder(nthreads, cfg, vis, gcf, uvg);
+      puts("");
+
+    }}}}}
+
+  }
   return 0;
 }
