@@ -359,13 +359,133 @@ newtype StratRule = StratRule (FlowI -> Maybe (Strategy ()))
 
 -- | Schedule step
 data Step where
+
   DomainStep :: Typeable a => Maybe KernelId -> Domain a -> Step
-    -- ^ Create a new domain. Might depend on data produced by a kernel.
+    -- ^ Create a new domain. There are two main cases here:
+    --
+    --  1. "dhParent" is not set: Then this is a root domain with
+    --  exactly one region attached to it.
+    --
+    --    do bla <- makeDomain reg  -- => { bla -> [reg] }
+    --
+    --  2. Otherwise this is a split domain, which corresponds to
+    --  multiple regions at the same time:
+    --
+    --    do bla <- makeDomain reg        -- => { bla -> [reg] }
+    --       blub <- makeSplitDomain bla  -- => { bla -> [reg] ,
+    --                                            blub -> [reg0, reg1, reg2...] }
+    --
+    --  with - presumably - "reg = reg0+reg1+reg2+..." for some sort
+    --  of sensible definition. This is however not enforced. [And I
+    --  actually see no reason why a split domain couldn't be a root
+    --  domain, but it's probably future work to see whether this
+    --  makes sense.]
+    --
+    --  In either case, runtime data can be used to inform domain
+    --  creation, given as a woefully untyped buffer. This can be used
+    --  both to determine region data (for example read the number of
+    --  visibilities from a file) as well as determine the number of
+    --  split regions that are created (for example to dynamically
+    --  determinine the amount of parallelism we want).
+    --
+    --  The split structure of the domain governs two things, which
+    --  are meant to be kept in a synchronised fashion during runtime:
+    --
+    --   1. Data distribution. If the data representation mentions a
+    --      split domain, this means that the data is meant to be
+    --      maintained split up into buffers accordingly.
+    --
+    --   2. Work distribution: Using "DistributeStep" below we can
+    --      choose to also align control flow with it
+    --
+    --  The underlying assumption is locality: If two pieces of data
+    --  or computation relate to the same domain, they are related
+    --  exactly if they also relate to the same region. Otherwise we
+    --  will hide them from each other. This is what allows this to
+    --  distribute this effectively.
+
   KernelStep :: KernelBind -> Step
-    -- ^ Execute a kernel for the given domain(s)
+    -- ^ Execute a kernel for the given domain. The produced data
+    -- format is defined by "kernRepr". This especially means that
+    -- this is expected to produce one buffer per locally visible
+    -- region box that fits the domain combination given by
+    -- "reprDomain . kernRepr".
+    --
+    -- The locality property from above means that all parameters get
+    -- "selected" by the output regions: If a parameter domain is the
+    -- same as a return domain, the parameter is restricted to only
+    -- the domains that we want to produce output for. See
+    -- "DistributeStep" for how this works in the context of
+    -- distribution.
+
   DistributeStep :: Typeable a => Domain a -> Schedule -> [Step] -> Step
     -- ^ Distribute steps across the given domain using the given
-    -- scheduling policy.
+    -- scheduling policy. This means that we execute the given steps
+    -- as many times as the mentioned domain has regions, restricting
+    -- the "visibility" of the domain to just the region in question
+    -- [TODO: Pretty sure we could generalise this to more than one
+    -- region depending on "Schedule". But let's roll with it for
+    -- simplicity.]
+    --
+    -- Visibility in the context means that for all contained steps:
+    --
+    --  1. We consider the domain to only contain one region
+    --
+    --  2. We consider all data with a representation depending on the
+    --     domain to only have buffers concerning the singular region.
+    --     This means that for distributed computation we also only
+    --     ever need to transfer this data
+    --
+    --  3. On the flipside, all "KernelStep" that produce data
+    --     associated with the domain needs only produce buffers for
+    --     the region we are interested in.
+    --
+    --  So for example:
+    --
+    --    do let x = flow "x"; y = flow "y" x; z = flow "z" y; a = flow "a" z
+    --       bla <- makeDomain reg        -- { bla -> [reg] }
+    --       blub <- makeSplitDomain bla  -- { blub -> [reg0, reg1, reg2...] }
+    --       bind x (kernel bla)          -- { out: x.0 -> [reg=x] }
+    --       bind y (splitter bla blub x) -- { in: x.0 -> [reg=x]
+    --                                         out: y.0 -> [reg0=y0, reg1=y1, reg2=y2] }
+    --       distribute blub SeqSchedule $
+    --         -- (y.0 is split here because it depends on domain "blub")
+    --         bind z (process blub y)
+    --            -- iteration/process 1: { in: y.0 -> [reg0=y0], out: z.0 -> [reg0=z0] }
+    --            -- iteration/process 2: { in: y.0 -> [reg1=y1], out: z.0 -> [reg1=z1] }
+    --            -- iteration/process 3: { in: y.0 -> [reg2=y2], out: z.0 -> [reg2=z2] }
+    --         -- (y.0 is out of scope now, but z.0 gets merged back)
+    --
+    --       bind a (merger blub bla y)   -- { in: z.0 -> [reg0=z0, reg1=z1, reg2=z2]
+    --                                         out: a.0 -> [reg=a] }
+    --
+    -- Note that data is *only* split if it *explicitly* mentions the
+    -- domain. If the kernels are implemented correctly (!) this
+    -- should not change semantics. So for example, moving the
+    -- splitter into "distribute" should work equally well:
+    --
+    --       distribute blub SeqSchedule $
+    --         -- (x.0 is *not* split here)
+    --         bind y (splitter bla blub x)
+    --            -- iteration/process 1: { in: x.0 -> [reg=x], out: y.0 -> [reg0=y0] }
+    --            -- iteration/process 2: { in: x.0 -> [reg=x], out: z.0 -> [reg1=y1] }
+    --            -- iteration/process 3: { in: x.0 -> [reg=x], out: z.0 -> [reg2=y2] }
+    --         bind z (process blub y)
+    --            -- iteration/process 1: { in: y.0 -> [reg0=y0], out: z.0 -> [reg0=z0] }
+    --            -- iteration/process 2: { in: y.0 -> [reg1=y1], out: z.0 -> [reg1=z1] }
+    --            -- iteration/process 3: { in: y.0 -> [reg2=y2], out: z.0 -> [reg2=z2] }
+    --
+    -- And continue as usual. Note that here "x" is actually presented
+    -- in full to every distributed iteration/process - which might or
+    -- might not be a bad idea depending on whether the amount of data
+    -- transfer outweighs the benefits of having the work of
+    -- "splitter" done in parallel. In either case, we permit this.
+    --
+    -- Note that so far we have only explained these ideas for single
+    -- regions, and not region boxes. Suffice to say that all this
+    -- generalises properly to n boxes - we split and merge entire
+    -- rows or columns of data whenever *any* of the domain
+    -- combinations is present.
 
 -- | List all kernels used in schedule
 stepsToKernels :: [Step] -> [KernelBind]
@@ -374,6 +494,9 @@ stepsToKernels = concatMap go
         go (DistributeStep _ _ steps) = concatMap go steps
         go _other                     = []
 
+-- | Context we need for unmarshalling kernel and domain IDs. This is
+-- simply a collection of "KernelBind"s and "DomainI"s respectively,
+-- indexed by their IDs.
 type GetContext =  (IM.IntMap KernelBind, IM.IntMap DomainI)
 
 putRegionData :: RegionData -> Put

@@ -32,49 +32,96 @@ import Flow.Run.Maps
 
 import DNA
 
+-- * DNA wrapper monad
+
+-- | Tracks runtime data while we are executing the DNA program.
+-- The result of an actor will be the "DataMap" at the end of its
+-- execution. A proper compiler would be able to statically deduce
+-- what elements of "DomainMap" and "DataMap" will be set at every
+-- given moment, but for simplicity we skip this here.
+--
+-- In practice, this relies on
+--
+--  1. The executed "Step"s never using a kernel or domain before it
+--     was defined
+--
+--  2. The fact that "DistributeStep" will check the dependencies of
+--     the executed steps when restricting the data map
+--
+--  3. When cleaning up data between steps we also look ahead to the
+--     remaining steps to make sure we are not discarding anything
+--     that will be required later on.
 type DnaCode a = StateT (DomainMap, DataMap) DNA a
 
+-- | Helper for getting the current data map at run time
+getDomainMap :: DnaCode DomainMap
+getDomainMap = fst <$> get
+
+-- | Helper for setting the current domain map at run time
+putDomainMap :: DomainMap -> DnaCode ()
+putDomainMap dm' = modify (\(_, dm) -> (dm', dm))
+
+-- | Helper for setting the current data map at run time
+putDataMap :: DataMap -> DnaCode ()
+putDataMap dm' = modify (\(dm, _) -> (dm, dm'))
+
+-- | Helper for getting the current data map at run time
+getDataMap :: DnaCode DataMap
+getDataMap = snd <$> get
+
+-- | Helper for modifiying the current data map at run time
+modifyDataMap :: (DataMap -> DataMap) -> DnaCode ()
+modifyDataMap f = putDataMap . f =<< getDataMap
+
+-- | Shortcut for lifting "IO" into the "DnaCode" monad using a named
+-- "kernel".
+execIO :: String -> IO a -> DnaCode a
+execIO name = lift . kernel name [] . liftIO
+
+-- * DNA builder monad
+
+-- | State of the "DnaBuilder". This tracks all information we need
+-- while generating "DnaCode".
 data DnaBuildState = DnaBuildState
-  { dbsFresh          :: !Int
-  , dbsRemoteRegister :: RemoteRegister
-  , dbsContext        :: GetContext
+  { dbsFresh          :: !Int           -- ^ Fresh number source for generating static names
+  , dbsRemoteRegister :: RemoteRegister -- ^ Remote table in construction
+  , dbsContext        :: GetContext     -- ^ Static domain and kernel maps (for unmarshaling)
   , dbsCode           :: DnaCode ()
+     -- ^ Collected "DnaCode" for the current actor / top level
+     -- routine. When generating an actor, the "DataMap" after the
+     -- last step's cleanup is the result of the actor. The way our
+     -- cleanup system works, this will be exactly the dependencies
+     -- that were passed into "execSteps" below.
   }
 
 type DnaBuilder a
   = State DnaBuildState a
 
+-- | Emit "DnaCode" into the curret actor / top level routine. Use the
+-- "DnaCode" state monad to access current domains or data.
 emitCode :: DnaCode () -> DnaBuilder ()
 emitCode code = modify $ \dbs ->
   dbs { dbsCode = dbsCode dbs >> code }
 
-getDomainMap :: DnaCode DomainMap
-getDomainMap = fst <$> get
-
-getDataMap :: DnaCode DataMap
-getDataMap = snd <$> get
-
-putDomainMap :: DomainMap -> DnaCode ()
-putDomainMap dm' = modify (\(_, dm) -> (dm', dm))
-
-modifyDataMap :: (DataMap -> DataMap) -> DnaCode ()
-modifyDataMap f = putDataMap . f =<< getDataMap
-
-putDataMap :: DataMap -> DnaCode ()
-putDataMap dm' = modify (\(dm, _) -> (dm, dm'))
-
+-- | Register a kernel. This is required so we can recognise the ID
+-- when unmarshaling.
 registerKernel :: KernelBind -> DnaBuilder ()
 registerKernel kbind = do
    dbs <- get
    let kernelCtx = IM.insert (kernId kbind) kbind (fst (dbsContext dbs))
    put $ dbs { dbsContext = (kernelCtx, snd (dbsContext dbs)) }
 
+-- | Register a domain. This is required so we can recognise the ID
+-- when unmarshaling.
 registerDomain :: Typeable a => Domain a -> DnaBuilder ()
 registerDomain dom = do
    dbs <- get
    let domainCtx = IM.insert (dhId dom) (DomainI dom) (snd (dbsContext dbs))
    put $ dbs { dbsContext = (fst (dbsContext dbs), domainCtx) }
 
+-- | Register an actor with Cloud Haskell. This generates a
+-- @DNA@-compatible "Closure" for the actor and registers it in the
+-- remote table to be passed to "dnaRun".
 registerActor :: (Serializable a, Serializable b)
               => Actor a b -> DnaBuilder (Closure (Actor a b))
 registerActor act = do
@@ -88,9 +135,6 @@ registerActor act = do
           , dbsRemoteRegister = dbsRemoteRegister dbs . reg
           }
   return actClosure
-
-execIO :: String -> IO a -> DnaCode a
-execIO name = lift . kernel name [] . liftIO
 
 execStrategyDNA :: Strategy () -> IO ()
 execStrategyDNA strat = do
@@ -110,7 +154,10 @@ execStrategyDNA strat = do
     flip evalStateT (IM.empty, IM.empty) $
       dbsCode state'
 
--- | Execute schedule, discarding unecessary buffers as required
+-- | Generate code for schedule. The kernel set passed in is the data
+-- dependencies we promise to keep alive at the end of the generated
+-- code. For generating actor code, this should therefore be the
+-- actor's return values.
 execSteps :: KernelSet -> [Step] -> DnaBuilder ()
 execSteps topDeps steps = do
 
@@ -135,7 +182,10 @@ execSteps topDeps steps = do
           kernel ("discard" ++ show kid) [] $ liftIO $
             freeVector v
 
--- | Execute schedule step
+-- | Generate code for schedule step. As before, the kernel set is all
+-- kernel results we want to keep alive. In contrast to "execSteps",
+-- this time around this includes the data dependencies of following
+-- steps.
 execStep :: KernelSet -> Step -> DnaBuilder ()
 execStep deps step = case step of
   DomainStep m_kid dh
@@ -145,8 +195,13 @@ execStep deps step = case step of
   DistributeStep dom sched steps
     -> execDistributeStep deps dom sched steps
 
+-- | Generate code for creating a domain. This will register the
+-- domain for unmarshalling, and generate "DNA" code to register the
+-- domain with the run-time "DomainMap".
 execDomainStep :: Typeable a => Maybe KernelId -> Domain a -> DnaBuilder ()
 execDomainStep m_kid dh = do
+
+  -- Save domain for unmarshaling
   registerDomain dh
   emitCode $ do
 
@@ -179,6 +234,10 @@ execDomainStep m_kid dh = do
     dm <- getDomainMap
     putDomainMap $ IM.insert (dhId dh) (DomainI dh, regs') dm
 
+-- | Generate code for executing a kernel. This will register the
+-- kernel for unmarshalling, and generate "DNA" code to locate the
+-- appropriate data in the run-time "DataMap", invoke the kernel code
+-- and update it with the results accordingly.
 execKernelStep :: KernelBind -> DnaBuilder ()
 execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
   registerKernel kbind
@@ -249,11 +308,25 @@ execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
     let resultMap = Map.fromList $ zip filteredRegs results
     modifyDataMap $ dataMapInsert (kernId kbind) (kernRepr kbind) resultMap
 
+-- | Generate code for distributing a number of scheduled steps.
+--
+-- This means that we will generate a new actor for the contained code
+-- (see "makeActor") and generate code for restricting data and domain
+-- maps appropriately for the sub-steps. After the actors are finished
+-- they return the (marshalled) "DataMap"s with the requested data
+-- buffers, which we re-integrate into our own "DataMap".
 execDistributeStep :: Typeable a => KernelSet -> Domain a -> Schedule -> [Step] -> DnaBuilder ()
 execDistributeStep deps dh sched steps = do
 
   -- Generate nested (actor) code.
-  (act, marshal, unmarshal) <- makeActor deps steps
+  --
+  -- The data dependencies passed is the kernel data that the actors
+  -- are going to send back in their "DataMap"s. This should be all
+  -- data that the following steps depend on - which is exactly the
+  -- difference between our "deps" and the dependencies of the nested
+  -- steps.
+  let rets = deps `IS.difference` stepsKernDeps steps
+  (act, marshal, unmarshal) <- makeActor rets steps
 
   emitCode $ do
 
@@ -322,23 +395,21 @@ execDistributeStep deps dh sched steps = do
     -- Combine maps.
     modifyDataMap $ dataMapUnion dataMapNew
 
+-- | Generate an actor executing the given steps. The result will be a
+-- (marshalled) "DataMap" containing data for the kernels mentioned in
+-- the "KernelSet".
 makeActor :: KernelSet -> [Step]
           -> DnaBuilder (Closure (Actor LBS.ByteString LBS.ByteString),
                          DomainMap -> DataMap -> LBS.ByteString,
                          LBS.ByteString -> DataMap)
-makeActor deps steps = do
+makeActor rets steps = do
 
   -- Generate code for steps.
-  --
-  -- Note that the kernel dependencies themselves are going to get
-  -- passed as parameters - therefore we have them already, and they
-  -- do *not* need to be kept alive and/or wastefully returned.
   dbs <- get
-  let deps' = deps `IS.difference` stepsKernDeps steps
-      dbs' = dbs { dbsRemoteRegister = id
+  let dbs' = dbs { dbsRemoteRegister = id
                  , dbsCode = return () }
       dbs'' = flip execState dbs' $
-              execSteps deps' steps
+              execSteps rets steps
       ctx = dbsContext dbs''
 
   -- Take over remote table changes plus context
@@ -354,12 +425,11 @@ makeActor deps steps = do
               (,) <$> readDomainMap ctx <*> readDataMap ctx)
 
         -- Run code
-        (_, dataMapNew) <- --trace ("inp: " ++ show (LBS.unpack inp)) $
-                           --trace ("domainMap: " ++ show domainMap) $
-                           --trace ("dataMap: " ++ show dataMap) $
-                           execStateT (dbsCode dbs'') (domainMap, dataMap)
+        (_, dataMapNew) <- execStateT (dbsCode dbs'') (domainMap, dataMap)
 
-        -- Marshal result
+        -- Marshal result. "execState" should have generated code such
+        -- that at this point only data mentioned in "rets" is still
+        -- left alive.
         return $ runPut $ writeDataMap dataMapNew
 
   -- Register in remote table
