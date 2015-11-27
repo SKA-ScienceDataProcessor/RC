@@ -27,13 +27,17 @@ module Flow.Vector
   , unsafeToByteString, unsafeToByteString'
   , dumpVector, dumpVector'
   , readCVector
+  , putVector, getVector
   ) where
 
 import Control.Monad (when, forM_)
 import Data.Binary   (Binary(..))
+import Data.Binary.Put
+import Data.Binary.Get
+import Data.Int      (Int8)
 import Data.Typeable (Typeable)
 import Data.ByteString (ByteString, hPut)
-import Data.ByteString.Unsafe (unsafePackAddressLen)
+import Data.ByteString.Unsafe (unsafePackAddressLen, unsafeUseAsCString)
 import qualified Data.ByteString.Internal as BSI
 import Foreign.Ptr
 import Foreign.C
@@ -333,3 +337,20 @@ readCVector file n = do
            " bytes, but only received " ++ show bytes ++ "!"
   Dev.close fd
   return v
+
+putVector :: Vector a -> Put
+putVector vec = do
+  let vec' = castVector vec :: Vector Int8
+      bs = BSI.inlinePerformIO $ unsafeToByteString vec'
+  -- Apparently this already gets emitted by BS put?
+  -- put (vectorByteSize vec)
+  put bs
+
+getVector :: Get (Vector a)
+getVector = do
+  size <- get :: Get Int
+  bs <- getByteString size
+  return $ BSI.inlinePerformIO $ do
+    vec@(CVector _ vp) <- allocCVector size :: IO (Vector Int8)
+    unsafeUseAsCString bs $ \p -> copyBytes vp (castPtr p) size
+    return (castVector vec)
