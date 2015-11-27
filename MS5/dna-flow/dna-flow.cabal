@@ -34,6 +34,7 @@ library
   Exposed-modules: Flow,
                    Flow.Builder,
                    Flow.Run,
+                   Flow.Run.Maps,
                    Flow.Kernel,
                    Flow.Domain,
                    Flow.Vector,
