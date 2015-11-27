@@ -47,7 +47,9 @@ executable dotproduct-dna
     mtl,
     bound,
     pretty,
+    distributed-process,
     dna,
+    containers,
     unordered-containers,
     fixed-vector-hetero
   x-halide-sources:    kernel/cpu/dotproduct/generate_f.cpp

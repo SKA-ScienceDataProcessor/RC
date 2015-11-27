@@ -30,6 +30,11 @@ import Bound
 
 import DNA (dnaRun,logMessage)
 
+import Data.Dynamic
+import Unsafe.Coerce
+import qualified Data.Map as Map
+import Control.Distributed.Process.Node (initRemoteTable)
+
 -- Data tags
 data Vec deriving Typeable
 data Sum deriving Typeable
@@ -181,6 +186,10 @@ main = do
   case ast3 of
     (MainActor dna, amap) ->
       let (rtable,prog) = interpretAST amap dna
-      in dnaRun rtable $ do logMessage "START"
-                            void prog
-                            logMessage "END"
+      in do return ()
+            -- let m = unsafeCoerce $ rtable initRemoteTable :: Map.Map String Dynamic
+            -- mapM_ print $ Map.toList $ fmap dynTypeRep m
+            dnaRun rtable $ do
+              logMessage "START"
+              void prog
+              logMessage "END"

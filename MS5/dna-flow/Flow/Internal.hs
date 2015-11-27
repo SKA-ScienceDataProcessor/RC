@@ -193,7 +193,7 @@ instance Eq DomainI where
 -- | Domains are just ranges for now. It is *very* likely that we are
 -- going to have to generalise this in some way.
 data Region = RangeRegion (Domain Range) Range
-            | BinRegion (Domain Bins) Bins
+            | BinRegion   (Domain Bins)  Bins
   deriving (Typeable, Generic)
 
 instance Show Region where

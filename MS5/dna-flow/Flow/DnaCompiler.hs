@@ -22,8 +22,6 @@ module Flow.DnaCompiler (
     -- * Compilation to AST for DNA
     -- ** AST
   , StepE(..)
-  , RegSplit(..)
-  , NewRegion(..)
     -- ** Compilation
   , DnaActor(..)
   , V(..)
@@ -45,7 +43,9 @@ import Control.Distributed.Process.Closure (mkClosureValSingle,MkTDict)
 import qualified Data.HashMap.Strict as HM
 import           Data.HashMap.Strict ((!))
 import qualified Data.HashSet        as HS
-import qualified Data.Binary as Bin
+import qualified Data.Binary     as Bin
+import qualified Data.Binary.Get as Bin
+import qualified Data.Binary.Put as Bin
 import qualified Data.Map    as Map
 import Data.Typeable
 import Data.Hashable
@@ -282,18 +282,18 @@ data StepE a
     -- ^ List of variables
 
 
-  | SDom Int (Maybe (StepE a)) NewRegion
+  | SDom (Maybe (StepE a)) AnyDH (Maybe (StepE a))
     -- ^ Create domain
     --
-    -- * Domain ID
-    -- * Action to generate new region.
+    -- * Region argument
+    -- * Wrapped domain
+    -- * Parent domain if any
   | SKern KernelBind [StepE a] [StepE a]
     -- ^ Kernel call
     --
     -- * Kernel description
     -- * Parameters
     -- * Output domain
-  | SSplit RegSplit (StepE a)
 
   | SSeq  (StepE a) (StepE a)
     -- ^ Sequence two monadic actions
@@ -315,15 +315,12 @@ data StepE a
   deriving (Show,Functor,Foldable,Traversable,Generic)
 instance Show1 StepE
 
--- | Newtype wrapper for function for splitting regions. Only used to
---   get free Show instance for StepE
-newtype RegSplit  = RegSplit (Region -> IO [Region])
-newtype NewRegion = NewRegion (IO Region)
 
-instance Show RegSplit where
-  show _ = "RegSplit"
-instance Show NewRegion where
-  show _ = "NewRegion"
+data AnyDH where
+  AnyDH :: Typeable a => Domain a -> AnyDH
+
+instance Show AnyDH where
+  show (AnyDH d) = show d
 
 
 instance Applicative StepE where
@@ -334,8 +331,7 @@ instance Monad StepE where
   V a              >>= f = f a
   Pair a b         >>= f = Pair (a >>= f) (b >>= f)
   List xs          >>= f = List (map (>>= f) xs)
-  SDom  i m d      >>= f = SDom i ((>>= f) <$> m) d
-  SSplit s e       >>= f = SSplit s (e >>= f)
+  SDom  a m b      >>= f = SDom ((>>= f) <$> a) m ((>>= f) <$> b)
   SKern k xs ys    >>= f = SKern k (map (>>= f) xs) (map (>>= f) ys)
   SSeq  a b        >>= f = SSeq  (a >>= f) (b >>= f)
   SBind e g        >>= f = SBind (e >>= f) (g >>>= f)
@@ -416,7 +412,7 @@ singleStep = \case
     DomainStep mkid dh ->
       let m = V . KernVar <$> mkid
       in StepVal
-           (SDom (dhId dh) m (NewRegion $ dhCreate dh Map.empty)) -- FIXME 
+           (SDom m (AnyDH dh) (V . DomVar . dhId <$> dhParent dh))
            (DomVar  (dhId dh))
     KernelStep kb    -> StepVal
       (SKern kb
@@ -435,9 +431,9 @@ singleStep = \case
     let dhp = case dhParent dh of
               Just d  -> d
               Nothing -> error "Parent??"
-    in Step2Val
-       (SSplit (RegSplit $ dhRegion dhp) (V $ DomVar $ dhId dhp))
-       (DomVar $ dhId dh)
+    in StepVal
+       -- (SSplit (RegSplit $ dhRegion dhp) (V $ DomVar $ dhId dhp))
+       -- (DomVar $ dhId dh)
        (SActorGrp i [ case p of
                         DVar n   -> V (DomVar n)
                         KVar n _ -> V (error "A")
@@ -474,29 +470,32 @@ data Box
   deriving (Typeable)
 
 instance Bin.Binary Box where
-  put = undefined
-  get = undefined
+  put = error "No put really!"
+  get = Bin.getWord8 >>= \case
+    0 -> VReg <$> undefined -- Bin.get
+    1 -> VVec <$> undefined <*> undefined
+    _ -> error "Bad tag!"
+
 
 interpretAST
   :: HM.HashMap Int DnaActor -> StepE V -> (RemoteTable -> RemoteTable, DNA Box)
 interpretAST actorMap mainActor = case closed mainActor of
   Nothing -> error "interpretAST: expression is not closed!"
-  Just e  -> (rtable, go e)
+  Just e  -> (rtable, logMessage "START INTERPRETATION" >> go e)
   where
     go = \case
       V a    -> return a
       Pair{} -> error "Naked pair at the top level"
       List{} -> error "Naked list at the top level"
-      -- Domains       
-      SDom _ me (NewRegion dom) -> do
-        -- FIXME: SDom is not correctly handled
-        let m = case me of Nothing -> Map.empty
-                           Just e  -> error "FIXME: region lookup is not implemented"
-        DNA.kernel "dom" [] $ liftIO $ VReg . pure <$> dom
-      SSplit (RegSplit split) reg ->
-        case toDom reg of
-          [r] -> do DNA.kernel "split" [] $ liftIO $ VReg <$> split r
-          _   -> error "Non unary domain!"
+      -- Domains
+      SDom me (AnyDH dh) mpar -> do
+        logMessage $ "SDom: " ++ show dh
+        case mpar of
+          Nothing  -> do let m = case me of Nothing -> Map.empty
+                                            Just e  -> error "FIXME: region lookup is not implemented"
+                         DNA.kernel "dom" [] $ liftIO $ VReg . pure <$> dhCreate dh m
+          Just par -> do rs <- DNA.kernel "split" [] $ liftIO $ mapM (dhRegion dh) (toDom par)
+                         return $ VReg $ concat rs
       -- Kernel
       SKern kb deps dom -> do
         let xs  = map (Map.fromList . (:[]) . toParam) deps
@@ -511,11 +510,14 @@ interpretAST actorMap mainActor = case closed mainActor of
       SSeq e1 e2 -> go e1 >> go e2
       -- Actor spawning
       SActorGrp actID [par] -> do
+        -- FIXME: only region is passed as parameter
         let regs = toDom par
             n    = length regs
             (clos,_) = amap ! actID
-        logMessage $ show regs
+        logMessage $ "REGS: " ++ show regs
         sh  <- startGroup (N n) (NNodes 1) $ return clos
+        let scatter _ xs = map (VReg . pure) xs
+        distributeWork regs scatter sh
         grp <- delayGroup sh
         return $ VChan grp
       SActorGrp _ _ -> error "Only actor with one parameter are supported"
@@ -594,22 +596,26 @@ ppr = \case
                     sg <- ppr g
                     return $ parens $ se <> comma <> sg
   List es     -> pprList es
-  SDom i m r  -> do ss <- case m of
-                      Nothing -> return $ text "-"
-                      Just v  -> ppr v
-                    return $ text (show r) <> text " " <> int i
+  SDom v dh par  -> do
+    sv   <- maybe (return $ text "-") ppr v
+    spar <- maybe (return $ text "-") ppr v
+    return $ hcat [ text "SDom "
+                  , sv
+                  , text (show dh)
+                  , spar
+                  ]
   SKern kb vars dom -> do
     vs <- pprList vars
     ds <- pprList dom
     return $ text "Kernel call" $$ nest 2
       (vcat [ text (show kb), vs, ds ])
   SSeq e1 e2 -> liftM2 ($$) (ppr e1) (ppr e2)
-  SSplit _ e -> do
-    s <- ppr e
-    return $ hcat [ text "SSplit {"
-                  , s
-                  , text "}"
-                  ]
+  -- SSplit _ e -> do
+  --   s <- ppr e
+  --   return $ hcat [ text "SSplit {"
+  --                 , s
+  --                 , text "}"
+  --                 ]
   SBind e lam -> do
     v  <- fresh
     se <- ppr e
