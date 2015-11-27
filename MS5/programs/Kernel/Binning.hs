@@ -110,13 +110,6 @@ binner gpar dh udom vdom wdom =
       Just ((ul,uh), (vl,vh), (wl,wh), pRef)
         | ul <= u && u < uh && vl <= v && v < vh && wl <= w && w < wh -> do
 
-          when ((ul, vl) == (-40960.0,-40960.0)) $ do
-            print =<< peekVector inVec' (i * fromIntegral inWdt + 0)
-            print =<< peekVector inVec' (i * fromIntegral inWdt + 1)
-            print =<< peekVector inVec' (i * fromIntegral inWdt + 2)
-            print =<< peekVector inVec' (i * fromIntegral inWdt + 3)
-            print =<< peekVector inVec' (i * fromIntegral inWdt + 4)
-
           -- Increase pointer
           p <- readIORef pRef
           writeIORef pRef (p `advancePtr` fromIntegral inWdt)
