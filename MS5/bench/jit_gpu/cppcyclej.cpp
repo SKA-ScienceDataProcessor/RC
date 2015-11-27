@@ -11,11 +11,29 @@
 #include "cfg.h"
 #include "Halide.h"
 
-	
 #ifdef GCF32
 #define GCF_FILE "gcf32.dat"
 #else
 #define GCF_FILE "gcf16.dat"
+#endif
+
+#ifndef _WIN32
+#define TTF "%ld"
+static timespec ts;
+void clock_start(){
+  clock_gettime(CLOCK_REALTIME, &ts);
+}
+time_t clock_diff() {
+  timespec ts2;
+  clock_gettime(CLOCK_REALTIME, &ts2);
+  return (time_t)(ts2.tv_sec - ts.tv_sec) * 1000000000 +
+         (time_t)(ts2.tv_nsec - ts.tv_nsec);
+}
+#else
+#define TTF "%lld"
+static time_t t;
+void clock_start(){t = clock();}
+time_t clock_diff() {return clock() - t;}
 #endif
 
 using namespace std;
@@ -106,12 +124,11 @@ int main(/* int argc, char * argv[] */)
     gridder.scale.set(t2);
     gridder.grid_size.set(gridSize);
 
-    // printf("pos %d upd %d vecsize %d -", pos, upd, vecsize);
     printf("pos %d -", pos);
 
-    clock_t ti = clock();
+    clock_start();
     gridder.uvg.compile_jit(target);
-    printf("\t%ld\t -", clock() - ti);
+    printf("\t" TTF "\t -", clock_diff());
 
     // Marshalling all data to device
     visbuf.copy_to_device();
@@ -121,7 +138,7 @@ int main(/* int argc, char * argv[] */)
       // instead of memsetting device memory we marshal zeroed uvg array to the device
       memset(uvg.data(), 0, fullSize * 2 * sizeof(double));
       uvgbuf.copy_to_device();
-      ti = clock();
+      clock_start();
       gridder.uvg.realize(uvgbuf);
       // I thought Halide runtime doesn't depends on CUDA and implements this in its own,
       //   but it turned out it simply seeks for cuda shared library on the target computer
@@ -129,7 +146,7 @@ int main(/* int argc, char * argv[] */)
       //   it would unnecessarily restrict host machine requirement.
       // For JIT we need CUDA to exist on the host machine anyway, thus we statically link to it.
       cuCtxSynchronize();
-      printf("\t%ld", clock() - ti); fflush(stdout);
+      printf("\t" TTF, clock_diff()); fflush(stdout);
     }
     puts("");
 

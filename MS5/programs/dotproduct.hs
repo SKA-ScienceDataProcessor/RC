@@ -101,5 +101,5 @@ main :: IO ()
 main = do
   let size = 1000000
   dumpSteps $ ddpStrat size
-  execStrategy $ ddpStrat size
+  execStrategyDNA $ ddpStrat size
   putStrLn $ "Expected: " ++ show ((size-1)*size`div`20)

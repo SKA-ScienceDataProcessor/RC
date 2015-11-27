@@ -34,10 +34,15 @@ library
     prelude-extras >= 0.4,
     pretty,
     distributed-process >= 0.5.5,
-    dna          >= 0.5
+    dna          >= 0.5,
+    distributed-process,
+    distributed-static,
+    rank1dynamic
   Exposed-modules: Flow,
                    Flow.Builder,
                    Flow.Run,
+                   Flow.Run.DNA,
+                   Flow.Run.Maps,
                    Flow.Kernel,
                    Flow.Domain,
                    Flow.Vector,

@@ -7,6 +7,7 @@ module Flow.Run
   , dumpStep
   , dumpSteps
   , execStrategy
+  , execStrategyDNA
   ) where
 
 import Control.Monad
@@ -21,13 +22,14 @@ import qualified Data.Map.Strict as Map
 import Data.IORef
 import Data.Ord
 import Data.Time.Clock
-import Data.Typeable
 
 import System.IO
 
 import Flow.Internal
 import Flow.Builder
 import Flow.Vector
+import Flow.Run.Maps
+import Flow.Run.DNA
 
 dumpStrategy :: Strategy a -> IO ()
 dumpStrategy strat = do
@@ -82,73 +84,6 @@ dumpStep ind step@(DistributeStep did sched steps)
 dumpSteps :: Strategy a -> IO ()
 dumpSteps strat = do
   forM_ (runStrategy (void strat)) (dumpStep "")
-
-data AnyDH = forall a. Typeable a => AnyDH (Domain a)
-
-adhFilterBox :: AnyDH -> RegionBox -> Region -> Maybe Region
-adhFilterBox (AnyDH dom) = dhFilterBox dom
-
-type DataMap = IM.IntMap (ReprI, RegionData)
-type DomainMap = IM.IntMap (AnyDH, [Region])
-
-dataMapInsert :: KernelId -> ReprI -> RegionData -> DataMap -> DataMap
-dataMapInsert kid repr rdata = IM.insertWith update kid (repr, rdata)
-  where update _ (repr', m) = (repr', Map.union rdata m)
-
-dataMapUnion :: DataMap -> DataMap -> DataMap
-dataMapUnion = IM.unionWith combine
-  where combine (repr, bufs) (_, bufs') = (repr, bufs `Map.union` bufs')
-
-dataMapUnions :: [DataMap] -> DataMap
-dataMapUnions = IM.unionsWith combine
-  where combine (repr, bufs) (_, bufs') = (repr, bufs `Map.union` bufs')
-
-dataMapDifference :: DataMap -> DataMap -> DataMap
-dataMapDifference = IM.differenceWith remove
-  where remove (repr, bufs) (_, bufs')
-           = if Map.null diff then Nothing else Just (repr, diff)
-          where diff = bufs `Map.difference` bufs'
-
-type KernelSet = IS.IntSet
-type DomainSet = IS.IntSet
-
--- | Kernel dependencies of a step
-stepKernDeps :: Step -> KernelSet
-stepKernDeps (DomainStep (Just kid) _)  = IS.singleton kid
-stepKernDeps (KernelStep kbind)         = IS.fromList $ map kdepId $ kernDeps kbind
-stepKernDeps (DistributeStep _ _ steps) = stepsKernDeps steps
-stepKernDeps _                          = IS.empty
-
--- | Kernel dependencies of a series of steps
-stepsKernDeps :: [Step] -> KernelSet
-stepsKernDeps (step@(KernelStep kbind) : steps)
-  = IS.delete (kernId kbind) $ stepsKernDeps steps `IS.union` stepKernDeps step
-stepsKernDeps (step : steps)
-  = stepKernDeps step `IS.union` stepsKernDeps steps
-stepsKernDeps []
-  = IS.empty
-
--- | Domain dependencies of a step
-stepDomainDeps :: Step -> DomainSet
-stepDomainDeps (KernelStep kbind)
-  = (IS.fromList $ kernDomain kbind) `IS.union`
-    (IS.fromList $ concatMap kdepDomain $ kernDeps kbind)
-stepDomainDeps (DomainStep _ dh)
-  | Just parent <- dhParent dh
-  = IS.singleton (dhId parent)
-stepDomainDeps (DistributeStep _ _ steps)
-  = stepsDomainDeps steps
-stepDomainDeps _
-  = IS.empty
-
--- | Domain dependencies of a series of steps
-stepsDomainDeps :: [Step] -> DomainSet
-stepsDomainDeps (step@(DomainStep _ dh) : steps)
-  = IS.delete (dhId dh) $ stepDomainDeps step `IS.union` stepsDomainDeps steps
-stepsDomainDeps (step : steps)
-  = stepDomainDeps step `IS.union` stepsDomainDeps steps
-stepsDomainDeps []
-  = IS.empty
 
 execStrategy :: Strategy () -> IO ()
 execStrategy strat = do
@@ -215,7 +150,7 @@ execStep dataMapRef domainMapRef deps step = case step of
         concat <$> mapM (dhRegion dh) regs
 
     -- Add to map
-    modifyIORef domainMapRef $ IM.insert (dhId dh) (AnyDH dh, regs')
+    modifyIORef domainMapRef $ IM.insert (dhId dh) (DomainI dh, regs')
 
   KernelStep kbind@KernelBind{kernRepr=ReprI rep} -> do
 
@@ -304,7 +239,7 @@ execStep dataMapRef domainMapRef deps step = case step of
 
       -- Make new restricted maps. In a distributed setting, this is
       -- the data we would need to send remotely.
-      domainMapRef' <- newIORef $ IM.insert (dhId dh) (AnyDH dh, [reg]) domainMap'
+      domainMapRef' <- newIORef $ IM.insert (dhId dh) (DomainI dh, [reg]) domainMap'
 
       -- Also filter data so we only send data for the appropriate region
       let usesRegion (ReprI repr) = dhId dh `elem` reprDomain repr

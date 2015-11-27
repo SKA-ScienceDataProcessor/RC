@@ -8,8 +8,12 @@ module Flow.Domain
   , split, distribute
   ) where
 
-import Control.Monad.State.Strict
+import Control.Applicative
+import Control.Monad
+import Control.Monad.State.Strict (state, runState, modify)
+import qualified Control.Monad.State.Strict as State
 
+import Data.Binary
 import Data.Int
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as Map
@@ -40,8 +44,23 @@ makeRangeDomain' rlow rhigh size parDh nsplit = do
        , dhCreate = const $ return $ RangeRegion dh' (Range rlow rhigh)
        , dhRegion = \d -> return $ map (RangeRegion dh' . region d) [0..nsplit-1]
        , dhFilterBox = \_ -> Just -- no dependencies
+       , dhPutRegion = putRangeRegion
+       , dhGetRegion = getRangeRegion dh'
        }
   return dh'
+
+putRangeRegion :: Region -> Put
+putRangeRegion (RangeRegion _ (Range low high)) = do
+  put low
+  put high
+putRangeRegion other =
+  fail $ "putRangeRegion: " ++ show other ++ " is no range region!"
+
+getRangeRegion :: Domain Range -> GetContext -> Get Region
+getRangeRegion dom _ = do
+  low <- get
+  high <- get
+  return $ RangeRegion dom (Range low high)
 
 -- | Create a new bin domain
 makeBinDomain :: Kernel a -> Double -> Double -> Strategy (Domain Bins)
@@ -49,7 +68,7 @@ makeBinDomain kern rlow rhigh = do
 
   -- Bind an internal kernel flow
   Flow dflow <- bindNew kern
-  ss <- get
+  ss <- State.get
   case HM.lookup dflow (ssMap ss) of
     Nothing -> fail $ "makeBinDomain: Internal error - failed to look up flow " ++ show dflow ++ "!"
     Just k -> do
@@ -62,6 +81,8 @@ makeBinDomain kern rlow rhigh = do
            , dhCreate = unpackBinRegion dh' rlow rhigh
            , dhRegion = fail "dhRegion called on bin root domain!"
            , dhFilterBox = filterBoxBin
+           , dhPutRegion = putBinRegion
+           , dhGetRegion = getBinRegion dh'
            }
       addStep $ DomainStep (Just (kernId k)) dh'
       return dh'
@@ -84,6 +105,8 @@ makeBinSubDomain parent nsplit = do
         , dhRegion = return . region
         , dhParent = Just parent
         , dhFilterBox = filterBoxBin
+        , dhPutRegion = putBinRegion
+        , dhGetRegion = getBinRegion dh'
         }
   return dh'
 
@@ -111,6 +134,30 @@ unpackBinRegion dh rlow rhigh rdata = do
            fromIntegral size)
         regs = Map.filter (>0) $ Map.fromList $ zipWith reg [(0::Int)..] binSizes
     return (rbox, regs)
+
+putBinRegion :: Region -> Put
+putBinRegion (BinRegion _ (Bins bins)) = do
+  put (Map.size bins)
+  forM_ (Map.assocs bins) $ \((low,high), sizes) -> do
+    put low
+    put high
+    put (Map.size sizes)
+    forM_ (Map.assocs sizes) $ \(srbox, size) -> do
+      putRegionBox srbox
+      put size
+putBinRegion other =
+  fail $ "putBinRegion: " ++ show other ++ " is no bin region!"
+
+getBinRegion :: Domain Bins -> GetContext -> Get Region
+getBinRegion dom ctx = do
+  numBins <- get
+  bins <- replicateM numBins $ do
+    low <- get
+    high <- get
+    numSizes <- get
+    sizes <- replicateM numSizes ((,) <$> getRegionBox ctx <*> get)
+    return ((low,high), Map.fromList sizes)
+  return $ BinRegion dom (Bins (Map.fromList bins))
 
 -- | Check whether a region box is permissable for the given bin
 -- region. This is the case if all dependencies are fulfilled for any
