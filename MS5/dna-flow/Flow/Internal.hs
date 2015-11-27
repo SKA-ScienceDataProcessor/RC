@@ -5,11 +5,15 @@
 
 module Flow.Internal where
 
+import Control.Applicative
 import Control.Monad.State.Strict
 
+import Data.Binary hiding (get, put)
+import qualified Data.Binary as B
 import Data.Function ( on )
 import Data.Hashable
 import Data.Int
+import qualified Data.IntMap as IM
 import Data.List     ( sort, groupBy )
 import qualified Data.Map as Map
 import Data.Monoid
@@ -152,17 +156,22 @@ data Domain a = Domain
   { dhId    :: DomainId
     -- | Produce a new domain handle that is split up @n@ times more
   , dhSplit  :: Int -> Strategy (Domain a)
-    -- | Creates the domain from given data. This is how you construct
-    -- root domains (those without parents).
+    -- | Creates the root region for this domain using given
+    -- data. This is the region constructor for root domains (those
+    -- without parents)
   , dhCreate :: RegionData -> IO Region
-    -- | Splits out regions from the parent domain. This is used for
-    -- constructing sub-domains.
+    -- | Splits out regions from the parent region. This is used for
+    -- non-root domains.
   , dhRegion :: Region -> IO [Region]
     -- | Get domain this one was derived from. Not set for root domains.
   , dhParent :: Maybe (Domain a)
     -- | Check whether a a region of this domain is permissible in the
     -- context of a given region box
   , dhFilterBox :: RegionBox -> Region -> Maybe Region
+    -- | Write a region of this domain
+  , dhPutRegion :: Region -> Put
+    -- | Read a region of this domain
+  , dhGetRegion :: GetContext -> Get Region
   }
 
 instance forall a. Typeable a => Show (Domain a) where
@@ -180,13 +189,15 @@ dhIsParent dh dh1
   | otherwise                = False
 
 data DomainI where
-  DomainI :: forall a. Domain a -> DomainI
+  DomainI :: forall a. Typeable a => Domain a -> DomainI
 
 dhiId :: DomainI -> DomainId
 dhiId (DomainI di) = dhId di
 
 instance Eq DomainI where
   di0 == di1  = dhiId di0 == dhiId di1
+instance Show DomainI where
+  show (DomainI dom) = show dom
 
 -- | Domains are just ranges for now. It is *very* likely that we are
 -- going to have to generalise this in some way.
@@ -362,3 +373,32 @@ stepsToKernels = concatMap go
   where go (KernelStep kb)            = [kb]
         go (DistributeStep _ _ steps) = concatMap go steps
         go _other                     = []
+
+type GetContext =  (IM.IntMap KernelBind, IM.IntMap DomainI)
+
+putRegionData :: RegionData -> Put
+putRegionData rdata = do
+  B.put (Map.size rdata)
+  forM_ (Map.assocs rdata) $ \(rbox, vec) -> do
+    putRegionBox rbox
+    putVector vec
+
+getRegionData :: GetContext -> Get RegionData
+getRegionData ctx = do
+  rdsize <- B.get :: Get Int
+  Map.fromList <$> replicateM rdsize ((,) <$> getRegionBox ctx <*> getVector)
+
+putRegionBox :: RegionBox -> Put
+putRegionBox rbox = do
+  B.put (length rbox)
+  forM_ rbox $ \reg -> case regionDomain reg of
+    DomainI dom -> B.put (dhId dom) >> dhPutRegion dom reg
+
+getRegionBox :: GetContext -> Get RegionBox
+getRegionBox ctx = do
+  rsize <- B.get :: Get Int
+  replicateM rsize (do
+    did <- B.get :: Get Int
+    case IM.lookup did (snd ctx) of
+      Just (DomainI dom) -> dhGetRegion dom ctx
+      Nothing            -> fail $ "getRegionBox: Unknown domain ID " ++ show did ++ "!")
