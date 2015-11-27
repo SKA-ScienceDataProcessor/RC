@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "scatter_gridder_fixed_gcf_5t_vis.h"
+#include "aligned_malloc.h"
 
 using namespace std;
 
@@ -77,16 +78,16 @@ template <bool chunked, int gcf_size, kern_type<chunked, gcf_size> kern>
 void bench(
     const vecd & vis
   , const vecd & gcf
-  , vecd & uvg
+  , complexd * uvg
   ){
-  memset(uvg.data(), 0, fullSize * 2 * sizeof(double));
+  memset(uvg, 0, fullSize * 2 * sizeof(double));
 
   printf("%s, gcf size %d:\n", chunked ? "Chunked" : "Linear", gcf_size);
   typedef const complexd (*gcf_t)[over][over][gcf_size][gcf_size];
   for(int rep = 0; rep < 4; rep++) {
     kern(
         t2
-      , reinterpret_cast<complexd*>(uvg.data())
+      , uvg
       , *reinterpret_cast<gcf_t>(gcf.data())
       , *reinterpret_cast<typename dlayout<chunked>::type*>(vis.data())
       , gridSize
@@ -112,12 +113,12 @@ int main(/* int argc, char * argv[] */)
   printf("Read GCF32!\n");
   res = readFileToVector(gcf32, "gcf32.dat"); __CK
 
-  vecd uvg(fullSize * 2); // complex
-
+  complexd * uvg = alignedMallocArray<complexd>(fullSize, 32);
   bench<true, 16, gridKernel_scatter_full_chunked16>(vis, gcf16, uvg);
   bench<false, 16, gridKernel_scatter_full16>(vis, gcf16, uvg);
   bench<true, 32, gridKernel_scatter_full_chunked32>(vis, gcf32, uvg);
   bench<false, 32, gridKernel_scatter_full32>(vis, gcf32, uvg);
+  _aligned_free(uvg);
 
 #if 0
   normalizeCPU(
