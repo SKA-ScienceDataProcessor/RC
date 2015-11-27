@@ -6,6 +6,7 @@ module Flow.Run
   , dumpStrategyDOT
   , dumpSteps
   , execStrategy
+  , execStrategyDNA
   ) where
 
 import Control.Monad
@@ -27,6 +28,7 @@ import Flow.Internal
 import Flow.Builder
 import Flow.Vector
 import Flow.Run.Maps
+import Flow.Run.DNA
 
 dumpStrategy :: Strategy a -> IO ()
 dumpStrategy strat = do
