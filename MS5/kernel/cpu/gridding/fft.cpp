@@ -541,8 +541,8 @@ double log2(double x) {
 int main(int argc, char **argv) {
     if (argc < 2) return 1;
 
-    const int WIDTH = 8192
-            , HEIGHT = 8192;
+    const int WIDTH = 2048
+            , HEIGHT = 2048;
 
     // ** Input field
 

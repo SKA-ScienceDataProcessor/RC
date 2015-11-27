@@ -60,19 +60,19 @@ gridderStrat cfg = do
   vdoms <- makeRangeDomain 0 (gridHeight gpar)
 
   -- Split coordinate domain
-  let tiles = 16 -- per dimension
+  let tiles = 4 -- per dimension
   vdom <- split vdoms tiles
   udom <- split udoms tiles
 
   -- Create w-binned domain, split
   let low_w = -25000
       high_w = 25000
-      bins = 16
+      bins = 4
   wdoms <- makeBinDomain (binSizer gpar dom udom vdom low_w high_w bins vis) low_w high_w
   wdom <- split wdoms bins
 
   -- Load GCFs
-  distribute wdom ParSchedule $
+  distribute wdom SeqSchedule $
     bind gcfs (gcfKernel gcfpar wdom)
 
   -- Bin visibilities (could distribute, but there's no benefit)
@@ -83,7 +83,7 @@ gridderStrat cfg = do
   bindRule grid (gridKernel gpar gcfpar udoms vdoms wdom udom vdom)
 
   -- Run gridding distributed
-  distribute vdom ParSchedule $ distribute udom ParSchedule $ do
+  distribute vdom ParSchedule $ distribute udom SeqSchedule $ do
     calculate gridded
 
   -- Compute the result by detiling & iFFT on result tiles
@@ -98,9 +98,9 @@ gridderStrat cfg = do
 main :: IO ()
 main = do
 
-  let gpar = GridPar { gridWidth = 8192
-                     , gridHeight = 8192
-                     , gridPitch = 8196
+  let gpar = GridPar { gridWidth = 2048
+                     , gridHeight = 2048
+                     , gridPitch = 2048
                      , gridTheta = 0.10
                      }
       gcfpar = GCFPar { gcfSize = 16
@@ -116,4 +116,4 @@ main = do
         }
 
   dumpSteps $ gridderStrat config
-  execStrategy $ gridderStrat config
+  execStrategyDNA $ gridderStrat config
