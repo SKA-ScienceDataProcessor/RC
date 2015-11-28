@@ -265,9 +265,10 @@ execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
                 Nothing   -> Nothing
 
     -- Look up input data. Note that we always pass all available data
-    -- here. This means that we are relying on
-    -- 1) DistributeStep below to restrict the data map
-    -- 2) The kernel being able to work with what we pass it
+    -- here, we do not check whether it satisfies the usual "if split
+    -- & distributed domains are used, only pass the current region"
+    -- specification. We are relying on execDistributeStep below to
+    -- organise the data maps accordingly.
     dataMap <- getDataMap
     ins <- forM (kernDeps kbind) $ \kdep -> do
       case IM.lookup (kdepId kdep) dataMap of
@@ -374,7 +375,8 @@ execDistributeStep deps dh sched steps = do
     dataMapNew <- case sched of
      ParSchedule -> lift $ do
 
-       -- Make actor group. Right now we allocate
+       -- Make actor group. Allocation as calculated above, and we always
+       -- include the local node.
        grp <- startGroup (N $ length regs - 1) (NNodes (stepsNodes steps)) $ do
          useLocal
          return act
@@ -398,6 +400,9 @@ execDistributeStep deps dh sched steps = do
 -- | Generate an actor executing the given steps. The result will be a
 -- (marshalled) "DataMap" containing data for the kernels mentioned in
 -- the "KernelSet".
+--
+-- We also return the marshaling and unmarshaling routines to use with
+-- the actor - mainly so all all marshalling code is in one place.
 makeActor :: KernelSet -> [Step]
           -> DnaBuilder (Closure (Actor LBS.ByteString LBS.ByteString),
                          DomainMap -> DataMap -> LBS.ByteString,
@@ -412,7 +417,9 @@ makeActor rets steps = do
               execSteps rets steps
       ctx = dbsContext dbs''
 
-  -- Take over remote table changes plus context
+  -- Take over remote table changes plus context. We will need the
+  -- context in order to be able to unmarshal the result data of the
+  -- code generated above.
   put $ dbs { dbsRemoteRegister = dbsRemoteRegister dbs . dbsRemoteRegister dbs''
             , dbsContext = ctx }
 
@@ -427,7 +434,7 @@ makeActor rets steps = do
         -- Run code
         (_, dataMapNew) <- execStateT (dbsCode dbs'') (domainMap, dataMap)
 
-        -- Marshal result. "execState" should have generated code such
+        -- Marshal result. "execSteps" should have generated code such
         -- that at this point only data mentioned in "rets" is still
         -- left alive.
         return $ runPut $ writeDataMap dataMapNew
