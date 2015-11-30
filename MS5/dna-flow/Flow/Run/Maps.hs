@@ -14,10 +14,30 @@ import qualified Data.Map.Strict as Map
 
 import Flow.Internal
 
+-- | Set of kernels
+--
+-- This is used in interpretation for reasoning about data
+-- dependencies. Note that kernels are synonymous with their output
+-- data, so this also identifies a set of buffers we expect to be
+-- alive.
 type KernelSet = IS.IntSet
+
+-- | Set of domains
+--
+-- Domain dependencies work the same as kernel dependencies (and
+-- should probably be the same on some level)
 type DomainSet = IS.IntSet
 
+-- | The data map maps kernel IDs (and therefore buffer IDs) to their
+-- data representation (= the return data representation of the
+-- kernel) as well as all data we locally have for it. For distributed
+-- execution, this will be restricted in the domain that we distribute
+-- over.
 type DataMap = IM.IntMap (ReprI, RegionData)
+
+-- | Same as "DataMap", except for domains. Note that a split domain
+-- is going to be represented as having several regions attached to
+-- it.
 type DomainMap = IM.IntMap (DomainI, [Region])
 
 writeDataMap :: DataMap -> Put
