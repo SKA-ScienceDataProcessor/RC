@@ -1,25 +1,8 @@
 
 #include "Halide.h"
+#include "utils.h"
 
 using namespace Halide;
-
-enum ComplxFields { _REAL = 0, _IMAG,  _CPLX_FIELDS };
-struct Complex {
-  Expr real, imag;
-  Complex(Expr r, Expr i) : real(r), imag(i) {}
-  Complex(FuncRefExpr f) : real(Tuple(f)[0]), imag(Tuple(f)[1]) {}
-  Complex operator+(const Complex &other) const {
-    return{ real + other.real, imag + other.imag };
-  }
-  Complex operator*(const Complex &other) const {
-    return{
-        real * other.real - imag * other.imag
-      , real * other.imag + imag * other.real
-      };
-  }
-  Expr unpack(Expr c) { return select(c == _REAL, real, imag); }
-  operator Tuple() { return Tuple(real, imag); }
-};
 
 int main(int argc, char **argv) {
   if (argc < 2) return 1;
