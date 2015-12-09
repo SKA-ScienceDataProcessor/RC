@@ -1,0 +1,5 @@
+#!/bin/bash
+g++ -std=c++11 -O3 -ffast-math -fomit-frame-pointer -mavx -D_TEST reprojection.cpp bmp_utils.cpp -s -o reprojectiong
+g++ -std=c++11 -O3 -ffast-math -fomit-frame-pointer -mavx -D_TEST reprojection_f.cpp bmp_utils.cpp -s -o reprojection_fg
+icc -std=c++11 -fast -D_TEST reprojection.cpp bmp_utils.cpp -s -o reprojectioni
+icc -std=c++11 -fast -D_TEST reprojection_f.cpp bmp_utils.cpp -s -o reprojection_fi
