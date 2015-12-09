@@ -4,13 +4,14 @@
 module Kernel.Data
   ( Config(..), GridPar(..), GCFPar(..)
   , Tag, Vis, UVGrid, Image, GCFs
+  , gridImageWidth, gridImageHeight
   -- * Data representations
   , UDom, VDom, WDom
-  , UVGRepr, UVGMarginRepr, ImageRepr, PlanRepr, GCFsRepr
-  , uvgRepr, uvgMarginRepr, imageRepr, planRepr, gcfsRepr
+  , UVGRepr, UVGMarginRepr, FacetRepr, ImageRepr, PlanRepr, GCFsRepr
+  , uvgRepr, uvgMarginRepr, facetRepr, imageRepr, planRepr, gcfsRepr
   -- * Visibility data representations
-  , RawVisRepr, VisRepr
-  , rawVisRepr, visRepr
+  , RawVisRepr, RotatedVisRepr, VisRepr
+  , rawVisRepr, rotatedVisRepr, visRepr
   ) where
 
 import Data.Typeable
@@ -32,6 +33,7 @@ data GridPar = GridPar
   , gridPitch :: !Int  -- ^ Distance between rows in grid storage. Can
                        -- be larger than width if data is meant to be
                        -- padded.
+  , gridFacets :: !Int -- ^ Number of facets in X and Y directions
   , gridTheta :: !Double  -- ^ Size of the field of view in radians
   }
 data GCFPar = GCFPar
@@ -39,6 +41,13 @@ data GCFPar = GCFPar
   , gcfOver :: Int
   , gcfFile :: FilePath
   }
+
+-- | Image dimensions for all facets together
+gridImageWidth :: GridPar -> Int
+gridImageWidth gp = gridWidth gp * gridFacets gp
+
+gridImageHeight :: GridPar -> Int
+gridImageHeight gp = gridHeight gp * gridFacets gp
 
 -- Data tags
 data Tag -- ^ Initialisation (e.g. FFT plans)
@@ -71,18 +80,20 @@ uvgMarginRepr gcfp udom vdom =
   marginRepr udom (gcfSize gcfp `div` 2) $
   halideRepr (dim1 dimCpx)
 
-type ImageRepr = HalideRepr Dim2 Double Image
-imageRepr :: GridPar -> ImageRepr
-imageRepr gp = halideRepr $ dimY gp :. dimX gp :. Z
-
-dimX :: GridPar -> Dim
-dimX gp = (0, fromIntegral $ gridWidth gp)
-
-dimY :: GridPar -> Dim
-dimY gp = (0, fromIntegral $ gridHeight gp)
-
 dimCpx :: Dim
 dimCpx = (0, 2)
+
+type FacetRepr = HalideRepr Dim2 Double Image
+facetRepr :: GridPar -> ImageRepr
+facetRepr gp = halideRepr $ dimY :. dimX :. Z
+  where dimX = (0, fromIntegral $ gridWidth gp)
+        dimY = (0, fromIntegral $ gridHeight gp)
+
+type ImageRepr = HalideRepr Dim2 Double Image
+imageRepr :: GridPar -> ImageRepr
+imageRepr gp = halideRepr $ dimY :. dimX :. Z
+  where dimX = (0, fromIntegral $ gridImageWidth gp)
+        dimY = (0, fromIntegral $ gridImageHeight gp)
 
 type PlanRepr = NoRepr Tag -- HalideRepr Dim0 Int32 Tag
 planRepr :: PlanRepr
@@ -90,9 +101,15 @@ planRepr = NoRepr -- halideRepr dim0
 
 -- | Raw visibilities: Dynamically sized list of visibility records
 -- (see "dimVisFields").
-type RawVisRepr = DynHalideRepr Dim1 Double Vis
+type RawVisRepr = RangeRepr (HalideRepr Dim1 Double Vis)
 rawVisRepr :: Domain Range -> RawVisRepr
-rawVisRepr = dynHalideRepr (dim1 dimVisFields)
+rawVisRepr dom = RangeRepr dom $ halideRepr (dim1 dimVisFields)
+
+type RotatedVisRepr = RegionRepr Range (RegionRepr Range (RangeRepr (HalideRepr Dim1 Double Vis)))
+rotatedVisRepr :: Domain Range -> Domain Range -> Domain Range -> RotatedVisRepr
+rotatedVisRepr ldom mdom tdom =
+  RegionRepr ldom $ RegionRepr mdom $ RangeRepr tdom $
+  halideRepr (dim1 dimVisFields)
 
 type VisRepr = RegionRepr Range (RegionRepr Range (BinRepr (HalideRepr Dim1 Double Vis)))
 visRepr :: UDom -> VDom -> WDom -> VisRepr

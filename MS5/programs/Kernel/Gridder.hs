@@ -20,28 +20,6 @@ gridInit :: GCFPar -> Domain Range -> Domain Range -> Kernel UVGrid
 gridInit gcfp ydom xdom = halideKernel0 "gridInit" (uvgMarginRepr gcfp ydom xdom) kern_init
 foreign import ccall unsafe kern_init :: HalideFun '[] UVGRepr
 
--- | Visibility rotation
-rotateKernel
-  :: GridPar           -- ^ Configuration
-  -> Double -> Double  -- ^ Input longitude / latitude (radians)
-  -> Double -> Double  -- ^ Output longitude / latitude (radians)
-  -> Bool -- ^ Do uv-projection aka image plane facetting? If yes,
-          -- this will adjust UVW as well as the visibility.
-  -> Domain Range -- ^ Visibility domain
-  -> Flow Vis
-  -> Kernel Vis
-rotateKernel gp inLon inLat outLon outLat doRep tdom =
-  halideKernel1 "rotateKernel" (rawVisRepr tdom)
-                               (rawVisRepr tdom) $
-  kern_rotate `halideBind` inLon `halideBind` inLat
-              `halideBind` outLon `halideBind` outLat
-              `halideBind` (if doRep then 1 else 0)
-foreign import ccall unsafe kern_rotate
-  :: (HalideBind Double (HalideBind Double
-     (HalideBind Double (HalideBind Double
-     (HalideBind Int32
-     (HalideFun '[VisRepr] VisRepr))))))
-
 -- | Gridder kernel binding
 gridKernel :: GridPar -> GCFPar                           -- ^ Configuration
            -> Domain Range -> Domain Range -> Domain Bins -- ^ u/v/w visibility domains
@@ -52,7 +30,8 @@ gridKernel gp gcfp udom vdom wdom udom' vdom' =
   halideKernel2Write "gridKernel" (visRepr udom vdom wdom)
                                   (gcfsRepr wdom gcfp)
                                   (uvgMarginRepr gcfp udom' vdom') $
-  kern_scatter `halideBind` gridTheta gp `halideBind` fromIntegral (gridHeight gp)
+  kern_scatter `halideBind` (gridTheta gp / fromIntegral (gridFacets gp))
+               `halideBind` fromIntegral (gridHeight gp)
 foreign import ccall unsafe kern_scatter
   :: HalideBind Double (HalideBind Int32 (HalideFun '[VisRepr, GCFsRepr] UVGMarginRepr))
 

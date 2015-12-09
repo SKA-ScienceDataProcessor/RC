@@ -19,5 +19,5 @@ fftCreatePlans _ = mappingKernel "fftPlans" Z planRepr $ \_ _ ->
   return nullVector
 
 ifftKern :: GridPar -> Domain Range -> Domain Range -> Flow Tag -> Flow UVGrid -> Kernel Image
-ifftKern gp ydom xdom = const (halideKernel1 "ifftKern" (uvgRepr ydom xdom) (imageRepr gp) kern_fft)
+ifftKern gp ydom xdom = const (halideKernel1 "ifftKern" (uvgRepr ydom xdom) (facetRepr gp) kern_fft)
 foreign import ccall unsafe kern_fft :: HalideFun '[UVGRepr] ImageRepr

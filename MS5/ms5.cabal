@@ -61,7 +61,6 @@ executable gridding
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp
                        kernel/cpu/gridding/fft.cpp
-                       kernel/cpu/gridding/rotate.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
 
 executable facetting
@@ -81,4 +80,6 @@ executable facetting
                        kernel/cpu/gridding/detile.cpp
                        kernel/cpu/gridding/fft.cpp
                        kernel/cpu/gridding/rotate.cpp
+                       kernel/cpu/gridding/image_init.cpp
+                       kernel/cpu/gridding/defacet.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
