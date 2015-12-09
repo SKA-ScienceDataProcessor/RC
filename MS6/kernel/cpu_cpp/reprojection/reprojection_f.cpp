@@ -1,7 +1,7 @@
 /*
   Adapted from Chris Skipper's code.
   We use the code from 'crocodile' repo.
-  More complex version form Confluence segfaults.
+  More complex version from Confluence segfaults.
 
   Difference from bare 'reprojection' variant:
   we fuse  worldToPixel . pixelToWorld explicitly into the single 'p2p'

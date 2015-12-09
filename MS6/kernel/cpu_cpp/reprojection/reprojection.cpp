@@ -1,7 +1,7 @@
 /*
   Adapted from Chris Skipper's code.
   We use the code from 'crocodile' repo.
-  More complex version form Confluence segfaults.
+  More complex version from Confluence segfaults.
  */
 
 #define _USE_MATH_DEFINES 1
