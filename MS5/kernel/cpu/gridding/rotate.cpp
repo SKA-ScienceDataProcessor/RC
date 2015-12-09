@@ -9,7 +9,8 @@ int main(int argc, char **argv) {
   // ** Input
 
   Param<double> in_lon("in_lon"), in_lat("in_lat");
-  Param<double> out_lon("out_lon"), out_lat("out_lat");
+  Param<double> out_lon0("out_lon0"), out_lat0("out_lat0");
+  Param<double> out_lon_incr("out_lon_incr"), out_lat_incr("out_lat_incr");
   Param<int> uvproj("uvproj");
 
   // Visibilities: Array of 5-pairs, packed together with UVW
@@ -18,17 +19,31 @@ int main(int argc, char **argv) {
   vis.set_min(0,0).set_stride(0,1).set_extent(0,_VIS_FIELDS)
      .set_stride(1,_VIS_FIELDS);
 
-  std::vector<Halide::Argument> args = { in_lon, in_lat, out_lon, out_lat, uvproj, vis };
+  std::vector<Halide::Argument> args = {
+      in_lon, in_lat,
+      out_lon0, out_lat0,
+      out_lon_incr, out_lat_incr,
+      uvproj, vis
+  };
 
   // ** Output
 
+  // Create bogus definition so we can access output extents, then
+  // calculate out longitude/latitude from it
+  Var uvdim("uvdim"); Var t("t");
+  Func rot("rot");
+  rot(uvdim, t) = undef<double>();
+  Expr lmin = rot.output_buffer().min(2);
+  Expr mmin = rot.output_buffer().min(3);
+  Expr out_lon = out_lon0 + lmin * out_lon_incr;
+  Expr out_lat = out_lat0 + mmin * out_lat_incr;
   // Calculate reprojection matrixes
   Matrix rotMtx = xyz2uvw(out_lon, out_lat) * uvw2xyz(in_lon, in_lat);
   Matrix projMtx = rotMtx.inverse2x2().transpose();
   Matrix invMtx = rotMtx.transpose(); // Rotation matrix: transpose=inverse
 
   // UVW vector for a given visibility
-  Func uvw("uvw"), newVector("newVector"), mtx("mtx"); Var t("t");
+  Func uvw("uvw"), newVector("newVector"), mtx("mtx");
   Expr d0 = cast<double>(0), d1 = cast<double>(1);
   uvw(t) = Vector3(vis(_U,t), vis(_V,t), vis(_W,t));
   mtx() = selectMtx(uvproj != 0,
@@ -45,7 +60,6 @@ int main(int argc, char **argv) {
   newVis(t) = visRot * Complex(vis(_R,t), vis(_I,t));
 
   // Generate output
-  Func rot("rot"); Var uvdim("uvdim");
   rot(uvdim, t) =
     select(uvdim < _R,
            Vector3(newVector(t)).unpack(uvdim),

@@ -20,6 +20,7 @@ import Data.Monoid
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
 
+import DNA (ProfileHint)
 import Flow.Vector
 
 -- | Simple type-level lists. TODO: Import from an external library?
@@ -92,8 +93,11 @@ mkFlow name fis = Flow $ FlowI (hash (name, fis, noWild)) name fis noWild
 -- | Kernel frontend representation
 data Kernel a where
   Kernel :: DataRepr r
-         => String -> KernelCode
-         -> [(FlowI, ReprI)] -> r
+         => String
+         -> [ProfileHint]
+         -> KernelCode
+         -> [(FlowI, ReprI)]
+         -> r
          -> Kernel (ReprType r)
 
 type KernelId = Int
@@ -109,6 +113,7 @@ data KernelBind = KernelBind
   , kernReprCheck :: ReprI -> Bool
     -- ^ Check whether a sink data representation is compatible with
     -- the data we produce
+  , kernHints :: [ProfileHint]
   }
 
 kernDomain :: KernelBind -> [DomainId]
@@ -145,7 +150,7 @@ type RegionData = Map.Map RegionBox (Vector ())
 type KernelCode = [RegionData] -> [RegionBox] -> IO [Vector ()]
 
 instance Show KernelBind where
-  showsPrec _ (KernelBind kid kflow kname krepr kdeps _ _)
+  showsPrec _ (KernelBind kid kflow kname krepr kdeps _ _ _)
     = showString "Kernel " . shows kid . showString ":" . showString kname
       . showString " implementing " . showString (flName kflow)
       . showString " producing " . shows krepr

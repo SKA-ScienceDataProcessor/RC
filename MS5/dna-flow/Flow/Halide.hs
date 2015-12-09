@@ -144,17 +144,38 @@ instance HalideCtx dim val abs => HalideReprClass (HalideRepr dim val abs) where
   halrCall      r _ fun ds = call fun (halrDim r ds)
   halrCallWrite _ _ fun    = callWrite fun
 
-instance (Typeable dom, Typeable rep, HalideReprClass rep) =>
-         HalideReprClass (RegionRepr dom rep) where
-  type HalrDim (RegionRepr dom rep) = HalrDim rep
-  type HalrVal (RegionRepr dom rep) = HalrVal rep
-  type HalideFun xs (RegionRepr dom rep) = HalideFun xs rep
-  halrDim (RegionRepr _ rep) (_:ds) = halrDim rep ds
-  halrWrite (RegionRepr dh rep) = RegionRepr dh (halrWrite rep)
-  halrCall rep _ _ []
-    = error $ "Not enough domains passed to halrCall for " ++ show rep ++ "!"
-  halrCall      (RegionRepr _ rep) xs fun (_:doms) = halrCall rep xs fun doms
-  halrCallWrite (RegionRepr _ rep) xs fun          = halrCallWrite rep xs fun
+instance (HalideReprClass rep, MarshalArray (Dim :. HalrDim rep)) =>
+         HalideReprClass (RegionRepr Range rep) where
+  type HalrDim (RegionRepr Range rep) = Dim :. HalrDim rep
+  type HalrVal (RegionRepr Range rep) = HalrVal rep
+  type HalideFun xs (RegionRepr Range rep)
+    = HalideKernel (KernelParams xs) (Array (Dim :. HalrDim rep) (HalrVal rep))
+  halrDim (RegionRepr _ rep) ((RangeRegion _ (Range low _)):rbox)
+    = (fromIntegral low, 1) :. halrDim rep rbox
+    -- Note that this is also fudging the facts quite a bit - the
+    -- region size is clearly 1, but we can still set the minimum
+    -- field however we want, so we can use "min" in order to pass the
+    -- region to Halide. This is obviously - again - slightly hacky
+    -- and the kernel needs to expect it.
+  halrDim r doms
+     = error $ "halrDim: number/types of domains for " ++ show r ++ ": " ++ show doms
+  halrWrite (RegionRepr dom rep) = RegionRepr dom (halrWrite rep)
+  halrCall      r _ fun doms = call fun (halrDim r doms)
+  halrCallWrite _ _ fun      = callWrite fun
+
+instance (HalideReprClass rep, MarshalArray (HalrDim rep)) =>
+         HalideReprClass (RegionRepr Bins rep) where
+  type HalrDim (RegionRepr Bins rep) = HalrDim rep
+  type HalrVal (RegionRepr Bins rep) = HalrVal rep
+  type HalideFun xs (RegionRepr Bins rep)
+    = HalideKernel (KernelParams xs) (Array (HalrDim rep) (HalrVal rep))
+  halrDim (RegionRepr _ rep) (_:rbox)
+    = halrDim rep rbox
+  halrDim r doms
+    = error $ "halrDim: number/types of domains for " ++ show r ++ ": " ++ show doms
+  halrWrite (RegionRepr dom rep) = RegionRepr dom (halrWrite rep)
+  halrCall      r _ fun doms = call fun (halrDim r doms)
+  halrCallWrite _ _ fun      = callWrite fun
 
 -- Here is where we need undecideable instance, regrettably
 instance (HalideReprClass rep, MarshalArray (Dim :. HalrDim rep)) =>

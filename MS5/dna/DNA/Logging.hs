@@ -428,6 +428,8 @@ data ProfileHint
       -- either @"float-ops"@ or @"double-ops"@ mode,
       -- respectively. Note that this requires instrumentation, which
       -- will reduce overall performance!
+    deriving (Show,Eq)
+
 
 -- | Default constructor for 'FloatHint' with hint 0 for all
 -- metrics. Can be used for requesting FLOP profiling. Hints can be

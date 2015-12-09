@@ -102,10 +102,11 @@ main = do
                      , gridHeight = 2048
                      , gridPitch = 2048
                      , gridTheta = 0.10
+                     , gridFacets = 1
                      }
       gcfpar = GCFPar { gcfSize = 16
                       , gcfOver = 8
-                      , gcfFile = "gcf0.dat"
+                      , gcfFile = "gcf16.dat"
                       }
       config = Config
         { cfgInput  = "test_p00_s00_f00.vis"

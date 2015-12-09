@@ -37,6 +37,5 @@ int main(int argc, char **argv) {
     Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
     Module mod = out_grid.compile_to_module(args, "kern_detile", target);
     compile_module_to_object(mod, argv[1]);
-    compile_module_to_html(mod, "detile.html");
     return 0;
 }

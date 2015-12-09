@@ -123,8 +123,8 @@ stepDomainDeps (KernelStep kbind)
 stepDomainDeps (DomainStep _ dh)
   | Just parent <- dhParent dh
   = IS.singleton (dhId parent)
-stepDomainDeps (DistributeStep _ _ steps)
-  = stepsDomainDeps steps
+stepDomainDeps (DistributeStep dh _ steps)
+  = IS.insert (dhId dh) $ stepsDomainDeps steps
 stepDomainDeps _
   = IS.empty
 
