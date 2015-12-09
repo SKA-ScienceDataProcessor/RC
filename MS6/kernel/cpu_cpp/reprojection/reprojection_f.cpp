@@ -2,6 +2,10 @@
   Adapted from Chris Skipper's code.
   We use the code from 'crocodile' repo.
   More complex version form Confluence segfaults.
+
+  Difference from bare 'reprojection' variant:
+  we fuse  worldToPixel . pixelToWorld explicitly into the single 'p2p'
+  and precalculate cvt=in.toPixel*out.fromPixel matrix explicitly.
  */
 
 #define _USE_MATH_DEFINES 1
