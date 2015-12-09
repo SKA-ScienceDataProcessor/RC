@@ -93,8 +93,11 @@ mkFlow name fis = Flow $ FlowI (hash (name, fis, noWild)) name fis noWild
 -- | Kernel frontend representation
 data Kernel a where
   Kernel :: DataRepr r
-         => String -> KernelCode
-         -> [(FlowI, ReprI)] -> r
+         => String
+         -> [ProfileHint]
+         -> KernelCode
+         -> [(FlowI, ReprI)]
+         -> r
          -> Kernel (ReprType r)
 
 type KernelId = Int

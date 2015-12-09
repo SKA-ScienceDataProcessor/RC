@@ -119,13 +119,13 @@ kernel :: forall r rs. (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
        => String -> rs -> r -> KernelCode -> ReprKernFun (ReprType r) rs
 kernel name parReprs retRep code
   = curryReprs (undefined :: rs) $ \fs ->
-    Kernel name code (zip (toList fs) (toReprsI parReprs)) retRep
+    Kernel name [] code (zip (toList fs) (toReprsI parReprs)) retRep
 
 -- | Prepares the given kernel. This means checking its parameters and
 -- adding it to the kernel list. However, it will not automatically be
 -- added to the current scope.
 prepareKernel :: Kernel r -> Flow r -> Strategy KernelBind
-prepareKernel (Kernel kname kcode pars retRep) (Flow fi) = do
+prepareKernel (Kernel kname khints kcode pars retRep) (Flow fi) = do
 
   -- Look up dependencies
   kis <- mapM (uncurry (prepareDependency kname fi)) $
@@ -141,7 +141,7 @@ prepareKernel (Kernel kname kcode pars retRep) (Flow fi) = do
                         , kernDeps = kis
                         , kernCode = kcode
                         , kernReprCheck = typeCheck
-                        , kernHints = [] -- FIXME
+                        , kernHints = khints
                         }
   addStep $ KernelStep kern
   return kern
@@ -328,7 +328,7 @@ implementing (Flow fi) strat = do
 -- useful for input streams (the roots of the data flow graph) as well
 -- as output flows, where we do not care about their output values.
 bindNew :: Kernel r -> Strategy (Flow r)
-bindNew kern@(Kernel name _ inps _) = do
+bindNew kern@(Kernel name _ _ inps _) = do
   fl <- uniq (mkFlow (name ++ "-call") (map fst inps))
   bind fl kern
   return fl
