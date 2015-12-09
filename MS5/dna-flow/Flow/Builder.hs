@@ -141,6 +141,7 @@ prepareKernel (Kernel kname kcode pars retRep) (Flow fi) = do
                         , kernDeps = kis
                         , kernCode = kcode
                         , kernReprCheck = typeCheck
+                        , kernHints = [] -- FIXME
                         }
   addStep $ KernelStep kern
   return kern

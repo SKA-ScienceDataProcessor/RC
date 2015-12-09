@@ -280,7 +280,7 @@ execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
     -- Important TODO: Duplicate data that is written here, but read later!
 
     -- Call the kernel using the right regions
-    let hints = [] -- TODO!
+    let hints = kernHints kbind
     results <- lift $ kernel (kernName kbind) hints $ liftIO $
                kernCode kbind (map snd ins) filteredRegs
 
