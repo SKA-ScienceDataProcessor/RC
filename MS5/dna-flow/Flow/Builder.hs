@@ -14,6 +14,7 @@ module Flow.Builder
   , IsReprs(..), IsReprKern(..)
   , kernel, Kernel
   , bind, rebind, bindRule, bindNew
+  , hints
   -- * Support
   , Z(..), (:.)(..)
   ) where
@@ -26,6 +27,7 @@ import qualified Data.HashMap.Strict as HM
 import Data.Maybe
 import Data.Typeable
 
+import DNA (ProfileHint)
 import Flow.Internal
 
 
@@ -216,6 +218,11 @@ bind fl kfl = do
   entry <- prepareKernel kfl fl
   let fi = kernFlow entry
   modify $ \ss -> ss{ ssMap = HM.insert fi entry (ssMap ss)}
+
+-- | Add profiling hints to the kernel
+hints :: [ProfileHint] -> Kernel r -> Kernel r
+hints hints (Kernel nm hs k xs r) =
+  Kernel nm (hs ++ hints) k xs r
 
 -- | Rebinds the given flow. This is a special case of "bind" for
 -- kernels that modify the data the flow represents - for example to
