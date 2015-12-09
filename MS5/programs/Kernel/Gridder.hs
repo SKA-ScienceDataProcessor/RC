@@ -5,7 +5,6 @@ module Kernel.Gridder where
 import Data.Int
 
 import Flow.Builder
-import Flow.Domain
 import Flow.Halide
 
 import Kernel.Data
@@ -16,20 +15,20 @@ import Flow.Halide.Types ()
 
 -- | Gridder grid initialisation. This is separate because
 -- "gridKernel" requires an input to work.
-gridInit :: GCFPar -> Domain Range -> Domain Range -> Kernel UVGrid
-gridInit gcfp ydom xdom = halideKernel0 "gridInit" (uvgMarginRepr gcfp ydom xdom) kern_init
+gridInit :: GCFPar -> UVDom -> Kernel UVGrid
+gridInit gcfp uvdom = halideKernel0 "gridInit" (uvgMarginRepr gcfp uvdom) kern_init
 foreign import ccall unsafe kern_init :: HalideFun '[] UVGRepr
 
 -- | Gridder kernel binding
-gridKernel :: GridPar -> GCFPar                           -- ^ Configuration
-           -> Domain Range -> Domain Range -> Domain Bins -- ^ u/v/w visibility domains
-           -> Domain Range -> Domain Range                -- ^ u/v grid domains
+gridKernel :: GridPar -> GCFPar    -- ^ Configuration
+           -> UVDom -> WDom        -- ^ u/v/w visibility domains
+           -> UVDom                -- ^ u/v grid domains
            -> Flow Vis -> Flow GCFs -> Flow UVGrid
            -> Kernel UVGrid
-gridKernel gp gcfp udom vdom wdom udom' vdom' =
-  halideKernel2Write "gridKernel" (visRepr udom vdom wdom)
+gridKernel gp gcfp uvdom wdom uvdom' =
+  halideKernel2Write "gridKernel" (visRepr uvdom wdom)
                                   (gcfsRepr wdom gcfp)
-                                  (uvgMarginRepr gcfp udom' vdom') $
+                                  (uvgMarginRepr gcfp uvdom') $
   kern_scatter `halideBind` (gridTheta gp / fromIntegral (gridFacets gp))
                `halideBind` fromIntegral (gridHeight gp)
 foreign import ccall unsafe kern_scatter
@@ -38,13 +37,13 @@ foreign import ccall unsafe kern_scatter
 -- | Gridder grid initialisation, for detiling. Only differs from
 -- "gridInit" in the produced data representation, we can even re-use
 -- the underlying Halide kernel.
-gridInitDetile :: Domain Range -> Domain Range -> Kernel UVGrid
-gridInitDetile ydom xdom = halideKernel0 "gridInitDetile" (uvgRepr ydom xdom) kern_init
+gridInitDetile :: UVDom -> Kernel UVGrid
+gridInitDetile uvdom = halideKernel0 "gridInitDetile" (uvgRepr uvdom) kern_init
 
 -- | Grid de-tiling kernel. This simply copies tiled (and possibly
 -- overlapped) tiles into a common UV-grid.
-gridDetiling :: GCFPar -> (Domain Range, Domain Range) -> (Domain Range, Domain Range)
+gridDetiling :: GCFPar -> UVDom -> UVDom
              -> Flow UVGrid -> Flow UVGrid -> Kernel UVGrid
-gridDetiling gcfp (ydom0, xdom0) (ydom1, xdom1) =
-  halideKernel1Write "gridDetiling" (uvgMarginRepr gcfp ydom0 xdom0) (uvgRepr ydom1 xdom1) kern_detile
+gridDetiling gcfp uvdom0 uvdom1 =
+  halideKernel1Write "gridDetiling" (uvgMarginRepr gcfp uvdom0) (uvgRepr uvdom1) kern_detile
 foreign import ccall unsafe kern_detile :: HalideFun '[UVGMarginRepr] UVGRepr

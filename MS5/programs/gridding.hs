@@ -39,7 +39,7 @@ gridderStrat :: Config -> Strategy ()
 gridderStrat cfg = do
 
   -- Make point domain for visibilities
-  dom <- makeRangeDomain 0 (cfgPoints cfg)
+  tdom <- makeRangeDomain 0 (cfgPoints cfg)
 
   -- Create data flow for tag, bind it to FFT plans
   let gpar = cfgGrid cfg
@@ -48,7 +48,7 @@ gridderStrat cfg = do
 
   -- Create data flow for visibilities, read in
   let vis = flow "vis" tag
-  bind vis $ oskarReader dom (cfgInput cfg) 0 0
+  bind vis $ oskarReader tdom (cfgInput cfg) 0 0
 
   -- Data flows we want to calculate
   let gcfs = gcf vis
@@ -58,17 +58,18 @@ gridderStrat cfg = do
   -- Create ranged domains for grid coordinates
   udoms <- makeRangeDomain 0 (gridWidth gpar)
   vdoms <- makeRangeDomain 0 (gridHeight gpar)
+  let uvdoms = (udoms, vdoms)
 
   -- Split coordinate domain
-  let tiles = 4 -- per dimension
-  vdom <- split vdoms tiles
-  udom <- split udoms tiles
+  vdom <- split vdoms (gridTiles gpar)
+  udom <- split udoms (gridTiles gpar)
+  let uvdom = (udom, vdom)
 
   -- Create w-binned domain, split
   let low_w = -25000
       high_w = 25000
       bins = 4
-  wdoms <- makeBinDomain (binSizer gpar dom udom vdom low_w high_w bins vis) low_w high_w
+  wdoms <- makeBinDomain (binSizer gpar tdom uvdom low_w high_w vis) low_w high_w
   wdom <- split wdoms bins
 
   -- Load GCFs
@@ -76,20 +77,20 @@ gridderStrat cfg = do
     bind gcfs (gcfKernel gcfpar wdom)
 
   -- Bin visibilities (could distribute, but there's no benefit)
-  rebind vis (binner gpar dom udom vdom wdom)
+  rebind vis (binner gpar tdom uvdom wdom)
 
   -- Bind kernel rules
-  bindRule createGrid (gridInit gcfpar udom vdom)
-  bindRule grid (gridKernel gpar gcfpar udoms vdoms wdom udom vdom)
+  bindRule createGrid (gridInit gcfpar uvdom)
+  bindRule grid (gridKernel gpar gcfpar uvdoms wdom uvdom)
 
   -- Run gridding distributed
   distribute vdom ParSchedule $ distribute udom SeqSchedule $ do
     calculate gridded
 
   -- Compute the result by detiling & iFFT on result tiles
-  bind createGrid (gridInitDetile udoms vdoms)
-  bind gridded (gridDetiling gcfpar (udom, vdom) (udoms, vdoms) gridded createGrid)
-  bindRule idft (ifftKern gpar udoms vdoms tag)
+  bind createGrid (gridInitDetile uvdoms)
+  bind gridded (gridDetiling gcfpar uvdom uvdoms gridded createGrid)
+  bindRule idft (ifftKern gpar uvdoms tag)
   calculate result
 
   -- Write out
@@ -103,6 +104,8 @@ main = do
                      , gridPitch = 2048
                      , gridTheta = 0.10
                      , gridFacets = 1
+                     , gridTiles = 4
+                     , gridBins = 10
                      }
       gcfpar = GCFPar { gcfSize = 16
                       , gcfOver = 8
@@ -111,6 +114,8 @@ main = do
       config = Config
         { cfgInput  = "test_p00_s00_f00.vis"
         , cfgPoints = 32131 * 200
+        , cfgLong   = 72.1 / 180 * pi -- probably wrong in some way
+        , cfgLat    = 42.6 / 180 * pi -- ditto
         , cfgOutput = "out.img"
         , cfgGrid   = gpar
         , cfgGCF    = gcfpar
