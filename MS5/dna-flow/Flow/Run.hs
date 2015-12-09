@@ -39,7 +39,7 @@ dumpStrategy strat = do
   -- Generate sorted kernel
   let kerns' = sortBy (comparing kernId) (stepsToKernels kerns)
 
-  let dumpKern (KernelBind kid kfl kname repr deps _ _) = do
+  let dumpKern (KernelBind kid kfl kname repr deps _ _ _) = do
         putStrLn $ concat
           [ "Kernel ", show kid, ":", kname, " implementing ", flName kfl
           , " producing ", show repr, " using ", show deps ]
@@ -58,7 +58,7 @@ dumpStrategyDOT file strat = do
   h <- openFile file WriteMode
   hPutStrLn h "digraph strategy {"
   let kidName kid = "kernel" ++ show kid
-  let dumpKern (KernelBind kid kfl kname repr deps _ _) = do
+  let dumpKern (KernelBind kid kfl kname repr deps _ _ _) = do
         hPutStrLn h $ concat
           [ kidName kid, " [label=\"" ++ kname, " implementing ", flName kfl,
             " producing ", show repr, "\"]"]

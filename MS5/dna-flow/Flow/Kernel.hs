@@ -318,7 +318,7 @@ instance IsKernelDef kf => IsKernelDef (Flow f -> kf) where
 -- @mappingKernel@, but here we impose this behaviour on top of an
 -- existing kernel (which might not be a mapping kernel itself).
 regionKernel :: (Typeable d, IsKernelDef kf) => Domain d -> kf -> kf
-regionKernel dom = mapKernelDef $ \(Kernel name code parReprs retRepr) ->
+regionKernel dom = mapKernelDef $ \(Kernel name khints code parReprs retRepr) ->
   let addReg (fl, ReprI rep) = (fl, ReprI $ RegionRepr dom rep)
       parReprs' = map addReg parReprs
       retRepr' = RegionRepr dom retRepr
@@ -333,7 +333,7 @@ regionKernel dom = mapKernelDef $ \(Kernel name code parReprs retRepr) ->
               pars'' = map (Map.mapKeysMonotonic tail) pars'
           code pars'' (map tail boxes')
         return $ concat results
-   in Kernel name code' parReprs' retRepr'
+   in Kernel name khints code' parReprs' retRepr'
 
 rangeKernel0 :: DataRepr r
              => String -> r -> (Int -> Int -> IO (Vector a))

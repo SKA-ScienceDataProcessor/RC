@@ -32,7 +32,7 @@ import Data.Char
 import Data.List ( intersect )
 import Debug.Trace
 
-import System.Directory
+import System.Directory hiding (exeExtension)
 import System.Process
 import System.FilePath
 
