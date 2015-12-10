@@ -87,7 +87,7 @@ gridderStrat cfg = do
     wdom <- split wdoms (gridBins gpar)
 
     -- Load GCFs
-    distribute wdom ParSchedule $
+    distribute wdom SeqSchedule $
       bind gcfs (rkern $ gcfKernel gcfpar wdom)
 
     -- Bin visibilities (could distribute, but there's no benefit)
@@ -120,7 +120,7 @@ main = do
                      , gridPitch  = 2048
                      , gridTheta  = 0.10
                      , gridFacets = 3
-                     , gridTiles  = 4
+                     , gridTiles  = 1
                      , gridBins   = 10
                      }
       gcfpar = GCFPar { gcfSize = 16
@@ -138,4 +138,4 @@ main = do
         }
 
   dumpSteps $ gridderStrat config
-  execStrategy $ gridderStrat config
+  execStrategyDNA $ gridderStrat config
