@@ -11,7 +11,7 @@ module Flow.Builder
   , runStrategy
   , uniq, implementing, calculate
   -- * Kernel binding
-  , IsReprs(..), IsReprKern(..)
+  , IsReprs(..), IsReprKern(..), IsKernelDef(..)
   , kernel, Kernel
   , bind, rebind, bindRule, bindNew
   , hints
@@ -102,6 +102,18 @@ instance IsReprKern a Z where
 instance (DataRepr r, IsReprKern a rs) => IsReprKern a (r :. rs) where
   type ReprKernFun a (r :. rs) = Flow (ReprType r) -> ReprKernFun a rs
   curryReprs _ f fl = curryReprs (undefined :: rs) (f . (fl :.))
+
+-- | Functions going from "Flow"s to a "Kernel". Useful for modifing
+-- kernel code.
+class IsKernelDef kf where
+  type KernelDefRet kf
+  mapKernelDef :: (Kernel (KernelDefRet kf) -> Kernel (KernelDefRet kf)) -> kf -> kf
+instance IsKernelDef (Kernel r) where
+  type KernelDefRet (Kernel r) = r
+  mapKernelDef = id
+instance IsKernelDef kf => IsKernelDef (Flow f -> kf) where
+  type KernelDefRet (Flow f -> kf) = KernelDefRet kf
+  mapKernelDef f kf = \x -> mapKernelDef f (kf x)
 
 -- | Create a new abstract kernel flow
 flow :: IsCurriedFlows fs => String -> fs
@@ -220,9 +232,9 @@ bind fl kfl = do
   modify $ \ss -> ss{ ssMap = HM.insert fi entry (ssMap ss)}
 
 -- | Add profiling hints to the kernel
-hints :: [ProfileHint] -> Kernel r -> Kernel r
-hints hints (Kernel nm hs k xs r) =
-  Kernel nm (hs ++ hints) k xs r
+hints :: IsKernelDef kd => [ProfileHint] -> kd -> kd
+hints hs' = mapKernelDef $ \(Kernel nm hs k xs r) ->
+  Kernel nm (hs ++ hs') k xs r
 
 -- | Rebinds the given flow. This is a special case of "bind" for
 -- kernels that modify the data the flow represents - for example to

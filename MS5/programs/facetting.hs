@@ -100,7 +100,7 @@ gridderStrat cfg = do
 
     -- Bind kernel rules
     bindRule createGrid (rkern $ gridInit gcfpar uvdom)
-    bindRule grid (rkern $ gridKernel gpar gcfpar uvdoms wdom uvdom)
+    bindRule grid (rkern $ hints [floatHint] $ gridKernel gpar gcfpar uvdoms wdom uvdom)
 
     -- Run gridding distributed
     distribute vdom ParSchedule $ distribute udom ParSchedule $ do
@@ -109,7 +109,7 @@ gridderStrat cfg = do
     -- Compute the result by detiling & iFFT on result tiles
     bind createGrid (rkern $ gridInitDetile uvdoms)
     bind gridded (rkern $ gridDetiling gcfpar uvdom uvdoms gridded createGrid)
-    bindRule idft (rkern $ ifftKern gpar uvdoms tag)
+    bindRule idft (rkern $ hints [floatHint] $ ifftKern gpar uvdoms)
     calculate facets
 
   -- Write out

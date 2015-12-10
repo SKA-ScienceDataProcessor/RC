@@ -301,18 +301,6 @@ foldingKernel name parReprs code = mappingKernel name parReprs (foldPar parReprs
   (\c -> foldM c fpar0 iterPars) $ \fpar pars' ->
     code pars' fpar reg
 
--- | Functions going from "Flow"s to a "Kernel". Useful for modifing
--- kernel code.
-class IsKernelDef kf where
-  type KernelDefRet kf
-  mapKernelDef :: (Kernel (KernelDefRet kf) -> Kernel (KernelDefRet kf)) -> kf -> kf
-instance IsKernelDef (Kernel r) where
-  type KernelDefRet (Kernel r) = r
-  mapKernelDef = id
-instance IsKernelDef kf => IsKernelDef (Flow f -> kf) where
-  type KernelDefRet (Flow f -> kf) = KernelDefRet kf
-  mapKernelDef f kf = \x -> mapKernelDef f (kf x)
-
 -- | Kernel modificator to have it work on a all regions in an
 -- isolated fashion. This is roughly the same ideas as with
 -- @mappingKernel@, but here we impose this behaviour on top of an
