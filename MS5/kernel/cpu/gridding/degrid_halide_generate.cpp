@@ -17,7 +17,6 @@ int main(int argc, char * argv[])
   auto comp = [](SDeGridder & sdg, const char * fn, Target target) {
       std::vector<Halide::Argument> args = {
       	  sdg.scale
-      	, sdg.grid_size
       	, sdg.uvw
       	, sdg.uvg
       	, sdg.gcf_fused

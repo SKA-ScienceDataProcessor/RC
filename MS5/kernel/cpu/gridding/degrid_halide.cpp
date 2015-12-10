@@ -15,8 +15,6 @@ SDeGridder::SDeGridder(
   ) {
   // ** Input
   scale = Param<double>("scale");
-  // FIXME: it clashes with uvg.min/extent usage below
-  grid_size = Param<int>("grid_size");
   __INP(uvw, 2);
   __INP(uvg, 3);
 
@@ -24,16 +22,15 @@ SDeGridder::SDeGridder(
   // as Halide only supports up to 4 dimensions.
   __INP(gcf_fused, 4);
 
-  // ** Output
-
-  // Output visibilites are zeroed from the outside
-  F(vis);
-  vis(cmplx, tdim) = undef<double>();
-
   // Get grid limits. This limits the uv pixel coordinates we accept
   // for the top-left corner of the GCF.
   Expr min_u = uvg.min(1);
   Expr max_u = uvg.min(1) + uvg.extent(1) - GCF_SIZE - 1;
+
+  Expr grid_size = uvg.extent(1);
+  // The only way to assert the grid is square?
+  uvg.set_extent(2, grid_size);
+
   Expr min_v = uvg.min(2);
   Expr max_v = uvg.min(2) + uvg.extent(2) - GCF_SIZE - 1;
 
@@ -77,8 +74,10 @@ SDeGridder::SDeGridder(
   , rgcfy  = red[ypos]
   ;
 
-  // Compute the result
-  vis(rcmplx, tdim) =
+  F(vis);
+  vis(cmplx, tdim) = undef<double>();
+  // Subtract visibilites in-place
+  vis(rcmplx, tdim) -=
   uvg(rcmplx,
       rgcfx + clamp(uv(_U, tdim), min_u, max_u),
       rgcfy + clamp(uv(_V, tdim), min_v, max_v))

@@ -16,7 +16,6 @@ struct SDeGridder {
     );
 
   Param<double> scale;
-  Param<int>    grid_size;
   ImageParam
       uvw
     , uvg
