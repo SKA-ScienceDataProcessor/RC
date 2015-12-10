@@ -61,19 +61,14 @@ gridderStrat cfg = do
   let lmdom = (ldom, mdom)
 
   -- Create ranged domains for grid coordinates
-  let tiles = 4 -- per dimension
   udoms <- makeRangeDomain 0 (gridWidth gpar)
   vdoms <- makeRangeDomain 0 (gridHeight gpar)
-  udom <- split udoms tiles
-  vdom <- split vdoms tiles
+  udom <- split udoms (gridTiles gpar)
+  vdom <- split vdoms (gridTiles gpar)
   let uvdoms = (udoms, vdoms); uvdom = (udom, vdom)
 
-  -- Create data flow for tag, bind it to FFT plans
-  tag <- bindNew $ fftCreatePlans gpar
-
   -- Create data flow for visibilities, read in
-  let vis = flow "vis" tag
-  bind vis $ oskarReader tdom (cfgInput cfg) 0 0
+  vis <- bindNew $ oskarReader tdom (cfgInput cfg) 0 0
 
   -- Data flows we want to calculate
   let gcfs = gcf vis
