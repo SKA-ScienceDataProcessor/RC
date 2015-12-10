@@ -343,12 +343,12 @@ execDistributeStep deps dh sched steps = do
         isDataDep did _ = did `IS.member` dataDeps
         dataMap' = IM.filterWithKey isDataDep dataMap
 
-    -- Generate maps for all regions
+    -- Generate maps for all regions. This is the data that needs to
+    -- be sent to the actors.
     let regs = snd $ fromJust $ IM.lookup (dhId dh) domainMap
     inputs <- forM regs $ \reg -> do
 
-      -- Make new restricted maps. In a distributed setting, this is
-      -- the data we would need to send remotely.
+      -- Make new restricted maps.
       let domainMap'' = IM.insert (dhId dh) (DomainI dh, [reg]) domainMap'
 
       -- Also filter data so we only send data for the appropriate region
@@ -376,8 +376,10 @@ execDistributeStep deps dh sched steps = do
      ParSchedule -> lift $ do
 
        -- Make actor group. Allocation as calculated above, and we always
-       -- include the local node.
-       grp <- startGroup (N $ length regs - 1) (NNodes (stepsNodes steps)) $ do
+       -- include the local node, as we are going to block.
+       let nodes = stepsNodes steps
+           totalNodes = length inputs * nodes
+       grp <- startGroup (N (totalNodes - 1)) (NNodes nodes) $ do
          useLocal
          return act
 
@@ -411,17 +413,13 @@ makeActor rets steps = do
 
   -- Generate code for steps.
   dbs <- get
-  let dbs' = dbs { dbsRemoteRegister = id
-                 , dbsCode = return () }
+  let dbs' = dbs { dbsCode = return () }
       dbs'' = flip execState dbs' $
               execSteps rets steps
       ctx = dbsContext dbs''
 
-  -- Take over remote table changes plus context. We will need the
-  -- context in order to be able to unmarshal the result data of the
-  -- code generated above.
-  put $ dbs { dbsRemoteRegister = dbsRemoteRegister dbs . dbsRemoteRegister dbs''
-            , dbsContext = ctx }
+  -- Take over all state, but reset code to where it was before.
+  put $ dbs'' { dbsCode = dbsCode dbs }
 
   -- Generate actor code
   let act :: Actor LBS.ByteString LBS.ByteString
