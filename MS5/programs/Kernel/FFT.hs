@@ -6,7 +6,6 @@ import Flow.Builder
 import Flow.Vector
 import Flow.Halide
 import Flow.Kernel
-import Flow.Domain
 
 import Kernel.Data
 
@@ -18,6 +17,6 @@ fftCreatePlans :: GridPar -> Kernel Tag
 fftCreatePlans _ = mappingKernel "fftPlans" Z planRepr $ \_ _ ->
   return nullVector
 
-ifftKern :: GridPar -> Domain Range -> Domain Range -> Flow Tag -> Flow UVGrid -> Kernel Image
-ifftKern gp ydom xdom = const (halideKernel1 "ifftKern" (uvgRepr ydom xdom) (facetRepr gp) kern_fft)
+ifftKern :: GridPar -> UVDom -> Flow Tag -> Flow UVGrid -> Kernel Image
+ifftKern gp uvdom = const (halideKernel1 "ifftKern" (uvgRepr uvdom) (facetRepr gp) kern_fft)
 foreign import ccall unsafe kern_fft :: HalideFun '[UVGRepr] ImageRepr

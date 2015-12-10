@@ -70,5 +70,5 @@ gcfKernel gcfp wdom =
 imageWriter :: GridPar -> FilePath -> Flow Image -> Kernel ()
 imageWriter gp = halideDump (imageRepr gp)
 
-uvgWriter :: Domain Range -> Domain Range -> FilePath -> Flow UVGrid -> Kernel ()
-uvgWriter ydom xdom = halideDump (uvgRepr ydom xdom)
+uvgWriter :: UVDom -> FilePath -> Flow UVGrid -> Kernel ()
+uvgWriter uvdom = halideDump (uvgRepr uvdom)

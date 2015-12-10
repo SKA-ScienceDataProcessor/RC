@@ -6,7 +6,7 @@ module Kernel.Data
   , Tag, Vis, UVGrid, Image, GCFs
   , gridImageWidth, gridImageHeight
   -- * Data representations
-  , UDom, VDom, WDom
+  , TDom, UDom, VDom, WDom, UVDom, LDom, MDom, LMDom
   , UVGRepr, UVGMarginRepr, FacetRepr, ImageRepr, PlanRepr, GCFsRepr
   , uvgRepr, uvgMarginRepr, facetRepr, imageRepr, planRepr, gcfsRepr
   -- * Visibility data representations
@@ -21,9 +21,11 @@ import Flow.Domain
 import Flow.Kernel
 
 data Config = Config
-  { cfgInput  :: FilePath
-  , cfgPoints :: Int
-  , cfgOutput :: FilePath
+  { cfgInput  :: FilePath -- ^ Input Oskar file
+  , cfgPoints :: Int      -- ^ Number of points to read from Oskar file
+  , cfgLong   :: Double   -- ^ Phase centre longitude
+  , cfgLat    :: Double   -- ^ Phase centre latitude
+  , cfgOutput :: FilePath -- ^ File name for the output image
   , cfgGrid   :: GridPar
   , cfgGCF    :: GCFPar
   }
@@ -33,8 +35,11 @@ data GridPar = GridPar
   , gridPitch :: !Int  -- ^ Distance between rows in grid storage. Can
                        -- be larger than width if data is meant to be
                        -- padded.
-  , gridFacets :: !Int -- ^ Number of facets in X and Y directions
   , gridTheta :: !Double  -- ^ Size of the field of view in radians
+
+  , gridTiles  :: !Int -- ^ Number of tiles in U and V domains
+  , gridFacets :: !Int -- ^ Number of facets in L and M domains
+  , gridBins   :: !Int -- ^ Number of bins in W domain
   }
 data GCFPar = GCFPar
   { gcfSize :: Int
@@ -62,20 +67,25 @@ deriving instance Typeable UVGrid
 deriving instance Typeable Image
 deriving instance Typeable GCFs
 
-type UDom = Domain Range -- ^ Domain used for the u dimension
-type VDom = Domain Range -- ^ Domain used for the v dimension
-type WDom = Domain Bins  -- ^ Domain used for the w dimension
+type TDom = Domain Range -- ^ Domain used for indexing visibilities
+type UDom = Domain Range -- ^ Domain used for the u grid dimension
+type VDom = Domain Range -- ^ Domain used for the v grid dimension
+type WDom = Domain Bins  -- ^ Domain used for the w grid pseudo-dimension
+type UVDom = (UDom, VDom) -- ^ Domain used for the (u,v) grid dimensions
+type LDom = Domain Range -- ^ Domain used for the l image dimension
+type MDom = Domain Range -- ^ Domain used for the m image dimension
+type LMDom = (LDom, MDom) -- ^ Domain used for the (l,m) image dimensions
 
 type UVGRepr = RangeRepr (RangeRepr (HalideRepr Dim1 Double UVGrid))
-uvgRepr :: UDom -> VDom -> UVGRepr
-uvgRepr udom vdom =
+uvgRepr :: UVDom -> UVGRepr
+uvgRepr (udom, vdom) =
   RangeRepr vdom $
   RangeRepr udom $
   halideRepr (dim1 dimCpx)
 
 type UVGMarginRepr = MarginRepr (MarginRepr (HalideRepr Dim1 Double UVGrid))
-uvgMarginRepr :: GCFPar -> UDom -> VDom -> UVGMarginRepr
-uvgMarginRepr gcfp udom vdom =
+uvgMarginRepr :: GCFPar -> UVDom -> UVGMarginRepr
+uvgMarginRepr gcfp (udom, vdom) =
   marginRepr vdom (gcfSize gcfp `div` 2) $
   marginRepr udom (gcfSize gcfp `div` 2) $
   halideRepr (dim1 dimCpx)
@@ -106,14 +116,14 @@ rawVisRepr :: Domain Range -> RawVisRepr
 rawVisRepr dom = RangeRepr dom $ halideRepr (dim1 dimVisFields)
 
 type RotatedVisRepr = RegionRepr Range (RegionRepr Range (RangeRepr (HalideRepr Dim1 Double Vis)))
-rotatedVisRepr :: Domain Range -> Domain Range -> Domain Range -> RotatedVisRepr
-rotatedVisRepr ldom mdom tdom =
+rotatedVisRepr :: LMDom -> TDom -> RotatedVisRepr
+rotatedVisRepr (ldom, mdom) tdom =
   RegionRepr ldom $ RegionRepr mdom $ RangeRepr tdom $
   halideRepr (dim1 dimVisFields)
 
 type VisRepr = RegionRepr Range (RegionRepr Range (BinRepr (HalideRepr Dim1 Double Vis)))
-visRepr :: UDom -> VDom -> WDom -> VisRepr
-visRepr udom vdom wdom =
+visRepr :: UVDom -> WDom -> VisRepr
+visRepr (udom, vdom) wdom =
   RegionRepr udom $ RegionRepr vdom $ BinRepr wdom $
   halideRepr (dim1 dimVisFields)
 

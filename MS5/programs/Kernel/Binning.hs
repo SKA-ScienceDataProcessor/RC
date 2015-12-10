@@ -19,8 +19,8 @@ import Kernel.Data
 
 -- | Dummy data representation for bin size vector
 type BinSizeRepr = RegionRepr Range (RegionRepr Range (VectorRepr Int32 ()))
-binSizeRepr :: Domain Range -> Domain Range -> BinSizeRepr
-binSizeRepr udom vdom = RegionRepr udom $ RegionRepr vdom $ VectorRepr WriteAccess
+binSizeRepr :: UVDom -> BinSizeRepr
+binSizeRepr (udom, vdom) = RegionRepr udom $ RegionRepr vdom $ VectorRepr WriteAccess
 
 -- | Field numbers in visibility data - we assume order u,v,w,r,i
 ufield, vfield, wfield :: Int
@@ -29,17 +29,18 @@ ufield, vfield, wfield :: Int
 -- | Kernel determining bin sizes. This is used to construct the bin
 -- domain with enough data to allow us to calculate Halide buffer
 -- sizes.
-binSizer :: GridPar -> Domain Range -> UDom -> VDom -> Double -> Double -> Int -> Flow Vis -> Kernel ()
-binSizer gpar dh udom vdom low high bins =
- kernel "binSizer" (rawVisRepr dh :. Z) (binSizeRepr udom vdom) $ \[visPar] rboxes -> do
+binSizer :: GridPar -> TDom -> UVDom -> Double -> Double -> Flow Vis -> Kernel ()
+binSizer gpar tdom uvdom low high =
+ kernel "binSizer" (rawVisRepr tdom :. Z) (binSizeRepr uvdom) $ \[visPar] rboxes -> do
 
   -- Input size (range domain)
   let [(inds,inVec)] = Map.toList visPar
-      (_, inVis) :. (_, inWdt) :. Z  = halrDim (rawVisRepr dh) inds
+      (_, inVis) :. (_, inWdt) :. Z  = halrDim (rawVisRepr tdom) inds
       inVec' = castVector inVec :: Vector Double
 
   -- Output sizes
-  let xy2uv xy = fromIntegral (xy - gridHeight gpar `div` 2) / gridTheta gpar
+  let bins = gridBins gpar
+      xy2uv xy = fromIntegral (xy - gridHeight gpar `div` 2) / gridTheta gpar
   binVecs <- forM rboxes $ \[ureg, vreg] -> do
     -- Make a new vector
     binVec <- allocCVector bins :: IO (Vector Int32)
@@ -70,18 +71,18 @@ binSizer gpar dh udom vdom low high bins =
   return $ map (castVector . snd . snd) binVecs
 
 -- | Kernel that splits up visibilities per u/v/w bins.
-binner :: GridPar -> Domain Range -> Domain Range -> Domain Range -> Domain Bins -> Flow Vis -> Kernel Vis
-binner gpar dh udom vdom wdom =
- kernel "binner" (rawVisRepr dh :. Z) (visRepr udom vdom wdom) $ \[visPar] rboxes -> do
+binner :: GridPar -> TDom -> UVDom -> WDom -> Flow Vis -> Kernel Vis
+binner gpar tdom uvdom wdom =
+ kernel "binner" (rawVisRepr tdom :. Z) (visRepr uvdom wdom) $ \[visPar] rboxes -> do
 
   -- Input size (range domain, assumed single region)
   let [(inds,inVec)] = Map.toList visPar
-      (_, inVis) :. (_, inWdt) :. Z  = halrDim (rawVisRepr dh) inds
+      (_, inVis) :. (_, inWdt) :. Z  = halrDim (rawVisRepr tdom) inds
       inVec' = castVector inVec :: Vector Double
   when (inWdt /= 5) $ fail "wBinner: Unexpected data width!"
 
   -- Create return vectors
-  outVecs <- allocReturns allocCVector (visRepr udom vdom wdom) rboxes
+  outVecs <- allocReturns allocCVector (visRepr uvdom wdom) rboxes
 
   -- Make pointer map
   let xy2uv (x,y) = (c x, c y)
