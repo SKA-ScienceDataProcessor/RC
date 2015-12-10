@@ -67,17 +67,19 @@ gridderStrat cfg = do
   vdom <- split vdoms (gridTiles gpar)
   let uvdoms = (udoms, vdoms); uvdom = (udom, vdom)
 
-  -- Create data flow for visibilities, read in
-  vis <- bindNew $ oskarReader tdom (cfgInput cfg) 0 0
-
   -- Data flows we want to calculate
+  vis <- uniq $ flow "vis"
   let gcfs = gcf vis
       gridded = grid vis gcfs createGrid
       facets = gridder vis gcfs
       result = facetGridder vis gcfs
+
   distribute ldom ParSchedule $ distribute mdom ParSchedule $ do
     let rkern :: IsKernelDef kf => kf -> kf
         rkern = regionKernel ldom . regionKernel mdom
+
+    -- Read visibilities in
+    bind vis $ oskarReader tdom (cfgInput cfg) 0 0
 
     -- Rotate visibilities
     rebind vis (rotateKernel cfg lmdom tdom)
