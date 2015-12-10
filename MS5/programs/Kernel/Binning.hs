@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 
 module Kernel.Binning ( binSizer, binner ) where
 
@@ -5,7 +6,7 @@ import Control.Arrow ( second )
 import Control.Monad
 import Foreign.Marshal.Array
 import Foreign.Storable
-import Data.Int ( Int32 )
+import Data.Int ( Int64 )
 import Data.IORef
 import qualified Data.Map as Map
 
@@ -18,7 +19,7 @@ import Flow.Halide
 import Kernel.Data
 
 -- | Dummy data representation for bin size vector
-type BinSizeRepr = RegionRepr Range (RegionRepr Range (VectorRepr Int32 ()))
+type BinSizeRepr = RegionRepr Range (RegionRepr Range (VectorRepr Int64 ()))
 binSizeRepr :: UVDom -> BinSizeRepr
 binSizeRepr (udom, vdom) = RegionRepr udom $ RegionRepr vdom $ VectorRepr WriteAccess
 
@@ -29,8 +30,8 @@ ufield, vfield, wfield :: Int
 -- | Kernel determining bin sizes. This is used to construct the bin
 -- domain with enough data to allow us to calculate Halide buffer
 -- sizes.
-binSizer :: GridPar -> TDom -> UVDom -> Double -> Double -> Flow Vis -> Kernel ()
-binSizer gpar tdom uvdom low high =
+binSizer :: GridPar -> TDom -> UVDom -> Flow Vis -> Kernel ()
+binSizer gpar tdom uvdom =
  kernel "binSizer" (rawVisRepr tdom :. Z) (binSizeRepr uvdom) $ \[visPar] rboxes -> do
 
   -- Input size (range domain)
@@ -38,13 +39,33 @@ binSizer gpar tdom uvdom low high =
       (_, inVis) :. (_, inWdt) :. Z  = halrDim (rawVisRepr tdom) inds
       inVec' = castVector inVec :: Vector Double
 
+  -- Find range of coordinates
+  let xy2uv = gridXY2UV gpar
+      uvmin = xy2uv 0; uvmax = xy2uv (gridHeight gpar)
+  (low, high0) <- (\f -> foldM f (0,0) [0..fromIntegral inVis-1]) $ \(low, high) i -> do
+    u <- peekVector inVec' (i * fromIntegral inWdt + ufield)
+    v <- peekVector inVec' (i * fromIntegral inWdt + vfield)
+    w <- peekVector inVec' (i * fromIntegral inWdt + wfield)
+    if u >= uvmin && u < uvmax && v >= uvmin && v < uvmax then do
+      let !low' = min w low
+          !high' = max w high
+      return $! (low', high')
+     else return (low, high)
+  let high = high0 + (high0-low) * 0.0001
+
   -- Output sizes
   let bins = gridBins gpar
-      xy2uv xy = fromIntegral (xy - gridHeight gpar `div` 2) / gridTheta gpar
+      binStart bin = low + fromIntegral bin * (high-low) / fromIntegral bins
   binVecs <- forM rboxes $ \[ureg, vreg] -> do
     -- Make a new vector
-    binVec <- allocCVector bins :: IO (Vector Int32)
-    forM_ [0..bins-1] $ \i -> pokeVector binVec i 0
+    binVec <- allocCVector (3 * bins) :: IO (Vector Int64)
+    let binVecDbl = castVector binVec :: Vector Double
+    forM_ [0..bins-1] $ \bin -> do
+      -- Put start, end and count. This needs to be synchronised with
+      -- what unpackBinDomain (Flow.Domain) expects!
+      pokeVector binVecDbl (bin*3+0) (binStart bin)
+      pokeVector binVecDbl (bin*3+1) (binStart (bin+1))
+      pokeVector binVec    (bin*3+2) 0
     return (xy2uv $ fst $ regionRange ureg, (xy2uv $ fst $ regionRange vreg, binVec))
   let binVecMap = Map.fromListWith Map.union $
                   map (second (uncurry Map.singleton)) $
@@ -55,16 +76,17 @@ binSizer gpar tdom uvdom low high =
     u <- peekVector inVec' (i * fromIntegral inWdt + ufield)
     v <- peekVector inVec' (i * fromIntegral inWdt + vfield)
     w <- peekVector inVec' (i * fromIntegral inWdt + wfield)
-    when (w >= low && w < high) $ do
+    when (u >= uvmin && u < uvmax && v >= uvmin && v < uvmax && w >= low && w <= high) $ do
       case Map.lookupLE u binVecMap >>= Map.lookupLE v . snd of
         Just (_, binVec) -> do
           let bin = floor ((w - low) / (high - low) * fromIntegral bins)
-          pokeVector binVec bin =<< fmap (+1) (peekVector binVec bin)
+              bin' = max 0 $ min (bins-1) bin
+          pokeVector binVec (3*bin'+2) =<< fmap (+1) (peekVector binVec (3*bin'+2))
         Nothing -> return ()
 
   {-
   forM_ binVecs $ \(u, (v, binVec)) -> do
-    binVec' <- unmakeVector binVec 0 bins
+    binVec' <- forM [0..bins-1] $ \bin -> peekVector binVec (bin*3+2)
     putStrLn $ "bin sizes " ++ show (u,v) ++ " = " ++ show binVec'
   -}
 
@@ -85,8 +107,7 @@ binner gpar tdom uvdom wdom =
   outVecs <- allocReturns allocCVector (visRepr uvdom wdom) rboxes
 
   -- Make pointer map
-  let xy2uv (x,y) = (c x, c y)
-       where c z = fromIntegral (z - gridHeight gpar `div` 2) / gridTheta gpar
+  let xy2uv (x,y) = (gridXY2UV gpar x, gridXY2UV gpar y)
   outPtrs <- forM outVecs $ \([ureg,vreg,wreg], CVector _ p) -> do
     pRef <- newIORef p
     return [ Map.singleton wl $ Map.singleton vl $ Map.singleton ul $
@@ -125,9 +146,22 @@ binner gpar tdom uvdom wdom =
       _otherwise -> return ()
 
   {-
-  forM_ outVecs $ \(rbox, v) -> do
-    binVec' <- unmakeVector v 0 (vectorSize v)
-    putStrLn $ "bin contents " ++ show rbox ++ " = (size " ++ show (length binVec') ++ ") = " ++ show (take 100 $ binVec')
+  -- Check bin sizes
+  forM_ outVecs $ \([ureg,vreg,wreg], CVector _ p) -> forM_ (regionBins wreg) $ \(w,_,s) -> do
+
+    -- Get coordinates
+    let u = fst $ xy2uv $ regionRange ureg
+        v = fst $ xy2uv $ regionRange vreg
+
+    putStr $ show ureg ++ " / " ++ show vreg ++ " / " ++ show wreg ++ ": "
+
+    let lookupP x = fmap snd . Map.lookupLE x
+    case lookupP u =<< lookupP v =<< lookupP w outPtrMap of
+      Just ((ul,uh), (vl,vh), (wl,wh), pRef) -> do
+          -- Check pointer
+          p' <- readIORef pRef
+          putStrLn $ show ((ul,uh), (vl,vh), (wl,wh)) ++ " -> " ++ show ((p' `minusPtr` p) `div` (5*8)) ++ " vs " ++ show s
+      _otherwise -> putStrLn "???"
   -}
 
   return $ map (castVector . snd) outVecs

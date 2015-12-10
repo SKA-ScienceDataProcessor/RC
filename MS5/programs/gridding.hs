@@ -66,11 +66,8 @@ gridderStrat cfg = do
   let uvdom = (udom, vdom)
 
   -- Create w-binned domain, split
-  let low_w = -25000
-      high_w = 25000
-      bins = 4
-  wdoms <- makeBinDomain (binSizer gpar tdom uvdom low_w high_w vis) low_w high_w
-  wdom <- split wdoms bins
+  wdoms <- makeBinDomain $ binSizer gpar tdom uvdom vis
+  wdom <- split wdoms (gridBins gpar)
 
   -- Load GCFs
   distribute wdom SeqSchedule $

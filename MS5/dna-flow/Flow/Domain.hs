@@ -63,8 +63,8 @@ getRangeRegion dom _ = do
   return $ RangeRegion dom (Range low high)
 
 -- | Create a new bin domain
-makeBinDomain :: Kernel a -> Double -> Double -> Strategy (Domain Bins)
-makeBinDomain kern rlow rhigh = do
+makeBinDomain :: Kernel a -> Strategy (Domain Bins)
+makeBinDomain kern = do
 
   -- Bind an internal kernel flow
   Flow dflow <- bindNew kern
@@ -78,7 +78,7 @@ makeBinDomain kern rlow rhigh = do
            { dhId     = did'
            , dhSplit  = makeBinSubDomain dh'
            , dhParent = Nothing
-           , dhCreate = unpackBinRegion dh' rlow rhigh
+           , dhCreate = unpackBinRegion dh'
            , dhRegion = fail "dhRegion called on bin root domain!"
            , dhFilterBox = filterBoxBin
            , dhPutRegion = putBinRegion
@@ -110,8 +110,8 @@ makeBinSubDomain parent nsplit = do
         }
   return dh'
 
-unpackBinRegion :: Domain Bins -> Double -> Double -> RegionData -> IO Region
-unpackBinRegion dh rlow rhigh rdata = do
+unpackBinRegion :: Domain Bins -> RegionData -> IO Region
+unpackBinRegion dh rdata = do
 
   -- The input might be split up by regions, unpack accordingly
   let mapTranspose = Map.unionsWith Map.union .
@@ -119,20 +119,19 @@ unpackBinRegion dh rlow rhigh rdata = do
                      Map.toList
   fmap (BinRegion dh . Bins . mapTranspose . Map.fromList) $ forM (Map.toList rdata) $ \(rbox, vec) -> do
 
-    -- Vector is bin sizes, unpack accordingly. Note that we even derive
-    -- the number of bins from the buffer size here - probably not the
-    -- right way to do it.
-    let vec' = castVector vec :: Vector Int32
-        bins = vectorSize vec'
-    binSizes <- unmakeVector vec' 0 bins
+    -- Vector is triples of (start, end, bin size), unpack
+    -- accordingly. Note that we even derive the number of bins from
+    -- the buffer size here - probably not the right way to do it?
+    let vec' = castVector vec :: Vector Int64
+        vecd' = castVector vec :: Vector Double
+        bins = vectorSize vec' `div` 3
+    binSizes <- forM [0..bins-1] $ \i ->
+      (,) <$> ((,) <$> peekVector vecd' (i*3+0)
+                   <*> peekVector vecd' (i*3+1))
+          <*> (fromIntegral <$> peekVector vec' (i*3+2))
 
-    -- Make regions. This would all be nicer if this was simply part of
-    -- the vector. TODO...
-    let reg i size =
-          ((rlow + fromIntegral i * (rhigh - rlow) / fromIntegral bins,
-            rlow + fromIntegral (i+1) * (rhigh - rlow) / fromIntegral bins),
-           fromIntegral size)
-        regs = Map.filter (>0) $ Map.fromList $ zipWith reg [(0::Int)..] binSizes
+    -- Make regions.
+    let regs = Map.filter (>0) $ Map.fromList binSizes
     return (rbox, regs)
 
 putBinRegion :: Region -> Put

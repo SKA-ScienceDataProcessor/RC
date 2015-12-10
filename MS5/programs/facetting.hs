@@ -88,9 +88,7 @@ gridderStrat cfg = do
     rebind vis (rotateKernel cfg lmdom tdom)
 
     -- Create w-binned domain, split
-    let low_w = -25000
-        high_w = 25000
-    wdoms <- makeBinDomain (rkern $ binSizer gpar tdom uvdom low_w high_w vis) low_w high_w
+    wdoms <- makeBinDomain (rkern $ binSizer gpar tdom uvdom vis)
     wdom <- split wdoms (gridBins gpar)
 
     -- Load GCFs
