@@ -29,7 +29,7 @@ gridKernel gp gcfp uvdom wdom uvdom' =
   halideKernel2Write "gridKernel" (visRepr uvdom wdom)
                                   (gcfsRepr wdom gcfp)
                                   (uvgMarginRepr gcfp uvdom') $
-  kern_scatter `halideBind` (gridTheta gp / fromIntegral (gridFacets gp))
+  kern_scatter `halideBind` gridScale gp
                `halideBind` fromIntegral (gridHeight gp)
 foreign import ccall unsafe kern_scatter
   :: HalideBind Double (HalideBind Int32 (HalideFun '[VisRepr, GCFsRepr] UVGMarginRepr))

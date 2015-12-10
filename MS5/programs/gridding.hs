@@ -44,11 +44,9 @@ gridderStrat cfg = do
   -- Create data flow for tag, bind it to FFT plans
   let gpar = cfgGrid cfg
       gcfpar = cfgGCF cfg
-  tag <- bindNew $ fftCreatePlans gpar
 
   -- Create data flow for visibilities, read in
-  let vis = flow "vis" tag
-  bind vis $ oskarReader tdom (cfgInput cfg) 0 0
+  vis <- bindNew $ oskarReader tdom (cfgInput cfg) 0 0
 
   -- Data flows we want to calculate
   let gcfs = gcf vis
@@ -66,11 +64,8 @@ gridderStrat cfg = do
   let uvdom = (udom, vdom)
 
   -- Create w-binned domain, split
-  let low_w = -25000
-      high_w = 25000
-      bins = 4
-  wdoms <- makeBinDomain (binSizer gpar tdom uvdom low_w high_w vis) low_w high_w
-  wdom <- split wdoms bins
+  wdoms <- makeBinDomain $ binSizer gpar tdom uvdom vis
+  wdom <- split wdoms (gridBins gpar)
 
   -- Load GCFs
   distribute wdom SeqSchedule $
@@ -90,7 +85,7 @@ gridderStrat cfg = do
   -- Compute the result by detiling & iFFT on result tiles
   bind createGrid (gridInitDetile uvdoms)
   bind gridded (gridDetiling gcfpar uvdom uvdoms gridded createGrid)
-  bindRule idft (ifftKern gpar uvdoms tag)
+  bindRule idft (ifftKern gpar uvdoms)
   calculate result
 
   -- Write out

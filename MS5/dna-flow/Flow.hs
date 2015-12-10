@@ -5,7 +5,7 @@ module Flow
   , module Flow.Kernel
   , module Flow.Halide
   , module Flow.Run
-  , ProfileHint(..)
+  , ProfileHint(..), floatHint, memHint, ioHint, haskellHint, cudaHint
   ) where
 
 import Flow.Builder
@@ -14,4 +14,4 @@ import Flow.Kernel
 import Flow.Halide
 import Flow.Run
 
-import DNA (ProfileHint(..))
+import DNA (ProfileHint(..), floatHint, memHint, ioHint, haskellHint, cudaHint )

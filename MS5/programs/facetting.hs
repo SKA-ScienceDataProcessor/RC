@@ -61,19 +61,14 @@ gridderStrat cfg = do
   let lmdom = (ldom, mdom)
 
   -- Create ranged domains for grid coordinates
-  let tiles = 4 -- per dimension
   udoms <- makeRangeDomain 0 (gridWidth gpar)
   vdoms <- makeRangeDomain 0 (gridHeight gpar)
-  udom <- split udoms tiles
-  vdom <- split vdoms tiles
+  udom <- split udoms (gridTiles gpar)
+  vdom <- split vdoms (gridTiles gpar)
   let uvdoms = (udoms, vdoms); uvdom = (udom, vdom)
 
-  -- Create data flow for tag, bind it to FFT plans
-  tag <- bindNew $ fftCreatePlans gpar
-
   -- Create data flow for visibilities, read in
-  let vis = flow "vis" tag
-  bind vis $ oskarReader tdom (cfgInput cfg) 0 0
+  vis <- bindNew $ oskarReader tdom (cfgInput cfg) 0 0
 
   -- Data flows we want to calculate
   let gcfs = gcf vis
@@ -88,13 +83,11 @@ gridderStrat cfg = do
     rebind vis (rotateKernel cfg lmdom tdom)
 
     -- Create w-binned domain, split
-    let low_w = -25000
-        high_w = 25000
-    wdoms <- makeBinDomain (rkern $ binSizer gpar tdom uvdom low_w high_w vis) low_w high_w
+    wdoms <- makeBinDomain (rkern $ binSizer gpar tdom uvdom vis)
     wdom <- split wdoms (gridBins gpar)
 
     -- Load GCFs
-    distribute wdom ParSchedule $
+    distribute wdom SeqSchedule $
       bind gcfs (rkern $ gcfKernel gcfpar wdom)
 
     -- Bin visibilities (could distribute, but there's no benefit)
@@ -102,7 +95,7 @@ gridderStrat cfg = do
 
     -- Bind kernel rules
     bindRule createGrid (rkern $ gridInit gcfpar uvdom)
-    bindRule grid (rkern $ gridKernel gpar gcfpar uvdoms wdom uvdom)
+    bindRule grid (rkern $ hints [floatHint] $ gridKernel gpar gcfpar uvdoms wdom uvdom)
 
     -- Run gridding distributed
     distribute vdom ParSchedule $ distribute udom ParSchedule $ do
@@ -111,7 +104,7 @@ gridderStrat cfg = do
     -- Compute the result by detiling & iFFT on result tiles
     bind createGrid (rkern $ gridInitDetile uvdoms)
     bind gridded (rkern $ gridDetiling gcfpar uvdom uvdoms gridded createGrid)
-    bindRule idft (rkern $ ifftKern gpar uvdoms tag)
+    bindRule idft (rkern $ hints [floatHint] $ ifftKern gpar uvdoms)
     calculate facets
 
   -- Write out
@@ -127,7 +120,7 @@ main = do
                      , gridPitch  = 2048
                      , gridTheta  = 0.10
                      , gridFacets = 3
-                     , gridTiles  = 4
+                     , gridTiles  = 1
                      , gridBins   = 10
                      }
       gcfpar = GCFPar { gcfSize = 16
@@ -145,4 +138,4 @@ main = do
         }
 
   dumpSteps $ gridderStrat config
-  execStrategy $ gridderStrat config
+  execStrategyDNA $ gridderStrat config

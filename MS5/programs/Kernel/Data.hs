@@ -4,7 +4,7 @@
 module Kernel.Data
   ( Config(..), GridPar(..), GCFPar(..)
   , Tag, Vis, UVGrid, Image, GCFs
-  , gridImageWidth, gridImageHeight
+  , gridImageWidth, gridImageHeight, gridScale, gridXY2UV
   -- * Data representations
   , TDom, UDom, VDom, WDom, UVDom, LDom, MDom, LMDom
   , UVGRepr, UVGMarginRepr, FacetRepr, ImageRepr, PlanRepr, GCFsRepr
@@ -53,6 +53,14 @@ gridImageWidth gp = gridWidth gp * gridFacets gp
 
 gridImageHeight :: GridPar -> Int
 gridImageHeight gp = gridHeight gp * gridFacets gp
+
+-- | Grid scale: FoV size in radians of one facet
+gridScale :: GridPar -> Double
+gridScale gp = gridTheta gp / fromIntegral (gridFacets gp)
+
+-- | Convert a grid position into an u/v coordinate
+gridXY2UV :: GridPar -> Int -> Double
+gridXY2UV gp z = fromIntegral (z - gridHeight gp `div` 2) / gridScale gp
 
 -- Data tags
 data Tag -- ^ Initialisation (e.g. FFT plans)
