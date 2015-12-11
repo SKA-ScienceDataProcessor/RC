@@ -6,7 +6,7 @@
 #define F(a) a = Func(#a)
 #define __INP(n,dim) n = ImageParam(type_of<double>(), dim, #n)
 
-Var Q(cmplx), Q(x), Q(y), Q(uvdim), Q(tdim);
+static Var Q(cmplx), Q(x), Q(y), Q(uvdim), Q(tdim);
 
 SDeGridder::SDeGridder(
     int cpos

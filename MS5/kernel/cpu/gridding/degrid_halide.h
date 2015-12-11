@@ -1,3 +1,5 @@
+#pragma once
+
 #include <Halide.h>
 using namespace Halide;
 
