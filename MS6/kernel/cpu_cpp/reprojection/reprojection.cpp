@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include "vecalg.h"
+#include "obj_defs.h"
 #ifdef _TEST
 #include <vector>
 #include "bmp_utils.h"
