@@ -340,8 +340,11 @@ int main(){
   int xsize, ysize;
   unsigned char * imgbuf;
   double inFluxScale;
-  // if (!loadBitmap("G:\\sources2\\__BR\\RC\\crocodile\\reprojection-pseudocode\\lovell.bmp", &xsize, &ysize, &imgbuf, &inFluxScale)){
+#ifdef _WIN32
+  if (!loadBitmap("G:\\sources2\\__BR\\RC\\crocodile\\reprojection-pseudocode\\lovell.bmp", &xsize, &ysize, &imgbuf, &inFluxScale)){
+#else
   if (!loadBitmap("/home/awson/data/Work/crocodile/reprojection-pseudocode/lovell.bmp", &xsize, &ysize, &imgbuf, &inFluxScale)){
+#endif
     printf("Can't load the input!");
     return -1;
   }
