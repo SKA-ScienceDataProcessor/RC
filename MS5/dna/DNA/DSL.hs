@@ -67,7 +67,6 @@ module DNA.DSL (
     , waitForResources
     ) where
 
-import Control.Applicative
 import Control.Monad.Operational
 import Control.Monad.IO.Class
 import Control.Monad.Reader

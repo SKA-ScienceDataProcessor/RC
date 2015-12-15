@@ -27,7 +27,7 @@ executable dotproduct
   Hs-source-dirs:      programs
   main-is:             dotproduct.hs
   build-depends:
-    base         >= 4.6,
+    base         >= 4.8,
     dna-flow     >= 0.5,
     fixed-vector-hetero
   x-halide-sources:    kernel/cpu/dotproduct/generate_f.cpp
@@ -42,7 +42,7 @@ executable imaging
   Hs-source-dirs:      programs
   main-is:             imaging.hs
   build-depends:
-    base         >= 4.6,
+    base         >= 4.8,
     dna-flow     >= 0.5
 
 executable gridding
@@ -52,7 +52,7 @@ executable gridding
   Hs-source-dirs:      programs
   main-is:             gridding.hs
   build-depends:
-    base         >= 4.6,
+    base         >= 4.8,
     containers   >= 0.5,
     dna-flow     >= 0.5,
     oskar        >= 0.1,
@@ -70,7 +70,7 @@ executable facetting
   Hs-source-dirs:      programs
   main-is:             facetting.hs
   build-depends:
-    base         >= 4.6,
+    base         >= 4.8,
     containers   >= 0.5,
     dna-flow     >= 0.5,
     oskar        >= 0.1,

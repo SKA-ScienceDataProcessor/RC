@@ -19,7 +19,6 @@ module Flow.Builder
   , Z(..), (:.)(..)
   ) where
 
-import Control.Applicative
 import Control.Monad
 import Control.Monad.State.Strict
 

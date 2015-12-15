@@ -5,7 +5,6 @@
 
 module Flow.Internal where
 
-import Control.Applicative
 import Control.Monad.State.Strict
 
 import Data.Binary hiding (get, put)
@@ -16,7 +15,6 @@ import Data.Int
 import qualified Data.IntMap as IM
 import Data.List     ( sort, groupBy )
 import qualified Data.Map as Map
-import Data.Monoid
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
 

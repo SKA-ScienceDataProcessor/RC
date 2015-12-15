@@ -4,7 +4,6 @@
 {- | Common data structures for naive interpreter -}
 module Flow.Run.Maps where
 
-import Control.Applicative
 import Control.Monad
 
 import Data.Binary

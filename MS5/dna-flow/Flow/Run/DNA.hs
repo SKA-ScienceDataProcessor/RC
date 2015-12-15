@@ -8,7 +8,6 @@ module Flow.Run.DNA
 
 import Control.Monad
 import Control.Monad.State.Strict
-import Control.Applicative
 import Control.Distributed.Process
 import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Serializable

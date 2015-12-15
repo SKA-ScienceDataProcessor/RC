@@ -10,7 +10,6 @@ module Flow.Run
   ) where
 
 import Control.Monad
-import Control.Applicative
 import Control.Concurrent
 
 import Data.List

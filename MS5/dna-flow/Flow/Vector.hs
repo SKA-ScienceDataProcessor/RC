@@ -38,7 +38,6 @@ import Data.Int      (Int8)
 import Data.Typeable (Typeable)
 import Data.ByteString (ByteString, hPut)
 import Data.ByteString.Unsafe (unsafePackAddressLen, unsafeUseAsCString)
-import qualified Data.ByteString.Internal as BSI
 import Foreign.Ptr
 import Foreign.C
 import Foreign.Marshal.Alloc
@@ -58,6 +57,7 @@ import qualified GHC.IO.FD as FD
 import qualified GHC.IO.Device as Dev
 
 import System.IO
+import System.IO.Unsafe
 
 -- | The alignment that we are going to use for all vectors
 vectorAlign :: CUInt
@@ -159,8 +159,10 @@ copyVector :: forall a. Storable a
            -> IO ()
 copyVector (CVector _ outp) outoff (CVector _ inp) inoff inl
   = copyBytes (outp `advancePtr` outoff) (inp `advancePtr` inoff) (inl * sizeOf (undefined :: a))
+#ifdef USE_CUDA
 copyVector _ _ _ _ _
   = fail "copyVector only supported to C vectors so far - TODO!"
+#endif
 
 -- | Allocate a C vector using @malloc@ that is large enough for the
 -- given number of elements. The returned vector will be aligned
@@ -341,7 +343,7 @@ readCVector file n = do
 putVector :: Vector a -> Put
 putVector vec = do
   let vec' = castVector vec :: Vector Int8
-      bs = BSI.inlinePerformIO $ unsafeToByteString vec'
+      bs = unsafePerformIO $ unsafeToByteString vec'
   -- Apparently this already gets emitted by BS put?
   -- put (vectorByteSize vec)
   put bs
@@ -350,7 +352,7 @@ getVector :: Get (Vector a)
 getVector = do
   size <- get :: Get Int
   bs <- getByteString size
-  return $ BSI.inlinePerformIO $ do
+  return $ unsafePerformIO $ do
     vec@(CVector _ vp) <- allocCVector size :: IO (Vector Int8)
     unsafeUseAsCString bs $ \p -> copyBytes vp (castPtr p) size
     return (castVector vec)

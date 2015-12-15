@@ -8,7 +8,6 @@ module Flow.Domain
   , split, distribute
   ) where
 
-import Control.Applicative
 import Control.Monad
 import Control.Monad.State.Strict (state, runState, modify)
 import qualified Control.Monad.State.Strict as State
