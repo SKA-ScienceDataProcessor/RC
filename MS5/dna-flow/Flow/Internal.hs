@@ -423,6 +423,15 @@ data Step where
     -- "DistributeStep" for how this works in the context of
     -- distribution.
 
+  RecoverStep :: KernelBind -> KernelId -> Step
+    -- ^ Execute a kernel for all regions that the kernel with the
+    -- given ID failed to produce - because of crashes, for example.
+    --
+    -- The result of a recover step will be a region that is
+    -- guaranteed to be complete. Therefore the program can not
+    -- terminate because of missing data produced by the designated
+    -- Kernel.
+
   DistributeStep :: Typeable a => Domain a -> Schedule -> [Step] -> Step
     -- ^ Distribute steps across the given domain using the given
     -- scheduling policy. This means that we execute the given steps

@@ -14,7 +14,7 @@ module Flow.Builder
   , IsReprs(..), IsReprKern(..), IsKernelDef(..)
   , kernel, Kernel
   , bind, rebind, bindRule, bindNew
-  , hints
+  , recover, hints
   -- * Support
   , Z(..), (:.)(..)
   ) where
@@ -157,7 +157,6 @@ prepareKernel (Kernel kname khints kcode pars retRep) (Flow fi) = do
                         , kernReprCheck = typeCheck
                         , kernHints = khints
                         }
-  addStep $ KernelStep kern
   return kern
 
 -- | Prepares a concrete data dependency for a kernel implementing the
@@ -227,9 +226,10 @@ prepareDependency kname fi parn (p, prep) = do
 -- ("reprCompatible") for getting consumed by this kernel.
 bind :: Flow r -> Kernel r -> Strategy ()
 bind fl kfl = do
-  entry <- prepareKernel kfl fl
-  let fi = kernFlow entry
-  modify $ \ss -> ss{ ssMap = HM.insert fi entry (ssMap ss)}
+  kern <- prepareKernel kfl fl
+  addStep $ KernelStep kern
+  let fi = kernFlow kern
+  modify $ \ss -> ss{ ssMap = HM.insert fi kern (ssMap ss)}
 
 -- | Add profiling hints to the kernel
 hints :: IsKernelDef kd => [ProfileHint] -> kd -> kd
@@ -242,6 +242,31 @@ hints hs' = mapKernelDef $ \(Kernel nm hs k xs r) ->
 -- question has been bound previously.
 rebind :: Flow a -> (Flow a -> Kernel a) -> Strategy ()
 rebind fl f = bind fl (f fl)
+
+-- | Recover from crashes while calculating the given flow. Beyond
+-- the requirements of "bind", this is only allowed when the flow has
+-- already been bound, and the output data representation matches the
+-- previous kernel binding.
+recover :: Flow r -> Kernel r -> Strategy ()
+recover fl@(Flow fi) kfl = do
+
+  -- Look up the flow binding, calculating it if required
+  m_kb <- HM.lookup fi . ssMap <$> get
+  when (isNothing m_kb) $ calculate fl
+  Just kb <- HM.lookup fi . ssMap <$> get
+
+  -- Now prepare recovery kernel
+  kern <- prepareKernel kfl fl
+
+  -- Check data representation
+  let typeCheck (ReprI r0) (ReprI r1) = maybe False (reprCompatible r0) (cast r1)
+  when (not $ kernRepr kb `typeCheck` kernRepr kern) $
+    fail $ "recover: " ++ show kern ++ " cannot recover regions of " ++ show kb ++
+           " because of data representation mismatch!"
+
+  -- Add step and new flow binding
+  addStep $ RecoverStep kern (kernId kb)
+  modify $ \ss -> ss{ ssMap = HM.insert fi kern (ssMap ss)}
 
 -- | Registers a new rule for automatically binding kernels given a
 -- certain data flow pattern. This is used by "calculate" to figure

@@ -78,6 +78,8 @@ dumpSteps strat = do
                      maybe "" (\dom -> " split from " ++ show dom) (dhParent dh)
       dump ind (KernelStep kb@KernelBind{kernRepr=ReprI rep})
         = putStrLn $ ind ++ "Over " ++ show (reprDomain rep) ++ " run " ++ show kb
+      dump ind (RecoverStep kb@KernelBind{kernRepr=ReprI rep} kid)
+        = putStrLn $ ind ++ "Over " ++ show (reprDomain rep) ++ " use " ++ show kb ++ " to recover " ++ show kid
       dump ind step@(DistributeStep did sched steps)
         = do putStrLn $ ind ++ "Distribute " ++ show did ++ " using " ++ show sched ++
                         " deps " ++ show (stepKernDeps step)
@@ -218,6 +220,8 @@ execStep dataMapRef domainMapRef deps step = case step of
     -- Insert result
     let resultMap = Map.fromList $ zip filteredRegs results
     modifyIORef dataMapRef $ dataMapInsert (kernId kbind) (kernRepr kbind) resultMap
+
+  RecoverStep{} -> return () -- No recovery from failure
 
   DistributeStep dh sched steps -> do
 
