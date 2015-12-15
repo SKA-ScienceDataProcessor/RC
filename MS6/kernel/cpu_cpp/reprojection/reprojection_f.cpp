@@ -32,14 +32,14 @@ struct Converter {
       const VectorI & outcrPix
     , const VectorI & incrPix
     , const VectorF & outcrVal
-    , const VectorI & incrVal
+    , const VectorF & incrVal
     , const Matrix2x2 & outcd
     , const Matrix2x2 & incd
   	) : out_crPix(outcrPix), in_crPix(incrPix) {
       // Scale to act on rads
   	  auto scale = [](double v){return v * rScale;};
-  	  transform(&outcd[0][0], &outcd[2][2], &cd[0][0], scale);
-  	  transform(&incd[0][0], &incd[2][2], &in_cd[0][0], scale);
+  	  transform(&outcd[0][0], &outcd[2][0], &cd[0][0], scale);
+  	  transform(&incd[0][0], &incd[2][0], &in_cd[0][0], scale);
       inverse(inv_cd, in_cd);
       Matrix3x3a r = transpose(mkToWorld(incrVal[x], incrVal[y])) * mkToWorld(outcrVal[x], outcrVal[y]);
       copy(r.begin(), r.end(), &cvt[0][0]);

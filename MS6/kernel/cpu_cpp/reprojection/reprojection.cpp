@@ -22,7 +22,7 @@ const double rScale = 180.0 * M_1_PI;
 struct CoordinateSystem
 {
   // the reference pixel.
-  VectorI crVAL;
+  VectorF crVAL;
   VectorI crPIX;
 
   // the linear conversion between pixel coordinates and RA and DEC offsets.
@@ -38,7 +38,7 @@ struct CoordinateSystem
     copy(toWorldArr.begin(), toWorldArr.end(), &toWorld[0][0]);
     transpose<double,3>(toPixel, toWorld);
     auto scale = [](double & v){v *= rScale;};
-    for_each(&cd[0][0], &cd[2][2], scale);
+    for_each(&cd[0][0], &cd[2][0], scale);
     inverse(inv_cd, cd);
   }
 };
