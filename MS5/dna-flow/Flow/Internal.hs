@@ -5,7 +5,6 @@
 
 module Flow.Internal where
 
-import Control.Applicative
 import Control.Monad.State.Strict
 
 import Data.Binary hiding (get, put)
@@ -16,7 +15,6 @@ import Data.Int
 import qualified Data.IntMap as IM
 import Data.List     ( sort, groupBy )
 import qualified Data.Map as Map
-import Data.Monoid
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
 
@@ -422,6 +420,15 @@ data Step where
     -- the domains that we want to produce output for. See
     -- "DistributeStep" for how this works in the context of
     -- distribution.
+
+  RecoverStep :: KernelBind -> KernelId -> Step
+    -- ^ Execute a kernel for all regions that the kernel with the
+    -- given ID failed to produce - because of crashes, for example.
+    --
+    -- The result of a recover step will be a region that is
+    -- guaranteed to be complete. Therefore the program can not
+    -- terminate because of missing data produced by the designated
+    -- Kernel.
 
   DistributeStep :: Typeable a => Domain a -> Schedule -> [Step] -> Step
     -- ^ Distribute steps across the given domain using the given

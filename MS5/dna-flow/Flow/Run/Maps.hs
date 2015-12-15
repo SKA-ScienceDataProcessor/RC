@@ -4,7 +4,6 @@
 {- | Common data structures for naive interpreter -}
 module Flow.Run.Maps where
 
-import Control.Applicative
 import Control.Monad
 
 import Data.Binary
@@ -103,12 +102,15 @@ dataMapDifference = IM.differenceWith remove
 stepKernDeps :: Step -> KernelSet
 stepKernDeps (DomainStep (Just kid) _)  = IS.singleton kid
 stepKernDeps (KernelStep kbind)         = IS.fromList $ map kdepId $ kernDeps kbind
+stepKernDeps (RecoverStep kbind kid)    = IS.fromList $ (kid:) $ map kdepId $ kernDeps kbind
 stepKernDeps (DistributeStep _ _ steps) = stepsKernDeps steps
 stepKernDeps _                          = IS.empty
 
 -- | Kernel dependencies of a series of steps
 stepsKernDeps :: [Step] -> KernelSet
 stepsKernDeps (step@(KernelStep kbind) : steps)
+  = IS.delete (kernId kbind) $ stepsKernDeps steps `IS.union` stepKernDeps step
+stepsKernDeps (step@(RecoverStep kbind _) : steps)
   = IS.delete (kernId kbind) $ stepsKernDeps steps `IS.union` stepKernDeps step
 stepsKernDeps (step : steps)
   = stepKernDeps step `IS.union` stepsKernDeps steps
@@ -118,6 +120,9 @@ stepsKernDeps []
 -- | Domain dependencies of a step
 stepDomainDeps :: Step -> DomainSet
 stepDomainDeps (KernelStep kbind)
+  = (IS.fromList $ kernDomain kbind) `IS.union`
+    (IS.fromList $ concatMap kdepDomain $ kernDeps kbind)
+stepDomainDeps (RecoverStep kbind _)
   = (IS.fromList $ kernDomain kbind) `IS.union`
     (IS.fromList $ concatMap kdepDomain $ kernDeps kbind)
 stepDomainDeps (DomainStep _ dh)

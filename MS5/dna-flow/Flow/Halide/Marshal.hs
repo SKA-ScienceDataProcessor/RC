@@ -7,6 +7,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE InstanceSigs        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE CPP                 #-}
 -- |
 -- Marshalling of data between haskell and Halide kernels
 module Flow.Halide.Marshal (
@@ -25,7 +26,6 @@ module Flow.Halide.Marshal (
   , HalideCanBind(..)
   ) where
 
-import Control.Applicative
 import Control.Monad
 import Data.Int
 import Data.Vector.HFixed.Class  (Fn,Fun(..),Arity,curryFun,uncurryFun)
@@ -273,7 +273,9 @@ instance MarshalArray Dim0 where
     setBufferExtents buf 1 0 0 0
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
+#ifdef CUDA
       _other      -> fail "Halide only supports C arrays currently!"
+#endif
     return buf
   nOfElements Z = 1
   unwrapDimensions [] = Just Z
@@ -290,7 +292,9 @@ instance MarshalArray Dim1 where
     setBufferExtents buf size 0 0 0
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
+#ifdef CUDA
       _other      -> fail "Halide only supports C arrays currently!"
+#endif
     return buf
   nOfElements ((_,n) :. Z) = fromIntegral n
   unwrapDimensions [n] = Just (n :. Z)
@@ -307,7 +311,9 @@ instance MarshalArray Dim2 where
     setBufferExtents buf size size1 0 0
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
+#ifdef CUDA
       _other      -> fail "Halide only supports C arrays currently!"
+#endif
     return buf
   nOfElements ((_,n) :. (_,m) :. Z) = fromIntegral n * fromIntegral m
   unwrapDimensions [n,m] = Just (n :. m :. Z)
@@ -324,7 +330,9 @@ instance MarshalArray Dim3 where
     setBufferExtents buf size size1        size2 0
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
+#ifdef CUDA
       _other      -> fail "Halide only supports C arrays currently!"
+#endif
     return buf
   nOfElements ((_,n) :. (_,m) :. (_, o) :. Z)
     = fromIntegral n * fromIntegral m * fromIntegral o
@@ -342,7 +350,9 @@ instance MarshalArray Dim4 where
     setBufferExtents buf size size1        size2             size3
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
+#ifdef CUDA
       _other      -> fail "Halide only supports C arrays currently!"
+#endif
     return buf
   nOfElements ((_,n) :. (_,m) :. (_, o) :. (_, p) :. Z)
     = fromIntegral n * fromIntegral m * fromIntegral o * fromIntegral p

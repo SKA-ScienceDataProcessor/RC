@@ -14,7 +14,6 @@ module DNA.Interpreter (
     , theInterpreter__static
     ) where
 
-import Control.Applicative
 import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.Operational

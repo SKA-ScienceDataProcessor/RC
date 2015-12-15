@@ -37,7 +37,7 @@ library
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall
   build-depends:
-    base         >=4.6,
+    base         >=4.8,
     unix,
     time         >=1.5,
     random,

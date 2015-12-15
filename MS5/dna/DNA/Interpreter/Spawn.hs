@@ -15,7 +15,6 @@ module DNA.Interpreter.Spawn (
     , spawnSingleActor
     ) where
 
-import Control.Applicative
 import Control.Concurrent  (threadDelay)
 import Control.Monad
 import Control.Monad.Reader

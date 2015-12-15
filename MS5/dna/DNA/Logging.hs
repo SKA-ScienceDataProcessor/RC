@@ -65,17 +65,15 @@ module DNA.Logging (
     , floatHint, memHint, ioHint, haskellHint, cudaHint
     ) where
 
-import Control.Applicative
 import Control.Concurrent
 import Control.Distributed.Process (getSelfPid,Process,ProcessId)
 import Control.Exception           (evaluate)
-import Control.Monad               (when,unless,liftM,forM_)
+import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Except        (ExceptT)
 import Control.Monad.Trans.Class
 
 import Data.Time
-import Data.Time.Format
 import Data.Maybe         (fromMaybe)
 import Data.IORef
 import Data.Tuple         (swap)
@@ -183,10 +181,10 @@ loggerCuptiEnabled = unsafePerformIO $ newMVar False
 -- | Initialise logging facilities. This must be called once at
 -- program start, before the first messages are being created.
 initLogging :: LoggerOpt -> IO ()
-initLogging opt = do
+initLogging _opt = do
   -- Initialise profiling sub-modules
 #ifdef USE_CUDA
-  cudaInit opt
+  cudaInit _opt
 #endif
   -- Set console output to be line-buffered. We want it for
   -- diagnostics, no reason to buffer.
@@ -552,6 +550,7 @@ consHint EndSample   _ _ = id
 consHint _           _ 0 = id
 consHint StartSample n v = ((n, show v):)
 
+#ifdef CUDA
 -- | Prepend an attribute if it is non-zero
 consAttrNZ :: (Eq a, Num a, Show a)
            => String -> a -> [Attr] -> [Attr]
@@ -563,6 +562,7 @@ consAttrNZT :: (Eq a, Num a, Show a)
            => String -> a -> a -> [Attr] -> [Attr]
 consAttrNZT _ 0 _ = id
 consAttrNZT n v t = ((n, show v ++ "/" ++ show t):)
+#endif
 
 ----------------------------------------------------------------
 -- perf_events sampling

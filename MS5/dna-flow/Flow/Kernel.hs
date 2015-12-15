@@ -26,7 +26,6 @@ module Flow.Kernel
   , vecKernel0, vecKernel1, vecKernel2, vecKernel3
   ) where
 
-import Control.Applicative
 import Control.Monad
 
 import Data.Function
