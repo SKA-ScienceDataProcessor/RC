@@ -379,7 +379,11 @@ execDistributeStep deps dh sched steps = do
        let nodes = stepsNodes steps
            totalNodes = length inputs * nodes
        grp <- startGroup (N (totalNodes - 1)) (NNodes nodes) $ do
+         -- FIXME: We always make use of same node as parent which may
+         --        not be good idea in all cases. But scheduling in
+         --        DNA is bad overall
          useLocal
+         failout
          return act
 
        -- Send out inputs
