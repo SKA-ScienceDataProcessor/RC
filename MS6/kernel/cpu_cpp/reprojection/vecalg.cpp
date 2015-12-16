@@ -175,10 +175,3 @@ inline void inverse(MatrixSq<T,2> & i, const MatrixSq<T,2> & m)
   i[1][0] = -m[1][0]/det;
   i[1][1] =  m[0][0]/det;
 }
-
-template <typename T>
-inline Matrix2x2a_<T> inverse(const Matrix2x2a_<T> & m)
-{
-  T det = m[0]*m[3]-m[1]*m[2];
-  return {m[3]/det, -m[1]/det, -m[2]/det, m[0]/det};
-}

@@ -14,6 +14,13 @@ void test_mul(VectorF3 & res, const Matrix3x3 & m, const VectorF3 & v){
   return mxv(res, m, v);
 }
 
+template <typename T>
+inline Matrix2x2a_<T> inverse(const Matrix2x2a_<T> & m)
+{
+  T det = m[0]*m[3]-m[1]*m[2];
+  return {m[3]/det, -m[1]/det, -m[2]/det, m[0]/det};
+}
+
 int main(){
   auto r = rotX(0);
   for(auto i : r * r) std::cout << i << " ";
