@@ -18,8 +18,8 @@ template <size_t i> struct Iter {
   }
   template <typename T, size_t n>
   static void m2m(T * res, const MatrixSq<T, n> & m, const T * v){
-  	m2v<T,n,n>(res+(n-i), m, v+(n-i));
-    Iter<i-1>::m2m(res, m, v);
+  	Iter<n>::template m2v<T,n,n>(res+(n-i), m, v+(n-i));
+    Iter<i-1>::template m2m<T, n>(res, m, v);
   }
   template <typename T, typename T1, typename T2, size_t n, bop<T, T1, T2> op>
   static void zip(T * res, const T1 * l, const T2 * r){
@@ -28,7 +28,7 @@ template <size_t i> struct Iter {
   }
 };
 
-template <> struct Iter<1> {
+template <> struct Iter<1ULL> {
   template <typename T, size_t n, size_t stride>
   static T dot(const T * l, const T * r){
     return l[n-1] * r[(n-1)*stride];
@@ -39,7 +39,7 @@ template <> struct Iter<1> {
   }
   template <typename T, size_t n>
   static void m2m(T * res, const MatrixSq<T, n> & m, const T * v){
-  	m2v<T,n,n>(res+(n-1), m, v+(n-1));
+  	Iter<n>::template m2v<T,n,n>(res+(n-1), m, v+(n-1));
   }
   template <typename T, typename T1, typename T2, size_t n, bop<T, T1, T2> op>
   static void zip(T * res, const T1 * l, const T2 * r){
@@ -94,7 +94,7 @@ template <typename T, size_t n>
 inline
 MatrixA<T,n> mmul(const MatrixA<T,n> & m1, const MatrixA<T,n> & m2){
   MatrixA<T,n> ret;
-  Iter<n>::m2m(ret.data(), reinterpret_cast<const MatrixSq<T, n>&>(m1), m2.data());
+  Iter<n>::m2m<T,n>(ret.data(), reinterpret_cast<const MatrixSq<T, n>&>(m1), m2.data());
   return ret;
 }
 
