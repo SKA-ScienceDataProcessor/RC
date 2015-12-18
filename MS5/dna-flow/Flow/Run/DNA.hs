@@ -233,6 +233,17 @@ execDomainStep m_kid dh = do
     dm <- getDomainMap
     putDomainMap $ IM.insert (dhId dh) (DomainI dh, regs') dm
 
+
+filteredRegsFun :: [RegionBox] -> [(DomainI,a)] -> [RegionBox]
+filteredRegsFun outRegs outDoms
+  = foldr filterBox outRegs $ [0..] `zip` map fst outDoms
+  where
+    filterBox (i, dom) = mapMaybe $ \box ->
+      let (pre,reg:post) = splitAt i box
+      in case adhFilterBox dom (pre ++ post) reg of
+           Just reg' -> Just $ pre ++ reg':post
+           Nothing   -> Nothing
+
 -- | Generate code for executing a kernel. This will register the
 -- kernel for unmarshalling, and generate "DNA" code to locate the
 -- appropriate data in the run-time "DataMap", invoke the kernel code
@@ -255,13 +266,7 @@ execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
         outRegs = cartProd $ map snd outDoms
 
     -- Filter boxes (yeah, ugly & slow)
-    let filteredRegs :: [RegionBox]
-        filteredRegs = foldr filterBox outRegs $ zip [0..] $ map fst outDoms
-        filterBox (i, dom) = mapMaybe $ \box ->
-          let (pre,reg:post) = splitAt i box
-           in case adhFilterBox dom (pre ++ post) reg of
-                Just reg' -> Just $ pre ++ reg':post
-                Nothing   -> Nothing
+    let filteredRegs = filteredRegsFun outRegs outDoms
 
     -- Look up input data. Note that we always pass all available data
     -- here, we do not check whether it satisfies the usual "if split
