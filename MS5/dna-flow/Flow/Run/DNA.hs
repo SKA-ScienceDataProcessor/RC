@@ -193,6 +193,9 @@ execStep deps step = case step of
     -> execKernelStep kbind
   DistributeStep dom sched steps
     -> execDistributeStep deps dom sched steps
+  RecoverStep kbind kid
+    -> execRecoverStep kbind kid
+
 
 -- | Generate code for creating a domain. This will register the
 -- domain for unmarshalling, and generate "DNA" code to register the
@@ -312,6 +315,11 @@ execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
     -- Insert result
     let resultMap = Map.fromList $ zip filteredRegs results
     modifyDataMap $ dataMapInsert (kernId kbind) (kernRepr kbind) resultMap
+
+
+execRecoverStep :: KernelBind -> KernelId -> DnaBuilder ()
+execRecoverStep kbind kid = do
+  undefined
 
 -- | Generate code for distributing a number of scheduled steps.
 --
