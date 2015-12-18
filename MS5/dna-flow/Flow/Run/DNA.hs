@@ -244,6 +244,22 @@ filteredRegsFun outRegs outDoms
            Just reg' -> Just $ pre ++ reg':post
            Nothing   -> Nothing
 
+getFilteredOutputRegs :: ReprI -> String -> DnaCode [RegionBox]
+getFilteredOutputRegs (ReprI rep) kname = do
+  -- Get domains to execute this kernel over
+  domainMap <- getDomainMap
+  let lookupDom did = case IM.lookup did domainMap of
+        Just dom -> dom
+        Nothing  -> error $ "Kernel " ++ kname ++ " called for non-existant domain " ++ show did ++ "!"
+  -- Construct all output regions (cartesian product of all involved
+  -- domain regions)
+  let cartProd = sequence :: [[Region]] -> [RegionBox]
+      outDoms = map lookupDom (reprDomain rep)
+      outRegs = cartProd $ map snd outDoms
+  -- Filter boxes (yeah, ugly & slow)
+  return $ filteredRegsFun outRegs outDoms
+
+
 -- | Generate code for executing a kernel. This will register the
 -- kernel for unmarshalling, and generate "DNA" code to locate the
 -- appropriate data in the run-time "DataMap", invoke the kernel code
@@ -252,22 +268,7 @@ execKernelStep :: KernelBind -> DnaBuilder ()
 execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
   registerKernel kbind
   emitCode $ do
-
-    -- Get domains to execute this kernel over
-    domainMap <- getDomainMap
-    let lookupDom did = case IM.lookup did domainMap of
-          Just dom -> dom
-          Nothing  -> error $ "Kernel " ++ show kbind ++ " called for non-existant domain " ++ show did ++ "!"
-
-    -- Construct all output regions (cartesian product of all involved
-    -- domain regions)
-    let cartProd = sequence :: [[Region]] -> [RegionBox]
-        outDoms = map lookupDom (reprDomain rep)
-        outRegs = cartProd $ map snd outDoms
-
-    -- Filter boxes (yeah, ugly & slow)
-    let filteredRegs = filteredRegsFun outRegs outDoms
-
+    filteredRegs <- getFilteredOutputRegs (ReprI rep) (show kbind)
     -- Look up input data. Note that we always pass all available data
     -- here, we do not check whether it satisfies the usual "if split
     -- & distributed domains are used, only pass the current region"
