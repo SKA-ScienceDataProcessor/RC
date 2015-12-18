@@ -285,9 +285,8 @@ execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
     -- Important TODO: Duplicate data that is written here, but read later!
 
     -- Call the kernel using the right regions
-    let hs = kernHints kbind
-    results <- lift $ kernel (kernName kbind) hs $ liftIO $
-               kernCode kbind (map snd ins) filteredRegs
+    results <- lift $ kernel (kernName kbind) (kernHints kbind)
+             $ liftIO $ kernCode kbind (map snd ins) filteredRegs
 
     -- Check size
     let expectedSizes = map (reprSize rep) filteredRegs
