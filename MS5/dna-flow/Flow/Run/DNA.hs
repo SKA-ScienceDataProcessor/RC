@@ -20,6 +20,7 @@ import Data.List
 import Data.Maybe ( fromMaybe, fromJust, mapMaybe )
 import qualified Data.IntMap as IM
 import qualified Data.IntSet as IS
+import qualified Data.Set    as Set
 import Data.Rank1Dynamic ( toDynamic )
 import qualified Data.Map.Strict as Map
 import Data.Typeable
@@ -319,7 +320,21 @@ execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
 
 execRecoverStep :: KernelBind -> KernelId -> DnaBuilder ()
 execRecoverStep kbind kid = do
-  undefined
+  registerKernel kbind
+  emitCode $ do
+    -- Actual data
+    dataMap        <- getDataMap
+    (repr,regData) <- case kid `IM.lookup` dataMap of
+      Nothing -> undefined
+      Just a  -> return a
+    -- Expected regions
+    filteredRegs <- getFilteredOutputRegs repr ("Recover: " ++ show kbind)
+    -- Compare regions
+    when (Set.fromList filteredRegs /= Map.keysSet regData) $ do
+      fail "Missing regions!"
+
+
+
 
 -- | Generate code for distributing a number of scheduled steps.
 --
