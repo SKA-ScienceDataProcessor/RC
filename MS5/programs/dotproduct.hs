@@ -57,6 +57,10 @@ aKern :: Domain Range -> Flow Vec -> Kernel Sum
 aKern size = halideKernel1 "a" (vecRepr size) sumRepr kern_sum
 foreign import ccall unsafe kern_sum :: HalideFun '[ VecRepr ] SumRepr
 
+-- Dummy recover kernel
+recoverKern :: Domain Range -> Kernel Vec
+recoverKern size = halideKernel0 "recover" (vecRepr size) (error "No real kernel here")
+
 printKern :: Flow Sum -> Kernel Sum
 printKern = mergingKernel "print" (sumRepr :. Z) NoRepr $ \case
   [(sv,_)]-> \_ -> do
@@ -75,6 +79,9 @@ dpStrat size = do
   -- Calculate ddp for the whole domain
   bind f (fKern dom)
   bind g (gKern dom)
+  recover f (recoverKern dom)
+  recover g (recoverKern dom)
+  
   bindRule pp (ppKern dom)
   bindRule a (aKern dom)
   calculate ddp
@@ -92,6 +99,8 @@ ddpStrat size = do
   distribute regs ParSchedule $ do
     bind f (fKern regs)
     bind g (gKern regs)
+    recover f (recoverKern regs)
+    recover g (recoverKern regs)
     bind (pp f g) (ppKern regs f g)
   bindRule a (aKern dom)
   calculate ddp
