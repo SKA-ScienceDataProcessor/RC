@@ -331,15 +331,14 @@ execRecoverStep kbind kid = do
     filteredRegs <- getFilteredOutputRegs repr ("Recover: " ++ show kbind)
     -- Compare regions
     let missing = Set.fromList filteredRegs `Set.difference` Map.keysSet regData
-    unless (Set.null missing) $ do
-      -- Generate missing regions
-      results <- forM (Set.toList missing) $ \rbox -> do
-        [res] <- lift $ kernel (kernName kbind) (kernHints kbind)
-               $ liftIO $ kernCode kbind [] [rbox]
-        return (rbox,res)
-      -- Update map
-      modifyDataMap $ flip IM.adjust kid $ \(r,dm) ->
-        (r, foldl' (\m (k,v) -> Map.insert k v m) dm results)
+    -- Generate missing regions
+    results <- forM (Set.toList missing) $ \rbox -> do
+      [res] <- lift $ kernel (kernName kbind) (kernHints kbind)
+             $ liftIO $ kernCode kbind [] [rbox]
+      return (rbox,res)
+    -- Update data map
+    modifyDataMap $ flip IM.adjust kid $ \(r,dm) ->
+      (r, foldl' (\m (k,v) -> Map.insert k v m) dm results)
 
 
 

@@ -265,7 +265,7 @@ recover fl@(Flow fi) kfl = do
 
   -- Add step and new flow binding
   addStep $ RecoverStep kern (kernId kb)
-  modify $ \ss -> ss{ ssMap = HM.insert fi kern (ssMap ss)}
+
 
 -- | Registers a new rule for automatically binding kernels given a
 -- certain data flow pattern. This is used by "calculate" to figure
