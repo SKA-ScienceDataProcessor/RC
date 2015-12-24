@@ -20,6 +20,7 @@ import Data.List
 import Data.Maybe ( fromMaybe, fromJust, mapMaybe )
 import qualified Data.IntMap as IM
 import qualified Data.IntSet as IS
+import qualified Data.Set    as Set
 import Data.Rank1Dynamic ( toDynamic )
 import qualified Data.Map.Strict as Map
 import Data.Typeable
@@ -193,6 +194,9 @@ execStep deps step = case step of
     -> execKernelStep kbind
   DistributeStep dom sched steps
     -> execDistributeStep deps dom sched steps
+  RecoverStep kbind kid
+    -> execRecoverStep kbind kid
+
 
 -- | Generate code for creating a domain. This will register the
 -- domain for unmarshalling, and generate "DNA" code to register the
@@ -233,6 +237,33 @@ execDomainStep m_kid dh = do
     dm <- getDomainMap
     putDomainMap $ IM.insert (dhId dh) (DomainI dh, regs') dm
 
+
+filteredRegsFun :: [RegionBox] -> [(DomainI,a)] -> [RegionBox]
+filteredRegsFun outRegs outDoms
+  = foldr filterBox outRegs $ [0..] `zip` map fst outDoms
+  where
+    filterBox (i, dom) = mapMaybe $ \box ->
+      let (pre,reg:post) = splitAt i box
+      in case adhFilterBox dom (pre ++ post) reg of
+           Just reg' -> Just $ pre ++ reg':post
+           Nothing   -> Nothing
+
+getFilteredOutputRegs :: ReprI -> String -> DnaCode [RegionBox]
+getFilteredOutputRegs (ReprI rep) kname = do
+  -- Get domains to execute this kernel over
+  domainMap <- getDomainMap
+  let lookupDom did = case IM.lookup did domainMap of
+        Just dom -> dom
+        Nothing  -> error $ "Kernel " ++ kname ++ " called for non-existant domain " ++ show did ++ "!"
+  -- Construct all output regions (cartesian product of all involved
+  -- domain regions)
+  let cartProd = sequence :: [[Region]] -> [RegionBox]
+      outDoms = map lookupDom (reprDomain rep)
+      outRegs = cartProd $ map snd outDoms
+  -- Filter boxes (yeah, ugly & slow)
+  return $ filteredRegsFun outRegs outDoms
+
+
 -- | Generate code for executing a kernel. This will register the
 -- kernel for unmarshalling, and generate "DNA" code to locate the
 -- appropriate data in the run-time "DataMap", invoke the kernel code
@@ -241,28 +272,7 @@ execKernelStep :: KernelBind -> DnaBuilder ()
 execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
   registerKernel kbind
   emitCode $ do
-
-    -- Get domains to execute this kernel over
-    domainMap <- getDomainMap
-    let lookupDom did = case IM.lookup did domainMap of
-          Just dom -> dom
-          Nothing  -> error $ "Kernel " ++ show kbind ++ " called for non-existant domain " ++ show did ++ "!"
-
-    -- Construct all output regions (cartesian product of all involved
-    -- domain regions)
-    let cartProd = sequence :: [[Region]] -> [RegionBox]
-        outDoms = map lookupDom (reprDomain rep)
-        outRegs = cartProd $ map snd outDoms
-
-    -- Filter boxes (yeah, ugly & slow)
-    let filteredRegs :: [RegionBox]
-        filteredRegs = foldr filterBox outRegs $ zip [0..] $ map fst outDoms
-        filterBox (i, dom) = mapMaybe $ \box ->
-          let (pre,reg:post) = splitAt i box
-           in case adhFilterBox dom (pre ++ post) reg of
-                Just reg' -> Just $ pre ++ reg':post
-                Nothing   -> Nothing
-
+    filteredRegs <- getFilteredOutputRegs (ReprI rep) (show kbind)
     -- Look up input data. Note that we always pass all available data
     -- here, we do not check whether it satisfies the usual "if split
     -- & distributed domains are used, only pass the current region"
@@ -279,9 +289,8 @@ execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
     -- Important TODO: Duplicate data that is written here, but read later!
 
     -- Call the kernel using the right regions
-    let hs = kernHints kbind
-    results <- lift $ kernel (kernName kbind) hs $ liftIO $
-               kernCode kbind (map snd ins) filteredRegs
+    results <- lift $ kernel (kernName kbind) (kernHints kbind)
+             $ liftIO $ kernCode kbind (map snd ins) filteredRegs
 
     -- Check size
     let expectedSizes = map (reprSize rep) filteredRegs
@@ -307,6 +316,33 @@ execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
     -- Insert result
     let resultMap = Map.fromList $ zip filteredRegs results
     modifyDataMap $ dataMapInsert (kernId kbind) (kernRepr kbind) resultMap
+
+
+execRecoverStep :: KernelBind -> KernelId -> DnaBuilder ()
+execRecoverStep kbind kid = do
+  registerKernel kbind
+  emitCode $ do
+    -- Actual data
+    dataMap        <- getDataMap
+    (repr,regData) <- case kid `IM.lookup` dataMap of
+      Nothing -> undefined
+      Just a  -> return a
+    -- Expected regions
+    filteredRegs <- getFilteredOutputRegs repr ("Recover: " ++ show kbind)
+    -- Compare regions
+    let missing = Set.fromList filteredRegs `Set.difference` Map.keysSet regData
+    unless (Set.null missing) $ do
+      -- Generate missing regions
+      results <- forM (Set.toList missing) $ \rbox -> do
+        [res] <- lift $ kernel (kernName kbind) (kernHints kbind)
+               $ liftIO $ kernCode kbind [] [rbox]
+        return (rbox,res)
+      -- Update map
+      modifyDataMap $ flip IM.adjust kid $ \(r,dm) ->
+        (r, foldl' (\m (k,v) -> Map.insert k v m) dm results)
+
+
+
 
 -- | Generate code for distributing a number of scheduled steps.
 --
@@ -379,7 +415,11 @@ execDistributeStep deps dh sched steps = do
        let nodes = stepsNodes steps
            totalNodes = length inputs * nodes
        grp <- startGroup (N (totalNodes - 1)) (NNodes nodes) $ do
+         -- FIXME: We always make use of same node as parent which may
+         --        not be good idea in all cases. But scheduling in
+         --        DNA is bad overall
          useLocal
+         failout
          return act
 
        -- Send out inputs
