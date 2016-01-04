@@ -45,10 +45,8 @@ gridderStrat cfg = do
   let gpar = cfgGrid cfg
       gcfpar = cfgGCF cfg
 
-  -- Create data flow for visibilities, read in
-  vis <- bindNew $ oskarReader tdom (cfgInput cfg) 0 0
-
   -- Data flows we want to calculate
+  vis <- uniq $ flow "vis"
   let gcfs = gcf vis
       gridded = grid vis gcfs createGrid
       result = gridder vis gcfs
@@ -58,28 +56,31 @@ gridderStrat cfg = do
   vdoms <- makeRangeDomain 0 (gridHeight gpar)
   let uvdoms = (udoms, vdoms)
 
-  -- Split coordinate domain
+  -- Split and distribute over coordinate domain
   vdom <- split vdoms (gridTiles gpar)
   udom <- split udoms (gridTiles gpar)
   let uvdom = (udom, vdom)
+  distribute vdom ParSchedule $ distribute udom ParSchedule $ do
 
-  -- Create w-binned domain, split
-  wdoms <- makeBinDomain $ binSizer gpar tdom uvdom vis
-  wdom <- split wdoms (gridBins gpar)
+    -- Read visibilities
+    bind vis $ oskarReader tdom (cfgInput cfg) 0 0
 
-  -- Load GCFs
-  distribute wdom SeqSchedule $
-    bind gcfs (gcfKernel gcfpar wdom)
+    -- Create w-binned domain, split
+    wdoms <- makeBinDomain $ binSizer gpar tdom uvdom vis
+    wdom <- split wdoms (gridBins gpar)
 
-  -- Bin visibilities (could distribute, but there's no benefit)
-  rebind vis (binner gpar tdom uvdom wdom)
+    -- Load GCFs
+    distribute wdom SeqSchedule $
+      bind gcfs (gcfKernel gcfpar wdom)
 
-  -- Bind kernel rules
-  bindRule createGrid (gridInit gcfpar uvdom)
-  bindRule grid (gridKernel gpar gcfpar uvdoms wdom uvdom)
+    -- Bin visibilities (could distribute, but there's no benefit)
+    rebind vis (binner gpar tdom uvdom wdom)
 
-  -- Run gridding distributed
-  distribute vdom ParSchedule $ distribute udom SeqSchedule $ do
+    -- Bind kernel rules
+    bindRule createGrid (gridInit gcfpar uvdom)
+    bindRule grid (gridKernel gpar gcfpar uvdoms wdom uvdom)
+
+    -- Run gridding distributed
     calculate gridded
 
   -- Compute the result by detiling & iFFT on result tiles
@@ -99,7 +100,7 @@ main = do
                      , gridPitch = 2048
                      , gridTheta = 0.10
                      , gridFacets = 1
-                     , gridTiles = 4
+                     , gridTiles = 2
                      , gridBins = 10
                      }
       gcfpar = GCFPar { gcfSize = 16
