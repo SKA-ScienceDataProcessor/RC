@@ -1,0 +1,85 @@
+name:                ms6
+version:             0.1
+synopsis:            DSL for radio astronomy imaging with a focus on data movement and optimization
+homepage:            https://github.com/SKA-ScienceDataProcessor/RC
+license:             Apache-2.0
+license-file:        LICENSE
+author:              Peter Braam
+maintainer:          peter.braam@peterbraam.com
+-- copyright:
+category:            Concurrency
+build-type:          Custom
+cabal-version:       >=1.16
+description:
+ .
+ DNA is a data flow DSL aimed at expressing data movement and initiation of
+ computational kernels for numerical calculations. We use the "actor/channel"
+ paradigm, which allows for a descriptive approach that separates definition
+ from execution strategy. Our target is data intensive high performance computing
+ applications that employ hierarchical cluster scheduling techniques. Furthermore,
+ we provide infrastructure for detailed profiling and high availability, allowing
+ recovery for certain types of failures.
+
+----------------------------------------------------------------
+executable dotproduct
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
+  Hs-source-dirs:      programs
+  main-is:             dotproduct.hs
+  build-depends:
+    base         >= 4.8,
+    dna-flow     >= 0.5,
+    fixed-vector-hetero
+  x-halide-sources:    kernel/cpu/dotproduct/generate_f.cpp
+                       kernel/cpu/dotproduct/generate_g.cpp
+                       kernel/cpu/dotproduct/dotp.cpp
+                       kernel/cpu/dotproduct/sum.cpp
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lm -lstdc++ -lHalide
+
+executable imaging
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded
+  Hs-source-dirs:      programs
+  main-is:             imaging.hs
+  build-depends:
+    base         >= 4.8,
+    dna-flow     >= 0.5
+
+executable gridding
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
+  extra-libraries:     pthread
+  Hs-source-dirs:      programs
+  main-is:             gridding.hs
+  build-depends:
+    base         >= 4.8,
+    containers   >= 0.5,
+    dna-flow     >= 0.5,
+    oskar        >= 0.1,
+    fixed-vector-hetero
+  x-halide-sources:    kernel/cpu/gridding/scatter.cpp
+                       kernel/cpu/gridding/init.cpp
+                       kernel/cpu/gridding/detile.cpp
+                       kernel/cpu/gridding/fft.cpp
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
+
+executable facetting
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
+  extra-libraries:     pthread
+  Hs-source-dirs:      programs
+  main-is:             facetting.hs
+  build-depends:
+    base         >= 4.8,
+    containers   >= 0.5,
+    dna-flow     >= 0.5,
+    oskar        >= 0.1,
+    fixed-vector-hetero
+  x-halide-sources:    kernel/cpu/gridding/scatter.cpp
+                       kernel/cpu/gridding/init.cpp
+                       kernel/cpu/gridding/detile.cpp
+                       kernel/cpu/gridding/fft.cpp
+                       kernel/cpu/gridding/rotate.cpp
+                       kernel/cpu/gridding/image_init.cpp
+                       kernel/cpu/gridding/defacet.cpp
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide

@@ -1,0 +1,131 @@
+name:                dna-core
+version:             0.5
+synopsis:            Core distribution library of DNA
+homepage:            https://github.com/SKA-ScienceDataProcessor/RC
+license:             Apache-2.0
+license-file:        ../../LICENSE
+author:              Peter Braam
+maintainer:          peter.braam@peterbraam.com
+-- copyright:
+category:            Concurrency
+build-type:          Custom
+cabal-version:       >=1.16
+description:
+ .
+ DNA is a data flow DSL aimed at expressing data movement and initiation of
+ computational kernels for numerical calculations. We use the "actor/channel"
+ paradigm, which allows for a descriptive approach that separates definition
+ from execution strategy. Our target is data intensive high performance computing
+ applications that employ hierarchical cluster scheduling techniques. Furthermore,
+ we provide infrastructure for detailed profiling and high availability, allowing
+ recovery for certain types of failures.
+ .
+ DNA is presently implemented as an embedded monadic DSL on top of the
+ well-established distributed programming framework "Cloud Haskell".
+ See module "DNA" for a detailed documentation and examples.
+
+Flag network-uri
+   description: Get Network.URI from the network-uri package
+   default: True
+
+Flag cuda
+   description: Build with support for CUDA
+   default: False
+
+----------------------------------------------------------------
+library
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall
+  build-depends:
+    base         >=4.8,
+    unix,
+    time         >=1.5,
+    random,
+    bytestring   >= 0.10,
+    binary,
+    process      >= 1.2,
+    directory,
+    filepath,
+    containers   >= 0.5,
+    deepseq      >= 1.3,
+    transformers >= 0.4.1,
+    mtl          >= 2.1,
+    vector                  >= 0.10,
+    vector-binary-instances >= 0.2.1,
+    distributed-static,
+    distributed-process          == 0.5.*,
+    network-transport     >= 0.4,
+    network-transport-tcp >= 0.4,
+    optparse-applicative  >= 0.11,
+    data-accessor         >= 0.2.2,
+    lens-family-th,
+    operational,
+    stm,
+    async,
+    linux-perf-stat
+
+  -- Deal with Network.URI appearing in different versions of network
+  -- and network-uri, as suggested by "network" package
+  if flag(network-uri)
+    build-depends: network >= 2.6, network-uri >= 2.6
+  else
+    build-depends: network < 2.6
+
+  if flag(cuda)
+    build-depends: cupti
+    cpp-options:   -DUSE_CUDA
+
+  Exposed-modules:
+    DNA
+    DNA.Channel.File
+    DNA.CH
+    DNA.CmdOpts
+    DNA.DSL
+    DNA.Interpreter
+    DNA.Interpreter.Message
+    DNA.Interpreter.Run
+    DNA.Interpreter.Spawn
+    DNA.Interpreter.Testing
+    DNA.Interpreter.Types
+    DNA.Lens
+    DNA.Logging
+    DNA.Run
+    DNA.SlurmBackend
+    DNA.Types
+  c-sources:
+    cbits/channel-file.c
+
+----------------------------------------------------------------
+-- Programs
+executable ddp-in-memory-hierachical
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             ddp-in-memory-hierarchical.hs
+  build-depends:
+    base >=4.6,
+    dna-core,
+    binary,
+    bytestring,
+    data-binary-ieee754,
+    vector >= 0.10
+  other-modules:
+    DDP
+    DDP_Slice
+
+----------------------------------------------------------------
+executable ddp-in-memory
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -eventlog
+  Hs-source-dirs:      dna-programs
+  main-is:             ddp-in-memory.hs
+  build-depends:
+    base >=4.6,
+    dna-core,
+    binary,
+    bytestring,
+    data-binary-ieee754,
+    vector >= 0.10
+  other-modules:
+    DDP
+    DDP_Slice
