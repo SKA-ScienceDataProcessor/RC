@@ -16,7 +16,7 @@ Flag test
 library
   exposed-modules:     Profiling.CUDA.Activity,
                        Profiling.CUDA.Metrics
-  build-depends:       base >=4.7 && <4.8
+  build-depends:       base
   default-language:    Haskell2010
   ghc-options:         -Wall
   extra-libraries:     cuda, cupti
@@ -29,10 +29,10 @@ executable test
   default-language:    Haskell2010
   ghc-options:         -Wall -threaded
   if flag(test) {
-    build-depends:     base >=4.7 && <4.8,
+    build-depends:     base >=4.7,
                        time,
                        cupti,
-                       accelerate <= 0.15.0.99, accelerate-cuda, accelerate-io,
+                       accelerate, accelerate-cuda, accelerate-io,
                        vector
   } else {
     buildable:         False
