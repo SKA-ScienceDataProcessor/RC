@@ -177,7 +177,7 @@ data Domain a = Domain
   , dhGetRegion :: GetContext -> Get Region
   }
 
-instance forall a. Typeable a => Show (Domain a) where
+instance Typeable a => Show (Domain a) where
   showsPrec _ dh = shows (typeOf (undefined :: a)) . showString " domain " . shows (dhId dh)
 instance Eq (Domain a) where
   (==) = (==) `on` dhId
