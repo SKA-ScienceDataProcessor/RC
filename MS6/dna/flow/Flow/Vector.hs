@@ -46,7 +46,8 @@ import Foreign.Marshal.Utils
 
 #ifdef USE_CUDA
 import Foreign.CUDA.Ptr as C
-import Foreign.CUDA.Runtime as CUDA
+import Foreign.CUDA.Runtime as CUDA hiding (get)
+import qualified Data.ByteString.Internal as BSI
 #endif
 
 import Foreign.Storable
@@ -202,6 +203,11 @@ allocDeviceVector n = fmap (DeviceVector (n * sizeOf (undefined :: a))) $ CUDA.m
 -- | Free data associated with the vector. It is generally required to
 -- call this manually, or the data will remain valid!
 --
+
+#ifdef mingw32_HOST_OS
+foreign import ccall unsafe "_aligned_free" c_aligned_free :: Ptr a -> IO ()
+#endif
+
 -- This function will do nothing for vectors obtained using
 -- @nullVector@ or @offsetVector@.
 freeVector :: Vector a -> IO ()
@@ -211,9 +217,7 @@ freeVector (CVector _ ptr) =
    Foreign.Marshal.Alloc.free ptr
 #else 
    c_aligned_free ptr
-foreign import ccall unsafe "_aligned_free" c_aligned_free :: Ptr a -> IO ()
 #endif
-
 #ifdef USE_CUDA
 freeVector (HostVector 0 _)     = return ()
 freeVector (HostVector _ ptr)   = freeHost ptr
