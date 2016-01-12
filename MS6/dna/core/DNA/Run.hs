@@ -63,7 +63,8 @@ dnaRun remoteTable dna = do
     case opts of
       Unix n        -> runUnix n common
       UnixWorker o  -> runUnixWorker rtable o common dna
-      Slurm         -> runSlurm common
+      Slurm | dnaNoReexec common -> runSlurmWorker rtable "." common dna
+            | otherwise          -> runSlurm common
       SlurmWorker d -> runSlurmWorker rtable d common dna
   where
     rtable = ( remoteTable
@@ -80,7 +81,7 @@ runSlurm :: CommonOpt -> IO ()
 runSlurm common = do
     dir       <- getCurrentDirectory
     mslurmJID <- lookupEnv "SLURM_JOBID"
-    slurmRnk <- slurmRank
+    slurmRnk  <- slurmRank
     let slurmJID = case mslurmJID of
             Just s  -> s ++ "-s"
             Nothing -> error "SLURM_JOBID is not set!"
