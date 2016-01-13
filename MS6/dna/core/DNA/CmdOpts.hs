@@ -42,6 +42,7 @@ data UnixStart = UnixStart
 data CommonOpt = CommonOpt
     { dnaBasePort :: Int        -- ^ Base port for program
     , dnaLogger   :: LoggerOpt  -- ^ Logger options
+    , dnaNoReexec :: Bool       -- ^ Whether to reexecute program
     }
     deriving (Show)
 
@@ -89,7 +90,7 @@ dnaParseOptions = do
         )
     optSlurm  = pure Slurm
     optSlurmWorker = SlurmWorker <$> optWDir
-    optCommon = CommonOpt <$> optBasePort  <*> optLogger
+    optCommon = CommonOpt <$> optBasePort  <*> optLogger <*> optNoReexec
     optLogger = LoggerOpt <$> optVerbosity <*> pure NoDebugPrint <*> optMeasure
     -- Parsers for
     optWDir = option str
@@ -110,6 +111,10 @@ dnaParseOptions = do
           <> hidden
           <> help    "specify Job ID of process"
            )
+    optNoReexec = switch
+                ( long "no-reexec"
+               <> help "Do not reexecute program"
+                )
     optBasePort = option readPort
                 ( metavar "PORT"
                <> long "base-port"
