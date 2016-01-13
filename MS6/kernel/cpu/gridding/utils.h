@@ -41,13 +41,13 @@ enum Vector3Field { _A1,_A2,_A3, _VECTOR_FIELDS };
 struct Vector3 {
   Expr fields[_VECTOR_FIELDS];
   Vector3(Expr a1, Expr a2, Expr a3)
-      : fields({ a1, a2, a3 })
+      : fields{ a1, a2, a3 }
     { }
   Vector3(FuncRefVar f)
-      : fields({ Tuple(f)[_A1], Tuple(f)[_A2], Tuple(f)[_A3] })
+      : fields{ Tuple(f)[_A1], Tuple(f)[_A2], Tuple(f)[_A3] }
     { }
   Vector3(FuncRefExpr f)
-      : fields({ Tuple(f)[_A1], Tuple(f)[_A2], Tuple(f)[_A3] })
+      : fields{ Tuple(f)[_A1], Tuple(f)[_A2], Tuple(f)[_A3] }
     { }
   Expr operator [](int i) const { return fields[i]; }
   operator Tuple() {
@@ -71,19 +71,19 @@ enum MatrixField { _A11,_A12,_A13, _A21,_A22,_A23, _A31,_A32,_A33, _MATRIX_FIELD
 struct Matrix {
   Expr fields[_MATRIX_FIELDS];
   Matrix(Expr a11, Expr a12, Expr a13, Expr a21, Expr a22, Expr a23, Expr a31, Expr a32, Expr a33)
-      : fields({ a11, a12, a13, a21, a22, a23, a31, a32, a33 })
+      : fields{ a11, a12, a13, a21, a22, a23, a31, a32, a33 }
     { }
   Matrix(Tuple f)
-      : fields({ Tuple(f)[_A11], Tuple(f)[_A12], Tuple(f)[_A13]
-               , Tuple(f)[_A21], Tuple(f)[_A22], Tuple(f)[_A23]
-               , Tuple(f)[_A31], Tuple(f)[_A32], Tuple(f)[_A33]
-               })
+      : fields{ Tuple(f)[_A11], Tuple(f)[_A12], Tuple(f)[_A13]
+              , Tuple(f)[_A21], Tuple(f)[_A22], Tuple(f)[_A23]
+              , Tuple(f)[_A31], Tuple(f)[_A32], Tuple(f)[_A33]
+              }
     { }
   Matrix(FuncRefVar f)
-      : fields({ Tuple(f)[_A11], Tuple(f)[_A12], Tuple(f)[_A13]
-               , Tuple(f)[_A21], Tuple(f)[_A22], Tuple(f)[_A23]
-               , Tuple(f)[_A31], Tuple(f)[_A32], Tuple(f)[_A33]
-               })
+      : fields{ Tuple(f)[_A11], Tuple(f)[_A12], Tuple(f)[_A13]
+              , Tuple(f)[_A21], Tuple(f)[_A22], Tuple(f)[_A23]
+              , Tuple(f)[_A31], Tuple(f)[_A32], Tuple(f)[_A33]
+              }
     { }
   Expr operator [](int i) const { return fields[i]; }
   operator Tuple() {
