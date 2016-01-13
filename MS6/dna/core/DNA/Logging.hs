@@ -550,7 +550,7 @@ consHint EndSample   _ _ = id
 consHint _           _ 0 = id
 consHint StartSample n v = ((n, show v):)
 
-#ifdef CUDA
+#ifdef USE_CUDA
 -- | Prepend an attribute if it is non-zero
 consAttrNZ :: (Eq a, Num a, Show a)
            => String -> a -> [Attr] -> [Attr]
