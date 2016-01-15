@@ -34,17 +34,18 @@ library
     distributed-process,
     distributed-static,
     rank1dynamic
-  Exposed-modules: Flow,
-                   Flow.Builder,
-                   Flow.Run,
-                   Flow.Run.DNA,
-                   Flow.Run.Maps,
-                   Flow.Kernel,
-                   Flow.Domain,
-                   Flow.Vector,
+  Exposed-modules: Flow
+                   Flow.Builder
+                   Flow.FFI
+                   Flow.Run
+                   Flow.Kernel
+                   Flow.Domain
+                   Flow.Vector
+                   Flow.Halide
                    Flow.Halide.Types
+  Other-modules:   Flow.Run.Maps,
+                   Flow.Run.DNA,
                    Flow.Internal,
-                   Flow.Halide,
                    Flow.Halide.BufferT,
                    Flow.Halide.Marshal
   if flag(cuda)

@@ -24,6 +24,8 @@ module Flow.Kernel
     -- ** Vector
   , VectorRepr(..)
   , vecKernel0, vecKernel1, vecKernel2, vecKernel3
+  -- * Support
+  , Z(..), (:.)(..)
   ) where
 
 import Control.Monad
@@ -43,6 +45,11 @@ import Foreign.Storable
 
 -- | No representation: Either don't produce anything (= nobody can use
 -- result) or don't care about input (= accept any input).
+--
+-- This data representation is special insofar that it allows kernels
+-- to declare that a data dependency is not going to get used. For
+-- example, this might be useful when the 'Strategy' wants to easily
+-- switch between 'Kernel's with different input data requirements.
 data NoRepr a = NoRepr
   deriving Typeable
 instance Typeable a => Show (NoRepr a) where
@@ -53,10 +60,24 @@ instance Typeable a => DataRepr (NoRepr a) where
   reprAccess _ = ReadAccess
   reprCompatible _ _ = True
 
--- | Per-region representation: Does not change data representation,
--- but distributes data so that we have one data object per
--- region. Every region is supposed to correspond to exactly one
--- buffer in the underlying data representation.
+-- | Per-region representation combinator. The underlying representation remains
+-- the same no matter the concrete shape of the 'Domain'. This means
+-- that for a split 'Domain' every 'Region' will have data of the same
+-- layout as the un-split data.
+--
+-- The most natural example here would be a "sum" kind of 'Flow':
+-- Clearly the natural distributed representation is going to be a
+-- number of partial sums, which have exactly the same data
+-- representation as the overall sum.
+--
+-- Note that this even useful when we are not actually planning to
+-- merge: If a 'Flow' represents a list of some sort, we can easily
+-- represent this as a region data representation using a 'Domain'
+-- split into one 'Region' per list entry. For example, if we want to
+-- simply run an existing kernel a number of times, we can easily do
+-- this using 'regionKernel', which adds 'RegionRepr' on all inputs
+-- and outputs. If we 'distribute' this sort of 'Kernel' sequentially,
+-- we would effectively change the list into a stream.
 data RegionRepr dom rep = RegionRepr (Domain dom) rep
  deriving Typeable
 instance (Show (Domain dom), Show rep) => Show (RegionRepr dom rep) where
@@ -73,9 +94,15 @@ instance (DataRepr rep, Typeable dom, Typeable rep) => DataRepr (RegionRepr dom 
   reprSize (RegionRepr _ rep) (_:ds) = reprSize rep ds
   reprSize rep                _      = fail $ "Not enough domains passed to reprSize for " ++ show rep ++ "!"
 
--- | Per-range representation: Similar to "RegionRepr", but instead of
--- one object, the data is a vector with the range's size. The given
--- data representation describes the value layout.
+-- | The data is represented as a vector of elements according to the
+-- underlying data representation and size of the region's
+-- 'Range'. This directly corresponds to an array that is distributed
+-- in non-overlapping chunks.
+--
+-- (We even support automatic merging when the 'Domain's of input and
+-- output data representations only differ in their split
+-- degree. However, it's not quite clear yet whether this is really
+-- the direction we want to go.)
 data RangeRepr rep = RangeRepr (Domain Range) rep
   deriving Typeable
 instance Show rep => Show (RangeRepr rep) where
@@ -112,9 +139,9 @@ rangeMergeCopy rrep@(RangeRepr _ rep) rbox rd inoff outv outoff
   | otherwise
   = fail $ "reprMerge: Unexpected number/types of domains for " ++ show rrep ++ ": " ++ show rbox
 
--- | Per-bin representation: Similar to "RangeRepr", but instead of using a
--- range, the vector size is given by the size associated with a
--- bin. The data representation again describes the element layout.
+-- | Per-bin representation: Similar to 'RangeRepr', but the vector size
+-- is given by the size sum of the 'Region''s bins. As before, the
+-- nested data representation describes the element layout.
 data BinRepr rep = BinRepr (Domain Bins) rep
   deriving Typeable
 instance Show rep => Show (BinRepr rep) where
@@ -136,8 +163,27 @@ instance DataRepr rep => DataRepr (BinRepr rep) where
     = fmap (* (sum $ map (sum . Map.elems) $ Map.elems bins)) (reprSize rep ds)
   reprSize rep _ = fail $ "Not enough domains passed to reprSize for " ++ show rep ++ "!"
 
--- | Like "RangeRepr", but with all regions getting the given extra
--- margin from Halide's point of view.
+-- | Like 'RangeRepr', but every 'Region' is seen as being a constant
+-- number of elements larger than it would normally be. This
+-- corresponds to /overlapping/ arrays.
+--
+-- As usual, this can be useful in a number of situations. On the
+-- input side, a kernel might need a certain element environment in
+-- order to do its work. For example, a simple 3x3 bloom filter might
+-- elect to ask for its input to be split in a way that allows it to
+-- look 1 pixel into every direction at any time. We can also use the
+-- same trick on the output data, where presumably a later merge step
+-- would have to restore consistency in the overlapped regions.
+--
+-- Note that the margin applies to /every/ region, including the
+-- primitive un-split one, so if you say
+--
+--   > dom <- makeRangeDomain 0 100
+--   > bind bla $ kernel "kern" Z (marginRepr 10 elemRep) ...
+--
+-- The kernel is expected to produce a vector of 120 elements
+-- satisfying @elemRep@!
+
 data MarginRepr rep = MarginRepr Int (RangeRepr rep)
   deriving Typeable
 instance (Show rep) => Show (MarginRepr rep) where

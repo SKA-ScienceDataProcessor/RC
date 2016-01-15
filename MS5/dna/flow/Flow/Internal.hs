@@ -1,6 +1,6 @@
 {-# LANGUAGE GADTs, TypeFamilies, RankNTypes, ScopedTypeVariables,
              TypeOperators, DeriveDataTypeable, TypeSynonymInstances,
-             FlexibleInstances, FlexibleContexts
+             FlexibleInstances, FlexibleContexts, GeneralizedNewtypeDeriving
  #-}
 
 module Flow.Internal where
@@ -73,8 +73,17 @@ instance Show FlowI where
   showsPrec _ (FlowI _ n _  Just{})  = showString "*" . showString n
   showsPrec _ (FlowI _ n ds Nothing) = showString n . shows ds
 
--- | Flow type. Carries an type tag to identifiy the abstract data
--- carried.
+-- | Abstract flow type, standing for a node in the global data flow.
+-- This represents some data the program is going to produce during
+-- its execution. For example, a "Flow" might stand for the entirety
+-- of all images produced by a gridding process.
+--
+-- Note that this data might end up being distributed, and that we
+-- might chose different encodings for the data depending on program
+-- stage. We especially do not promise that the data will be available
+-- in its entirety at any given point in time -- we might for example
+-- decide to sequentially distribute ("stream") the flow data
+-- representation.
 newtype Flow a = Flow FlowI
   deriving Show
 
@@ -155,6 +164,11 @@ instance Show KernelBind where
       . showString " using " . shows kdeps
 
 type DomainId = Int
+
+-- | Handle to a domain, or more precisely a distinct 'Region' set of
+-- the domain. The type parameter @a@ names the locality assumption
+-- associated with the domain, which decides the 'Region' type
+-- (see 'Range' or 'Bins').
 data Domain a = Domain
   { dhId    :: DomainId
     -- | Produce a new domain handle that is split up @n@ times more
@@ -202,8 +216,9 @@ instance Eq DomainI where
 instance Show DomainI where
   show (DomainI dom) = show dom
 
--- | Domains are just ranges for now. It is *very* likely that we are
--- going to have to generalise this in some way.
+-- | A region of a 'Domain'. Every region is uniquely associated with
+-- its domain as well as guaranteed to have no overlap with other
+-- regions of the same 'Domain' region set.
 data Region = RangeRegion (Domain Range) Range
             | BinRegion (Domain Bins) Bins
   deriving Typeable
@@ -227,10 +242,16 @@ instance Ord Region where
 instance Eq Region where
   r0 == r1  = compare r0 r1 == EQ
 
+-- | Range between two integer values of the form @[low,high[@. This type
+-- is also used to characterise 'Range' 'Domain's.
 data Range = Range Int Int
   deriving (Typeable, Eq, Ord)
 instance Show Range where
   showsPrec _ (Range low high) = shows low . (':':) . shows high
+
+-- | Bins grouping together indices according to a certain data
+-- property @f@. Each bin corresponds to a @Double@ value range of
+-- @f@.
 data Bins = Bins (Map.Map (Double, Double) (Map.Map RegionBox Int))
   deriving (Typeable, Eq, Ord)
 instance Show Bins where
@@ -275,7 +296,8 @@ regionDomain (RangeRegion d _) = DomainI d
 regionDomain (BinRegion d _)   = DomainI d
 
 type StratMap = HM.HashMap FlowI KernelBind
-type Strategy a = State StratState a
+newtype Strategy a = Strategy { unStrategy :: State StratState a }
+  deriving (Monad, Applicative, Functor)
 
 -- | State while constructing a strategy
 data StratState = StratState
@@ -290,15 +312,19 @@ initStratState = StratState 0 0 HM.empty [] []
 
 -- | Make a new kernel ID
 freshKernelId :: Strategy KernelId
-freshKernelId = state $ \ss -> (ssKernelId ss, ss {ssKernelId = 1 + ssKernelId ss})
+freshKernelId = Strategy $ state $ \ss -> (ssKernelId ss, ss {ssKernelId = 1 + ssKernelId ss})
 
 -- | Make a fresh domain ID
 freshDomainId :: Strategy DomainId
-freshDomainId = state $ \ss -> (ssDomainId ss, ss {ssDomainId = 1 + ssDomainId ss})
+freshDomainId = Strategy $ state $ \ss -> (ssDomainId ss, ss {ssDomainId = 1 + ssDomainId ss})
 
 -- | Add a step to the strategy
 addStep :: Step -> Strategy ()
-addStep step =  modify $ \ss -> ss { ssSteps = step : ssSteps ss }
+addStep step = Strategy $ modify $ \ss -> ss { ssSteps = step : ssSteps ss }
+
+-- | Run "Strategy" monad to convert it into a series of steps
+runStrategy :: Strategy () -> [Step]
+runStrategy strat = reverse $ ssSteps $ execState (unStrategy strat) initStratState
 
 class (Show r, Typeable r, Typeable (ReprType r)) => DataRepr r where
   type ReprType r
@@ -351,10 +377,11 @@ isNoReprI (ReprI repr) = reprNop repr
 repriDomain :: ReprI -> [DomainId]
 repriDomain (ReprI repr) = reprDomain repr
 
--- | Resource scheduling policy
+-- | Resource scheduling policy. When splitting up work, this decides
+-- how we arrange the individual pieces of work in relation to each other.
 data Schedule
-  = SeqSchedule
-  | ParSchedule
+  = SeqSchedule -- ^ Sequentialise work: Loop over all 'Region's.
+  | ParSchedule -- ^ Parallelise work: Allocate nodes and give each one 'Region' to work on.
   deriving (Show, Eq)
 
 -- | A strategy rule, explaining how to implement certain data flow patterns
@@ -364,7 +391,7 @@ newtype StratRule = StratRule (FlowI -> Maybe (Strategy ()))
 data Step where
 
   DomainStep :: Typeable a => Maybe KernelId -> Domain a -> Step
-    -- ^ Create a new domain. There are two main cases here:
+    -- Create a new domain. There are two main cases here:
     --
     --  1. "dhParent" is not set: Then this is a root domain with
     --  exactly one region attached to it.
@@ -408,7 +435,7 @@ data Step where
     --  distribute this effectively.
 
   KernelStep :: KernelBind -> Step
-    -- ^ Execute a kernel for the given domain. The produced data
+    -- Execute a kernel for the given domain. The produced data
     -- format is defined by "kernRepr". This especially means that
     -- this is expected to produce one buffer per locally visible
     -- region box that fits the domain combination given by
@@ -422,7 +449,7 @@ data Step where
     -- distribution.
 
   RecoverStep :: KernelBind -> KernelId -> Step
-    -- ^ Execute a kernel for all regions that the kernel with the
+    -- Execute a kernel for all regions that the kernel with the
     -- given ID failed to produce - because of crashes, for example.
     --
     -- The result of a recover step will be a region that is
@@ -431,7 +458,7 @@ data Step where
     -- Kernel.
 
   DistributeStep :: Typeable a => Domain a -> Schedule -> [Step] -> Step
-    -- ^ Distribute steps across the given domain using the given
+    -- Distribute steps across the given domain using the given
     -- scheduling policy. This means that we execute the given steps
     -- as many times as the mentioned domain has regions, restricting
     -- the "visibility" of the domain to just the region in question
