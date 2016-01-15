@@ -8,6 +8,8 @@ module Main where
 
 import Flow
 import Flow.Vector
+import Flow.Kernel
+import Flow.Builder
 
 import Control.Monad
 

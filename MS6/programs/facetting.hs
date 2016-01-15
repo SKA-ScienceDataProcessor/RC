@@ -6,6 +6,7 @@ module Main where
 import Control.Monad
 
 import Flow
+import Flow.Kernel ( IsKernelDef )
 
 import Kernel.Binning
 import Kernel.Data

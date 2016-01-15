@@ -4,12 +4,12 @@
     , DeriveDataTypeable
     , DeriveGeneric
   #-}
+{-# OPTIONS_GHC -fno-warn-tabs #-}
 
 #include "OskarBinReader.h"
 
 module OskarBinReaderFFI where
 
-import Control.Applicative
 import Data.Complex
 import Data.Typeable (Typeable)
 import Data.Binary (Binary)

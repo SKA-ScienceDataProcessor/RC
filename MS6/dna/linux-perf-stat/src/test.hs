@@ -4,7 +4,6 @@
 module Main where
 
 import Control.Monad
-import Control.Monad.Primitive
 
 import Profiling.Linux.Perf.Stat
 import Data.Time.Clock
@@ -157,7 +156,7 @@ main = do
          avx256Single:avx256Double:
          _)
              = zipWith perfEventDiff end begin
-        (mem:
+        (actualMem:
          _)
              = zipWith perfEventDiff end2 begin2
         time = toRational $ endTime `diffUTCTime` beginTime
@@ -183,7 +182,7 @@ main = do
       , [ printf "AVX Single:    %11d OPs - %9.2f MOP/s %20s" (8*psValue avx256Single) (8*perTime avx256Single) (timeStats avx256Single) ]
       , [ printf "AVX Double:    %11d OPs - %9.2f MOP/s %20s" (4*psValue avx256Double) (4*perTime avx256Double) (timeStats avx256Double)]
       , [ printf "Reference:     %11d OPs - %9.2f MOP/s" (expectedOps) (fromRational (fromIntegral expectedOps / time / 1000000) :: Float) ]
-      , [ printf "L3 Read:       %11d B   - %9.2f MB/s  %20s"  (cacheLine*total mem) (fromIntegral cacheLine*perTime mem) (timeStats mem)]
+      , [ printf "L3 Read:       %11d B   - %9.2f MB/s  %20s"  (cacheLine*total actualMem) (fromIntegral cacheLine*perTime actualMem) (timeStats actualMem)]
       , [ printf "Reference:     %11d B   - %9.2f MB/s"  (expectedMem) (fromRational (fromIntegral expectedMem / time / 1000000) :: Float )]
         ]
 
