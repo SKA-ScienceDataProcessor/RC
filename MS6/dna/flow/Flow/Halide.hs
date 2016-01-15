@@ -37,6 +37,7 @@ import Data.Vector.HFixed.Class ( Fn )
 import Flow.Internal
 import Flow.Vector
 import Flow.Kernel
+import Flow.Domain
 
 import Flow.Halide.Marshal
 import Flow.Halide.Types
@@ -45,6 +46,7 @@ import Foreign.C ( CInt(..) )
 import Foreign.Storable ( sizeOf )
 
 import System.IO
+import System.FilePath ( (<.>) )
 
 -- | Common context of all halide data representations: Everything must be
 -- typeable so we can "cast" data representations for the type
@@ -314,12 +316,25 @@ halidePrint rep caption = mergingKernel (show (typeOf (undefined :: ReprType r))
 
 -- | Simple kernel that dumps the contents of a channel with Halide
 -- data representation to a file.
-halideDump :: forall r. HalideReprClass r => r -> FilePath -> Flow (ReprType r) -> Kernel ()
-halideDump rep file = mergingKernel (show (typeOf (undefined :: ReprType r)) ++ "-writer")
-                                    (rep :. Z) NoRepr $ \[(v,doms)] _ -> do
-  let v' = castVector v :: Vector (HalrVal r)
-      size = nOfElements $ halrDim rep doms
-  dumpVector' v' 0 size file
+halideDump :: forall r. HalideReprClass r => r -> FilePath -> Flow (ReprType r)
+           -> Kernel ()
+halideDump rep file
+  = mappingKernel (show (typeOf (undefined :: ReprType r)) ++ "-writer")
+                  (rep :. Z) NoRepr $ \[vs] _ -> do
+  forM_ (Map.assocs vs) $ \(rbox, v) -> do
+    -- Cast vector and get size as given by Halide data representation
+    let v' = castVector v :: Vector (HalrVal r)
+        size = nOfElements $ halrDim rep rbox
+    -- Make file name if we are printing more than one region box
+    let rboxName = foldr (<.>) "" (map regName rbox)
+        regName (RangeRegion _ (Range low high))
+          = concat [ show low, "-", show high ]
+        regName binr@BinRegion{}
+          = foldr (<.>) "" $ map binName $ regionBins binr
+        binName (low, high, _) = concat [ show low, "-", show high ]
+    -- Write buffer to file
+    dumpVector' v' 0 size (file <.> rboxName)
+  -- No result
   return nullVector
 
 -- | Simple kernel that dumps the contents of a channel with Halide
