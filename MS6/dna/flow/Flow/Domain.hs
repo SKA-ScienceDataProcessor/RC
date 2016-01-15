@@ -22,7 +22,8 @@ import Flow.Internal
 import Flow.Builder
 import Flow.Vector
 
--- | Create a new range domain
+-- | Create a new range domain, with one region spanning the range
+-- @[low,high[@.
 makeRangeDomain :: Int -> Int -> Strategy (Domain Range)
 makeRangeDomain rlow rhigh = do
   d <- makeRangeDomain' rlow rhigh 1 Nothing 1
@@ -61,13 +62,22 @@ getRangeRegion dom _ = do
   high <- get
   return $ RangeRegion dom (Range low high)
 
--- | Create a new bin domain
+-- | Create a new bin domain from data produced by the given
+-- kernel. The data format should be the same as an array of C
+-- structs, each describing a bin as follows:
+--
+--  > struct { double low, high; uint64_t count; }
+--
+-- @low@ and @high@ describes the covered value range @[low,high[@ of
+-- the binning function. Individual bins must not overlap in their
+-- value range. @count@ is the number of data points that fall into
+-- this range (= the size of the bin).
 makeBinDomain :: Kernel a -> Strategy (Domain Bins)
 makeBinDomain kern = do
 
   -- Bind an internal kernel flow
   Flow dflow <- bindNew kern
-  ss <- State.get
+  ss <- Strategy State.get
   case HM.lookup dflow (ssMap ss) of
     Nothing -> fail $ "makeBinDomain: Internal error - failed to look up flow " ++ show dflow ++ "!"
     Just k -> do
@@ -186,17 +196,25 @@ regionBins (BinRegion _ (Bins bins))
                in map sumBin (Map.toList bins)
 regionBins _ = error "regionBins: Not a bin domain!"
 
--- | Split a domain into sub-regions. This creates a new partitioned region, which
--- can be used to distribute both computation as well as data.
+-- | Split a 'Domain' up to produce a new 'Domain' with more 'Region's.
+--
+-- To be precise, for a given split factor @n@, we will attempt to
+-- produce @n@ 'Region's in the returned 'Domain' for every 'Region'
+-- of the input 'Domain'. So in the most basic case, using 'split' on
+-- a primitive one-region 'Domain' will yield a new 'Domain'
+-- containing @n@ 'Region's.
 split :: Typeable a => Domain a -> Int -> Strategy (Domain a)
-split dh parts = state $ \ss0 ->
-  let (dh', ss1) = flip runState ss0 (dhSplit dh parts)
+split dh parts = Strategy $ state $ \ss0 ->
+  let (dh', ss1) = flip runState ss0 $ unStrategy $ dhSplit dh parts
       splitStep = DomainStep Nothing dh'
   in (dh', ss1{ ssSteps = splitStep : ssSteps ss1 })
 
--- | Perform computation in a distributed fashion.
+-- | Perform computation in a distributed fashion. This means that the
+-- given 'Strategy' will be executed separately for every 'Region' of
+-- the 'Domain'. Depending on the 'Schedule', this can be used for
+-- example to parallelise the work across nodes.
 distribute :: Typeable a => Domain a -> Schedule -> Strategy () -> Strategy ()
-distribute dh sched sub = modify $ \ ss0 ->
-  let ((), ss1) = flip runState ss0{ ssSteps = [] } sub
+distribute dh sched sub = Strategy $ modify $ \ ss0 ->
+  let ((), ss1) = flip runState ss0{ ssSteps = [] } $ unStrategy sub
       splitStep = DistributeStep dh sched $ reverse $ ssSteps ss1
   in ss1{ ssSteps = splitStep : ssSteps ss0 }

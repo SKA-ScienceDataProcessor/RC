@@ -26,7 +26,6 @@ import qualified Data.Map.Strict as Map
 import Data.Typeable
 
 import Flow.Internal
-import Flow.Builder hiding (kernel)
 import Flow.Vector
 import Flow.Run.Maps
 

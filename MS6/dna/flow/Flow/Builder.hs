@@ -15,8 +15,6 @@ module Flow.Builder
   , kernel, Kernel
   , bind, rebind, bindRule, bindNew
   , recover, hints
-  -- * Support
-  , Z(..), (:.)(..)
   ) where
 
 import Control.Monad
@@ -28,11 +26,6 @@ import Data.Typeable
 
 import DNA (ProfileHint)
 import Flow.Internal
-
-
--- | Run "Strategy" monad to convert it into a series of steps
-runStrategy :: Strategy () -> [Step]
-runStrategy strat = reverse $ ssSteps $ execState strat initStratState
 
 -- | Class for rasoning about lists of flows
 class IsFlows fs where
@@ -114,15 +107,31 @@ instance IsKernelDef kf => IsKernelDef (Flow f -> kf) where
   type KernelDefRet (Flow f -> kf) = KernelDefRet kf
   mapKernelDef f kf = \x -> mapKernelDef f (kf x)
 
--- | Create a new abstract kernel flow
+-- | Create a "Flow" function. This can take an arbitrary
+-- number of input "Flow"s to produce a new output "Flow". So for
+-- example:
+--
+--  > constantFlow :: Flow X
+--  > constantFlow = flow "constant X data"
+--
+-- is a constant flow, which should correspond to constant
+-- data. However we can create a "Flow" function as follows:
+--
+--  > flowFunction :: Flow X -> Flow Y
+--  > flowFunction = flow "perform F to make Y from X"
+--
+-- The name is an implicit and un-enforced specification that the
+-- given functionality is going to get implemented. Using such "flow"
+-- functions arbitrary data flow networks can be built, which can be
+-- bound to kernels by "Strategy"s.
 flow :: IsCurriedFlows fs => String -> fs
 flow name = curryFlow (mkFlow name . toList)
 
--- | Makes a data flow unique. This means that the flow will get a new
--- identity, and anything bound to the old flow will no longer apply
--- to the new flow. No rule will ever mach a unique flow.
+-- | Makes a 'Flow' unique. This means that the 'Flow' will get a new
+-- identity, and anything bound to the old 'Flow' will no longer apply
+-- to the new 'Flow'. No rule will ever mach a unique flow.
 uniq :: Flow a -> Strategy (Flow a)
-uniq (Flow fi) = state $ \ss ->
+uniq (Flow fi) = Strategy $ state $ \ss ->
   (mkFlow (flName fi ++ "." ++ show (ssKernelId ss)) (flDepends fi),
    ss {ssKernelId = 1 + ssKernelId ss})
 
@@ -177,7 +186,7 @@ prepareDependency kname fi parn (p, prep) = do
     fail $ "Parameter " ++ show p ++ " not a dependency of " ++ show fi ++ "!"
 
   -- Look up latest kernel ID
-  ss <- get
+  ss <- Strategy get
   let check kern
         | kernReprCheck kern prep = return $ KernelDep (kernId kern) prep
         | otherwise = fail $ concat
@@ -204,55 +213,67 @@ prepareDependency kname fi parn (p, prep) = do
 
           -- Lookup again. The rule should normaly guarantee that
           -- this doesn't fail any more.
-          ss' <- get
+          ss' <- Strategy get
           case HM.lookup p (ssMap ss') of
             Just krn -> check krn
             Nothing  -> fail $ "When binding kernel " ++ kname ++ " to implement " ++
                           flName fi ++ ": Failed to apply rule to calculate " ++ show p ++ "! " ++
                           "This should be impossible!"
 
--- | Bind the given flow to a kernel. For this to succeed, threee
+-- | Bind the given flow to a kernel. For this to succeed, three
 -- conditions must be met:
 --
--- 1. All input flows of the kernel must be direct or indirect data
+-- 1. All input flows of the 'Kernel' must be direct or indirect data
 -- dependencies of the given flow. If this flow was bound before, this
--- includes the flow itself (see also "rebind").
+-- includes the flow itself (see also 'rebind').
 --
 -- 2. All input flows have either been bound, or can be bound
--- automatically using rules registered by "rule".
+-- automatically using rules registered by 'bindRule'.
 --
--- 3. The bound kernels produce data representations that are fit
--- ("reprCompatible") for getting consumed by this kernel.
+-- 3. The bound kernels produce data representations that match
+-- ('reprCompatible') the expected input data representations.
 bind :: Flow r -> Kernel r -> Strategy ()
 bind fl kfl = do
   kern <- prepareKernel kfl fl
   addStep $ KernelStep kern
   let fi = kernFlow kern
-  modify $ \ss -> ss{ ssMap = HM.insert fi kern (ssMap ss)}
+  Strategy $ modify $ \ss -> ss{ ssMap = HM.insert fi kern (ssMap ss)}
 
--- | Add profiling hints to the kernel
+-- | Add profiling hints to the kernel. This will enable 'DNA'
+-- profiling for the kernel in question, resulting in suitable data
+-- getting produced for the profiling report.
 hints :: IsKernelDef kd => [ProfileHint] -> kd -> kd
 hints hs' = mapKernelDef $ \(Kernel nm hs k xs r) ->
   Kernel nm (hs ++ hs') k xs r
 
--- | Rebinds the given flow. This is a special case of "bind" for
--- kernels that modify the data the flow represents - for example to
--- change the data representations. This only works if the flow in
--- question has been bound previously.
+-- | Rebinds the given flow. This is a special case of 'bind' for
+-- kernels that allow data modification - for example to change data
+-- representations (say, sorting).
+--
+-- Note that due to the conditions of 'bind', '@rebind f k@' is
+-- actually exactly the same as '@bind f (k f)@'. This function is
+-- meant as a short-cut, as well as for making it more obvious when
+-- flows get re-bound in a strategy.
 rebind :: Flow a -> (Flow a -> Kernel a) -> Strategy ()
 rebind fl f = bind fl (f fl)
 
--- | Recover from crashes while calculating the given flow. Beyond
--- the requirements of "bind", this is only allowed when the flow has
--- already been bound, and the output data representation matches the
--- previous kernel binding.
+-- | Recover from crashes while calculating the given flow using fail-out.
+-- This works exactly the same as 'bind', with the difference that the
+-- 'Kernel' is only going to get called for regions that got lost due
+-- to a previous crash. If there is no cash, the given kernel will not
+-- get called at all.
+--
+-- This is only allowed when the flow has already been bound, and the
+-- output data representation matches the previous kernel
+-- binding. Furthermore, in contrast to 'bind' it makes no sense for
+-- the kernel to depend on the recovered 'Flow'.
 recover :: Flow r -> Kernel r -> Strategy ()
 recover fl@(Flow fi) kfl = do
 
   -- Look up the flow binding, calculating it if required
-  m_kb <- HM.lookup fi . ssMap <$> get
+  m_kb <- HM.lookup fi . ssMap <$> Strategy get
   when (isNothing m_kb) $ calculate fl
-  Just kb <- HM.lookup fi . ssMap <$> get
+  Just kb <- HM.lookup fi . ssMap <$> Strategy get
 
   -- Now prepare recovery kernel
   kern <- prepareKernel kfl fl
@@ -289,11 +310,11 @@ rule flf strat = do
         matchPattern fi pat >>=
         return . void . implementing (Flow fi) . strat
 
-  modify $ \ss -> ss{ ssRules = stratRule : ssRules ss }
+  Strategy $ modify $ \ss -> ss{ ssRules = stratRule : ssRules ss }
 
--- | Registers a new "rule" that binds a kernel to all occurences of
--- the given flow pattern. The kernel input types must exactly match
--- the flow inputs for this to work.
+-- | Registers a new "rule" that automatically binds a kernel whenever a "Flow"
+-- of the given shape is required as a data dependency. The kernel
+-- input types must exactly match the flow inputs for this to work.
 bindRule :: forall fs. IsCurriedFlows fs
          => fs
          -> FlowsKernFun fs
@@ -336,7 +357,7 @@ mergeMatches (fs0:fs1:rest) = do
   mergeMatches (fs':rest)
 
 -- | Calculate a flow. This can only succeed if there is a rule in scope that
--- explains how to do this.
+-- explains how to do this, see 'bindRule'.
 calculate :: Flow a -> Strategy ()
 calculate fl = do
   m_strat <- findRule fl
@@ -350,7 +371,7 @@ findRule :: Flow a -> Strategy (Maybe (Strategy ()))
 findRule (Flow fi) = do
 
   -- Find a matching rule
-  rules <- ssRules <$> get
+  rules <- ssRules <$> Strategy get
   let apply (StratRule r) = r fi
   return $ listToMaybe $ mapMaybe apply rules
     -- TODO: Warn about rule overlap?
@@ -362,14 +383,18 @@ implementing (Flow fi) strat = do
   -- Execute strategy
   strat
   -- Now verify that given flow was actually implemented
-  ss <- get
+  ss <- Strategy get
   case HM.lookup fi (ssMap ss) of
     Just{}  -> return ()
     Nothing -> fail $ "Flow " ++ show fi ++ " was not implemented!"
 
--- | Calls a kernel and returns a new unique stream for the result. This is
--- useful for input streams (the roots of the data flow graph) as well
--- as output flows, where we do not care about their output values.
+-- | Binds a 'Kernel' to a new unique 'Flow' for the result. This is
+-- useful both for input streams (the roots of the data flow graph) as
+-- well as output 'Kernel's that do not actually produce any data.
+--
+-- Note that 'bindNew' is basically just a combination of 'flow',
+-- 'uniq' and 'bind'. The only magic bit is that the 'Flow' name gets
+-- chosen automatically from the 'Kernel' name.
 bindNew :: Kernel r -> Strategy (Flow r)
 bindNew kern@(Kernel name _ _ inps _) = do
   fl <- uniq (mkFlow (name ++ "-call") (map fst inps))

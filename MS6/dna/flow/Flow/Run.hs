@@ -24,7 +24,6 @@ import Data.Time.Clock
 import System.IO
 
 import Flow.Internal
-import Flow.Builder
 import Flow.Vector
 import Flow.Run.Maps
 import Flow.Run.DNA
