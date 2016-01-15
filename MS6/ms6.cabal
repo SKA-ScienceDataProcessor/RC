@@ -51,6 +51,12 @@ executable gridding
   extra-libraries:     pthread
   Hs-source-dirs:      programs
   main-is:             gridding.hs
+  other-modules:
+    Kernel.Binning
+    Kernel.Data
+    Kernel.FFT
+    Kernel.Gridder
+    Kernel.IO
   build-depends:
     base         >= 4.8,
     containers   >= 0.5,
@@ -69,6 +75,13 @@ executable facetting
   extra-libraries:     pthread
   Hs-source-dirs:      programs
   main-is:             facetting.hs
+  other-modules:
+    Kernel.Binning
+    Kernel.Data
+    Kernel.FFT
+    Kernel.Facet
+    Kernel.Gridder
+    Kernel.IO
   build-depends:
     base         >= 4.8,
     containers   >= 0.5,
