@@ -36,7 +36,6 @@ library
     rank1dynamic
   Exposed-modules: Flow
                    Flow.Builder
-                   Flow.FFI
                    Flow.Run
                    Flow.Kernel
                    Flow.Domain
