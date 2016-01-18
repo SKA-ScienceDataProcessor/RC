@@ -153,7 +153,7 @@ type RegionBox = [Region]
 type RegionData = Map.Map RegionBox (Vector ())
 
 -- | Code implementing a kernel. Takes a number of parameters as
--- "RegionData" and produces data for a given region box(es).
+-- 'RegionData' and produces data for given 'RegionBox'(es).
 type KernelCode = [RegionData] -> [RegionBox] -> IO [Vector ()]
 
 instance Show KernelBind where

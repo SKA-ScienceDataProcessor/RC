@@ -15,7 +15,10 @@ module Flow.Kernel
   , marginRepr
     -- * Kernel types
     -- ** Primitive
-  , kernel, mappingKernel, mergingKernel, foldingKernel
+  , KernelCode, RegionData, kernel
+  , MappingKernelCode, mappingKernel
+  , MergingKernelCode, mergingKernel
+  , FoldingKernelCode, foldingKernel
   , allocReturns
     -- ** Combinator
   , regionKernel, IsKernelDef
@@ -223,7 +226,7 @@ instance (Typeable val, Typeable abs) => DataRepr (VectorRepr val abs) where
   reprCompatible _ _ = True
 
 -- | Code implementing a kernel for a single output domain. See
--- "mapKernel".
+-- 'mappingKernel'.
 type MappingKernelCode = [RegionData] -> RegionBox -> IO (Vector ())
 
 -- | Kernel producing output seperately by region. Parameters
@@ -269,12 +272,12 @@ limitToRegion name dom rbox (parRi, par)
        par_filtered = Map.filterWithKey (\prbox _ -> all inRBox prbox) par
 
 -- | Code implementing a kernel for a single output domain and single parameter
--- regions. See "mergedKernel".
+-- regions. See 'mergingKernel'.
 type MergingKernelCode = [(Vector (), RegionBox)] -> RegionBox -> IO (Vector ())
 
 -- | Kernel that not only works only on a single region of the output domain at
 -- a time, but also expects parameters to be single-region. This only
--- works if we can meaningfully merge the parameters (as in "reprMerge").
+-- works if we can meaningfully merge the parameters (as in 'reprMerge').
 mergingKernel :: (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
              => String -> rs -> r -> MergingKernelCode -> ReprKernFun (ReprType r) rs
 mergingKernel name parReprs retRep code = mappingKernel name parReprs retRep $ \pars reg -> do
@@ -302,7 +305,7 @@ mergingKernel name parReprs retRep code = mappingKernel name parReprs retRep $ \
   code mergedPars reg
 
 -- | Code implementing a fold operation for a single input and output
--- domain. See "foldingKernel".
+-- domain. See 'foldingKernel'.
 type FoldingKernelCode = [(Vector (), RegionBox)] -> Vector() -> RegionBox -> IO (Vector ())
 
 -- | Data family for getting the last (fold) parameter data
@@ -425,7 +428,7 @@ vecKernel3 name repr0 repr1 repr2 rrepr code = mergingKernel name (repr0 :. repr
 
 -- | Helper to automatically allocate output buffers according to data
 -- representation produced and region boxes requested. Only works for
--- data representations that support "reprSize".
+-- data representations that support 'reprSize'.
 allocReturns :: forall rep a. (DataRepr rep, Storable a)
              => (Int -> IO (Vector a)) -> rep -> [RegionBox] -> IO [(RegionBox, Vector a)]
 allocReturns alloc rep = mapM $ \rbox -> case reprSize rep rbox of

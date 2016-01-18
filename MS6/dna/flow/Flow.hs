@@ -210,8 +210,10 @@ module Flow
     -- layouts but especially 'Domain's. Where this is the case, it is
     -- often expected that the 'Kernel' should work no matter into how
     -- much regions the 'Domain' happens to be split.
-    Kernel, kernel,
-    mappingKernel, mergingKernel, foldingKernel,
+    Kernel, KernelCode, kernel,
+    MappingKernelCode, mappingKernel,
+    MergingKernelCode, mergingKernel,
+    FoldingKernelCode, foldingKernel,
     allocReturns,
     regionKernel,
 
