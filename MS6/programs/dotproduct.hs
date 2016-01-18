@@ -102,9 +102,10 @@ ddpStrat size = do
     bind f (fKern regs)
     bind g (gKern regs)
     bind (pp f g) (ppKern regs f g)
-    recover f  (recoverKern regs)
-    recover g  (recoverKern regs)
-    recover (pp f g) (recoverKern regs)
+  --
+  recover f  (recoverKern regs)
+  recover g  (recoverKern regs)
+  recover (pp f g) (recoverKern regs)
   bindRule a (aKern dom)
   calculate ddp
   void $ bindNew $ printKern ddp
