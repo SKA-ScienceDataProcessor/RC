@@ -324,7 +324,7 @@ execRecoverStep kbind kid = do
     -- Actual data
     dataMap        <- getDataMap
     (repr,regData) <- case kid `IM.lookup` dataMap of
-      Nothing -> undefined
+      Nothing -> error "Should not happen!"
       Just a  -> return a
     -- Expected regions
     filteredRegs <- getFilteredOutputRegs repr ("Recover: " ++ show kbind)
