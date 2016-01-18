@@ -44,6 +44,8 @@ sumRepr = halideRepr Z
 fKern :: Domain Range -> Kernel Vec
 fKern size = halideKernel0 "f" (vecRepr size) kern_generate_f
 foreign import ccall unsafe kern_generate_f :: HalideFun '[] VecRepr
+-- kern_generate_f :: HalideFun '[] VecRepr
+-- kern_generate_f = HalideKernel (error "I'll crash for you!")
 
 gKern :: Domain Range -> Kernel Vec
 gKern size = halideKernel0 "g" (vecRepr size) kern_generate_g
@@ -99,9 +101,10 @@ ddpStrat size = do
   distribute regs ParSchedule $ do
     bind f (fKern regs)
     bind g (gKern regs)
-    recover f (recoverKern regs)
-    recover g (recoverKern regs)
     bind (pp f g) (ppKern regs f g)
+    recover f  (recoverKern regs)
+    recover g  (recoverKern regs)
+    recover (pp f g) (recoverKern regs)
   bindRule a (aKern dom)
   calculate ddp
   void $ bindNew $ printKern ddp
@@ -110,5 +113,6 @@ main :: IO ()
 main = do
   let size = 1000000
   dumpSteps $ ddpStrat size
+  print "================================================================"
   execStrategyDNA $ ddpStrat size
   putStrLn $ "Expected: " ++ show ((size-1)*size`div`20)
