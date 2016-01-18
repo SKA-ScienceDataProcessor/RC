@@ -45,6 +45,23 @@ executable imaging
     base         >= 4.8,
     dna-flow     >= 0.5
 
+executable binning
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
+  extra-libraries:     pthread
+  Hs-source-dirs:      programs
+  main-is:             binning.hs
+  other-modules:
+    Kernel.Binning
+    Kernel.Data
+    Kernel.IO
+  build-depends:
+    base         >= 4.8,
+    containers   >= 0.5,
+    dna-flow     >= 0.5,
+    oskar        >= 0.1,
+    fixed-vector-hetero
+
 executable gridding
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
