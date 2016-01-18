@@ -322,22 +322,25 @@ execRecoverStep kbind kid = do
   registerKernel kbind
   emitCode $ do
     -- Actual data
-    dataMap        <- getDataMap
-    (repr,regData) <- case kid `IM.lookup` dataMap of
-      Nothing -> error "Should not happen!"
-      Just a  -> return a
-    -- Expected regions
-    filteredRegs <- getFilteredOutputRegs repr ("Recover: " ++ show kbind)
-    -- Compare regions
-    let missing = Set.fromList filteredRegs `Set.difference` Map.keysSet regData
-    -- Generate missing regions
-    results <- forM (Set.toList missing) $ \rbox -> do
-      [res] <- lift $ kernel (kernName kbind) (kernHints kbind)
-             $ liftIO $ kernCode kbind [] [rbox]
-      return (rbox,res)
-    -- Update data map
-    modifyDataMap $ flip IM.adjust kid $ \(r,dm) ->
-      (r, foldl' (\m (k,v) -> Map.insert k v m) dm results)
+    dataMap <- getDataMap
+    lift $ logMessage $ "Recovering " ++ show kid ++ " existing keys " ++ show (IM.keys dataMap)
+    case kid `IM.lookup` dataMap of
+      Nothing -> do lift $ logMessage $ show kid
+                    lift $ logMessage $ show $ IM.keys dataMap
+                    return ()
+      Just (repr,regData) -> do
+        -- Expected regions
+        filteredRegs <- getFilteredOutputRegs repr ("Recover: " ++ show kbind)
+        -- Compare regions
+        let missing = Set.fromList filteredRegs `Set.difference` Map.keysSet regData
+        -- Generate missing regions
+        results <- forM (Set.toList missing) $ \rbox -> do
+          [res] <- lift $ kernel (kernName kbind) (kernHints kbind)
+                 $ liftIO $ kernCode kbind [] [rbox]
+          return (rbox,res)
+        -- Update data map
+        modifyDataMap $ flip IM.adjust kid $ \(r,dm) ->
+          (r, foldl' (\m (k,v) -> Map.insert k v m) dm results)
 
 
 
