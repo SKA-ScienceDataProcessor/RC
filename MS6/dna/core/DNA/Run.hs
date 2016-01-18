@@ -329,7 +329,7 @@ executeDNA logopt workDir dna nodes = do
               , actorGroupSize   = GroupSize 1
               , actorNodes       = VirtualCAD (NodeInfo nid) (map NodeInfo nodes)
               , actorDebugFlags  = []
-              , actorSendBack    = undefined
+              , actorSendBack    = error "Impossible: should not evaluate ever"
               , actorLogOpt      = logopt
               , actorWorkDir     = workDir
               }
