@@ -41,10 +41,9 @@ gridderStrat cfg = do
   wdoms <- makeBinDomain $ binSizer gpar tdom uvdom vis
   wdom <- split wdoms (gridBins gpar)
 
-  -- Bin visibilities (could distribute, but there's no benefit)
+  -- Bin visibilities and output
   rebind vis (binner gpar tdom uvdom wdom)
-  distribute vdom SeqSchedule $ distribute udom SeqSchedule $ void $
-    bindNew $ halideDump (visRepr uvdom wdom) "binned-vis" vis
+  void $ bindNew $ halideDump (visRepr uvdom wdom) "binned-vis" vis
 
 main :: IO ()
 main = do
