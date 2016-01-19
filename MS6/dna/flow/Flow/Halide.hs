@@ -46,7 +46,8 @@ import Foreign.C ( CInt(..) )
 import Foreign.Storable ( sizeOf )
 
 import System.IO
-import System.FilePath ( (<.>) )
+import Data.List ( intercalate )
+import Text.Printf ( printf )
 
 -- | Common context of all halide data representations: Everything must be
 -- typeable so we can "cast" data representations for the type
@@ -326,14 +327,14 @@ halideDump rep file
     let v' = castVector v :: Vector (HalrVal r)
         size = nOfElements $ halrDim rep rbox
     -- Make file name if we are printing more than one region box
-    let rboxName = foldr (<.>) "" (map regName rbox)
+    let rboxName = intercalate "_" (map regName rbox)
         regName (RangeRegion _ (Range low high))
-          = concat [ show low, "-", show high ]
+          = printf "%04d-%04d" low high
         regName binr@BinRegion{}
-          = foldr (<.>) "" $ map binName $ regionBins binr
-        binName (low, high, _) = concat [ show low, "-", show high ]
+          = intercalate "_" $ map binName $ regionBins binr
+        binName (low, high, _) = printf "%010.2f-%010.2f" low high
     -- Write buffer to file
-    dumpVector' v' 0 size (file <.> rboxName)
+    dumpVector' v' 0 size (file ++ '-': rboxName)
   -- No result
   return nullVector
 
