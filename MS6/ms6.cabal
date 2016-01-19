@@ -32,6 +32,7 @@ executable dotproduct
     fixed-vector-hetero
   x-halide-sources:    kernel/cpu/dotproduct/generate_f.cpp
                        kernel/cpu/dotproduct/generate_g.cpp
+                       kernel/cpu/dotproduct/recovery.cpp
                        kernel/cpu/dotproduct/dotp.cpp
                        kernel/cpu/dotproduct/sum.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lm -lstdc++ -lHalide
