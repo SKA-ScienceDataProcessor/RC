@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -324,25 +325,27 @@ execRecoverStep kbind kid = do
     -- Actual data
     dataMap <- getDataMap
     lift $ logMessage $ "Recovering " ++ show kid ++ " existing keys " ++ show (IM.keys dataMap)
-    case kid `IM.lookup` dataMap of
+    (repr,regData) <- case kid `IM.lookup` dataMap of
       Nothing -> do lift $ logMessage $ show kid
                     lift $ logMessage $ show $ IM.keys dataMap
-                    return ()
-      Just (repr,regData) -> do
-        -- Expected regions
-        filteredRegs <- getFilteredOutputRegs repr ("Recover: " ++ show kbind)
-        -- Compare regions
-        let missing = Set.fromList filteredRegs `Set.difference` Map.keysSet regData
-        -- Generate missing regions
-        results <- forM (Set.toList missing) $ \rbox -> do
-          [res] <- lift $ kernel (kernName kbind) (kernHints kbind)
-                 $ liftIO $ kernCode kbind [] [rbox]
-          return (rbox,res)
-        -- Update data map
-        modifyDataMap $ flip IM.adjust kid $ \(r,dm) ->
-          (r, foldl' (\m (k,v) -> Map.insert k v m) dm results)
-
-
+                    return (kernRepr kbind, Map.empty)
+      Just a -> return a
+    -- Expected regions
+    filteredRegs <- getFilteredOutputRegs repr ("Recover: " ++ show kbind)
+    -- Compare regions
+    let missing = Set.fromList filteredRegs `Set.difference` Map.keysSet regData
+    -- Generate missing regions
+    results <- forM (Set.toList missing) $ \rbox -> do
+      [res] <- lift $ kernel (kernName kbind) (kernHints kbind)
+             $ liftIO $ kernCode kbind [] [rbox]
+      return (rbox,res)
+    -- Update data map
+    modifyDataMap $ \case
+      oldMap
+        | IM.member kid oldMap ->
+            IM.adjust (\(r,dm) -> (r, foldl' (\m (k,v) -> Map.insert k v m) dm results))
+                      kid oldMap
+        | otherwise -> IM.insert kid (kernRepr kbind, Map.fromList results) oldMap
 
 
 -- | Generate code for distributing a number of scheduled steps.
