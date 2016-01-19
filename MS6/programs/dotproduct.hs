@@ -7,6 +7,10 @@ module Main where
 
 import Control.Monad
 import Data.Typeable
+import Data.Int
+import Foreign.Marshal.Array
+import Foreign.Ptr
+import Foreign.Storable
 
 import Flow
 import Flow.Vector
@@ -42,10 +46,20 @@ sumRepr = halideRepr Z
 -- Kernels
 
 fKern :: Domain Range -> Kernel Vec
-fKern size = halideKernel0 "f" (vecRepr size) kern_generate_f
+fKern size = halideKernel0 "f" (vecRepr size) kern_generate_f''
+
 foreign import ccall unsafe kern_generate_f :: HalideFun '[] VecRepr
--- kern_generate_f :: HalideFun '[] VecRepr
--- kern_generate_f = HalideKernel (error "I'll crash for you!")
+
+kern_generate_f' :: HalideFun '[] VecRepr
+kern_generate_f' = case kern_generate_f of
+  HalideKernel ff -> HalideKernel $ \p -> do
+    n <- peekByteOff (castPtr p) 48
+    case n :: Int32 of
+      0 -> error "Zero arrived!"
+      _ -> ff p
+
+kern_generate_f'' :: HalideFun '[] VecRepr
+kern_generate_f'' = HalideKernel $ error "I crash always!"
 
 gKern :: Domain Range -> Kernel Vec
 gKern size = halideKernel0 "g" (vecRepr size) kern_generate_g
@@ -61,7 +75,9 @@ foreign import ccall unsafe kern_sum :: HalideFun '[ VecRepr ] SumRepr
 
 -- Dummy recover kernel
 recoverKern :: Domain Range -> Kernel Vec
-recoverKern size = halideKernel0 "recover" (vecRepr size) (error "No real kernel here")
+recoverKern size = halideKernel0 "recover" (vecRepr size) kern_recovery
+foreign import ccall unsafe kern_recovery :: HalideFun '[] VecRepr
+
 
 printKern :: Flow Sum -> Kernel Sum
 printKern = mergingKernel "print" (sumRepr :. Z) NoRepr $ \case
@@ -97,14 +113,14 @@ ddpStrat size = do
   dom <- makeRangeDomain 0 size
 
   -- Calculate ddp for the whole domain
-  regs <- split dom 10
+  regs <- split dom 3
   distribute regs ParSchedule $ do
     bind f (fKern regs)
     bind g (gKern regs)
     bind (pp f g) (ppKern regs f g)
   --
-  recover f  (recoverKern regs)
-  recover g  (recoverKern regs)
+  -- recover f  (recoverKern regs)
+  -- recover g  (recoverKern regs)
   recover (pp f g) (recoverKern regs)
   bindRule a (aKern dom)
   calculate ddp
