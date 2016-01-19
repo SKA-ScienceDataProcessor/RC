@@ -6,7 +6,9 @@ module Main where
 import Control.Monad
 
 import Flow
+import Flow.Builder ( IsKernelDef )
 
+import Kernel.Scheduling
 import Kernel.Binning
 import Kernel.Data
 import Kernel.IO
@@ -18,14 +20,17 @@ import Kernel.IO
 gridderStrat :: Config -> Strategy ()
 gridderStrat cfg = do
 
-  -- Make point domain for visibilities
+  -- Make index and point domains for visibilities
+  (ddom, ixs, _) <- makeOskarDomain cfg 1
+  let dkern :: IsKernelDef kf => kf -> kf
+      dkern = regionKernel ddom
   tdom <- makeRangeDomain 0 (cfgPoints cfg)
 
   -- Create data flow for tag, bind it to FFT plans
   let gpar = cfgGrid cfg
 
   -- Data flow we want to calculate (just one)
-  vis <- uniq $ flow "vis"
+  vis <- uniq $ flow "vis" ixs
 
   -- Create ranged domains for grid coordinates
   udoms <- makeRangeDomain 0 (gridWidth gpar)
@@ -35,15 +40,15 @@ gridderStrat cfg = do
   vdom <- split vdoms (gridTiles gpar)
   udom <- split udoms (gridTiles gpar)
   let uvdom = (udom, vdom)
-  bind vis $ oskarReader tdom (cfgInput cfg) 0 0
+  bind vis $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
 
   -- Create w-binned domain, split
-  wdoms <- makeBinDomain $ binSizer gpar tdom uvdom vis
+  wdoms <- makeBinDomain $ dkern $ binSizer gpar tdom uvdom vis
   wdom <- split wdoms (gridBins gpar)
 
   -- Bin visibilities and output
-  rebind vis (binner gpar tdom uvdom wdom)
-  void $ bindNew $ halideDump (visRepr uvdom wdom) "binned-vis" vis
+  rebind vis (dkern $ binner gpar tdom uvdom wdom)
+  void $ bindNew $ dkern $ halideDump (visRepr uvdom wdom) "binned-vis" vis
 
 main :: IO ()
 main = do
@@ -61,7 +66,7 @@ main = do
                       , gcfFile = "gcf16.dat"
                       }
       config = Config
-        { cfgInput  = "test_p00_s00_f00.vis"
+        { cfgInput  = [OskarInput "test_p00_s00_f00.vis" 1 1]
         , cfgPoints = 32131 * 200
         , cfgLong   = 72.1 / 180 * pi -- probably wrong in some way
         , cfgLat    = 42.6 / 180 * pi -- ditto

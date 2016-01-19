@@ -6,12 +6,14 @@ module Main where
 import Control.Monad
 
 import Flow
+import Flow.Kernel ( IsKernelDef )
 
 import Kernel.Binning
 import Kernel.Data
 import Kernel.FFT
 import Kernel.Gridder
 import Kernel.IO
+import Kernel.Scheduling
 
 -- ----------------------------------------------------------------------------
 -- ---                             Functional                               ---
@@ -39,6 +41,9 @@ gridderStrat :: Config -> Strategy ()
 gridderStrat cfg = do
 
   -- Make point domain for visibilities
+  (ddom, ixs, _) <- makeOskarDomain cfg 1
+  let dkern :: IsKernelDef kf => kf -> kf
+      dkern = regionKernel ddom
   tdom <- makeRangeDomain 0 (cfgPoints cfg)
 
   -- Create data flow for tag, bind it to FFT plans
@@ -46,7 +51,7 @@ gridderStrat cfg = do
       gcfpar = cfgGCF cfg
 
   -- Data flows we want to calculate
-  vis <- uniq $ flow "vis"
+  vis <- uniq $ flow "vis" ixs
   let gcfs = gcf vis
       gridded = grid vis gcfs createGrid
       result = gridder vis gcfs
@@ -63,7 +68,7 @@ gridderStrat cfg = do
   distribute vdom ParSchedule $ distribute udom ParSchedule $ do
 
     -- Read visibilities
-    bind vis $ oskarReader tdom (cfgInput cfg) 0 0
+    bind vis $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
 
     -- Create w-binned domain, split
     wdoms <- makeBinDomain $ binSizer gpar tdom uvdom vis
@@ -108,7 +113,7 @@ main = do
                       , gcfFile = "gcf16.dat"
                       }
       config = Config
-        { cfgInput  = "test_p00_s00_f00.vis"
+        { cfgInput  = [OskarInput "test_p00_s00_f00.vis" 1 1]
         , cfgPoints = 32131 * 200
         , cfgLong   = 72.1 / 180 * pi -- probably wrong in some way
         , cfgLat    = 42.6 / 180 * pi -- ditto

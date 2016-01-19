@@ -14,6 +14,7 @@ import Kernel.Facet
 import Kernel.FFT
 import Kernel.Gridder
 import Kernel.IO
+import Kernel.Scheduling
 
 -- ----------------------------------------------------------------------------
 -- ---                             Functional                               ---
@@ -51,7 +52,10 @@ gridderStrat cfg = do
   let gpar = cfgGrid cfg
       gcfpar = cfgGCF cfg
 
-  -- Make point domain for visibilities
+  -- Make index and point domains for visibilities
+  (ddom, ixs, _) <- makeOskarDomain cfg 1
+  let dkern :: IsKernelDef kf => kf -> kf
+      dkern = regionKernel ddom
   tdom <- makeRangeDomain 0 (cfgPoints cfg)
 
   -- Create ranged domains for image coordinates
@@ -69,7 +73,7 @@ gridderStrat cfg = do
   let uvdoms = (udoms, vdoms); uvdom = (udom, vdom)
 
   -- Data flows we want to calculate
-  vis <- uniq $ flow "vis"
+  vis <- uniq $ flow "vis" ixs
   let gcfs = gcf vis
       gridded = grid vis gcfs createGrid
       facets = gridder vis gcfs
@@ -77,13 +81,13 @@ gridderStrat cfg = do
 
   distribute ldom ParSchedule $ distribute mdom ParSchedule $ do
     let rkern :: IsKernelDef kf => kf -> kf
-        rkern = regionKernel ldom . regionKernel mdom
+        rkern = dkern . regionKernel ldom . regionKernel mdom
 
     -- Read visibilities in
-    bind vis $ oskarReader tdom (cfgInput cfg) 0 0
+    bind vis $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
 
     -- Rotate visibilities
-    rebind vis (rotateKernel cfg lmdom tdom)
+    rebind vis (dkern $ rotateKernel cfg lmdom tdom)
 
     -- Create w-binned domain, split
     wdoms <- makeBinDomain (rkern $ binSizer gpar tdom uvdom vis)
@@ -111,9 +115,9 @@ gridderStrat cfg = do
     calculate facets
 
   -- Write out
-  bindRule createImage $ imageInitDetile gpar
-  bind result (imageDefacet gpar lmdom facets createImage)
-  void $ bindNew $ imageWriter gpar (cfgOutput cfg) result
+  bindRule createImage $ dkern $ imageInitDetile gpar
+  bind result $ dkern $ imageDefacet gpar lmdom facets createImage
+  void $ bindNew $ dkern $ imageWriter gpar (cfgOutput cfg) result
 
 main :: IO ()
 main = do
@@ -131,7 +135,7 @@ main = do
                       , gcfFile = "gcf0.dat"
                       }
       config = Config
-        { cfgInput  = "test_p00_s00_f00.vis"
+        { cfgInput  = [OskarInput "test_p00_s00_f00.vis" 1 1]
         , cfgPoints = 32131 * 200
         , cfgLong   = 72.1 / 180 * pi -- probably wrong in some way
         , cfgLat    = 42.6 / 180 * pi -- ditto
