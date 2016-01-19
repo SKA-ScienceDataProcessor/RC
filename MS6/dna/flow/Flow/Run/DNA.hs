@@ -195,7 +195,8 @@ execStep deps step = case step of
   DistributeStep dom sched steps
     -> execDistributeStep deps dom sched steps
   RecoverStep kbind kid
-    -> execRecoverStep kbind kid
+    | kid `IS.member` deps -> execRecoverStep kbind kid
+    | otherwise            -> return ()
 
 
 -- | Generate code for creating a domain. This will register the
@@ -326,16 +327,15 @@ execRecoverStep kbind kid = do
     dataMap <- getDataMap
     lift $ logMessage $ "Recovering " ++ show kid ++ " existing keys " ++ show (IM.keys dataMap)
     (repr,regData) <- case kid `IM.lookup` dataMap of
-      Nothing -> do lift $ logMessage $ show kid
-                    lift $ logMessage $ show $ IM.keys dataMap
-                    return (kernRepr kbind, Map.empty)
-      Just a -> return a
+      Nothing -> return (kernRepr kbind, Map.empty)
+      Just a  -> return a
     -- Expected regions
     filteredRegs <- getFilteredOutputRegs repr ("Recover: " ++ show kbind)
     -- Compare regions
     let missing = Set.fromList filteredRegs `Set.difference` Map.keysSet regData
     -- Generate missing regions
     results <- forM (Set.toList missing) $ \rbox -> do
+      lift $ logMessage $ "Running recovery kernel for " ++ show rbox
       [res] <- lift $ kernel (kernName kbind) (kernHints kbind)
              $ liftIO $ kernCode kbind [] [rbox]
       return (rbox,res)
