@@ -16,6 +16,7 @@ import Data.Binary
 import Data.Int
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Map as Map
+import Data.Maybe ( mapMaybe )
 import Data.Typeable
 
 import Flow.Internal
@@ -43,11 +44,19 @@ makeRangeDomain' rlow rhigh size parDh nsplit = do
        , dhParent = parDh
        , dhCreate = const $ return $ RangeRegion dh' (Range rlow rhigh)
        , dhRegion = \d -> return $ map (RangeRegion dh' . region d) [0..nsplit-1]
+       , dhRestrict = restrictRangeRegion
        , dhFilterBox = \_ -> Just -- no dependencies
        , dhPutRegion = putRangeRegion
        , dhGetRegion = getRangeRegion dh'
        }
   return dh'
+
+restrictRangeRegion :: Region -> [Region] -> [Region]
+restrictRangeRegion (RangeRegion _ (Range low high)) = filter restrict
+  where restrict (RangeRegion _ (Range l h)) = l >= low && h <= high
+        restrict _                           = False
+restrictRangeRegion other
+  = error $ "restrictRangeRegion: " ++ show other ++ " is no range region!"
 
 putRangeRegion :: Region -> Put
 putRangeRegion (RangeRegion _ (Range low high)) = do
@@ -89,6 +98,7 @@ makeBinDomain kern = do
            , dhParent = Nothing
            , dhCreate = unpackBinRegion dh'
            , dhRegion = fail "dhRegion called on bin root domain!"
+           , dhRestrict = restrictBinRegion
            , dhFilterBox = filterBoxBin
            , dhPutRegion = putBinRegion
            , dhGetRegion = getBinRegion dh'
@@ -113,6 +123,7 @@ makeBinSubDomain parent nsplit = do
         , dhCreate = const $ fail "dhCreate called on bin sub domain!"
         , dhRegion = return . region
         , dhParent = Just parent
+        , dhRestrict = restrictBinRegion
         , dhFilterBox = filterBoxBin
         , dhPutRegion = putBinRegion
         , dhGetRegion = getBinRegion dh'
@@ -142,6 +153,16 @@ unpackBinRegion dh rdata = do
     -- Make regions.
     let regs = Map.filter (>0) $ Map.fromList binSizes
     return (rbox, regs)
+
+restrictBinRegion :: Region -> [Region] -> [Region]
+restrictBinRegion (BinRegion _ (Bins bins)) = mapMaybe restrict
+  where restrict (BinRegion subDom (Bins subBins))
+          | null filteredBins = Nothing
+          | otherwise         = Just (BinRegion subDom (Bins filteredBins))
+          where filteredBins = Map.filterWithKey (\k _ -> k `Map.member` bins) subBins
+        restrict _other       = Nothing
+restrictBinRegion other
+  = error $ "restrictBinRegion: " ++ show other ++ " is no bin region!"
 
 putBinRegion :: Region -> Put
 putBinRegion (BinRegion _ (Bins bins)) = do

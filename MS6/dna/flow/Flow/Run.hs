@@ -20,6 +20,7 @@ import qualified Data.Map.Strict as Map
 import Data.IORef
 import Data.Ord
 import Data.Time.Clock
+import Data.Typeable ( cast )
 
 import System.IO
 
@@ -241,7 +242,12 @@ execStep dataMapRef domainMapRef deps step = case step of
 
       -- Make new restricted maps. In a distributed setting, this is
       -- the data we would need to send remotely.
-      domainMapRef' <- newIORef $ IM.insert (dhId dh) (DomainI dh, [reg]) domainMap'
+      let restrictDomain (DomainI subDom, subRegs) = case cast subDom of
+            Just subDom' | subDom' `dhIsParent` dh
+                         -> (DomainI subDom, dhRestrict dh reg subRegs)
+            _otherwise   -> (DomainI subDom, subRegs)
+      domainMapRef' <- newIORef $ IM.insert (dhId dh) (DomainI dh, [reg]) $
+                                  IM.map restrictDomain domainMap'
 
       -- Also filter data so we only send data for the appropriate region
       let usesRegion (ReprI repr) = dhId dh `elem` reprDomain repr

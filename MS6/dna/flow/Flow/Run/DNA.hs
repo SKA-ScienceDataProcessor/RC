@@ -388,7 +388,12 @@ execDistributeStep deps dh sched steps = do
     inputs <- forM regs $ \reg -> do
 
       -- Make new restricted maps.
-      let domainMap'' = IM.insert (dhId dh) (DomainI dh, [reg]) domainMap'
+      let restrictDomain (DomainI subDom, subRegs) = case cast subDom of
+            Just subDom' | subDom' `dhIsParent` dh
+                         -> (DomainI subDom, dhRestrict dh reg subRegs)
+            _otherwise   -> (DomainI subDom, subRegs)
+          localDomainMap = IM.insert (dhId dh) (DomainI dh, [reg]) $
+                           IM.map restrictDomain domainMap'
 
       -- Also filter data so we only send data for the appropriate region
       let usesRegion (ReprI repr) = dhId dh `elem` reprDomain repr
@@ -396,10 +401,10 @@ execDistributeStep deps dh sched steps = do
             (ri, if usesRegion ri
                  then Map.filterWithKey (\ds _ -> reg `elem` ds) bufs
                  else bufs)
-          dataMap'' = IM.map filterData dataMap'
+          localDataMap = IM.map filterData dataMap'
 
       -- Execute steps with new domain & data maps
-      return $ marshal domainMap'' dataMap''
+      return $ marshal localDomainMap localDataMap
 
     -- Calculate the number of nodes needed. Note that this only works
     -- if the domains in questions are split *before* the

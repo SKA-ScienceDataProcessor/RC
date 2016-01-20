@@ -185,6 +185,9 @@ data Domain a = Domain
     -- | Check whether a a region of this domain is permissible in the
     -- context of a given region box
   , dhFilterBox :: RegionBox -> Region -> Maybe Region
+    -- | Restrict a list of regions of a certain domain to the
+    -- regions that lie within a region of a parent domain.
+  , dhRestrict :: Region -> [Region] -> [Region]
     -- | Write a region of this domain
   , dhPutRegion :: Region -> Put
     -- | Read a region of this domain
