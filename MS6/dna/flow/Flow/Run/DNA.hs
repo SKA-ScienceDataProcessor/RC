@@ -423,6 +423,7 @@ execDistributeStep deps dh sched steps = do
        -- include the local node, as we are going to block.
        let nodes = stepsNodes steps
            totalNodes = length inputs * nodes
+       logMessage $ "Distributing " ++ show regs ++ " over " ++ show totalNodes ++ " nodes"
        grp <- startGroup (N (totalNodes - 1)) (NNodes nodes) $ do
          -- FIXME: We always make use of same node as parent which may
          --        not be good idea in all cases. But scheduling in
@@ -442,6 +443,7 @@ execDistributeStep deps dh sched steps = do
      SeqSchedule -> do
 
        -- Simply use evalClosure to evaluate actors directly
+       lift $ logMessage $ "Distributing " ++ show regs ++ " sequentially"
        dataMapUnions <$> forM inputs (\inp -> unmarshal <$> (lift $ evalClosure act inp))
 
     -- Combine maps.
