@@ -274,7 +274,7 @@ instance MarshalArray Dim0 where
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
 #ifdef CUDA
-      HostVector   _ p -> fail "Don't know what to do with host pointers"
+      HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
       DeviceVector _ p -> setDevicePtr buf (castPtr p)
 #endif
     return buf
@@ -294,7 +294,7 @@ instance MarshalArray Dim1 where
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
 #ifdef CUDA
-      HostVector   _ p -> fail "Don't know what to do with host pointers"
+      HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
       DeviceVector _ p -> setDevicePtr buf (castPtr p)
 #endif
     return buf
@@ -314,7 +314,7 @@ instance MarshalArray Dim2 where
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
 #ifdef CUDA
-      HostVector   _ p -> fail "Don't know what to do with host pointers"
+      HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
       DeviceVector _ p -> setDevicePtr buf (castPtr p)
 #endif
     return buf
@@ -334,7 +334,7 @@ instance MarshalArray Dim3 where
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
 #ifdef CUDA
-      HostVector   _ p -> fail "Don't know what to do with host pointers"
+      HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
       DeviceVector _ p -> setDevicePtr buf (castPtr p)
 #endif
     return buf
@@ -355,7 +355,7 @@ instance MarshalArray Dim4 where
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
 #ifdef CUDA
-      HostVector   _ p -> fail "Don't know what to do with host pointers"
+      HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
       DeviceVector _ p -> setDevicePtr buf (castPtr p)
 #endif
     return buf
