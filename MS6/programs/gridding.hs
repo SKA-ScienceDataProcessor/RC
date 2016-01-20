@@ -71,31 +71,31 @@ gridderStrat cfg = do
     bind vis $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
 
     -- Create w-binned domain, split
-    wdoms <- makeBinDomain $ binSizer gpar tdom uvdom vis
+    wdoms <- makeBinDomain $ dkern $ binSizer gpar tdom uvdom vis
     wdom <- split wdoms (gridBins gpar)
 
     -- Load GCFs
     distribute wdom SeqSchedule $
-      bind gcfs (gcfKernel gcfpar wdom)
+      bind gcfs (dkern $ gcfKernel gcfpar wdom)
 
     -- Bin visibilities (could distribute, but there's no benefit)
-    rebind vis (binner gpar tdom uvdom wdom)
+    rebind vis (dkern $ binner gpar tdom uvdom wdom)
 
     -- Bind kernel rules
-    bindRule createGrid (gridInit gcfpar uvdom)
-    bindRule grid (gridKernel gpar gcfpar uvdoms wdom uvdom)
+    bindRule createGrid (dkern $ gridInit gcfpar uvdom)
+    bindRule grid (dkern $ gridKernel gpar gcfpar uvdoms wdom uvdom)
 
     -- Run gridding distributed
     calculate gridded
 
   -- Compute the result by detiling & iFFT on result tiles
-  bind createGrid (gridInitDetile uvdoms)
-  bind gridded (gridDetiling gcfpar uvdom uvdoms gridded createGrid)
-  bindRule idft (ifftKern gpar uvdoms)
+  bind createGrid (dkern $ gridInitDetile uvdoms)
+  bind gridded (dkern $ gridDetiling gcfpar uvdom uvdoms gridded createGrid)
+  bindRule idft (dkern $ ifftKern gpar uvdoms)
   calculate result
 
   -- Write out
-  void $ bindNew $ imageWriter gpar (cfgOutput cfg) result
+  void $ bindNew $ dkern $ imageWriter gpar (cfgOutput cfg) result
 
 main :: IO ()
 main = do
