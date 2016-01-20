@@ -14,7 +14,6 @@ module Flow.Halide.Marshal (
     -- * High level API
     call
   , callWrite
-  , eraseTypes
   , arr2scalar
   , scalar2arr
     -- * Type classes
@@ -67,21 +66,6 @@ callWrite kern
       cont <- act
       marshalResult cont ret
 
-eraseTypes
-  :: forall xs a. (MarshalParams xs, MarshalResult a)
-  => HalideKernel xs a
-  -> [Box]                      -- ^ Parameters
-  -> Box                        -- ^ Extent of result
-  -> IO Box                     -- ^ Result
-eraseTypes kern param size
-  = fmap wrapResult
-  $ dynamicParams (Fun (call kern ext) :: Fun xs (IO a)) param
-  where
-    ext = case unwrapExtent ([] :: [a]) size of
-            Just x  -> x
-            Nothing -> error "Bad data for result's extent"
-
-
 unwrapK :: HalideKernel xs a -> Fun (KernelCParams xs) (Ptr BufferT -> IO CInt)
 unwrapK (HalideKernel f) = Fun f
 
@@ -94,49 +78,23 @@ instance HalideScalar x => HalideCanBind x (HalideKernel xs a) where
   type HalideBind x (HalideKernel xs a) = HalideKernel (Scalar x ': xs) a
   halideBind (HalideKernel f) x = HalideKernel (f x)
 
+
 ----------------------------------------------------------------
 -- Type guided marshalling
 ----------------------------------------------------------------
 
 -- | Type class for scalars known by Halide
 class (Num a, Storable a) => HalideScalar a where
-  wrapScalar   :: a -> ScalarVal
-  unwrapScalar :: ScalarVal -> Maybe a
 
 instance HalideScalar Int32 where
-  wrapScalar   = Int32
-  unwrapScalar (Int32 i) = Just i
-  unwrapScalar _         = Nothing
 instance HalideScalar Float where
-  wrapScalar = Float
-  unwrapScalar (Float i) = Just i
-  unwrapScalar _         = Nothing
 instance HalideScalar Double where
-  wrapScalar = Double
-  unwrapScalar (Double i) = Just i
-  unwrapScalar _          = Nothing
-
-unwrapScalarBox :: HalideScalar a => Box -> Maybe a
-unwrapScalarBox (Number a) = unwrapScalar a
-unwrapScalarBox _          = Nothing
-
-unwrapScalarArray
-  :: forall dim a. (HalideScalar a, MarshalArray dim)
-  => Box -> Maybe (Array dim a)
-unwrapScalarArray (SomeArray ty dim ptr) = do
-  _ :: a <- unwrapScalar     ty
-  d      <- unwrapDimensions dim
-  return $ Array d (castVector ptr)
-unwrapScalarArray _ = Nothing
-
 
 
 -- | Type class for allocating buffers for results of Halide kernels
 class MarshalResult a where
   marshalNewResult :: (Ptr BufferT -> IO CInt) -> Extent a -> IO a
   marshalResult    :: (Ptr BufferT -> IO CInt) -> a -> IO a
-  wrapResult       :: a -> Box
-  unwrapExtent     :: p a -> Box -> Maybe (Extent a)
 
 instance HalideScalar a => MarshalResult (Scalar a) where
   marshalNewResult cont () = do
@@ -144,9 +102,6 @@ instance HalideScalar a => MarshalResult (Scalar a) where
     when (n /= 0) $ error "Could not call Halide kernel!"
     return a
   marshalResult cont _ = marshalNewResult cont ()
-  wrapResult (Scalar a) = Number $ wrapScalar a
-  unwrapExtent _ Unit = Just ()
-  unwrapExtent _ _    = Nothing
 
 instance (HalideScalar a, MarshalArray dim) => MarshalResult (Array dim a) where
   marshalNewResult cont dim = do
@@ -158,10 +113,6 @@ instance (HalideScalar a, MarshalArray dim) => MarshalResult (Array dim a) where
       cont pbuf
     when (n /= 0) $ error "Could not call Halide kernel!"
     return arr
-  wrapResult (Array dim p) =
-    SomeArray (wrapScalar (0 :: a)) (wrapDimensions dim) (castVector p)
-  unwrapExtent _ (Extent dim) = unwrapDimensions dim
-  unwrapExtent _ _            = Nothing
 
 -- | Marshal all parameters for function
 marshalParams :: MarshalParams xs => Fun (KernelCParams xs) a -> Fun xs (IO a)
@@ -172,13 +123,9 @@ marshalParams fun = fmap ($ fun) <$> marshalParamsF
 class Arity xs => MarshalParams xs where
   -- | Wrap all parameters for calling halide
   marshalParamsF :: Fun xs (IO (Fun (KernelCParams xs) a -> a))
-  -- | Convert function with statically known types to
-  dynamicParams :: Fun xs a -> [Box] -> a
 
 instance MarshalParams '[] where
   marshalParamsF = Fun $ return unFun
-  dynamicParams f [] = unFun f
-  dynamicParams _ _  = error "Too many parameters!"
 
 instance (HalideScalar x, MarshalParams xs) => MarshalParams (Scalar x ': xs) where
   marshalParamsF = uncurryFun $ \(Scalar x) ->
@@ -186,11 +133,6 @@ instance (HalideScalar x, MarshalParams xs) => MarshalParams (Scalar x ': xs) wh
        return $ do
          cont <- contIO
          return $ \f -> cont (curryFun f x)
-  dynamicParams _   [] = error "Too few parameters!"
-  dynamicParams fun (dyn:rest) =
-    case unwrapScalarBox dyn of
-      Just n  -> dynamicParams (curryFun fun (Scalar n)) rest
-      Nothing -> error "Type mismatch!"
 
 instance (HalideScalar x, MarshalArray ds, MarshalParams xs) =>
          MarshalParams (Array ds x ': xs) where
@@ -207,11 +149,6 @@ instance (HalideScalar x, MarshalArray ds, MarshalParams xs) =>
            buf  <- allocBufferT arr
            withBufferT buf $ \pbuf ->
              return $ \f -> cont (curryFun f pbuf)
-  dynamicParams _   [] = error "Too few parameters!"
-  dynamicParams fun (dyn:rest) =
-    case unwrapScalarArray dyn of
-      Just arr -> dynamicParams (curryFun fun arr) rest
-      Nothing  -> error "Type mismatch!"
 
 
 ----------------------------------------------------------------
