@@ -110,11 +110,16 @@ makeBinSubDomain :: Domain Bins -> Int -> Strategy (Domain Bins)
 makeBinSubDomain _      nsplit | nsplit < 1 = fail "makeBinSubDomain: Split by 0?"
 makeBinSubDomain parent nsplit = do
   did' <- freshDomainId
-  let splitRegs 1 _ xs = [xs]
-      splitRegs i n xs = start : splitRegs (i-1) (n - n `div` i) rest
-        where (start,rest) = splitAt (n `div` i) xs
-      region (BinRegion _ (Bins bins)) = map (BinRegion dh' . Bins . Map.fromList) $
-        splitRegs nsplit (Map.size bins) (Map.assocs bins)
+  let splitRegs _    _     [] = []
+      splitRegs size start xs =
+        let (pre, post) = span (\((l,_),_) -> l < start+size) xs
+        in pre : splitRegs size (start+size) post
+      region (BinRegion _ (Bins bins)) =
+        let binsStart = fst $ fst $ Map.findMin bins
+            binsEnd = snd $ fst $ Map.findMax bins
+            splitBinSize = (binsEnd - binsStart) / fromIntegral nsplit
+         in map (BinRegion dh' . Bins . Map.fromList) $
+            splitRegs splitBinSize binsStart (Map.assocs bins)
       region _ = fail "makeBinSubDomain: Non-bin parent domain?"
       dh' :: Domain Bins
       dh' = Domain
