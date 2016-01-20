@@ -6,9 +6,9 @@ import Control.Monad
 import Data.Function ( on )
 import Data.Ratio
 import Data.Int
-import Data.List  ( find, minimumBy )
+import Data.List  ( findIndex, minimumBy )
 import qualified Data.Map as Map
-import Data.Maybe ( fromJust )
+import Data.Maybe ( fromMaybe )
 
 import Kernel.Data
 
@@ -76,11 +76,11 @@ makeScheduleDomain items repeats weight nodes = do
           -- Check how many bins we need to drop
           let binStart (s,_,_) = s
               isOutStart bin = binStart bin == binStart (head outBins)
-              toDrop = fromJust (error "Could not find start output bin in input bins!")
-                                (find isOutStart inBins)
+              toDrop = fromMaybe (error "Could not find start output bin in input bins!")
+                                 (findIndex isOutStart inBins)
 
           -- Make new vector for the output region
-          inIxs <- unmakeVector (castVector ixs) 0 (length inBins) :: IO [Int]
+          inIxs <- unmakeVector (castVector ixs) 0 (length inBins) :: IO [Int32]
           castVector <$> (makeVector allocCVector $ take (length outBins)
                                                   $ drop toDrop inIxs)
 
