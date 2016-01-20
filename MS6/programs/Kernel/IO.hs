@@ -5,7 +5,9 @@ module Kernel.IO where
 import Control.Monad
 import Foreign.C.Types ( CDouble(..) )
 import Foreign.Storable
+import qualified Data.Map as Map
 import Data.Complex
+import Data.Int        ( Int32 )
 
 import OskarReader
 
@@ -17,11 +19,24 @@ import Flow.Halide
 
 import Kernel.Data
 
-oskarReader :: Domain Range -> FilePath -> Int -> Int -> Kernel Vis
-oskarReader dh file freq pol = rangeKernel0 "oskar reader" (rawVisRepr dh) $
- \domLow domHigh -> do
+oskarReader :: Domain Bins -> Domain Range -> [OskarInput] -> Int -> Int
+            -> Flow Index -> Kernel Vis
+oskarReader ddom tdom files freq pol
+  = mappingKernel "oskar reader" (indexRepr ddom :. Z)
+                                 (RegionRepr ddom $ rawVisRepr tdom) $ \[ixs] [dreg,treg] -> do
 
-  taskData <- readOskarData file
+  -- Get data set number. We only support reading one data set at a
+  -- time currently - no pressing reason, but it makes the code
+  -- simpler.
+  file <- case Map.lookup [dreg] ixs of
+    Just v  -> do ix <- peekVector (castVector v) 0 :: IO Int32
+                  return (files !! fromIntegral ix)
+    Nothing -> fail "oskarReader: Could not access index parameter!"
+
+  -- Get visibility range
+  let (domLow, domHigh) = regionRange treg
+
+  taskData <- readOskarData $ oskarFile file
   when (freq > tdChannels taskData) $
     fail "Attempted to read non-existent frequency channel from Oskar data!"
 
@@ -56,7 +71,7 @@ oskarReader dh file freq pol = rangeKernel0 "oskar reader" (rawVisRepr dh) $
 
   -- Free all data, done
   finalizeTaskData taskData
-  return visVector
+  return $ castVector visVector
 
 gcfKernel :: GCFPar -> Domain Bins -> Kernel GCFs
 gcfKernel gcfp wdom =

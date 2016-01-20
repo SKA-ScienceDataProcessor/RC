@@ -2,26 +2,33 @@
 
 -- | Data representation definitions
 module Kernel.Data
-  ( Config(..), GridPar(..), GCFPar(..)
-  , Tag, Vis, UVGrid, Image, GCFs
+  ( OskarInput(..), Config(..), GridPar(..), GCFPar(..)
+  , Index, Tag, Vis, UVGrid, Image, GCFs
   , gridImageWidth, gridImageHeight, gridScale, gridXY2UV
   -- * Data representations
-  , TDom, UDom, VDom, WDom, UVDom, LDom, MDom, LMDom
-  , UVGRepr, UVGMarginRepr, FacetRepr, ImageRepr, PlanRepr, GCFsRepr
-  , uvgRepr, uvgMarginRepr, facetRepr, imageRepr, planRepr, gcfsRepr
+  , DDom, TDom, UDom, VDom, WDom, UVDom, LDom, MDom, LMDom
+  , IndexRepr, UVGRepr, UVGMarginRepr, FacetRepr, ImageRepr, PlanRepr, GCFsRepr
+  , indexRepr, uvgRepr, uvgMarginRepr, facetRepr, imageRepr, planRepr, gcfsRepr
   -- * Visibility data representations
   , RawVisRepr, RotatedVisRepr, VisRepr
   , rawVisRepr, rotatedVisRepr, visRepr
   ) where
 
 import Data.Typeable
+import Data.Int ( Int32 )
 
 import Flow.Halide
 import Flow.Domain
 import Flow.Kernel
 
+data OskarInput = OskarInput
+  { oskarFile   :: FilePath -- ^ Oskar file
+  , oskarWeight :: Double   -- ^ Complexity
+  , oskarRepeat :: Int      -- ^ Repeats
+  }
+
 data Config = Config
-  { cfgInput  :: FilePath -- ^ Input Oskar file
+  { cfgInput  :: [OskarInput] -- ^ Input Oskar files
   , cfgPoints :: Int      -- ^ Number of points to read from Oskar file
   , cfgLong   :: Double   -- ^ Phase centre longitude
   , cfgLat    :: Double   -- ^ Phase centre latitude
@@ -63,6 +70,7 @@ gridXY2UV :: GridPar -> Int -> Double
 gridXY2UV gp z = fromIntegral (z - gridHeight gp `div` 2) / gridScale gp
 
 -- Data tags
+data Index -- ^ Data set index
 data Tag -- ^ Initialisation (e.g. FFT plans)
 data Vis -- ^ Visibilities (File name to OSKAR / raw visibilities / binned ...)
 data UVGrid -- ^ UV grid
@@ -75,6 +83,7 @@ deriving instance Typeable UVGrid
 deriving instance Typeable Image
 deriving instance Typeable GCFs
 
+type DDom = Domain Bins -- ^ Domain used for indexing data sets
 type TDom = Domain Range -- ^ Domain used for indexing visibilities
 type UDom = Domain Range -- ^ Domain used for the u grid dimension
 type VDom = Domain Range -- ^ Domain used for the v grid dimension
@@ -83,6 +92,10 @@ type UVDom = (UDom, VDom) -- ^ Domain used for the (u,v) grid dimensions
 type LDom = Domain Range -- ^ Domain used for the l image dimension
 type MDom = Domain Range -- ^ Domain used for the m image dimension
 type LMDom = (LDom, MDom) -- ^ Domain used for the (l,m) image dimensions
+
+type IndexRepr = BinRepr (HalideRepr Dim0 Int32 Index)
+indexRepr :: DDom -> IndexRepr
+indexRepr ddom = BinRepr ddom $ halideRepr dim0
 
 type UVGRepr = RangeRepr (RangeRepr (HalideRepr Dim1 Double UVGrid))
 uvgRepr :: UVDom -> UVGRepr
