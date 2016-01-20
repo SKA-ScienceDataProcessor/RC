@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 -- |
 -- Working with buffer_t struct
 --
@@ -10,6 +11,10 @@ import Foreign.Ptr
 import Foreign.ForeignPtr
 import Foreign.Marshal.Array
 import Foreign.Storable
+
+#ifdef USE_CUDA
+import Foreign.CUDA.Ptr (DevicePtr)
+#endif
 
 -- | Wrapper for buffer_t data type. It's managed by haskell GC
 --
@@ -36,6 +41,13 @@ setHostPtr :: BufferT -> Ptr () -> IO ()
 setHostPtr (BufferT fptr) buf =
   withForeignPtr fptr $ \p ->
     pokeByteOff (castPtr p) 8 buf
+
+#ifdef USE_CUDA
+setDevicePtr :: BufferT -> DevicePtr a -> IO ()
+setDevicePtr (BufferT fptr) buf =
+  withForeignPtr fptr $ \p ->
+    pokeElemOff (castPtr p) 0 buf
+#endif
 
 setBufferExtents :: BufferT -> Int32 -> Int32 -> Int32 -> Int32 -> IO ()
 setBufferExtents (BufferT fptr) a b c d =

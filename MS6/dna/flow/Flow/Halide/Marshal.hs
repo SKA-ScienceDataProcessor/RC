@@ -274,7 +274,8 @@ instance MarshalArray Dim0 where
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
 #ifdef CUDA
-      _other      -> fail "Halide only supports C arrays currently!"
+      HostVector   _ p -> fail "Don't know what to do with host pointers"
+      DeviceVector _ p -> setDevicePtr buf (castPtr p)
 #endif
     return buf
   nOfElements Z = 1
@@ -293,7 +294,8 @@ instance MarshalArray Dim1 where
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
 #ifdef CUDA
-      _other      -> fail "Halide only supports C arrays currently!"
+      HostVector   _ p -> fail "Don't know what to do with host pointers"
+      DeviceVector _ p -> setDevicePtr buf (castPtr p)
 #endif
     return buf
   nOfElements ((_,n) :. Z) = fromIntegral n
@@ -312,7 +314,8 @@ instance MarshalArray Dim2 where
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
 #ifdef CUDA
-      _other      -> fail "Halide only supports C arrays currently!"
+      HostVector   _ p -> fail "Don't know what to do with host pointers"
+      DeviceVector _ p -> setDevicePtr buf (castPtr p)
 #endif
     return buf
   nOfElements ((_,n) :. (_,m) :. Z) = fromIntegral n * fromIntegral m
@@ -331,7 +334,8 @@ instance MarshalArray Dim3 where
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
 #ifdef CUDA
-      _other      -> fail "Halide only supports C arrays currently!"
+      HostVector   _ p -> fail "Don't know what to do with host pointers"
+      DeviceVector _ p -> setDevicePtr buf (castPtr p)
 #endif
     return buf
   nOfElements ((_,n) :. (_,m) :. (_, o) :. Z)
@@ -351,7 +355,8 @@ instance MarshalArray Dim4 where
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
 #ifdef CUDA
-      _other      -> fail "Halide only supports C arrays currently!"
+      HostVector   _ p -> fail "Don't know what to do with host pointers"
+      DeviceVector _ p -> setDevicePtr buf (castPtr p)
 #endif
     return buf
   nOfElements ((_,n) :. (_,m) :. (_, o) :. (_, p) :. Z)
