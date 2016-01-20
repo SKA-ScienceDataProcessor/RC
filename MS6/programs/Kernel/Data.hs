@@ -35,6 +35,7 @@ data Config = Config
   , cfgOutput :: FilePath -- ^ File name for the output image
   , cfgGrid   :: GridPar
   , cfgGCF    :: GCFPar
+  , cfgNodes  :: Int      -- ^ Number of data sets to process in parallel
   }
 data GridPar = GridPar
   { gridWidth :: !Int  -- ^ Width of the uv-grid/image in pixels

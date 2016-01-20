@@ -117,3 +117,32 @@ executable facetting
                        kernel/cpu/gridding/image_init.cpp
                        kernel/cpu/gridding/defacet.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
+
+executable continuum
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
+  extra-libraries:     pthread
+  Hs-source-dirs:      programs
+  main-is:             continuum.hs
+  other-modules:
+    Kernel.Binning
+    Kernel.Data
+    Kernel.FFT
+    Kernel.Facet
+    Kernel.Gridder
+    Kernel.IO
+    Kernel.Scheduling
+  build-depends:
+    base         >= 4.8,
+    containers   >= 0.5,
+    dna-flow     >= 0.5,
+    oskar        >= 0.1,
+    fixed-vector-hetero
+  x-halide-sources:    kernel/cpu/gridding/scatter.cpp
+                       kernel/cpu/gridding/init.cpp
+                       kernel/cpu/gridding/detile.cpp
+                       kernel/cpu/gridding/fft.cpp
+                       kernel/cpu/gridding/rotate.cpp
+                       kernel/cpu/gridding/image_init.cpp
+                       kernel/cpu/gridding/defacet.cpp
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
