@@ -315,6 +315,19 @@ halidePrint rep caption = mergingKernel (show (typeOf (undefined :: ReprType r))
   putStrLn $ caption ++ " (" ++ show rep ++ ", region box " ++ show rbox ++ "): " ++ show elems
   return nullVector
 
+-- | Make file name unique for cases where we have a non-trivial
+-- region box
+dumpFileName :: HalideReprClass r => r -> FilePath -> RegionBox -> FilePath
+dumpFileName rep file rbox
+  | null rbox = file
+  | otherwise = file ++ '-': rboxName
+  where rboxName = intercalate "_" (map regName rbox)
+        regName (RangeRegion _ (Range low high))
+          = printf "%04d-%04d" low high
+        regName binr@BinRegion{}
+          = intercalate "_" $ map binName $ regionBins binr
+        binName (low, high, _) = printf "%010.2f-%010.2f" low high
+
 -- | Simple kernel that dumps the contents of a channel with Halide
 -- data representation to a file.
 halideDump :: forall r. HalideReprClass r => r -> FilePath -> Flow (ReprType r)
@@ -326,15 +339,8 @@ halideDump rep file
     -- Cast vector and get size as given by Halide data representation
     let v' = castVector v :: Vector (HalrVal r)
         size = nOfElements $ halrDim rep rbox
-    -- Make file name if we are printing more than one region box
-    let rboxName = intercalate "_" (map regName rbox)
-        regName (RangeRegion _ (Range low high))
-          = printf "%04d-%04d" low high
-        regName binr@BinRegion{}
-          = intercalate "_" $ map binName $ regionBins binr
-        binName (low, high, _) = printf "%010.2f-%010.2f" low high
     -- Write buffer to file
-    dumpVector' v' 0 size (file ++ '-': rboxName)
+    dumpVector' v' 0 size (dumpFileName rep file rbox)
   -- No result
   return nullVector
 
@@ -342,12 +348,13 @@ halideDump rep file
 -- data representation to a text file
 halideTextDump2D :: forall r. (HalideReprClass r, HalrDim r ~ Dim2, Show (HalrVal r))
                  => r -> FilePath -> Flow (ReprType r) -> Kernel ()
-halideTextDump2D rep file = mergingKernel (show (typeOf (undefined :: ReprType r)) ++ "-text-writer")
-                                          (rep :. Z) NoRepr $ \[(v,doms)] _ ->
-  withFile file WriteMode $ \h -> do
+halideTextDump2D rep file = mappingKernel (show (typeOf (undefined :: ReprType r)) ++ "-text-writer")
+                                          (rep :. Z) NoRepr $ \[vs] _ -> do
+  forM_ (Map.assocs vs) $ \(rbox, v) ->
+   withFile (dumpFileName rep file rbox) WriteMode $ \h -> do
     let v' = castVector v :: Vector (HalrVal r)
-        ((_,hgt) :. (_, wdt) :. Z) = halrDim rep doms
-    forM_ [0..hgt-1] $ \y -> do
+        ((_,hgt) :. (_, wdt) :. Z) = halrDim rep rbox
+    forM_ [0..min 1000 hgt-1] $ \y -> do
       vals <- forM [0..wdt-1] $ \x -> peekVector v' (fromIntegral $ y*wdt+x)
       hPutStrLn h $ show vals
-    return nullVector
+  return nullVector
