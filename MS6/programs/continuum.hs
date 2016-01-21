@@ -55,9 +55,12 @@ continuumStrat cfg = do
   (ddoms, ixs, ddomSplit) <- makeOskarDomain cfg (cfgNodes cfg)
   tdom <- makeRangeDomain 0 (cfgPoints cfg)
 
-  -- Split index domain - first into bins per node, then into individual data sets
+  -- Split index domain - first into bins per node, then into
+  -- individual data sets. The repeatSplit must be large enough to
+  -- split the largest repeat possible.
+  let repeatSplits = 1 + maximum (map oskarRepeat (cfgInput cfg))
   ddom <- split ddoms (cfgNodes cfg)
-  ddom' <- split ddom (maximum (map oskarRepeat (cfgInput cfg)))
+  ddom' <- split ddom repeatSplits
   let dkern :: IsKernelDef kf => kf -> kf
       dkern = regionKernel ddom'
 
@@ -87,12 +90,12 @@ continuumStrat cfg = do
     -- Loop over data sets
     distribute ddom' SeqSchedule $ do
 
+      -- Read visibilities
+      rebind ixs $ ddomSplit ddoms ddom'
+      bind vis $ oskarReader ddom' tdom (cfgInput cfg) 0 0 ixs
+
       -- Loop over tiles
       distribute vdom SeqSchedule $ distribute udom SeqSchedule $ do
-
-        -- Read visibilities
-        rebind ixs $ ddomSplit ddoms ddom'
-        bind vis $ oskarReader ddom' tdom (cfgInput cfg) 0 0 ixs
 
         -- Create w-binned domain, split
         wdoms <- makeBinDomain $ dkern $ binSizer gpar tdom uvdom vis
@@ -119,7 +122,7 @@ continuumStrat cfg = do
       calculate $ gridder vis gcfs
 
     -- Sum up images locally
-    bindRule createImage $ regionKernel ddom $ imageInit gpar
+    bind createImage $ regionKernel ddom $ imageInit gpar
     bindRule sumImage $ imageSum gpar ddom' ddom
     calculate result
 
