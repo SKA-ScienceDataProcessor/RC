@@ -108,14 +108,22 @@ stepKernDeps _                          = IS.empty
 
 -- | Kernel dependencies of a series of steps
 stepsKernDeps :: [Step] -> KernelSet
-stepsKernDeps (step@(KernelStep kbind) : steps)
-  = IS.delete (kernId kbind) $ stepsKernDeps steps `IS.union` stepKernDeps step
-stepsKernDeps (step@(RecoverStep kbind _) : steps)
-  = IS.delete (kernId kbind) $ stepsKernDeps steps `IS.union` stepKernDeps step
-stepsKernDeps (step : steps)
-  = stepKernDeps step `IS.union` stepsKernDeps steps
-stepsKernDeps []
-  = IS.empty
+stepsKernDeps = stepsKernDeps' IS.empty
+
+-- | Kernel dependencies of a series of steps, with start value
+stepsKernDeps' :: KernelSet -> [Step] -> KernelSet
+stepsKernDeps' cont (step@(KernelStep kbind) : steps)
+  = IS.delete (kernId kbind) $ IS.union (stepKernDeps step) $
+    stepsKernDeps' cont steps
+stepsKernDeps' cont (step@(RecoverStep kbind _) : steps)
+  = IS.delete (kernId kbind) $ IS.union (stepKernDeps step) $
+    stepsKernDeps' cont steps
+stepsKernDeps' cont (step@(DistributeStep _ _ dsteps) : steps)
+  = stepsKernDeps' (stepsKernDeps' cont steps) dsteps
+stepsKernDeps' cont (step : steps)
+  = stepKernDeps step `IS.union` stepsKernDeps' cont steps
+stepsKernDeps' cont []
+  = cont
 
 -- | Domain dependencies of a step
 stepDomainDeps :: Step -> DomainSet
