@@ -11,8 +11,8 @@ int main(int argc, char **argv) {
     sum(x,y) = undef<double>();
 
     // Update with data
-    RDom rdom(print(image.min(0)), print(image.extent(0)),
-              print(image.min(1)), print(image.extent(1)));
+    RDom rdom(image.min(0), image.extent(0),
+              image.min(1), image.extent(1));
     RVar rx = rdom.x, ry = rdom.y;
     sum(clamp(rx, sum.output_buffer().left(), sum.output_buffer().right()),
         clamp(ry, sum.output_buffer().left(), sum.output_buffer().right()))
