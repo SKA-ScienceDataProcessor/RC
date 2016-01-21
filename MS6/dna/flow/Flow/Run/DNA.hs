@@ -423,7 +423,8 @@ execDistributeStep deps dh sched steps = do
        -- include the local node, as we are going to block.
        let nodes = stepsNodes steps
            totalNodes = length inputs * nodes
-       logMessage $ "Distributing " ++ show regs ++ " over " ++ show totalNodes ++ " nodes"
+       logMessage $ "Distributing " ++ show regs ++ " over " ++
+                    show (length inputs) ++ " x " ++ show nodes ++ " nodes"
        grp <- startGroup (N (totalNodes - 1)) (NNodes nodes) $ do
          -- FIXME: We always make use of same node as parent which may
          --        not be good idea in all cases. But scheduling in
