@@ -191,7 +191,7 @@ execStep deps step = case step of
   DomainStep m_kid dh
     -> execDomainStep m_kid dh
   KernelStep kbind
-    -> execKernelStep kbind
+    -> execKernelStep deps kbind
   DistributeStep dom sched steps
     -> execDistributeStep deps dom sched steps
   RecoverStep kbind kid
@@ -269,8 +269,8 @@ getFilteredOutputRegs (ReprI rep) kname = do
 -- kernel for unmarshalling, and generate "DNA" code to locate the
 -- appropriate data in the run-time "DataMap", invoke the kernel code
 -- and update it with the results accordingly.
-execKernelStep :: KernelBind -> DnaBuilder ()
-execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
+execKernelStep :: KernelSet -> KernelBind -> DnaBuilder ()
+execKernelStep deps kbind@KernelBind{kernRepr=ReprI rep} = do
   registerKernel kbind
   emitCode $ do
     filteredRegs <- getFilteredOutputRegs (ReprI rep) (show kbind)
@@ -287,7 +287,16 @@ execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
                                  show (kdepId kdep) ++ " not found!"
            -- This should never happen
 
-    -- Important TODO: Duplicate data that is written here, but read later!
+    -- Either remove or duplicate inputs in the data map that will get
+    -- "written" by the kernel - for our purposes this is equivalent
+    -- with the kernel consuming the data.
+    let writtenIns = filter ((== WriteAccess) . kdepAccess . fst) ins
+    forM_ writtenIns $ \(dep, rdata) ->
+      if kdepId dep `IS.member` deps
+      then fail $ "Kernel " ++ show (kernName kbind) ++ " writes buffer " ++ show (kdepId dep) ++
+                  ", which is used later. This is not supported yet!"
+      else modifyDataMap $ flip dataMapDifference $
+           dataMapInsert (kdepId dep) (kdepRepr dep) (Map.map (const nullVector) rdata) IM.empty
 
     -- Call the kernel using the right regions
     results <- lift $ kernel (kernName kbind) (kernHints kbind)
@@ -306,13 +315,6 @@ execKernelStep kbind@KernelBind{kernRepr=ReprI rep} = do
     lift $ logMessage $
       "Calculated kernel " ++ show (kernId kbind) ++ ":" ++ kernName kbind ++
       " regions " ++ show filteredRegs
-
-    -- Get inputs that have been written, and therefore should be
-    -- considered freed. TODO: ugly
-    let writtenIns = filter ((== WriteAccess) . kdepAccess . fst) ins
-    forM_ writtenIns $ \(dep, rdata) -> forM_ (Map.keys rdata) $ \rbox -> do
-      modifyDataMap $ flip dataMapDifference $
-        dataMapInsert (kdepId dep) (kdepRepr dep) (Map.singleton rbox nullVector) IM.empty
 
     -- Insert result
     let resultMap = Map.fromList $ zip filteredRegs results
