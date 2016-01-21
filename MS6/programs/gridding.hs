@@ -120,6 +120,7 @@ main = do
         , cfgOutput = "out.img"
         , cfgGrid   = gpar
         , cfgGCF    = gcfpar
+        , cfgNodes  = 1
         }
 
   dumpSteps $ gridderStrat config

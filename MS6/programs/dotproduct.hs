@@ -8,7 +8,6 @@ module Main where
 import Control.Monad
 import Data.Typeable
 import Data.Int
-import Foreign.Marshal.Array
 import Foreign.Ptr
 import Foreign.Storable
 
