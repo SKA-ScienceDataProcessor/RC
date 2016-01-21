@@ -32,6 +32,9 @@ import Foreign.C
 import Foreign.Ptr
 import Foreign.Marshal
 import Foreign.Storable
+#ifdef USE_CUDA
+import Foreign.CUDA.Runtime hiding (Fun)
+#endif
 
 import Flow.Halide.BufferT
 import Flow.Halide.Types
@@ -210,9 +213,9 @@ instance MarshalArray Dim0 where
     setBufferExtents buf 1 0 0 0
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
-#ifdef CUDA
+#ifdef USE_CUDA
       HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
-      DeviceVector _ p -> setDevicePtr buf (castPtr p)
+      DeviceVector _ p -> setDevicePtr buf (castDevPtr p)
 #endif
     return buf
   nOfElements Z = 1
@@ -230,9 +233,9 @@ instance MarshalArray Dim1 where
     setBufferExtents buf size 0 0 0
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
-#ifdef CUDA
+#ifdef USE_CUDA
       HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
-      DeviceVector _ p -> setDevicePtr buf (castPtr p)
+      DeviceVector _ p -> setDevicePtr buf (castDevPtr p)
 #endif
     return buf
   nOfElements ((_,n) :. Z) = fromIntegral n
@@ -250,9 +253,9 @@ instance MarshalArray Dim2 where
     setBufferExtents buf size size1 0 0
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
-#ifdef CUDA
+#ifdef USE_CUDA
       HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
-      DeviceVector _ p -> setDevicePtr buf (castPtr p)
+      DeviceVector _ p -> setDevicePtr buf (castDevPtr p)
 #endif
     return buf
   nOfElements ((_,n) :. (_,m) :. Z) = fromIntegral n * fromIntegral m
@@ -270,9 +273,9 @@ instance MarshalArray Dim3 where
     setBufferExtents buf size size1        size2 0
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
-#ifdef CUDA
+#ifdef USE_CUDA
       HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
-      DeviceVector _ p -> setDevicePtr buf (castPtr p)
+      DeviceVector _ p -> setDevicePtr buf (castDevPtr p)
 #endif
     return buf
   nOfElements ((_,n) :. (_,m) :. (_, o) :. Z)
@@ -291,9 +294,9 @@ instance MarshalArray Dim4 where
     setBufferExtents buf size size1        size2             size3
     case arr of
       CVector _ p -> setHostPtr buf (castPtr p)
-#ifdef CUDA
+#ifdef USE_CUDA
       HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
-      DeviceVector _ p -> setDevicePtr buf (castPtr p)
+      DeviceVector _ p -> setDevicePtr buf (castDevPtr p)
 #endif
     return buf
   nOfElements ((_,n) :. (_,m) :. (_, o) :. (_, p) :. Z)
