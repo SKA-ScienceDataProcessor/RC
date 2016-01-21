@@ -115,7 +115,7 @@ gridderStrat cfg = do
     calculate facets
 
   -- Write out
-  bindRule createImage $ dkern $ imageInitDetile gpar
+  bindRule createImage $ dkern $ imageInit gpar
   bind result $ dkern $ imageDefacet gpar lmdom facets createImage
   void $ bindNew $ dkern $ imageWriter gpar (cfgOutput cfg) result
 

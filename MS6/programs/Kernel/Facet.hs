@@ -54,15 +54,19 @@ foreign import ccall unsafe kern_rotate
      (HalideFun '[RawVisRepr] RotatedVisRepr))))))))
 
 -- | Defacetting image initialisation
-imageInitDetile :: GridPar -> Kernel Image
-imageInitDetile gp = halideKernel0 "imageInit" (imageRepr gp) kern_image_init
+imageInit :: GridPar -> Kernel Image
+imageInit gp = halideKernel0 "imageInit" (imageRepr gp) kern_image_init
 foreign import ccall unsafe kern_image_init :: HalideFun '[] ImageRepr
 
--- | Grid de-tiling kernel. This simply copies tiled (and possibly
--- overlapped) tiles into a common UV-grid.
+-- | Grid de-tiling kernel. This simply copies  tiles into a common UV-grid.
 imageDefacet :: GridPar -> LMDom -> Flow Image -> Flow Image -> Kernel Image
 imageDefacet gp (ldom, mdom) =
   halideKernel1Write "imageDefacet" (RegionRepr ldom $ RegionRepr mdom $ facetRepr gp)
                                     (imageRepr gp) kern_defacet
 foreign import ccall unsafe kern_defacet :: HalideFun '[RegionRepr Range (RegionRepr Range FacetRepr)] ImageRepr
 
+imageSum :: GridPar -> DDom -> DDom -> Flow Image -> Flow Image -> Kernel Image
+imageSum gp ddom0 ddom1 =
+  halideKernel1Write "imageSum" (RegionRepr ddom0 $ imageRepr gp)
+                                (RegionRepr ddom1 $ imageRepr gp) kern_image_sum
+foreign import ccall unsafe kern_image_sum :: HalideFun '[RegionRepr Bins ImageRepr] (RegionRepr Bins ImageRepr)

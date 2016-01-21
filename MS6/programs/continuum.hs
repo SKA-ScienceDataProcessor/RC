@@ -10,6 +10,7 @@ import Flow.Builder ( IsKernelDef )
 
 import Kernel.Binning
 import Kernel.Data
+import Kernel.Facet
 import Kernel.FFT
 import Kernel.Gridder
 import Kernel.IO
@@ -19,24 +20,29 @@ import Kernel.Scheduling
 -- ---                             Functional                               ---
 -- ----------------------------------------------------------------------------
 
--- Abstract kernel signatures.
+-- Gridding
 createGrid :: Flow UVGrid
 createGrid = flow "create grid"
 grid :: Flow Vis -> Flow GCFs -> Flow UVGrid -> Flow UVGrid
 grid = flow "grid"
-idft :: Flow UVGrid -> Flow Image
-idft = flow "idft"
 gcf :: Flow Vis -> Flow GCFs
 gcf = flow "gcf"
-imageSum :: Flow Image -> Flow Image
-imageSum = flow "image sum"
 
--- | Compound gridder actor
+-- FFT
+idft :: Flow UVGrid -> Flow Image
+idft = flow "idft"
+
+-- Image summation for continuum
+createImage :: Flow Image
+createImage = flow "create image"
+sumImage :: Flow Image -> Flow Image -> Flow Image
+sumImage = flow "sum image"
+
+-- Compound actors
 gridder :: Flow Vis -> Flow GCFs -> Flow Image
 gridder vis gcfs = idft (grid vis gcfs createGrid)
-
 summed :: Flow Vis -> Flow GCFs -> Flow Image
-summed vis gcfs = imageSum $ gridder vis gcfs
+summed vis gcfs = sumImage (gridder vis gcfs) createImage
 
 -- ----------------------------------------------------------------------------
 -- ---                               Strategy                               ---
@@ -63,7 +69,7 @@ continuumStrat cfg = do
   vis <- uniq $ flow "vis" ixs
   let gcfs = gcf vis
       gridded = grid vis gcfs createGrid
-      result = gridder vis gcfs
+      result = summed vis gcfs
 
   -- Create ranged domains for grid coordinates
   udoms <- makeRangeDomain 0 (gridWidth gpar)
@@ -77,6 +83,8 @@ continuumStrat cfg = do
 
   -- Loop over nodes
   distribute ddom ParSchedule $ do
+
+    -- Loop over data sets
     distribute ddom' SeqSchedule $ do
 
       -- Loop over tiles
@@ -104,14 +112,23 @@ continuumStrat cfg = do
         -- Run gridding distributed
         calculate gridded
 
-      -- Compute the result by detiling & iFFT on result tiles
+      -- Compute the result by detiling & iFFT on tiles
       bind createGrid $ dkern $ gridInitDetile uvdoms
       bind gridded $ dkern $ gridDetiling gcfpar uvdom uvdoms gridded createGrid
       bindRule idft $ dkern $ ifftKern gpar uvdoms
-      calculate result
+      calculate $ gridder vis gcfs
 
-      -- Write out
-      void $ bindNew $ dkern $ imageWriter gpar (cfgOutput cfg) result
+    -- Sum up images locally
+    bindRule createImage $ regionKernel ddom $ imageInit gpar
+    bindRule sumImage $ imageSum gpar ddom' ddom
+    calculate result
+
+  bind createImage $ regionKernel ddoms $ imageInit gpar
+  bind result $ imageSum gpar ddom ddoms result createImage
+
+  -- Write out
+  void $ bindNew $ regionKernel ddoms $
+     imageWriter gpar (cfgOutput cfg) result
 
 main :: IO ()
 main = do

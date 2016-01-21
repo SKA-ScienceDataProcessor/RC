@@ -116,6 +116,7 @@ executable facetting
                        kernel/cpu/gridding/rotate.cpp
                        kernel/cpu/gridding/image_init.cpp
                        kernel/cpu/gridding/defacet.cpp
+                       kernel/cpu/gridding/image_sum.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
 
 executable continuum
@@ -145,4 +146,5 @@ executable continuum
                        kernel/cpu/gridding/rotate.cpp
                        kernel/cpu/gridding/image_init.cpp
                        kernel/cpu/gridding/defacet.cpp
+                       kernel/cpu/gridding/image_sum.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
