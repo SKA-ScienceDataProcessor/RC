@@ -223,7 +223,7 @@ module Flow
     halideRepr, dynHalideRepr, binHalideRepr,
 
     -- ** Standard kernels
-    halidePrint, halideDump, halideTextDump2D,
+    halidePrint, halideDump, halideTextDump2D, halideTextDump4D,
 
     -- ** Kernel binders
     halideKernel0, halideKernel1, halideKernel2, halideKernel3,
