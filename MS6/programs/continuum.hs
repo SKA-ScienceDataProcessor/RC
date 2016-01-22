@@ -118,6 +118,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] ixs rvis vis gcfs
     bindRule sumImage $ imageSum gpar ddom ddoms
     calculate result
 
+  recover result $ regionKernel ddoms $ imageInit gpar
   bind createImage $ regionKernel ddomss $ imageInit gpar
   bind result $ imageSum gpar ddoms ddomss result createImage
 
