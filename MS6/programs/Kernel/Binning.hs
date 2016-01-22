@@ -42,11 +42,12 @@ binSizer gpar tdom uvdom =
 
   -- Find range of coordinates
   let xy2uv = gridXY2UV gpar
-      high (low, ext) = low + ext
-      umin = minimum $ map (xy2uv . fst . regionRange . (!! 0)) rboxes
-      vmin = minimum $ map (xy2uv . fst . regionRange . (!! 1)) rboxes
-      umax = maximum $ map (xy2uv . high . regionRange . (!! 0)) rboxes
-      vmax = maximum $ map (xy2uv . high . regionRange . (!! 1)) rboxes
+      regLow  (low, _  ) = low
+      regHigh (low, ext) = low + ext
+      umin = minimum $ map (xy2uv . regLow . regionRange . (!! 0)) rboxes
+      vmin = minimum $ map (xy2uv . regLow . regionRange . (!! 1)) rboxes
+      umax = maximum $ map (xy2uv . regHigh . regionRange . (!! 0)) rboxes
+      vmax = maximum $ map (xy2uv . regHigh . regionRange . (!! 1)) rboxes
   (low, high0) <- (\f -> foldM f (0,0) [0..fromIntegral inVis-1]) $ \(low, high) i -> do
     u <- peekVector inVec' (i * fromIntegral inWdt + ufield)
     v <- peekVector inVec' (i * fromIntegral inWdt + vfield)
@@ -150,7 +151,9 @@ binner gpar tdom uvdom wdom =
           transfer 4
       _otherwise -> return ()
 
-  -- Check bin sizes
+  -- Check bin sizes and pad with zeroes if we did not fill the bin
+  -- completely (TODO: Should not happen actually, figure out what is
+  -- going on...)
   forM_ outVecs $ \([ureg,vreg,wreg], CVector _ p) -> forM_ (regionBins wreg) $ \(w,_,s) -> do
 
     -- Get coordinates
@@ -161,11 +164,11 @@ binner gpar tdom uvdom wdom =
 
     let lookupP x = fmap snd . Map.lookupLE x
     case lookupP u =<< lookupP v =<< lookupP w outPtrMap of
-      Just ((ul,uh), (vl,vh), (wl,wh), pRef) -> do
+      Just ((_ul,_uh), (_vl,_vh), (_wl,_wh), pRef) -> do
           -- Check pointer
           p' <- readIORef pRef
           let size = (p' `minusPtr` p) `div` (5*8)
-          -- putStrLn $ show ((ul,uh), (vl,vh), (wl,wh)) ++ " -> " ++ show size ++ " vs " ++ show s
+          -- putStrLn $ show ((_ul,_uh), (_vl,_vh), (_wl,_wh)) ++ " -> " ++ show size ++ " vs " ++ show s
           forM_ [size..s-1] $ \i -> do
             poke (p `advancePtr` (5*i+0)) 0
             poke (p `advancePtr` (5*i+1)) 0

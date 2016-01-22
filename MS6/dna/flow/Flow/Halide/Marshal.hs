@@ -17,7 +17,7 @@ module Flow.Halide.Marshal (
   , arr2scalar
   , scalar2arr
     -- * Type classes
-  , HalideScalar(..)
+  , HalideScalar
   , MarshalArray(..)
   , withScalarResult
   , MarshalResult(..)
