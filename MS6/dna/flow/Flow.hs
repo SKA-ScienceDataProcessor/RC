@@ -81,6 +81,7 @@ module Flow
     -- using 'rebind'.
     bind, rebind, uniq, bindNew,
     bindRule, calculate,
+    implementing,
 
     -- ** Failure recovery
     recover,

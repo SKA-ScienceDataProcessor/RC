@@ -48,54 +48,38 @@ summed vis gcfs = sumImage (gridder vis gcfs) createImage
 -- ---                               Strategy                               ---
 -- ----------------------------------------------------------------------------
 
-continuumStrat :: Config -> Strategy ()
-continuumStrat cfg = do
+-- | Implement continuum gridding (@summed vis gcfs@) for the given
+-- input 'Flow's over a number of datasets given by the data set
+-- domains @ddoms@. Internally, we will distribute twice over @DDom@
+-- and once over @UVDom@.
+continuumGridStrat :: Config -> [DDom] -> TDom -> [UVDom]
+                   -> Flow Index -> Flow Vis -> Flow GCFs
+                   -> Strategy ()
+continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] ixs vis gcfs =
+ implementing (summed vis gcfs) $ do
 
-  -- Make index and point domains for visibilities
-  (ddoms, ixs, ddomSplit) <- makeOskarDomain cfg (cfgNodes cfg)
-  tdom <- makeRangeDomain 0 (cfgPoints cfg)
-
-  -- Split index domain - first into bins per node, then into
-  -- individual data sets. The repeatSplit must be large enough to
-  -- split the largest repeat possible.
-  let repeatSplits = 1 + maximum (map oskarRepeat (cfgInput cfg))
-  ddom <- split ddoms (cfgNodes cfg)
-  ddom' <- split ddom repeatSplits
+  -- Helpers
   let dkern :: IsKernelDef kf => kf -> kf
-      dkern = regionKernel ddom'
-
-  -- Create data flow for tag, bind it to FFT plans
-  let gpar = cfgGrid cfg
+      dkern = regionKernel ddom
+      gpar = cfgGrid cfg
       gcfpar = cfgGCF cfg
 
-  -- Data flows we want to calculate
-  vis <- uniq $ flow "vis" ixs
-  let gcfs = gcf vis
-      gridded = grid vis gcfs createGrid
+  -- Intermediate flow nodes
+  let gridded = grid vis gcfs createGrid
       result = summed vis gcfs
 
-  -- Create ranged domains for grid coordinates
-  udoms <- makeRangeDomain 0 (gridWidth gpar)
-  vdoms <- makeRangeDomain 0 (gridHeight gpar)
-  let uvdoms = (udoms, vdoms)
-
-  -- Split and distribute over coordinate domain
-  vdom <- split vdoms (gridTiles gpar)
-  udom <- split udoms (gridTiles gpar)
-  let uvdom = (udom, vdom)
-
-  -- Loop over nodes
-  distribute ddom ParSchedule $ do
+  -- Distribute over nodes
+  distribute ddoms ParSchedule $ do
 
     -- Loop over data sets
-    distribute ddom' SeqSchedule $ do
+    distribute ddom SeqSchedule $ do
 
       -- Read visibilities
-      rebind ixs $ ddomSplit ddoms ddom'
-      bind vis $ oskarReader ddom' tdom (cfgInput cfg) 0 0 ixs
+      rebind ixs $ scheduleSplit ddomss ddom
+      bind vis $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
 
       -- Loop over tiles
-      distribute vdom SeqSchedule $ distribute udom SeqSchedule $ do
+      distribute (snd uvdom) SeqSchedule $ distribute (fst uvdom) SeqSchedule $ do
 
         -- Create w-binned domain, split
         wdoms <- makeBinDomain $ dkern $ binSizer gpar tdom uvdom vis
@@ -122,15 +106,50 @@ continuumStrat cfg = do
       calculate $ gridder vis gcfs
 
     -- Sum up images locally
-    bind createImage $ regionKernel ddom $ imageInit gpar
-    bindRule sumImage $ imageSum gpar ddom' ddom
+    bind createImage $ regionKernel ddoms $ imageInit gpar
+    bindRule sumImage $ imageSum gpar ddom ddoms
     calculate result
 
-  bind createImage $ regionKernel ddoms $ imageInit gpar
-  bind result $ imageSum gpar ddom ddoms result createImage
+  bind createImage $ regionKernel ddomss $ imageInit gpar
+  bind result $ imageSum gpar ddoms ddomss result createImage
+
+continuumGridStrat _ _ _ _ _ _ _ = fail "continuumGridStrat: Not enough domain splits provided!"
+
+continuumStrat :: Config -> Strategy ()
+continuumStrat cfg = do
+
+  -- Make index and point domains for visibilities
+  (ddomss, ixs) <- makeOskarDomain cfg (cfgNodes cfg)
+  tdom <- makeRangeDomain 0 (cfgPoints cfg)
+
+  -- Split index domain - first into bins per node, then into
+  -- individual data sets. The repeatSplit must be large enough to
+  -- split the largest repeat possible.
+  let repeatSplits = 1 + maximum (map oskarRepeat (cfgInput cfg))
+  ddoms <- split ddomss (cfgNodes cfg)
+  ddom <- split ddoms repeatSplits
+
+  -- Data flows we want to calculate
+  vis <- uniq $ flow "vis" ixs
+  let gcfs = gcf vis
+      result = summed vis gcfs
+
+  -- Create ranged domains for grid coordinates
+  let gpar = cfgGrid cfg
+  udoms <- makeRangeDomain 0 (gridWidth gpar)
+  vdoms <- makeRangeDomain 0 (gridHeight gpar)
+  let uvdoms = (udoms, vdoms)
+
+  -- Split and distribute over coordinate domain
+  vdom <- split vdoms (gridTiles gpar)
+  udom <- split udoms (gridTiles gpar)
+  let uvdom = (udom, vdom)
+
+  -- Do continuum gridding
+  continuumGridStrat cfg [ddomss, ddoms, ddom] tdom [uvdoms, uvdom] ixs vis gcfs
 
   -- Write out
-  void $ bindNew $ regionKernel ddoms $
+  void $ bindNew $ regionKernel ddomss $
      imageWriter gpar (cfgOutput cfg) result
 
 main :: IO ()
