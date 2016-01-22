@@ -127,6 +127,7 @@ executable continuum
   main-is:             continuum.hs
   other-modules:
     Kernel.Binning
+    Kernel.Cleaning
     Kernel.Data
     Kernel.FFT
     Kernel.Facet
@@ -147,4 +148,5 @@ executable continuum
                        kernel/cpu/gridding/image_init.cpp
                        kernel/cpu/gridding/defacet.cpp
                        kernel/cpu/gridding/image_sum.cpp
+                       kernel/cpu/gridding/psf_vis.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide

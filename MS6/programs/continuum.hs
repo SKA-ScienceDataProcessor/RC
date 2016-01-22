@@ -9,6 +9,7 @@ import Flow
 import Flow.Builder ( IsKernelDef )
 
 import Kernel.Binning
+import Kernel.Cleaning
 import Kernel.Data
 import Kernel.Facet
 import Kernel.FFT
@@ -40,12 +41,17 @@ createImage = flow "create image"
 sumImage :: Flow Image -> Flow Image -> Flow Image
 sumImage = flow "sum image"
 
+-- Cleaning
+psfVis :: Flow Vis -> Flow Vis
+psfVis = flow "make PSF visibilities"
 -- Compound actors
 gridder :: Flow Vis -> Flow GCFs -> Flow Image
 gridder vis gcfs = idft (grid vis gcfs createGrid)
 summed :: Flow Vis -> Flow GCFs -> Flow Image
 summed vis gcfs = sumImage (gridder vis gcfs) createImage
 
+psf :: Flow Vis -> Flow GCFs -> Flow Image
+psf vis gcfs = summed (psfVis vis) gcfs
 -- ----------------------------------------------------------------------------
 -- ---                               Strategy                               ---
 -- ----------------------------------------------------------------------------
@@ -55,9 +61,9 @@ summed vis gcfs = sumImage (gridder vis gcfs) createImage
 -- domains @ddoms@. Internally, we will distribute twice over @DDom@
 -- and once over @UVDom@.
 continuumGridStrat :: Config -> [DDom] -> TDom -> [UVDom]
-                   -> Flow Index -> Flow Vis -> Flow GCFs
+                   -> Flow Index -> Flow Vis -> Flow Vis -> Flow GCFs
                    -> Strategy ()
-continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] ixs vis gcfs =
+continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] ixs rvis vis gcfs =
  implementing (summed vis gcfs) $ do
 
   -- Helpers
@@ -78,7 +84,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] ixs vis gcfs =
 
       -- Read visibilities
       rebind ixs $ scheduleSplit ddomss ddom
-      bind vis $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
+      bind rvis $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
 
       -- Loop over tiles
       distribute (snd uvdom) SeqSchedule $ distribute (fst uvdom) SeqSchedule $ do
@@ -95,7 +101,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] ixs vis gcfs =
         rebind vis (dkern $ binner gpar tdom uvdom wdom)
 
         -- Bind kernel rules
-        bindRule createGrid $ dkern $ gridInit gcfpar uvdom
+        bind createGrid $ dkern $ gridInit gcfpar uvdom
         bindRule grid $ dkern $ gridKernel gpar gcfpar uvdoms wdom uvdom
 
         -- Run gridding distributed
@@ -115,7 +121,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] ixs vis gcfs =
   bind createImage $ regionKernel ddomss $ imageInit gpar
   bind result $ imageSum gpar ddoms ddomss result createImage
 
-continuumGridStrat _ _ _ _ _ _ _ = fail "continuumGridStrat: Not enough domain splits provided!"
+continuumGridStrat _ _ _ _ _ _ _ _ = fail "continuumGridStrat: Not enough domain splits provided!"
 
 continuumStrat :: Config -> Strategy ()
 continuumStrat cfg = do
@@ -134,6 +140,7 @@ continuumStrat cfg = do
   -- Data flows we want to calculate
   vis <- uniq $ flow "vis" ixs
   let gcfs = gcf vis
+      pvis = psfVis vis
       result = summed vis gcfs
 
   -- Create ranged domains for grid coordinates
@@ -147,8 +154,16 @@ continuumStrat cfg = do
   udom <- split udoms (gridTiles gpar)
   let uvdom = (udom, vdom)
 
+  -- Compute PSF
+  bindRule psfVis $ regionKernel ddom $ psfVisKernel tdom
+  continuumGridStrat cfg [ddomss, ddoms, ddom] tdom [uvdoms, uvdom] ixs vis pvis gcfs
+
+  -- Write out
+  void $ bindNew $ regionKernel ddomss $
+     imageWriter gpar "psf.img" $ psf vis gcfs
+
   -- Do continuum gridding
-  continuumGridStrat cfg [ddomss, ddoms, ddom] tdom [uvdoms, uvdom] ixs vis gcfs
+  continuumGridStrat cfg [ddomss, ddoms, ddom] tdom [uvdoms, uvdom] ixs vis vis gcfs
 
   -- Write out
   void $ bindNew $ regionKernel ddomss $
