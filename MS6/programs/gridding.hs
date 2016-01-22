@@ -41,7 +41,7 @@ gridderStrat :: Config -> Strategy ()
 gridderStrat cfg = do
 
   -- Make point domain for visibilities
-  (ddom, ixs, _) <- makeOskarDomain cfg 1
+  (ddom, ixs) <- makeOskarDomain cfg 1
   let dkern :: IsKernelDef kf => kf -> kf
       dkern = regionKernel ddom
   tdom <- makeRangeDomain 0 (cfgPoints cfg)

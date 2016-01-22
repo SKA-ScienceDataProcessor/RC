@@ -17,12 +17,7 @@ import Flow.Domain
 import Flow.Kernel
 import Flow.Vector
 
-type ScheduleSplitKern = Domain Bins -> Domain Bins -> Flow Index -> Kernel Index
-
-makeOskarDomain
-  :: Config
-  -> Int
-  -> Strategy (Domain Bins, Flow Index, ScheduleSplitKern)
+makeOskarDomain :: Config -> Int -> Strategy (Domain Bins, Flow Index)
 makeOskarDomain cfg = makeScheduleDomain (cfgInput cfg) oskarRepeat oskarWeight
 
 -- | Given a set of entities to schedule with associated repeats and weights,
@@ -32,7 +27,7 @@ makeScheduleDomain
   -> (a -> Int)       -- ^ Number of repeats for item
   -> (a -> Double)    -- ^ Weight of item
   -> Int              -- ^ Number of nodes (= split to prepare)
-  -> Strategy (Domain Bins, Flow Index, ScheduleSplitKern)
+  -> Strategy (Domain Bins, Flow Index)
 makeScheduleDomain items repeats weight nodes = do
 
   -- Balance
@@ -65,27 +60,31 @@ makeScheduleDomain items repeats weight nodes = do
     castVector <$> (makeVector allocCVector $ map snd repBins)
 
   -- Finally, define a kernel that can be used to split the index set
-  let splitKern inDom outDom = mappingKernel "schedule splitter" (indexRepr inDom :. Z) (indexRepr outDom) $
-        \[ixPar] outRBox -> do
-
-          -- Get input and output bins
-          let ((inRBox, ixs):_) = Map.assocs ixPar
-              inBins = regionBins $ head inRBox
-              outBins = regionBins $ head outRBox
-
-          -- Check how many bins we need to drop
-          let binStart (s,_,_) = s
-              isOutStart bin = binStart bin == binStart (head outBins)
-              toDrop = fromMaybe (error "Could not find start output bin in input bins!")
-                                 (findIndex isOutStart inBins)
-
-          -- Make new vector for the output region
-          inIxs <- unmakeVector (castVector ixs) 0 (length inBins) :: IO [Int32]
-          castVector <$> (makeVector allocCVector $ take (length outBins)
-                                                  $ drop toDrop inIxs)
-
   -- All done
-  return (ddom, ixFlow, splitKern)
+  return (ddom, ixFlow)
+
+-- | Fairly simple kernel useful for splitting schedules as produced
+-- by 'makeScheduleDomain'.
+scheduleSplit :: DDom -> DDom -> Flow Index -> Kernel Index
+scheduleSplit inDom outDom = mappingKernel "schedule splitter" (indexRepr inDom :. Z) (indexRepr outDom) $
+  \[ixPar] outRBox -> do
+
+    -- Get input and output bins
+    let ((inRBox, ixs):_) = Map.assocs ixPar
+        inBins = regionBins $ head inRBox
+        outBins = regionBins $ head outRBox
+
+    -- Check how many bins we need to drop
+    let binStart (s,_,_) = s
+        isOutStart bin = binStart bin == binStart (head outBins)
+        toDrop = fromMaybe (error "Could not find start output bin in input bins!")
+                           (findIndex isOutStart inBins)
+
+    -- Make new vector for the output region
+    inIxs <- unmakeVector (castVector ixs) 0 (length inBins) :: IO [Int32]
+    castVector <$> (makeVector allocCVector $ take (length outBins)
+                                            $ drop toDrop inIxs)
+
 
 balancer
     :: Int      -- ^ Number of nodes
