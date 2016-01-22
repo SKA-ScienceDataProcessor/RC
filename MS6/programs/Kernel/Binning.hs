@@ -6,6 +6,7 @@ import Control.Arrow ( second )
 import Control.Monad
 import Foreign.Marshal.Array
 import Foreign.Storable
+import Foreign.Ptr
 import Data.Int ( Int64 )
 import Data.IORef
 import qualified Data.Map as Map
@@ -41,12 +42,16 @@ binSizer gpar tdom uvdom =
 
   -- Find range of coordinates
   let xy2uv = gridXY2UV gpar
-      uvmin = xy2uv 0; uvmax = xy2uv (gridHeight gpar)
+      high (low, ext) = low + ext
+      umin = minimum $ map (xy2uv . fst . regionRange . (!! 0)) rboxes
+      vmin = minimum $ map (xy2uv . fst . regionRange . (!! 1)) rboxes
+      umax = maximum $ map (xy2uv . high . regionRange . (!! 0)) rboxes
+      vmax = maximum $ map (xy2uv . high . regionRange . (!! 1)) rboxes
   (low, high0) <- (\f -> foldM f (0,0) [0..fromIntegral inVis-1]) $ \(low, high) i -> do
     u <- peekVector inVec' (i * fromIntegral inWdt + ufield)
     v <- peekVector inVec' (i * fromIntegral inWdt + vfield)
     w <- peekVector inVec' (i * fromIntegral inWdt + wfield)
-    if u >= uvmin && u < uvmax && v >= uvmin && v < uvmax then do
+    if u >= umin && u < umax && v >= vmin && v < vmax then do
       let !low' = min w low
           !high' = max w high
       return $! (low', high')
@@ -76,7 +81,7 @@ binSizer gpar tdom uvdom =
     u <- peekVector inVec' (i * fromIntegral inWdt + ufield)
     v <- peekVector inVec' (i * fromIntegral inWdt + vfield)
     w <- peekVector inVec' (i * fromIntegral inWdt + wfield)
-    when (u >= uvmin && u < uvmax && v >= uvmin && v < uvmax && w >= low && w <= high) $ do
+    when (u >= umin && u < umax && v >= vmin && v < vmax && w >= low && w <= high) $ do
       case Map.lookupLE u binVecMap >>= Map.lookupLE v . snd of
         Just (_, binVec) -> do
           let bin = floor ((w - low) / (high - low) * fromIntegral bins)
@@ -145,7 +150,6 @@ binner gpar tdom uvdom wdom =
           transfer 4
       _otherwise -> return ()
 
-  {-
   -- Check bin sizes
   forM_ outVecs $ \([ureg,vreg,wreg], CVector _ p) -> forM_ (regionBins wreg) $ \(w,_,s) -> do
 
@@ -160,8 +164,14 @@ binner gpar tdom uvdom wdom =
       Just ((ul,uh), (vl,vh), (wl,wh), pRef) -> do
           -- Check pointer
           p' <- readIORef pRef
-          putStrLn $ show ((ul,uh), (vl,vh), (wl,wh)) ++ " -> " ++ show ((p' `minusPtr` p) `div` (5*8)) ++ " vs " ++ show s
+          let size = (p' `minusPtr` p) `div` (5*8)
+          -- putStrLn $ show ((ul,uh), (vl,vh), (wl,wh)) ++ " -> " ++ show size ++ " vs " ++ show s
+          forM_ [size..s-1] $ \i -> do
+            poke (p `advancePtr` (5*i+0)) 0
+            poke (p `advancePtr` (5*i+1)) 0
+            poke (p `advancePtr` (5*i+2)) 0
+            poke (p `advancePtr` (5*i+3)) 0
+            poke (p `advancePtr` (5*i+4)) 0
       _otherwise -> putStrLn "???"
-  -}
 
   return $ map (castVector . snd) outVecs
