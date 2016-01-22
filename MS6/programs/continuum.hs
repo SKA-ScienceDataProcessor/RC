@@ -16,6 +16,8 @@ import Kernel.Gridder
 import Kernel.IO
 import Kernel.Scheduling
 
+import System.Environment
+
 -- ----------------------------------------------------------------------------
 -- ---                             Functional                               ---
 -- ----------------------------------------------------------------------------
@@ -180,5 +182,10 @@ main = do
         , cfgNodes  = 4
         }
 
-  dumpSteps $ continuumStrat config
+  -- Show strategy - but only for the root process
+  args <- getArgs
+  when (not ("--internal-rank" `elem` args)) $
+    dumpSteps $ continuumStrat config
+
+  -- Execute strategy
   execStrategyDNA $ continuumStrat config
