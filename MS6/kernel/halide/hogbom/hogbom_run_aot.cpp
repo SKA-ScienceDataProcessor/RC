@@ -7,32 +7,20 @@
 
 #define __FMT "%6.1f"
 
-double res[20][20];
-double psf[20][20];
-double mod[20][20];
+const int siz = 20, pitch = 20;
+
+double res[siz][pitch];
+double psf[siz][pitch];
+double mod[siz][pitch];
 
 void deconvolve(
-    double * mod_p
-  , double * res_p
-  , double * psf_p
-  , int siz
-  , int pitch
+    buffer_t * psf_buf_p
   , unsigned int niters
   , double gain
   , double threshold
+  , buffer_t * res_buf_p
+  , buffer_t * mod_buf_p
   ) {
-
-  buffer_t mod_buf = mkHalideBuf<double>(pitch, siz);
-  mod_buf.host = tohost(mod_p);
-  mod_buf.extent[1] = siz; // correct
-
-  buffer_t res_buf = mkHalideBuf<double>(pitch, siz);
-  res_buf.host = tohost(res_p);
-  res_buf.extent[1] = siz; // correct
-
-  buffer_t psf_buf = mkHalideBuf<double>(pitch, siz);
-  psf_buf.host = tohost(psf_p);
-  psf_buf.extent[1] = siz; // correct
 
   int psf_peakx, psf_peaky;
   buffer_t psf_peakx_buf, psf_peaky_buf;
@@ -46,18 +34,17 @@ void deconvolve(
   peakval_buf.host = tohost(&peakval);
 
   // In fact we throw away peakval here
-  find_peak_cpu(&psf_buf, &psf_peakx_buf, &psf_peaky_buf, &peakval_buf);
+  find_peak_cpu(psf_buf_p, &psf_peakx_buf, &psf_peaky_buf, &peakval_buf);
 
   printf("\nPSF peak is found at (%d,%d)\n", psf_peakx, psf_peaky);
 
-  memset(mod_p, 0, siz * pitch * sizeof(double));
+  memset(mod_buf_p->host, 0, mod_buf_p->stride[1] * mod_buf_p->extent[1] * mod_buf_p->elem_size);
 
   for (unsigned int i = 0; i < niters; ++i) {
-    resmodel_cpu(&res_buf, &psf_buf, gain, psf_peakx, psf_peaky, &res_buf, &mod_buf, &peakval_buf);
+    resmodel_cpu(res_buf_p, psf_buf_p, gain, psf_peakx, psf_peaky, res_buf_p, mod_buf_p, &peakval_buf);
     if (fabs(peakval) < threshold) break;
   }
 }
-
 
 
 int main(){
@@ -80,7 +67,19 @@ int main(){
     printf("\n");
   }
 
-  deconvolve(&mod[0][0], &res[0][0], &psf[0][0], 20, 20, 10, 0.01, 10.0);
+  buffer_t mod_buf = mkHalideBuf<double>(pitch, siz);
+  mod_buf.host = tohost(mod);
+  mod_buf.extent[1] = siz; // correct
+
+  buffer_t res_buf = mkHalideBuf<double>(pitch, siz);
+  res_buf.host = tohost(res);
+  res_buf.extent[1] = siz; // correct
+
+  buffer_t psf_buf = mkHalideBuf<double>(pitch, siz);
+  psf_buf.host = tohost(psf);
+  psf_buf.extent[1] = siz; // correct
+
+  deconvolve(&psf_buf, 10, 0.01, 10.0, &res_buf, &mod_buf);
 
   printf("\nResidual ...\n");
   for(int i=0; i<20; i++) {
