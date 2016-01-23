@@ -4,6 +4,11 @@
 #include <cstdio>
 #include <cmath>
 #include <cstring>
+#include <cassert>
+
+#ifdef __TEST
+#define __COMBINED
+#endif
 
 extern "C"
 void deconvolve(
@@ -11,6 +16,9 @@ void deconvolve(
   , unsigned int niters
   , double gain
   , double threshold
+#ifndef __COMBINED
+  , bool ismodel
+#endif
   , buffer_t * res_buf_p
   , buffer_t * mod_buf_p
   ) {
@@ -29,13 +37,31 @@ void deconvolve(
   // In fact we throw away peakval here
   find_peak_cpu(psf_buf_p, &psf_peakx_buf, &psf_peaky_buf, &peakval_buf);
 
+#ifdef __COMBINED
   memset(mod_buf_p->host, 0, mod_buf_p->stride[1] * mod_buf_p->extent[1] * mod_buf_p->elem_size);
 
   for (unsigned int i = 0; i < niters; ++i) {
     resmodel_cpu(res_buf_p, psf_buf_p, gain, psf_peakx, psf_peaky, res_buf_p, mod_buf_p, &peakval_buf);
     if (fabs(peakval) < threshold) break;
   }
+#else
+  int (*kernel)(buffer_t *, buffer_t *, const double, const int32_t, const int32_t, buffer_t *, buffer_t *);
+  if (ismodel) {
+    memset(mod_buf_p->host, 0, mod_buf_p->stride[1] * mod_buf_p->extent[1] * mod_buf_p->elem_size);
+    kernel = model_cpu;
+  }
+  else {
+    assert(res_buf_p == mod_buf_p);
+    kernel = res_cpu;
+  }
+
+  for (unsigned int i = 0; i < niters; ++i) {
+    kernel(res_buf_p, psf_buf_p, gain, psf_peakx, psf_peaky, mod_buf_p, &peakval_buf);
+    if (fabs(peakval) < threshold) break;
+  }
+#endif
 }
+
 
 #ifdef __TEST
 #define __FMT "%6.1f"

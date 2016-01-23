@@ -33,7 +33,9 @@ struct Hogbom {
   Func peakVal;
   Func residual;
   Func model;
-  Pipeline resmodel;
+  Pipeline pres;
+  Pipeline pmodel;
+  Pipeline presmodel;
 
   RVar rdx;
 };
@@ -86,7 +88,9 @@ Hogbom::Hogbom() :
    , clamp(findPeak()[Y], 0, res.extent(Y)-1)
    ) += gain * peakVal();
 
-  resmodel = Pipeline({residual, model, peakVal});
+  pres = Pipeline({residual, peakVal});
+  pmodel = Pipeline({model, peakVal});
+  presmodel = Pipeline({residual, model, peakVal});
 }
 
 void basicStrategy(Hogbom & h){
@@ -127,7 +131,7 @@ int main(){
   Hogbom c;
   basicStrategy(c);
   c.findPeak.compile_jit();
-  c.resmodel.compile_jit();
+  c.presmodel.compile_jit();
 
   printf("\nRun ...\n");
   c.res.set(psf);
@@ -148,7 +152,7 @@ int main(){
   }
 
   Image<test_t> peakv(0);
-  c.resmodel.realize({res, mod, peakv});
+  c.presmodel.realize({res, mod, peakv});
 
   printf("\nResidual ...\n");
   for(int i=0; i<20; i++) {
@@ -174,7 +178,10 @@ int main(){
         "hogbom_kernels" + suff
        , std::vector<Module>({
       	   c.findPeak.compile_to_module({c.res}, "find_peak" + suff , target)
-      	 , c.resmodel.compile_to_module({c.res, c.psf, c.gain, c.pPeakx, c.pPeaky}, "resmodel" + suff , target)
+      	 , c.pres.     compile_to_module({c.res, c.psf, c.gain, c.pPeakx, c.pPeaky}, "res"      + suff , target)
+      	 // We, perhaps, don't need psf for model, but I make things simpler for now ...
+      	 , c.pmodel.   compile_to_module({c.res, c.psf, c.gain, c.pPeakx, c.pPeaky}, "model"    + suff , target)
+      	 , c.presmodel.compile_to_module({c.res, c.psf, c.gain, c.pPeakx, c.pPeaky}, "resmodel" + suff , target)
          })
       );
       compile_module_to_object(m, "hogbom" + suff + ".obj");
