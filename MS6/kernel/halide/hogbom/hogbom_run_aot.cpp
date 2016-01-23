@@ -5,14 +5,7 @@
 #include <cmath>
 #include <cstring>
 
-#define __FMT "%6.1f"
-
-const int siz = 20, pitch = 20;
-
-double res[siz][pitch];
-double psf[siz][pitch];
-double mod[siz][pitch];
-
+extern "C"
 void deconvolve(
     buffer_t * psf_buf_p
   , unsigned int niters
@@ -36,8 +29,6 @@ void deconvolve(
   // In fact we throw away peakval here
   find_peak_cpu(psf_buf_p, &psf_peakx_buf, &psf_peaky_buf, &peakval_buf);
 
-  printf("\nPSF peak is found at (%d,%d)\n", psf_peakx, psf_peaky);
-
   memset(mod_buf_p->host, 0, mod_buf_p->stride[1] * mod_buf_p->extent[1] * mod_buf_p->elem_size);
 
   for (unsigned int i = 0; i < niters; ++i) {
@@ -46,6 +37,14 @@ void deconvolve(
   }
 }
 
+#ifdef __TEST
+#define __FMT "%6.1f"
+
+const int siz = 20, pitch = 20;
+
+double res[siz][pitch];
+double psf[siz][pitch];
+double mod[siz][pitch];
 
 int main(){
   for (int x=0; x<20; x++) for (int y=0; y<20; y++) {
@@ -93,3 +92,5 @@ int main(){
   }
 
 }
+
+#endif
