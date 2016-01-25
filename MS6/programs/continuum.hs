@@ -44,6 +44,13 @@ sumImage = flow "sum image"
 -- Cleaning
 psfVis :: Flow Vis -> Flow Vis
 psfVis = flow "make PSF visibilities"
+clean :: Flow Image -> Flow Image -> Flow Cleaned
+clean = flow "clean"
+splitModel :: Flow Cleaned -> Flow Image
+splitModel = flow "model from cleaning"
+splitResidual :: Flow Cleaned -> Flow Image
+splitResidual = flow "residual from cleaning"
+
 -- Compound actors
 gridder :: Flow Vis -> Flow GCFs -> Flow Image
 gridder vis gcfs = idft (grid vis gcfs createGrid)
@@ -52,6 +59,11 @@ summed vis gcfs = sumImage (gridder vis gcfs) createImage
 
 psf :: Flow Vis -> Flow GCFs -> Flow Image
 psf vis gcfs = summed (psfVis vis) gcfs
+model :: Flow Vis -> Flow GCFs -> Flow Image
+model vis gcfs = splitModel $ clean (psf vis gcfs) (summed vis gcfs)
+residual :: Flow Vis -> Flow GCFs -> Flow Image
+residual vis gcfs = splitResidual $ clean (psf vis gcfs) (summed vis gcfs)
+
 -- ----------------------------------------------------------------------------
 -- ---                               Strategy                               ---
 -- ----------------------------------------------------------------------------
@@ -142,7 +154,6 @@ continuumStrat cfg = do
   vis <- uniq $ flow "vis" ixs
   let gcfs = gcf vis
       pvis = psfVis vis
-      result = summed vis gcfs
 
   -- Create ranged domains for grid coordinates
   let gpar = cfgGrid cfg
@@ -157,18 +168,26 @@ continuumStrat cfg = do
 
   -- Compute PSF
   bindRule psfVis $ regionKernel ddom $ psfVisKernel tdom
-  continuumGridStrat cfg [ddomss, ddoms, ddom] tdom [uvdoms, uvdom] ixs vis pvis gcfs
+  let gridStrat = continuumGridStrat cfg [ddomss, ddoms, ddom] tdom [uvdoms, uvdom] ixs
+  gridStrat vis pvis gcfs
+  void $ bindNew $ regionKernel ddomss $ imageWriter gpar "psf.img" (psf vis gcfs)
 
-  -- Write out
+  -- Gridding
+  gridStrat vis vis gcfs
+  void $ bindNew $ regionKernel ddomss $ imageWriter gpar "gridded.img" (summed vis gcfs)
+
+  -- Clean
+  let cpar = cfgClean cfg
+  bindRule (\psfImg -> splitModel . clean psfImg) $
+    regionKernel ddomss $ cleanModel gpar cpar
+  bindRule (\psfImg -> splitResidual . clean psfImg) $
+    regionKernel ddomss $ cleanResidual gpar cpar
+
+  -- Write out residual & model
   void $ bindNew $ regionKernel ddomss $
-     imageWriter gpar "psf.img" $ psf vis gcfs
-
-  -- Do continuum gridding
-  continuumGridStrat cfg [ddomss, ddoms, ddom] tdom [uvdoms, uvdom] ixs vis vis gcfs
-
-  -- Write out
+     imageWriter gpar (cfgOutput cfg) $ residual vis gcfs
   void $ bindNew $ regionKernel ddomss $
-     imageWriter gpar (cfgOutput cfg) result
+     imageWriter gpar (cfgOutput cfg ++ ".mod") $ model vis gcfs
 
 main :: IO ()
 main = do
@@ -178,24 +197,28 @@ main = do
                      , gridPitch = 2048
                      , gridTheta = 0.10
                      , gridFacets = 1
-                     , gridTiles = 2
-                     , gridBins = 10
+                     , gridTiles = 1
+                     , gridBins = 1
                      }
       gcfpar = GCFPar { gcfSize = 16
                       , gcfOver = 8
                       , gcfFile = "gcf16.dat"
                       }
-      config = Config
-        { cfgInput  = [ OskarInput "test_p00_s00_f00.vis" 3 3
-                      , OskarInput "test_p00_s00_f01.vis" 1 3
+      cleanPar = CleanPar
+        { cleanGain      = 0.9
+        , cleanThreshold = 1e5
+        , cleanCycles    = 10
+        }
+      config = defaultConfig
+        { cfgInput  = [ OskarInput "test_p00_s00_f00.vis" 2 2
+                      , OskarInput "test_p00_s00_f01.vis" 2 2
                       ]
         , cfgPoints = 32131 * 200
-        , cfgLong   = 72.1 / 180 * pi -- probably wrong in some way
-        , cfgLat    = 42.6 / 180 * pi -- ditto
+        , cfgNodes  = 4
         , cfgOutput = "out.img"
         , cfgGrid   = gpar
         , cfgGCF    = gcfpar
-        , cfgNodes  = 4
+        , cfgClean  = cleanPar
         }
 
   -- Show strategy - but only for the root process

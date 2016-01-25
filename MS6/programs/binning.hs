@@ -53,26 +53,18 @@ gridderStrat cfg = do
 main :: IO ()
 main = do
 
-  let gpar = GridPar { gridWidth = 2048
-                     , gridHeight = 2048
-                     , gridPitch = 2048
-                     , gridTheta = 0.10
-                     , gridFacets = 1
-                     , gridTiles = 2048 `div` 64
-                     , gridBins = 1
-                     }
-      gcfpar = GCFPar { gcfSize = 16
-                      , gcfOver = 8
-                      , gcfFile = "gcf16.dat"
-                      }
-      config = Config
+  let gpar = (cfgGrid defaultConfig)
+        { gridWidth = 2048
+        , gridHeight = 2048
+        , gridPitch = 2048
+        , gridTheta = 0.10
+        , gridTiles = 2048 `div` 64
+        , gridBins = 1
+        }
+      config = defaultConfig
         { cfgInput  = [OskarInput "test_p00_s00_f00.vis" 1 1]
         , cfgPoints = 32131 * 200
-        , cfgLong   = 72.1 / 180 * pi -- probably wrong in some way
-        , cfgLat    = 42.6 / 180 * pi -- ditto
-        , cfgOutput = "out.img"
         , cfgGrid   = gpar
-        , cfgGCF    = gcfpar
         , cfgNodes  = 1
         }
 

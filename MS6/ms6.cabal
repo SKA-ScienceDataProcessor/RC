@@ -149,4 +149,5 @@ executable continuum
                        kernel/cpu/gridding/defacet.cpp
                        kernel/cpu/gridding/image_sum.cpp
                        kernel/cpu/gridding/psf_vis.cpp
+                       kernel/cpu/gridding/hogbom.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide

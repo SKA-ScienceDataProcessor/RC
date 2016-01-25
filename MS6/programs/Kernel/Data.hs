@@ -2,9 +2,12 @@
 
 -- | Data representation definitions
 module Kernel.Data
-  ( OskarInput(..), Config(..), GridPar(..), GCFPar(..)
-  , Index, Tag, Vis, UVGrid, Image, GCFs
+  ( -- * Configuration
+    OskarInput(..), Config(..), GridPar(..), GCFPar(..), CleanPar(..)
+  , defaultConfig
   , gridImageWidth, gridImageHeight, gridScale, gridXY2UV
+  -- * Data tags
+  , Index, Tag, Vis, UVGrid, Image, Cleaned, GCFs
   -- * Data representations
   , DDom, TDom, UDom, VDom, WDom, UVDom, LDom, MDom, LMDom
   , IndexRepr, UVGRepr, UVGMarginRepr, FacetRepr, ImageRepr, PlanRepr, GCFsRepr
@@ -30,12 +33,13 @@ data OskarInput = OskarInput
 data Config = Config
   { cfgInput  :: [OskarInput] -- ^ Input Oskar files
   , cfgPoints :: Int      -- ^ Number of points to read from Oskar file
+  , cfgNodes  :: Int      -- ^ Number of data sets to process in parallel
   , cfgLong   :: Double   -- ^ Phase centre longitude
   , cfgLat    :: Double   -- ^ Phase centre latitude
   , cfgOutput :: FilePath -- ^ File name for the output image
   , cfgGrid   :: GridPar
   , cfgGCF    :: GCFPar
-  , cfgNodes  :: Int      -- ^ Number of data sets to process in parallel
+  , cfgClean  :: CleanPar
   }
 data GridPar = GridPar
   { gridWidth :: !Int  -- ^ Width of the uv-grid/image in pixels
@@ -53,6 +57,27 @@ data GCFPar = GCFPar
   { gcfSize :: Int
   , gcfOver :: Int
   , gcfFile :: FilePath
+  }
+
+data CleanPar = CleanPar
+  { cleanGain      :: Double
+  , cleanThreshold :: Double
+  , cleanCycles    :: Int
+  }
+
+-- | Default configuration. Gets overridden by the actual
+-- implementations where paramters actually matter.
+defaultConfig :: Config
+defaultConfig = Config
+  { cfgInput  = []
+  , cfgPoints = 32131
+  , cfgNodes  = 0
+  , cfgLong   = 72.1 / 180 * pi -- mostly arbitrary, and probably wrong in some way
+  , cfgLat    = 42.6 / 180 * pi -- ditto
+  , cfgOutput = ""
+  , cfgGrid   = GridPar 0 0 0 0 0 0 0
+  , cfgGCF    = GCFPar 0 8 ""
+  , cfgClean  = CleanPar 0 0 0
   }
 
 -- | Image dimensions for all facets together
@@ -76,6 +101,7 @@ data Tag -- ^ Initialisation (e.g. FFT plans)
 data Vis -- ^ Visibilities (File name to OSKAR / raw visibilities / binned ...)
 data UVGrid -- ^ UV grid
 data Image -- ^ Image
+data Cleaned -- ^ Result from cleaning
 data GCFs -- ^ A set of GCFs
 
 deriving instance Typeable Tag

@@ -134,7 +134,7 @@ main = do
                       , gcfOver = 8
                       , gcfFile = "gcf0.dat"
                       }
-      config = Config
+      config = defaultConfig
         { cfgInput  = [OskarInput "test_p00_s00_f00.vis" 1 1]
         , cfgPoints = 32131 * 200
         , cfgLong   = 72.1 / 180 * pi -- probably wrong in some way
