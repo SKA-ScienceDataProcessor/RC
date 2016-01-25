@@ -98,6 +98,12 @@ instance HalideScalar Double where
 class MarshalResult a where
   marshalNewResult :: (Ptr BufferT -> IO CInt) -> Extent a -> IO a
   marshalResult    :: (Ptr BufferT -> IO CInt) -> a -> IO a
+{-
+First parameter should be `KernelRetTypes a`
+
+Some way to abstract marshalling of output parameter is needed.
+-}
+
 
 instance HalideScalar a => MarshalResult (Scalar a) where
   marshalNewResult cont () = do

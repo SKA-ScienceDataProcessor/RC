@@ -39,6 +39,9 @@ data Array dim a = Array
 type family   Extent a
 type instance Extent (Array dim a) = dim
 type instance Extent (Scalar a)    = ()
+{-
+Add extents for tuples
+-}
 
 
 ----------------------------------------------------------------
@@ -54,6 +57,18 @@ type instance Extent (Scalar a)    = ()
 --
 -- Output is always(?) represented as an array even if we return a scalar.
 newtype HalideKernel xs a = HalideKernel (Fn (KernelCParams xs) (Ptr BufferT -> IO CInt))
+
+{-
+To support multiple results for halide kernels we need to
+
+type family KernelRetTypes a
+
+-- We have to enumerate all constuctors for all 1-tuples
+type instance KernelRetTypes (Array dim a) = Ptr BufferT -> IO CInt
+
+type instance KernelRetTypes (a,b)   = Ptr BufferT -> Ptr BufferT -> IO CInt
+type instance KernelRetTypes (a,b,c) = Ptr BufferT -> Ptr BufferT -> Ptr BufferT -> IO CInt
+-}
 
 
 -- | Types for C parameters corresponding to haskell values
