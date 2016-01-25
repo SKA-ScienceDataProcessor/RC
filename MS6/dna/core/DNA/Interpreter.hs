@@ -110,7 +110,7 @@ execKernel msg mode hints kern = do
     r <- handleRecieve messageHandlers [matchSTM' (waitCatchSTM a)]
     message 1 $ msg ++ " finished"
     case r of
-      Left  e -> doPanic (show e)
+      Left  e -> fail (show e)
       Right x -> return x
 
 

@@ -96,7 +96,7 @@ newtype DnaMonad a = DnaMonad
 instance Monad DnaMonad where
     return           = DnaMonad . return
     DnaMonad m >>= f = DnaMonad $ m >>= fmap unDnaMonad f
-    fail             = doPanic
+    fail             = doFatal
 
 instance MonadLog DnaMonad where
     logSource    = liftP logSource
