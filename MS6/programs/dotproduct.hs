@@ -14,6 +14,7 @@ import Foreign.Storable
 import Flow
 import Flow.Vector
 import Flow.Halide
+import System.Exit (exitSuccess)
 
 -- Needed for FFI to work
 import Data.Vector.HFixed.Class ()
@@ -45,7 +46,7 @@ sumRepr = halideRepr Z
 -- Kernels
 
 fKern :: Domain Range -> Kernel Vec
-fKern size = halideKernel0 "f" (vecRepr size) kern_generate_f''
+fKern size = halideKernel0 "f" (vecRepr size) kern_generate_f
 
 foreign import ccall unsafe kern_generate_f :: HalideFun '[] VecRepr
 
@@ -59,6 +60,14 @@ kern_generate_f' = case kern_generate_f of
 
 kern_generate_f'' :: HalideFun '[] VecRepr
 kern_generate_f'' = HalideKernel $ error "I crash always!"
+
+kern_generate_f''' :: HalideFun '[] VecRepr
+kern_generate_f''' = case kern_generate_f of
+  HalideKernel ff -> HalideKernel $ \p -> do
+    n <- peekByteOff (castPtr p) 48
+    case n :: Int32 of
+      0 -> exitSuccess
+      _ -> ff p
 
 gKern :: Domain Range -> Kernel Vec
 gKern size = halideKernel0 "g" (vecRepr size) kern_generate_g
