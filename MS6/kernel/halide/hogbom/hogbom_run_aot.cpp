@@ -12,13 +12,13 @@
 
 extern "C"
 void deconvolve(
-    buffer_t * psf_buf_p
-  , unsigned int niters
+    unsigned int niters
   , double gain
   , double threshold
 #ifndef __COMBINED
   , bool ismodel
 #endif
+  , buffer_t * psf_buf_p
   , buffer_t * res_buf_p
   , buffer_t * mod_buf_p
   ) {
@@ -104,7 +104,7 @@ int main(){
   psf_buf.host = tohost(psf);
   psf_buf.extent[1] = siz; // correct
 
-  deconvolve(&psf_buf, 10, 0.01, 10.0, &res_buf, &mod_buf);
+  deconvolve(10, 0.01, 10.0, &psf_buf, &res_buf, &mod_buf);
 
   printf("\nResidual ...\n");
   for(int i=0; i<20; i++) {
