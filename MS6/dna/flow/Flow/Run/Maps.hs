@@ -102,7 +102,7 @@ dataMapDifference = IM.differenceWith remove
 stepKernDeps :: Step -> KernelSet
 stepKernDeps (DomainStep (Just kid) _)  = IS.singleton kid
 stepKernDeps (KernelStep kbind)         = IS.fromList $ map kdepId $ kernDeps kbind
-stepKernDeps (RecoverStep kbind kid)    = IS.fromList $ (kid:) $ map kdepId $ kernDeps kbind
+stepKernDeps (RecoverStep kbind _)      = IS.fromList $ map kdepId $ kernDeps kbind
 stepKernDeps (DistributeStep _ _ steps) = stepsKernDeps steps
 stepKernDeps _                          = IS.empty
 
@@ -115,10 +115,9 @@ stepsKernDeps' :: KernelSet -> [Step] -> KernelSet
 stepsKernDeps' cont (step@(KernelStep kbind) : steps)
   = IS.delete (kernId kbind) $ IS.union (stepKernDeps step) $
     stepsKernDeps' cont steps
-stepsKernDeps' cont (step@(RecoverStep kbind _) : steps)
-  = IS.delete (kernId kbind) $ IS.union (stepKernDeps step) $
-    stepsKernDeps' cont steps
-stepsKernDeps' cont (step@(DistributeStep _ _ dsteps) : steps)
+stepsKernDeps' cont (step@RecoverStep{} : steps)
+  = IS.union (stepKernDeps step) $ stepsKernDeps' cont steps
+stepsKernDeps' cont ((DistributeStep _ _ dsteps) : steps)
   = stepsKernDeps' (stepsKernDeps' cont steps) dsteps
 stepsKernDeps' cont (step : steps)
   = stepKernDeps step `IS.union` stepsKernDeps' cont steps
