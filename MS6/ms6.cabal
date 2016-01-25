@@ -29,7 +29,8 @@ executable dotproduct
   build-depends:
     base         >= 4.8,
     dna-flow     >= 0.5,
-    fixed-vector-hetero
+    fixed-vector-hetero,
+    unix
   x-halide-sources:    kernel/cpu/dotproduct/generate_f.cpp
                        kernel/cpu/dotproduct/generate_g.cpp
                        kernel/cpu/dotproduct/recovery.cpp
