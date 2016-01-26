@@ -223,8 +223,9 @@ main = do
 
   -- Show strategy - but only for the root process
   args <- getArgs
-  when (not ("--internal-rank" `elem` args)) $
+  when (not ("--internal-rank" `elem` args)) $ do
     dumpSteps $ continuumStrat config
-
+    putStrLn "----------------------------------------------------------------"
+    putStrLn ""
   -- Execute strategy
   execStrategyDNA $ continuumStrat config
