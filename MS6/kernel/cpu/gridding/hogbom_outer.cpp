@@ -9,6 +9,7 @@
 #define BUFFER_T_DEFINED
 #include <stdbool.h>
 #include <stdint.h>
+// #include <stdio.h>
 typedef struct buffer_t {
     uint64_t dev;
     uint8_t* host;
@@ -59,7 +60,6 @@ buffer_t mkHalideBuf(int32_t size = 0){
 }
 
 const unsigned int niters = 12;
-const int bad_param_error = -24;
 
 template <bool ismodel>
 int deconvolve(
@@ -87,14 +87,13 @@ int deconvolve(
   res = find_peak_cpu(psf_buf_p, &psf_peakx_buf, &psf_peaky_buf, &peakval_buf); __CK
 
   int (*kernel)(buffer_t *, buffer_t *, const double, const int32_t, const int32_t, buffer_t *, buffer_t *);
+
   if (ismodel) {
     memset(mod_buf_p->host, 0, mod_buf_p->stride[1] * mod_buf_p->extent[1] * mod_buf_p->elem_size);
     kernel = model_cpu;
   }
-  else {
-    if (res_buf_p != mod_buf_p) return bad_param_error;
+  else
     kernel = res_cpu;
-  }
 
   for (unsigned int i = 0; i < niters; ++i) {
     res = kernel(res_buf_p, psf_buf_p, gain, psf_peakx, psf_peaky, mod_buf_p, &peakval_buf); __CK
