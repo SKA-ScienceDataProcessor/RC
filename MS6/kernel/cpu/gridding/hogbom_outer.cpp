@@ -9,7 +9,6 @@
 #define BUFFER_T_DEFINED
 #include <stdbool.h>
 #include <stdint.h>
-// #include <stdio.h>
 typedef struct buffer_t {
     uint64_t dev;
     uint8_t* host;
