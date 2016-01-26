@@ -119,6 +119,10 @@ executable facetting
                        kernel/cpu/gridding/image_sum.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
 
+Flag combHogbom
+   description: Combined C++/Halide Hogbom kernel
+   default: False
+
 executable continuum
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
@@ -149,5 +153,12 @@ executable continuum
                        kernel/cpu/gridding/defacet.cpp
                        kernel/cpu/gridding/image_sum.cpp
                        kernel/cpu/gridding/psf_vis.cpp
-                       kernel/cpu/gridding/hogbom.cpp
+  if flag(combHogbom)
+    x-halide-sources:  kernel/cpu/gridding/hogbom_inner.cpp
+  else
+    x-halide-sources:  kernel/cpu/gridding/hogbom.cpp
+
+  if flag(combHogbom)
+           c-sources:  kernel/cpu/gridding/hogbom_outer.cpp
+
   x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
