@@ -191,11 +191,11 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
   -- Finally build Halide object files
   let halideOptLine = fromMaybe "" $ lookup "x-halide-options" (customFieldsBI bi)
       halideOpts = concat $ parseOpt (sepBy parseTokenQ' (munch1 isSpace)) halideOptLine
-  bi'' <- case lookup "x-halide-sources" (customFieldsBI bi) of
-     Nothing          -> return bi
-     Just cudaSrcLine -> do
+  bi'' <- case filter ((== "x-halide-sources") . fst) (customFieldsBI bi) of
+     []             -> return bi
+     halideSrcLines -> do
 
-       let parses = parseOpt (parseOptCommaList parseFilePathQ) cudaSrcLine
+       let parses = parseOpt (parseOptCommaList parseFilePathQ) (intercalate "," $ map snd halideSrcLines)
            halideSources = head parses
        when (null parses) $ die "Failed to parse x-halide-sources field."
 
