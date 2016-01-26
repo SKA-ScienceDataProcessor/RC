@@ -161,6 +161,8 @@ runController m = do
 runDnaParam :: ActorParam -> DNA a -> Process a
 runDnaParam p action = do
   interpreter <- unClosure $ actorInterpreter p
+  forM_ (vcadNodePool $ actorNodes p) $ \(NodeInfo nid) ->
+    monitorNode nid
   flip runReaderT env
     $ flip evalStateT s0
     $ unDnaMonad
@@ -176,6 +178,7 @@ runDnaParam p action = do
            , _stDebugFlags    = actorDebugFlags p
            , _stLogOpt        = actorLogOpt p
            , _stNodePool      = Set.fromList $ vcadNodePool $ actorNodes p
+           , _stDeadNodes     = Set.empty
            , _stActors        = Map.empty
            , _stActorState    = Map.empty
            , _stActorSrc      = Map.empty
@@ -250,6 +253,7 @@ data StateDNA = StateDNA
       -- Resources
     , _stNodePool      :: !(Set NodeInfo)
       -- ^ Nodes which are currently not in use
+    , _stDeadNodes     :: !(Set NodeId)
 
       -- Append only dataflow graph
     , _stActors     :: !(Map AID ActorHier)
@@ -394,11 +398,15 @@ freeActor :: (MonadProcess m, MonadState StateDNA m) => AID -> m ()
 freeActor aid  = do
     me <- liftP getSelfNode
     st <- use $ stActorState . at aid
+    dead <- use stDeadNodes
     case st of
       Just (Running p) -> case p^.pinfoNodes of
         VirtualCAD n ns -> stNodePool %=
-            (\xs -> Set.delete (NodeInfo me) $ Set.singleton n <> Set.fromList ns <> xs)
-      _                -> return ()
+            (\xs -> Set.filter (not . (`Set.member` dead) . nodeId)
+                  $ Set.delete (NodeInfo me)
+                  $ Set.singleton n <> Set.fromList ns <> xs
+            )
+      _ -> return ()
 
 -- | Generate unique ID
 uniqID :: MonadState StateDNA m => m Int

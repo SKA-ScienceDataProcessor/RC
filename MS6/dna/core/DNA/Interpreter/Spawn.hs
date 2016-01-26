@@ -85,6 +85,7 @@ execSpawnGroup res resG act = do
     -- Spawn actors
     aid <- spawnActorGroup res resG RcvTySimple ActorGroup
          $ closureApply $(mkStaticClosure 'runActor) <$> act
+    taggedMessage "DNA" $ "Spawn actor group " ++ show aid
     return $ Shell aid
 
 {-

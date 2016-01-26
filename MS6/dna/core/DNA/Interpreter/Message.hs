@@ -36,6 +36,7 @@ import Control.Monad.Reader
 import Control.Distributed.Process
 -- import Control.Distributed.Process.Serializable
 -- import qualified Data.Map as Map
+import qualified Data.Set as Set
 import Data.List   (isPrefixOf)
 import qualified Data.Foldable as T
 import Text.Printf
@@ -56,6 +57,7 @@ messageHandlers :: [MatchS]
 messageHandlers =
     [ MatchS handleProcessTermination
     , MatchS handleTerminate
+    , MatchS handleNodeCrash
     , MatchS handleDataSent
     , MatchS handleTimeout
       --
@@ -91,6 +93,15 @@ handleProcessTermination (ProcessMonitorNotification _ pid reason) =
         -> doPanic e
       -- Otherwise treat it as normal crash
       _ -> handleProcessCrash (show reason) pid
+
+
+-- Node has crashed and we need to remove it from 
+handleNodeCrash
+    :: NodeMonitorNotification
+    -> Controller ()
+handleNodeCrash (NodeMonitorNotification _ nid reason) = do
+    stDeadNodes %= Set.insert nid
+    stNodePool  %= Set.filter ((/=nid) . nodeId)
 
 
 
