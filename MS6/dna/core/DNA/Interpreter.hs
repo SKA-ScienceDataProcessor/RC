@@ -208,7 +208,11 @@ execDistributeWork a f (Shell aid) = do
             doFatal "Bad work distribution function"
         mch <- forM dsts $ \case
           RcvSimple (Recv _ m) -> unwrapMessage m
-          _                    -> doPanic "execDistributeWork: bad address"
+          RcvGrp{}       -> doPanic "execDistributeWork: bad address got RcvGrp"
+          RcvReduce{}    -> doPanic "execDistributeWork: bad address got RcvReduce"
+          RcvTree{}      -> doPanic "execDistributeWork: bad address got RcvTree"
+          RcvCompleted{} -> doPanic "execDistributeWork: bad address got RcvCompleted"
+          RcvFailed{}    -> doPanic "execDistributeWork: bad address got RcvFailed"
         case sequence mch of
           Nothing  -> doPanic "execBroadcast: type error"
           Just chs -> forM_ (zip chs bs) $ uncurry sendChan
