@@ -356,7 +356,7 @@ halideReadDump rep file
     -- Cast vector and get size as given by Halide data representation
     let size = nOfElements $ halrDim rep rbox
     -- Read buffer from file
-    dumpVector' (v :: Vector (HalrVal r)) 0 size (dumpFileName file rbox)
+    readVector (v :: Vector (HalrVal r)) (dumpFileName file rbox) size
     return $ castVector v
 
 -- | Simple kernel that dumps the contents of a channel with Halide
