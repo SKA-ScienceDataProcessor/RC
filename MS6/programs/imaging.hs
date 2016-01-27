@@ -214,7 +214,7 @@ imageWriter _ = dummy "image writer" (imgRepr :. Z) NoRepr
 -- ----------------------------------------------------------------------------
 
 scatterImaging :: Typeable d => Config -> Domain d -> Flow Tag -> Flow Vis
-               -> Strategy ()
+               -> Strategy (Flow Image)
 scatterImaging cfg dh tag vis =
  implementing (fst $ majorLoop (cfgMajorLoops cfg) vis) $ do
 

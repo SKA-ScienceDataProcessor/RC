@@ -74,7 +74,7 @@ residual vis gcfs = splitResidual $ clean (psf vis gcfs) (summed vis gcfs)
 -- and once over @UVDom@.
 continuumGridStrat :: Config -> [DDom] -> TDom -> [UVDom]
                    -> Flow Index -> Flow Vis -> Flow Vis -> Flow GCFs
-                   -> Strategy ()
+                   -> Strategy (Flow Image)
 continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] ixs rvis vis gcfs =
  implementing (summed vis gcfs) $ do
 
@@ -169,12 +169,12 @@ continuumStrat cfg = do
   -- Compute PSF
   bindRule psfVis $ regionKernel ddom $ psfVisKernel tdom
   let gridStrat = continuumGridStrat cfg [ddomss, ddoms, ddom] tdom [uvdoms, uvdom] ixs
-  gridStrat vis pvis gcfs
-  void $ bindNew $ regionKernel ddomss $ imageWriter gpar "psf.img" (psf vis gcfs)
+  psfFlow <- gridStrat vis pvis gcfs
+  void $ bindNew $ regionKernel ddomss $ imageWriter gpar "psf.img" psfFlow
 
   -- Gridding
-  gridStrat vis vis gcfs
-  void $ bindNew $ regionKernel ddomss $ imageWriter gpar "gridded.img" (summed vis gcfs)
+  sumFlow <- gridStrat vis vis gcfs
+  void $ bindNew $ regionKernel ddomss $ imageWriter gpar "gridded.img" sumFlow
 
   -- Clean
   let cpar = cfgClean cfg

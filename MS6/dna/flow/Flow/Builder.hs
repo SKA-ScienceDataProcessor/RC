@@ -378,14 +378,14 @@ findRule (Flow fi) = do
 
 -- | Documents that the given strategy code is meant to bind the
 -- indicated flow. An error will be raised if it fails to do so.
-implementing :: Flow a -> Strategy () -> Strategy ()
+implementing :: Flow a -> Strategy () -> Strategy (Flow a)
 implementing (Flow fi) strat = do
   -- Execute strategy
   strat
   -- Now verify that given flow was actually implemented
   ss <- Strategy get
   case HM.lookup fi (ssMap ss) of
-    Just{}  -> return ()
+    Just{}  -> return (Flow fi)
     Nothing -> fail $ "Flow " ++ show fi ++ " was not implemented!"
 
 -- | Binds a 'Kernel' to a new unique 'Flow' for the result. This is
