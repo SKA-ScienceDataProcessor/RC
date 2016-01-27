@@ -47,9 +47,9 @@ Hogbom::Hogbom()
     psf = ImageParam(type_of<double>(), 2, "psf");
     psfBounded = BoundaryConditions::constant_exterior(psf, cast<double>(0.0f));
 
-    // Leave outputs as they are coming in
+    // Leave initial state of output buffers
     residual_out(x,y) = undef<double>();
-    model(x,y) = cast<double>(0);
+    model(x,y) = undef<double>();
     residual[0](x,y) = res(x,y);
     underThreshold[0]() = cast<bool>(0);
 
@@ -126,7 +126,7 @@ int main(int argc, char **argv)
 
     std::vector<Module> ms = {
         c.model.compile_to_module(args, "kern_hogbom_model", target),
-        c.residual[CYCLES+1].compile_to_module(args, "kern_hogbom_residual", target)
+        c.residual_out.compile_to_module(args, "kern_hogbom_residual", target)
     };
     compile_module_to_object(link_modules("kern_hogbom", ms), argv[1]);
     return 0;
