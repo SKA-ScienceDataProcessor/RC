@@ -85,7 +85,7 @@ execSpawnGroup res resG act = do
     -- Spawn actors
     aid <- spawnActorGroup res resG RcvTySimple ActorGroup
          $ closureApply $(mkStaticClosure 'runActor) <$> act
-    taggedMessage "DNA" $ "Spawn actor group " ++ show aid
+    taggedMessage "DNA" $ "Spawned actor group " ++ show aid
     return $ Shell aid
 
 {-
@@ -155,6 +155,7 @@ spawnSingleActor
 spawnSingleActor aid cad cmd@(SpawnSingle act rnk grp actDescr addrTy flags) = do
     -- Spawn process and receive recv. address back
     (pid,_) <- liftP $ spawnSupervised (nodeId $ vcadNode cad) act
+    taggedMessage "DNA" $ "Spawning single actor " ++ show aid ++ " " ++ show pid
     (chSend,chRecv) <- liftP newChan
     _       <- sendActorParam
                  pid rnk grp
