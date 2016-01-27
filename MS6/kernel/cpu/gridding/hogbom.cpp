@@ -45,7 +45,7 @@ Hogbom::Hogbom()
     // Initialise inputs
     res = ImageParam(type_of<double>(), 2, "res");
     psf = ImageParam(type_of<double>(), 2, "psf");
-    psfBounded = BoundaryConditions::constant_exterior(psf, Expr(cast<double>(0.0)));
+    psfBounded = BoundaryConditions::constant_exterior(psf, cast<double>(0.0f));
 
     // Leave outputs as they are coming in
     residual_out(x,y) = undef<double>();
