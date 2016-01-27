@@ -23,7 +23,8 @@ module Flow.Halide
   , halideKernel0, halideKernel1, halideKernel2, halideKernel3
   , halideKernel1Write, halideKernel2Write
   , halideBind, HalideBind
-  , halidePrint, halideDump, halideTextDump2D, halideTextDump4D
+  , halidePrint, halideDump, halideReadDump
+  , halideTextDump2D, halideTextDump4D
     -- * reexports (for FFI)
   , CInt(..), HalideKernel(..)
   ) where
@@ -317,8 +318,8 @@ halidePrint rep caption = mergingKernel (show (typeOf (undefined :: ReprType r))
 
 -- | Make file name unique for cases where we have a non-trivial
 -- region box
-dumpFileName :: HalideReprClass r => r -> FilePath -> RegionBox -> FilePath
-dumpFileName rep file rbox
+dumpFileName :: FilePath -> RegionBox -> FilePath
+dumpFileName file rbox
   | null rbox = file
   | otherwise = file ++ '-': rboxName
   where rboxName = intercalate "_" (map regName rbox)
@@ -340,9 +341,23 @@ halideDump rep file
     let v' = castVector v :: Vector (HalrVal r)
         size = nOfElements $ halrDim rep rbox
     -- Write buffer to file
-    dumpVector' v' 0 size (dumpFileName rep file rbox)
+    dumpVector' v' 0 size (dumpFileName file rbox)
   -- No result
   return nullVector
+
+-- | Simple kernel that reads in data in the format produced by
+-- 'halideDump'.
+halideReadDump :: forall r. HalideReprClass r => r -> FilePath -> Kernel (ReprType r)
+halideReadDump rep file
+  = kernel (show (typeOf (undefined :: ReprType r)) ++ "-reader")
+           Z rep $ \_ rboxes -> do
+  vs <- allocReturns allocCVector rep rboxes
+  forM vs $ \(rbox, v) -> do
+    -- Cast vector and get size as given by Halide data representation
+    let size = nOfElements $ halrDim rep rbox
+    -- Read buffer from file
+    dumpVector' (v :: Vector (HalrVal r)) 0 size (dumpFileName file rbox)
+    return $ castVector v
 
 -- | Simple kernel that dumps the contents of a channel with Halide
 -- data representation to a text file
@@ -351,7 +366,7 @@ halideTextDump2D :: forall r. (HalideReprClass r, HalrDim r ~ Dim2, Show (HalrVa
 halideTextDump2D rep file = mappingKernel (show (typeOf (undefined :: ReprType r)) ++ "-text-writer")
                                           (rep :. Z) NoRepr $ \[vs] _ -> do
   forM_ (Map.assocs vs) $ \(rbox, v) ->
-   withFile (dumpFileName rep file rbox) WriteMode $ \h -> do
+   withFile (dumpFileName file rbox) WriteMode $ \h -> do
     let v' = castVector v :: Vector (HalrVal r)
         ((_,hgt) :. (_, wdt) :. Z) = halrDim rep rbox
     forM_ [0..min 1000 hgt-1] $ \y -> do
@@ -361,15 +376,16 @@ halideTextDump2D rep file = mappingKernel (show (typeOf (undefined :: ReprType r
 
 -- | Simple kernel that dumps the contents of a channel with Halide
 -- data representation to a text file
-halideTextDump4D :: forall r d. (HalideReprClass r, HalrDim r ~ Dim4, Show (HalrVal r))
+halideTextDump4D :: forall r. (HalideReprClass r, HalrDim r ~ Dim4, Show (HalrVal r))
                   => r -> FilePath -> Flow (ReprType r) -> Kernel ()
 halideTextDump4D rep file = mappingKernel (show (typeOf (undefined :: ReprType r)) ++ "-text-writer")
                                           (rep :. Z) NoRepr $ \[vs] _ -> do
-  forM_ (Map.assocs vs) $ \(rbox, v) ->
-   withFile (dumpFileName rep file rbox) WriteMode $ \h -> do
-    let v' = castVector v :: Vector (HalrVal r)
+  forM_ (Map.assocs vs) $ \(rbox, vec) ->
+   withFile (dumpFileName file rbox) WriteMode $ \h -> do
+    let vec' = castVector vec :: Vector (HalrVal r)
         ((_,vext) :. (_,uext) :. (_,hgt) :. (_, wdt) :. Z) = halrDim rep rbox
     forM_ [0..vext-1] $ \v -> forM_ [0..uext-1] $ \u -> forM_ [0..min 1000 hgt-1] $ \y -> do
-      vals <- forM [0..wdt-1] $ \x -> peekVector v' (fromIntegral $ v*uext*wdt*hgt+u*wdt*hgt+y*wdt+x)
+      let ix x = fromIntegral $ v*uext*wdt*hgt+u*wdt*hgt+y*wdt+x
+      vals <- forM [0..wdt-1] $ \x -> peekVector vec' (ix x)
       hPutStrLn h $ show vals
   return nullVector

@@ -26,7 +26,7 @@ module Flow.Vector
 #endif
   , unsafeToByteString, unsafeToByteString'
   , dumpVector, dumpVector'
-  , readCVector
+  , readVector, readCVector
   , putVector, getVector
   ) where
 
@@ -333,15 +333,21 @@ dumpVector' v off size file = do
     hPut h =<< unsafeToByteString' v off size
 
 -- | Read vector from a file (raw)
-readCVector :: Storable a => FilePath -> Int -> IO (Vector a)
-readCVector file n = do
-  v@(CVector _ p) <- allocCVector n
+readVector :: Storable a => Vector a -> FilePath -> Int -> IO ()
+readVector v@(CVector _ p) file n | n <= vectorSize v = do
   (fd,_) <- FD.openFile file ReadMode False
   bytes <- Dev.read fd (castPtr p) (vectorByteSize v)
   when (bytes /= 0 && bytes /= vectorByteSize v) $
     fail $ "readCVector: Expected to read " ++ show (vectorByteSize v) ++
            " bytes, but only received " ++ show bytes ++ "!"
   Dev.close fd
+readVector _ _ _ = fail "readVector: Wrong vector type or too small!"
+
+-- | Read new C vector from a file (raw)
+readCVector :: Storable a => FilePath -> Int -> IO (Vector a)
+readCVector file n = do
+  v <- allocCVector n
+  readVector v file n
   return v
 
 putVector :: Vector a -> Put
