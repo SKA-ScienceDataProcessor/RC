@@ -384,30 +384,6 @@ execDistributeStep deps dh sched steps = do
         isDataDep did _ = did `IS.member` dataDeps
         dataMap' = IM.filterWithKey isDataDep dataMap
 
-    -- Generate maps for all regions. This is the data that needs to
-    -- be sent to the actors.
-    let regs = snd $ fromJust $ IM.lookup (dhId dh) domainMap
-    inputs <- forM regs $ \reg -> do
-
-      -- Make new restricted maps.
-      let restrictDomain (DomainI subDom, subRegs) = case cast subDom of
-            Just subDom' | subDom' `dhIsParent` dh
-                         -> (DomainI subDom, dhRestrict dh reg subRegs)
-            _otherwise   -> (DomainI subDom, subRegs)
-          localDomainMap = IM.insert (dhId dh) (DomainI dh, [reg]) $
-                           IM.map restrictDomain domainMap'
-
-      -- Also filter data so we only send data for the appropriate region
-      let usesRegion (ReprI repr) = dhId dh `elem` reprDomain repr
-          filterData (ri, bufs) =
-            (ri, if usesRegion ri
-                 then Map.filterWithKey (\ds _ -> reg `elem` ds) bufs
-                 else bufs)
-          localDataMap = IM.map filterData dataMap'
-
-      -- Execute steps with new domain & data maps
-      return $ marshal localDomainMap localDataMap
-
     -- Calculate the number of nodes needed. Note that this only works
     -- if the domains in questions are split *before* the
     -- distribution, otherwise we cannot predict resource
@@ -417,14 +393,50 @@ execDistributeStep deps dh sched steps = do
           = length rs * stepsNodes ss
         stepNodes _ = 1
         stepsNodes = maximum . map stepNodes
+        nodes = stepsNodes steps
+
+    -- Get regions to distribute, group. Normally we expect that we
+    -- have enough nodes to distribute completely, but in case nodes
+    -- crashed we need to be prepared to give a node multiple regions
+    -- to work on.
+    let regs = snd $ fromJust $ IM.lookup (dhId dh) domainMap
+    distrib <- case sched of
+      ParSchedule -> max (length regs) . (`div` nodes) <$> lift availableNodes
+      SeqSchedule -> return (length regs)
+    let group _ _ [] = []
+        group 1 _ xs = [xs]
+        group n l xs = let (pre,post) = splitAt (l `div` n) xs in pre:group (n-1) (l-length pre) post
+        regs_grouped = group distrib (length regs) regs
+
+    -- Generate maps for all regions. This is the data that needs to
+    -- be sent to the actors.
+    inputs <- forM regs_grouped $ \reg_group -> do
+
+      -- Make new restricted maps.
+      let restrictDomain (DomainI subDom, subRegs) = case cast subDom of
+            Just subDom' | subDom' `dhIsParent` dh
+                         -> (DomainI subDom, nub $ concatMap (\reg -> dhRestrict dh reg subRegs) reg_group)
+            _otherwise   -> (DomainI subDom, subRegs)
+          localDomainMap = IM.insert (dhId dh) (DomainI dh, reg_group) $
+                           IM.map restrictDomain domainMap'
+
+      -- Also filter data so we only send data for the appropriate region
+      let usesRegion (ReprI repr) = dhId dh `elem` reprDomain repr
+          filterData (ri, bufs) =
+            (ri, if usesRegion ri
+                 then Map.filterWithKey (\ds _ -> any (`elem` ds) reg_group) bufs
+                 else bufs)
+          localDataMap = IM.map filterData dataMap'
+
+      -- Execute steps with new domain & data maps
+      return $ marshal localDomainMap localDataMap
 
     dataMapNew <- case sched of
      ParSchedule -> lift $ do
 
        -- Make actor group. Allocation as calculated above, and we always
        -- include the local node, as we are going to block.
-       let nodes = stepsNodes steps
-           totalNodes = length inputs * nodes
+       let totalNodes = length inputs * nodes
        logMessage $ "Distributing " ++ show regs ++ " over " ++
                     show (length inputs) ++ " x " ++ show nodes ++ " nodes"
        grp <- startGroup (N (totalNodes - 1)) (NNodes nodes) $ do
@@ -441,7 +453,9 @@ execDistributeStep deps dh sched steps = do
        -- Delay, collect & unmarshal result data maps
        promise <- delayGroup grp
        let collect dm out = dm `dataMapUnion` unmarshal out
-       gather promise collect IM.empty
+       result <- gather promise collect IM.empty
+       waitForResources grp
+       return result
 
      SeqSchedule -> do
 
