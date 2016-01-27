@@ -10,6 +10,10 @@
 #include "Halide.h"
 #include <vector>
 
+// We require grid bounds to be given statically
+const int WIDTH = 2048
+        , HEIGHT = 2048;
+
 const double pi = 3.14159265f;
 
 const int MAX_UNROLL = 8;
@@ -359,7 +363,7 @@ Func fft2d_c2c(Func x, const std::vector<int> &R0, const std::vector<int> &R1, d
 // Compute the N0 x N1 2D real DFT of x using radixes R0, R1.
 // The transform domain has dimensions N0 x N1/2 + 1 due to the
 // conjugate symmetry of real DFTs.
-Func fft2d_r2c(Func r, const std::vector<int> &R0, const std::vector<int> &R1) {
+Func fft2d_r2c(Func r, Func cat, const std::vector<int> &R0, const std::vector<int> &R1) {
     // How many columns to group together in one FFT. This is the
     // vectorization width.
     const int group = 4;
@@ -406,15 +410,15 @@ Func fft2d_r2c(Func r, const std::vector<int> &R0, const std::vector<int> &R1) {
     Func dftT = fft_dim1(unzippedT, R0, -1.0f, group);
     // Transpose back.
     Func dft = transpose(dftT);
-    dft.bound(dft.args()[0], 0, N0);
-    dft.bound(dft.args()[1], 0, N1/2 + 1);
-    dft.vectorize(dft.args()[0]);
-    dft.unroll(dft.args()[1]);
+    //dft.bound(dft.args()[0], 0, N0);
+    //dft.bound(dft.args()[1], 0, N1/2 + 1);
+    //dft.vectorize(dft.args()[0]);
+    // dft.unroll(dft.args()[1]);
 
-    unzipped.compute_at(dftT, Var("g")).vectorize(n0, group).unroll(n0);
-    dft1.compute_at(dftT, outermost(dft));
-    dftT.compute_at(dft, outermost(dft));
-    dft.compute_root();
+    unzipped.compute_at(dftT, Var("g")).vectorize(n0, group).unroll(n0,MAX_UNROLL);
+    dft1.compute_at(dftT, outermost(cat));
+    dftT.compute_at(cat, outermost(cat));
+    //dft.compute_at(cat, outermost(cat));
 
     return dft;
 }
@@ -510,8 +514,8 @@ Func fft2d_c2c(Func c, int N0, int N1, double sign) {
 }
 
 // Compute N0 x N1 real DFTs.
-Func fft2d_r2c(Func r, int N0, int N1) {
-    return fft2d_r2c(r, radix_factor(N0), radix_factor(N1));
+Func fft2d_r2c(Func r, Func cat, int N0, int N1) {
+    return fft2d_r2c(r, cat, radix_factor(N0), radix_factor(N1));
 }
 Func fft2d_c2r(Func c, Func cat, int N0, int N1) {
     return fft2d_c2r(c, cat, radix_factor(N0), radix_factor(N1));
@@ -538,11 +542,7 @@ double log2(double x) {
     return log(x)/log(2.0);
 }
 
-int main(int argc, char **argv) {
-    if (argc < 2) return 1;
-
-    const int WIDTH = 2048
-            , HEIGHT = 2048;
+Module ifftKernel(Target target) {
 
     // ** Input field
 
@@ -557,8 +557,8 @@ int main(int argc, char **argv) {
 
     // Hermitise the field and convert complex numbers into Tuples
     Func herm("herm"); Var u("u"), v("v");
-    herm(u,v) = Tuple(uvg(0,u,v) + uvg(0,WIDTH-u-1,HEIGHT-v-1),
-                      uvg(1,u,v) - uvg(1,WIDTH-u-1,HEIGHT-v-1));
+    herm(u,v) = Tuple((uvg(0,u,v) + uvg(0,WIDTH-u-1,HEIGHT-v-1))/2,
+                      (uvg(1,u,v) - uvg(1,WIDTH-u-1,HEIGHT-v-1))/2);
 
     // Shift the field
     Func tiled = BoundaryConditions::repeat_image(herm, 0, WIDTH, 0,HEIGHT);
@@ -574,7 +574,7 @@ int main(int argc, char **argv) {
 
     // Shift back
     Func img_tiled = BoundaryConditions::repeat_image(image, 0, WIDTH, 0,HEIGHT);
-    img_shifted(u,v) = img_tiled(u+WIDTH/2,v+HEIGHT/2);
+    img_shifted(u,v) = img_tiled(u+WIDTH/2,v+HEIGHT/2) / cast<double>(WIDTH);
 
     // ** Strategy
 
@@ -599,8 +599,65 @@ int main(int argc, char **argv) {
     // surplus "select". Let's hope LLVM is smart enough to eliminate
     // it...
 
+    return img_shifted.compile_to_module(args, "kern_ifft", target);
+}
+
+Module fftKernel(Target target) {
+
+    ImageParam img(type_of<double>(), 2, "image");
+    img.set_min(0,0).set_stride(0,1).set_extent(0,WIDTH)
+       .set_min(1,0).set_extent(1,HEIGHT);
+    std::vector<Halide::Argument> args = { img };
+
+    // Shift the field
+    Var u("u"), v("v");
+    Func img_tiled = BoundaryConditions::repeat_image(img, 0, WIDTH, 0,HEIGHT);
+    Func img_shifted("img_shifted");
+    img_shifted(u,v) = img_tiled(u-WIDTH/2,v-HEIGHT/2);
+
+    // Compute dft
+    Func uvg_herm("uvg_herm");
+    Func uvg = fft2d_r2c(img_shifted, uvg_herm, WIDTH, HEIGHT);
+
+    // Convert tuples to arrays
+    Var c("c");
+    Func uvg_array("uvg_array");
+    uvg_array(c,u,v) = select(c == 0, uvg(u,v)[0], uvg(u,v)[1]);
+
+    // Generate hermitian shifted grid
+    Func uvg_bounded = BoundaryConditions::constant_exterior(uvg_array, 0, 0,2, 0,WIDTH, 0,HEIGHT/2+1);
+    Func uvg_tiled = BoundaryConditions::repeat_image(uvg_bounded, 0,2, 0,WIDTH, 0,HEIGHT);
+    uvg_herm(c,u,v) =
+        (uvg_tiled(c,u-WIDTH/2,v-HEIGHT/2) +
+         uvg_tiled(c,WIDTH/2-u-1,HEIGHT/2-v-1) * select(c == 0, 1, -1)) / cast<double>(WIDTH);
+
+    // ** Strategy
+
+    Var ui("ui"), uo("uo"), vi("vi"), vo("vo"), cui("cui");
+    uvg_herm.output_buffer()
+       .set_min(0,0).set_stride(0,1).set_extent(0,2)
+       .set_min(1,0).set_stride(1,2).set_extent(1,WIDTH)
+       .set_min(2,0).set_extent(2,HEIGHT);
+    uvg_herm
+       .split(v, vo, vi, HEIGHT/2)
+       .unroll(vo)
+       .split(u, uo, ui, WIDTH/2)
+       .unroll(uo)
+       .unroll(c);
+
+    // As with ifftKernel, this leaves quite a few "select" in the
+    // code. Not quite sure whether or not they give rise to actual
+    // branches...
+
+    uvg_herm.compile_to_lowered_stmt("kern_fft.html", args, HTML, target);
+    return uvg_herm.compile_to_module(args, "kern_fft", target);
+}
+
+int main(int argc, char **argv)
+{
+    if (argc < 2) return 1;
     Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
-    Module mod = img_shifted.compile_to_module(args, "kern_fft", target);
-    compile_module_to_object(mod, argv[1]);
+    std::vector<Module> modules = { ifftKernel(target), fftKernel(target) };
+    compile_module_to_object(link_modules("kern_ffts", modules), argv[1]);
     return 0;
 }

@@ -206,7 +206,7 @@ main = do
                       }
       cleanPar = CleanPar
         { cleanGain      = 0.9
-        , cleanThreshold = 1e5
+        , cleanThreshold = 4.0
         , cleanCycles    = 10
         }
       config = defaultConfig
