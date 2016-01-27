@@ -183,7 +183,7 @@ execBroadcast a (Shell aid) = do
     logConnect Nothing (Just aid)
   where
     trySend (RcvGrp dsts) = do
-        mch <- forM dsts $ \case
+        mch <- forM (filter (/=RcvFailed) dsts) $ \case
           RcvSimple (Recv _ d) -> unwrapMessage d
           _                    -> doPanic "execBroadcast: bad address"
         case sequence mch of
@@ -206,7 +206,7 @@ execDistributeWork a f (Shell aid) = do
             bs = f n a
         when (length bs /= n) $
             doFatal "Bad work distribution function"
-        mch <- forM dsts $ \case
+        mch <- forM (filter (/=RcvFailed) dsts) $ \case
           RcvSimple (Recv _ m) -> unwrapMessage m
           RcvGrp{}       -> doPanic "execDistributeWork: bad address got RcvGrp"
           RcvReduce{}    -> doPanic "execDistributeWork: bad address got RcvReduce"
