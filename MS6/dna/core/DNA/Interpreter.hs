@@ -55,7 +55,9 @@ interpretDNA (DNA m) =
       Kernel msg mode hints io -> execKernel msg mode hints io
       DnaRank         -> envRank      <$> ask
       DnaGroupSize    -> envGroupSize <$> ask
-      AvailNodes      -> Set.size <$> use stNodePool
+      AvailNodes      -> do n <- Set.size <$> use stNodePool
+                            taggedMessage "DNA" $ "availNodes " ++ (show $ n)
+                            return n
       -- Logging
       LogMessage msg   -> message 0 msg
       Duration msg dna -> logDuration msg $ interpretDNA dna
