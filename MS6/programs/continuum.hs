@@ -226,21 +226,25 @@ continuumStrat cfg = do
   psfFlow <- continuumGridStrat cfg ddom_s tdom uvdom_s ixs vis (psfVis vis)
   void $ bindNew $ regionKernel ddomss $ imageWriter gpar "psf.img" psfFlow
 
-  -- Major loop iteration
-  bind createImage $ regionKernel ddomss $ imageInit gpar
-  (mod, res) <- majorIterationStrat cfg ddom_s tdom uvdom_s ixs vis createImage
+  -- Major loops
+  let start = (createImage, createImage)
+  (model, residual) <- (\f -> foldM f start [1..10]) $ \(mod, _res) i -> do
 
-  -- Another major loop iteration
-  bind createImage $ regionKernel ddomss $ imageInit gpar
-  (mod2, res2) <- majorIterationStrat cfg ddom_s tdom uvdom_s ixs vis mod
+    -- Calculate/create model
+    bindRule createImage $ regionKernel ddomss $ imageInit gpar
+    when (i > 1) $ calculate createImage -- workaround
+    calculate mod
+
+    -- Run major loop iteration
+    majorIterationStrat cfg ddom_s tdom uvdom_s ixs vis mod
 
   -- Write out model grid
   bind createImage $ regionKernel ddomss $ imageInit gpar
   void $ bindNew $ regionKernel ddomss $
-     imageWriter gpar (cfgOutput cfg ++ ".mod") mod2
+     imageWriter gpar (cfgOutput cfg ++ ".mod") model
   bind createImage $ regionKernel ddomss $ imageInit gpar
   void $ bindNew $ regionKernel ddomss $
-     imageWriter gpar (cfgOutput cfg ++ ".res") res2
+     imageWriter gpar (cfgOutput cfg ++ ".res") residual
 
 main :: IO ()
 main = do
@@ -267,6 +271,7 @@ main = do
                       , OskarInput "test_p00_s00_f01.vis" 2 2
                       ]
         , cfgPoints = 32131 * 200
+        , cfgLoops  = 10
         , cfgNodes  = 4
         , cfgOutput = "out.img"
         , cfgGrid   = gpar

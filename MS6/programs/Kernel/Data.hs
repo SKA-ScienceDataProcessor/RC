@@ -34,6 +34,7 @@ data Config = Config
   { cfgInput  :: [OskarInput] -- ^ Input Oskar files
   , cfgPoints :: Int      -- ^ Number of points to read from Oskar file
   , cfgNodes  :: Int      -- ^ Number of data sets to process in parallel
+  , cfgLoops  :: Int      -- ^ Number of major loops to run
   , cfgLong   :: Double   -- ^ Phase centre longitude
   , cfgLat    :: Double   -- ^ Phase centre latitude
   , cfgOutput :: FilePath -- ^ File name for the output image
@@ -72,6 +73,7 @@ defaultConfig = Config
   { cfgInput  = []
   , cfgPoints = 32131
   , cfgNodes  = 0
+  , cfgLoops  = 1
   , cfgLong   = 72.1 / 180 * pi -- mostly arbitrary, and probably wrong in some way
   , cfgLat    = 42.6 / 180 * pi -- ditto
   , cfgOutput = ""
