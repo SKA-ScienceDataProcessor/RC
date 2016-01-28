@@ -60,7 +60,7 @@ buffer_t mkHalideBuf(int32_t size = 0){
 
 const unsigned int niters = 12;
 
-template <bool ismodel>
+template <int (&kernel)(buffer_t *, buffer_t *, const double, const int32_t, const int32_t, buffer_t *, buffer_t *)>
 int deconvolve(
     const double gain
   , const double threshold
@@ -85,15 +85,6 @@ int deconvolve(
   // In fact we throw away peakval here
   res = find_peak_cpu(psf_buf_p, &psf_peakx_buf, &psf_peaky_buf, &peakval_buf); __CK
 
-  int (*kernel)(buffer_t *, buffer_t *, const double, const int32_t, const int32_t, buffer_t *, buffer_t *);
-
-  if (ismodel) {
-    memset(mod_buf_p->host, 0, mod_buf_p->stride[1] * mod_buf_p->extent[1] * mod_buf_p->elem_size);
-    kernel = model_cpu;
-  }
-  else
-    kernel = res_cpu;
-
   for (unsigned int i = 0; i < niters; ++i) {
     res = kernel(res_buf_p, psf_buf_p, gain, psf_peakx, psf_peaky, mod_buf_p, &peakval_buf); __CK
     if (fabs(peakval) < threshold) break;
@@ -105,11 +96,11 @@ int deconvolve(
 extern "C" {
 
 int kern_hogbom_model   (const double peak, const double threshold, buffer_t * psf_buf_p, buffer_t * res_buf_p, buffer_t * mod_buf_p){
-  return deconvolve<true>(peak, threshold, psf_buf_p, res_buf_p, mod_buf_p);
+  return deconvolve<model_cpu>(peak, threshold, psf_buf_p, res_buf_p, mod_buf_p);
 }
 
 int kern_hogbom_residual(const double peak, const double threshold, buffer_t * psf_buf_p, buffer_t * res_buf_p, buffer_t * res_out_buf_p){
-  return deconvolve<false>(peak, threshold, psf_buf_p, res_buf_p, res_out_buf_p);
+  return deconvolve<res_cpu>(peak, threshold, psf_buf_p, res_buf_p, res_out_buf_p);
 }
 
 }
