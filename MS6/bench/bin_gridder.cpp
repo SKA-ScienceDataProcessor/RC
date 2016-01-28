@@ -119,14 +119,13 @@ int main(/* int argc, char * argv[] */)
 
   printf("Read GCF!\n");
 
-  #ifdef _WIN32 // My desktop
-  #define __GCF_PATH(sz) "G:\\BR\\MS5\\bench\\gcf" sz ".dat"
-  #else
-  #define __GCF_PATH(sz) "gcf" sz ".dat"
-  #endif
-  #define __XSTR(a) __STR(a)
   #define __STR(a) #a
-  res = readFileToVector(gcf, __GCF_PATH(__XSTR(GCF_SIZE))); __CK
+  #ifdef _WIN32 // My desktop
+  #define __GCF_PATH(sz) "G:\\BR\\MS5\\bench\\gcf" __STR(sz) ".dat"
+  #else
+  #define __GCF_PATH(sz) "gcf" __STR(sz) ".dat"
+  #endif
+  res = readFileToVector(gcf, __GCF_PATH(GCF_SIZE)); __CK
 
   // FIXME: We don't bother allocating vector on GPU and zero it,
   //   we simply marshal zero vector from CPU to GPU.
