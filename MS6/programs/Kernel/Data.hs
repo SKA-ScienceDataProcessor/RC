@@ -75,7 +75,7 @@ defaultConfig = Config
   , cfgLong   = 72.1 / 180 * pi -- mostly arbitrary, and probably wrong in some way
   , cfgLat    = 42.6 / 180 * pi -- ditto
   , cfgOutput = ""
-  , cfgGrid   = GridPar 0 0 0 0 0 0 0
+  , cfgGrid   = GridPar 0 0 0 0 1 1 1
   , cfgGCF    = GCFPar 0 8 ""
   , cfgClean  = CleanPar 0 0 0
   }

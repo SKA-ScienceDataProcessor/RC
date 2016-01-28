@@ -234,6 +234,9 @@ execDomainStep m_kid dh = do
         -- Perform split
         concat <$> execIO "split domain" (mapM (dhRegion dh) regs)
 
+    -- Debug
+    lift $ logMessage $ "New domain " ++ show (dhId dh) ++ " with regions " ++ show regs'
+
     -- Add to map
     dm <- getDomainMap
     putDomainMap $ IM.insert (dhId dh) (DomainI dh, regs') dm
