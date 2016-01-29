@@ -13,7 +13,7 @@ import Data.Function ( on )
 import Data.Hashable
 import Data.Int
 import qualified Data.IntMap as IM
-import Data.List     ( sort, groupBy )
+import Data.List     ( sort, groupBy, intercalate )
 import qualified Data.Map as Map
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
@@ -335,11 +335,33 @@ class (Show r, Typeable r, Typeable (ReprType r)) => DataRepr r where
   -- going to ignore it.
   reprNop :: r -> Bool
   reprNop _ = False
+  -- | Name for show
+  reprShowsName :: r -> ShowS
+  reprShowsName = reprShows []
+  -- | Show data representation dimensions. This is used for
+  -- implementing 'show'.
+  reprShows :: [String] -> r -> ShowS
+  reprShows = reprShowsDefault
+  -- | Type of access the kernel requests to the data. If it is
+  -- 'WriteAccess', the kernel wants to be able to write, free or use
+  -- the buffer as a return value. In either case, this means that the
+  -- input data is assumed to be consumed by the kernel.
   reprAccess :: r -> ReprAccess
+  -- | Check whether this data representation is "compatible" with
+  -- another.
   reprCompatible :: r -> r -> Bool
   reprCompatible _ _ = True
+  -- | Return the list of domains that this data representation is
+  -- indexed by. A 'RegionBox' for this data representation, must
+  -- match the domains in exactly the order given here.
   reprDomain :: r -> [DomainId]
   reprDomain _ = []
+  -- | Return the size we expect an individual buffer of this data
+  -- representation to have. If 'Nothing', we make no guarantees.
+  reprSize :: r -> RegionBox -> Maybe Int
+  reprSize _ _ = Nothing
+  -- | Merge data for the given region box. Sort-of deprecated, should
+  -- use kernels for that.
   reprMerge :: r -> RegionData -> RegionBox -> IO (Maybe (Vector ()))
   reprMerge r rd rb
     | Just size <- reprSize r rb
@@ -357,8 +379,16 @@ class (Show r, Typeable r, Typeable (ReprType r)) => DataRepr r where
       Just inv <- Map.lookup [] rd
     = copyVector outv outoff (castVector inv) inoff size
   reprMergeCopy _ _  _  _     _    _ = fail "reprMerge unimplemented!"
-  reprSize :: r -> RegionBox -> Maybe Int
-  reprSize _ _ = Nothing
+  {-# MINIMAL reprAccess, (reprShowsName | reprShows) #-}
+
+-- | Default data representation show layout. Make sure
+-- 'reprShowsName' is defined!
+reprShowsDefault :: forall r. DataRepr r => [String] -> r -> ShowS
+reprShowsDefault ds r =
+  shows (typeOf (undefined :: ReprType r)) .
+  showString " as " .
+  reprShowsName r .
+  ('[':) . showString (intercalate "," ds) . (']':)
 
 -- | Who has ownership of the data representation?
 data ReprAccess

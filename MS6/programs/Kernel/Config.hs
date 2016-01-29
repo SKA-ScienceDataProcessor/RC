@@ -30,7 +30,7 @@ instance FromJSON Config where
              <*> (v .: "grid" <|> return (cfgGrid defaultConfig))
              <*> (v .: "gcf" <|> return (cfgGCF defaultConfig))
              <*> (v .: "clean" <|> return (cfgClean defaultConfig))
-  parseJSON v = mempty
+  parseJSON _ = mempty
 
 data OskarInput = OskarInput
   { oskarFile   :: FilePath -- ^ Oskar file
@@ -41,7 +41,7 @@ instance FromJSON OskarInput where
   parseJSON (Object v)
     = OskarInput <$> v .: "file" <*> v .: "weight"
                  <*> (v .: "repeats" <|> return 1)
-  parseJSON v = mempty
+  parseJSON _ = mempty
 
 data GridPar = GridPar
   { gridWidth :: !Int  -- ^ Width of the uv-grid/image in pixels
@@ -63,7 +63,7 @@ instance FromJSON GridPar where
               <*> (v .: "uv-tiles" <|> return 1)
               <*> (v .: "lm-facets" <|> return 1)
               <*> (v .: "w-bins" <|> return 1)
-  parseJSON v = mempty
+  parseJSON _ = mempty
 
 data GCFPar = GCFPar
   { gcfSize :: Int
@@ -74,7 +74,7 @@ instance FromJSON GCFPar where
   parseJSON (Object v)
     = GCFPar <$> v .: "size" <*> v .: "over"
              <*> v .: "file"
-  parseJSON v = mempty
+  parseJSON _ = mempty
 
 data CleanPar = CleanPar
   { cleanGain      :: Double
@@ -85,14 +85,14 @@ instance FromJSON CleanPar where
   parseJSON (Object v)
     = CleanPar <$> v .: "gain" <*> v .: "threshold"
                <*> v .: "cycles"
-  parseJSON v = mempty
+  parseJSON _ = mempty
 
 -- | Default configuration. Gets overridden by the actual
 -- implementations where paramters actually matter.
 defaultConfig :: Config
 defaultConfig = Config
   { cfgInput  = []
-  , cfgPoints = 32131
+  , cfgPoints = 32131 * 200
   , cfgNodes  = 0
   , cfgLoops  = 1
   , cfgLong   = 72.1 / 180 * pi -- mostly arbitrary, and probably wrong in some way

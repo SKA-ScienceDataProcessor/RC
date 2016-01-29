@@ -9,7 +9,7 @@ import Data.List
 import Data.Yaml
 
 import Flow
-import Flow.Builder ( rule, IsKernelDef )
+import Flow.Builder ( rule )
 import Flow.Kernel
 
 import Kernel.Binning
@@ -78,7 +78,7 @@ psf vis = summed vis (psfVis vis)
 -- | Update a model by gridding the given (possibly corrected)
 -- visibilities and cleaning the result.
 model :: Flow Vis -> Flow Vis -> Flow Image -> Flow Image
-model vis0 vis mod = splitModel $ clean (psf vis0) (summed vis0 vis) mod
+model vis0 vis mdl = splitModel $ clean (psf vis0) (summed vis0 vis) mdl
 
 -- | Calculate a residual by gridding the given visibilities and
 -- cleaning the result.
@@ -88,16 +88,16 @@ residual vis0 vis = splitResidual $ clean (psf vis0) (summed vis0 vis) createIma
 -- | Degrid a model, producing corrected visibilities where we
 -- have attempted to eliminate the effects of sources in the model.
 degridModel :: Flow Vis -> Flow Image -> Flow Vis
-degridModel vis mod = degrid (gcf vis) (dft mod) vis
+degridModel vis mdl = degrid (gcf vis) (dft mdl) vis
 
 -- | Major loop iteration: From visibilities infer components in the
 -- image and return the updated model.
 loopIter :: Flow Vis -> Flow Image -> Flow Image
-loopIter vis mod = model vis (degridModel vis mod) mod
+loopIter vis mdl = model vis (degridModel vis mdl) mdl
 -- | Final major loop iteration: Do the same steps as usual, but
 -- return just the residual.
 finalLoopIter :: Flow Vis -> Flow Image -> Flow Image
-finalLoopIter vis mod = residual vis (degridModel vis mod)
+finalLoopIter vis mdl = residual vis (degridModel vis mdl)
 
 -- ----------------------------------------------------------------------------
 -- ---                               Strategy                               ---
@@ -160,10 +160,10 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
           rebind vis0 $ rkern $ binner gpar tdom uvdom wdom
 
           -- Degrid / generate PSF (depending on vis)
-          rule degrid $ \(gcfs :. uvgrid :. vis :. Z) -> do
+          rule degrid $ \(gcfs :. uvgrid :. vis' :. Z) -> do
             rebind uvgrid $ distributeGrid ddomss ddom lmdom uvdoms
-            bind (degrid gcfs uvgrid vis) $ rkern $
-              degridKernel gpar gcfpar uvdom wdom uvdoms gcfs uvgrid vis
+            bind (degrid gcfs uvgrid vis') $ rkern $
+              degridKernel gpar gcfpar uvdom wdom uvdoms gcfs uvgrid vis'
           bindRule psfVis $ rkern $ psfVisKernel uvdom wdom
           calculate vis
 
@@ -197,28 +197,27 @@ continuumGridStrat _ _ _ _ _ _ _ _ = fail "continuumGridStrat: Not enough domain
 majorIterationStrat :: Config -> [DDom] -> TDom -> [UVDom] -> [LMDom]
                    -> Flow Index -> Flow Vis -> Flow Image
                    -> Strategy (Flow Image, Flow Image)
-majorIterationStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis mod = do
+majorIterationStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis mdl = do
 
   -- Calculate model grid using FFT (once)
   let gpar = cfgGrid cfg
-      gcfpar = cfgGCF cfg
   bindRule dft $ regionKernel (head ddom_s) $ fftKern gpar (head uvdom_s)
-  calculate (dft mod)
+  calculate (dft mdl)
 
   -- Do continuum gridding for degridded visibilities. The actual
   -- degridding will be done in the inner loop, see continuumGridStrat.
-  let vis' = degridModel vis mod
-  continuumGridStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis vis'
+  let vis' = degridModel vis mdl
+  void $ continuumGridStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis vis'
 
   -- Clean
   let cpar = cfgClean cfg
-  bindRule (\psfImg img mod -> splitModel $ clean psfImg img mod) $
+  bindRule (\psfImg img mdl' -> splitModel $ clean psfImg img mdl') $
     regionKernel (head ddom_s) $ cleanModel gpar cpar
-  bindRule (\psfImg img mod -> splitResidual $ clean psfImg img mod) $
+  bindRule (\psfImg img mdl' -> splitResidual $ clean psfImg img mdl') $
     regionKernel (head ddom_s) $ const $ cleanResidual gpar cpar
 
-  return (loopIter vis mod,
-          finalLoopIter vis mod)
+  return (loopIter vis mdl,
+          finalLoopIter vis mdl)
 
 
 continuumStrat :: Config -> Strategy ()
@@ -260,23 +259,23 @@ continuumStrat cfg = do
 
   -- Major loops
   let start = (createImage, createImage)
-  (model, residual) <- (\f -> foldM f start [1..cfgLoops cfg]) $ \(mod, _res) i -> do
+  (finalMod, finalRes) <- (\f -> foldM f start [1..cfgLoops cfg]) $ \(mod', _res) i -> do
 
     -- Calculate/create model
     bindRule createImage $ regionKernel ddomss $ imageInit gpar
     when (i > 1) $ calculate createImage -- workaround
-    calculate mod
+    calculate mod'
 
     -- Run major loop iteration
-    majorIterationStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis mod
+    majorIterationStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis mod'
 
   -- Write out model grid
   bind createImage $ regionKernel ddomss $ imageInit gpar
   void $ bindNew $ regionKernel ddomss $
-     imageWriter gpar (cfgOutput cfg ++ ".mod") model
+     imageWriter gpar (cfgOutput cfg ++ ".mod") finalMod
   bind createImage $ regionKernel ddomss $ imageInit gpar
   void $ bindNew $ regionKernel ddomss $
-     imageWriter gpar (cfgOutput cfg) residual
+     imageWriter gpar (cfgOutput cfg) finalRes
 
 main :: IO ()
 main = do

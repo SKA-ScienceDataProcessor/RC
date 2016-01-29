@@ -68,15 +68,18 @@ type HalideCtx dim val abs =
 data HalideRepr dim val abs = HalideRepr ReprAccess dim
   deriving Typeable
 instance HalideCtx dim val abs => Show (HalideRepr dim val abs) where
-  showsPrec _ (HalideRepr _ dim)
-    = shows (typeOf (undefined :: abs)) . showString " as halide vector " .
-      shows (typeOf (undefined :: val)) . shows dim
+  showsPrec _ = reprShows []
 instance HalideCtx dim val abs => DataRepr (HalideRepr dim val abs) where
   type ReprType (HalideRepr dim val abs) = abs
   reprNop _ = False
   reprAccess (HalideRepr acc _) = acc
   reprCompatible (HalideRepr _ d0) (HalideRepr _ d1) = d0 == d1
   reprSize r ds = Just $ nOfElements (halrDim r ds) * sizeOf (undefined :: val)
+  reprShowsName (HalideRepr _ _) =
+    showString "halide vector " . shows (typeOf (undefined :: val))
+  reprShows ds r@(HalideRepr _ dim) = reprShowsDefault (showDims ++ ds) r
+   where showsDim (m,ext) = shows m $ (':':) $ shows (m+ext) ""
+         showDims = map showsDim $ reverse $ wrapDimensions dim
 
 -- | Constructor function for "HalideRepr". Returns a data
 -- representation with "ReadAccess".

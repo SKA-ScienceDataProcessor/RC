@@ -9,7 +9,6 @@
 module Flow.Halide.Types where
 
 
-import Data.Int
 import Data.Vector.HFixed.Class  (Fn)
 import Foreign.C
 import Foreign.Ptr

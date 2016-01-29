@@ -119,7 +119,8 @@ data GridPar = GridPar
     type ReprType NewRepr = ReprType (Repr); \
     reprNop (NewRepr r) = reprNop r; \
     reprAccess (NewRepr r) = reprAccess r; \
-    reprCompatible (NewRepr r1) (NewRepr r2) = reprCompatible r1 r2
+    reprCompatible (NewRepr r1) (NewRepr r2) = reprCompatible r1 r2; \
+    reprShows ds (NewRepr r1) = reprShows ds r1
 newtype ImageRepr = ImageRepr (VectorRepr () Image)
   deriving (Typeable, Show)
 DATAREPR_INSTANCE(ImageRepr, VectorRepr () Image)
@@ -316,7 +317,7 @@ scatterSimple  cfg = do
   bind vis $ oskarReader dom $ cfgInput cfg
 
   -- Implement this data flow
-  scatterImaging cfg dom tag vis
+  void $ scatterImaging cfg dom tag vis
 
   -- Sum and write out the result
   bindRule imageSum (imageSumKernel dom)

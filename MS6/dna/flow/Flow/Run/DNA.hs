@@ -17,7 +17,7 @@ import Control.Distributed.Static
 import Data.Binary.Get
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as LBS
-import Data.List
+import Data.List  ( tails, foldl', nub )
 import Data.Maybe ( fromMaybe, fromJust, mapMaybe )
 import qualified Data.IntMap as IM
 import qualified Data.IntSet as IS

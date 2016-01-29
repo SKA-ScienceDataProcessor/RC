@@ -56,12 +56,13 @@ import Foreign.Storable
 data NoRepr a = NoRepr
   deriving Typeable
 instance Typeable a => Show (NoRepr a) where
-  showsPrec _ _ = showString "nothing [" . shows (typeOf (undefined :: a)) . (']':)
+  showsPrec _ = reprShows []
 instance Typeable a => DataRepr (NoRepr a) where
   type ReprType (NoRepr a) = a
   reprNop _ = True
   reprAccess _ = ReadAccess
   reprCompatible _ _ = True
+  reprShowsName _ = showString "nothing"
 
 -- | Per-region representation combinator. The underlying representation remains
 -- the same no matter the concrete shape of the 'Domain'. This means
@@ -83,9 +84,8 @@ instance Typeable a => DataRepr (NoRepr a) where
 -- we would effectively change the list into a stream.
 data RegionRepr dom rep = RegionRepr (Domain dom) rep
  deriving Typeable
-instance (Show (Domain dom), Show rep) => Show (RegionRepr dom rep) where
-  showsPrec _ (RegionRepr dh rep)
-    = shows rep . showString " over " . shows dh
+instance (DataRepr rep, Typeable dom) => Show (RegionRepr dom rep) where
+  showsPrec _ = reprShows []
 instance (DataRepr rep, Typeable dom, Typeable rep) => DataRepr (RegionRepr dom rep) where
   type ReprType (RegionRepr dom rep) = ReprType rep
   reprNop (RegionRepr _ rep) = reprNop rep
@@ -96,6 +96,8 @@ instance (DataRepr rep, Typeable dom, Typeable rep) => DataRepr (RegionRepr dom 
   reprMerge _ _ _ = fail "reprMerge for region repr undefined!"
   reprSize (RegionRepr _ rep) (_:ds) = reprSize rep ds
   reprSize rep                _      = fail $ "Not enough domains passed to reprSize for " ++ show rep ++ "!"
+  reprShows ds (RegionRepr dh r) = reprShows (d:ds) r
+    where d = "regs(" ++ show dh ++ ")"
 
 -- | The data is represented as a vector of elements according to the
 -- underlying data representation and size of the region's
@@ -108,9 +110,8 @@ instance (DataRepr rep, Typeable dom, Typeable rep) => DataRepr (RegionRepr dom 
 -- the direction we want to go.)
 data RangeRepr rep = RangeRepr (Domain Range) rep
   deriving Typeable
-instance Show rep => Show (RangeRepr rep) where
-  showsPrec _ (RangeRepr rep dom)
-    = shows rep . ('[':) . shows dom . (']':)
+instance DataRepr rep => Show (RangeRepr rep) where
+  showsPrec _ = reprShows []
 instance DataRepr rep => DataRepr (RangeRepr rep) where
   type ReprType (RangeRepr rep) = ReprType rep
   reprNop _ = False
@@ -122,6 +123,8 @@ instance DataRepr rep => DataRepr (RangeRepr rep) where
   reprSize (RangeRepr _ rep) (RangeRegion _ (Range l h):ds)
     = fmap (* (h-l)) (reprSize rep ds)
   reprSize rep                _      = fail $ "Not enough domains passed to reprSize for " ++ show rep ++ "!"
+  reprShows ds (RangeRepr dh r) = reprShows (d:ds) r
+    where d = show dh
 
 rangeMergeCopy :: DataRepr rep => RangeRepr rep -> RegionBox
                -> RegionData -> Int
@@ -147,9 +150,8 @@ rangeMergeCopy rrep@(RangeRepr _ rep) rbox rd inoff outv outoff
 -- nested data representation describes the element layout.
 data BinRepr rep = BinRepr (Domain Bins) rep
   deriving Typeable
-instance Show rep => Show (BinRepr rep) where
-  showsPrec _ (BinRepr rep dom)
-    = shows rep . ('[':) . shows dom . (']':)
+instance DataRepr rep => Show (BinRepr rep) where
+  showsPrec _ = reprShows []
 instance DataRepr rep => DataRepr (BinRepr rep) where
   type ReprType (BinRepr rep) = ReprType rep
   reprNop (BinRepr _ rep) = reprNop rep
@@ -165,6 +167,8 @@ instance DataRepr rep => DataRepr (BinRepr rep) where
   reprSize (BinRepr _ rep) ((BinRegion _ (Bins bins)):ds)
     = fmap (* (sum $ map (sum . Map.elems) $ Map.elems bins)) (reprSize rep ds)
   reprSize rep _ = fail $ "Not enough domains passed to reprSize for " ++ show rep ++ "!"
+  reprShows ds (BinRepr dh r) = reprShows (d:ds) r
+    where d = show dh
 
 -- | Like 'RangeRepr', but every 'Region' is seen as being a constant
 -- number of elements larger than it would normally be. This
@@ -189,9 +193,8 @@ instance DataRepr rep => DataRepr (BinRepr rep) where
 
 data MarginRepr rep = MarginRepr Int (RangeRepr rep)
   deriving Typeable
-instance (Show rep) => Show (MarginRepr rep) where
-  showsPrec _ (MarginRepr ov rep)
-    = shows rep . showString "(overlapping x" . shows ov . (')':)
+instance DataRepr rep => Show (MarginRepr rep) where
+  showsPrec _ = reprShows []
 instance DataRepr rep => DataRepr (MarginRepr rep) where
   type ReprType (MarginRepr rep) = ReprType rep
   reprNop (MarginRepr _ rep) = reprNop rep
@@ -205,6 +208,8 @@ instance DataRepr rep => DataRepr (MarginRepr rep) where
     , Just ovSize <- reprSize rep ds
     = Just $ size + 2 * ov * ovSize
   reprSize _ _ = Nothing
+  reprShows ds (MarginRepr ov (RangeRepr dh r)) = reprShows (d:ds) r
+    where d = show ov ++ "+" ++ show dh ++ "+" ++ show ov
 
 -- | Constructor function for "MarginRepr".
 marginRepr :: DataRepr rep => Domain Range -> Int -> rep -> MarginRepr rep
@@ -217,13 +222,13 @@ marginRepr dom ov = MarginRepr ov . RangeRepr dom
 data VectorRepr val abs = VectorRepr ReprAccess
   deriving Typeable
 instance (Typeable val, Typeable abs) => Show (VectorRepr val abs) where
-  showsPrec _ _ = shows (typeOf (undefined :: abs)) . showString " vector " .
-                  shows (typeOf (undefined :: val)) . showString "[]"
+  showsPrec _ = reprShows []
 instance (Typeable val, Typeable abs) => DataRepr (VectorRepr val abs) where
   type ReprType (VectorRepr val abs) = abs
   reprNop _ = False
   reprAccess (VectorRepr acc)  = acc
   reprCompatible _ _ = True
+  reprShowsName _ = shows (typeOf (undefined :: val)) . showString " vector"
 
 -- | Code implementing a kernel for a single output domain. See
 -- 'mappingKernel'.

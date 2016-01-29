@@ -99,7 +99,7 @@ handleProcessTermination (ProcessMonitorNotification _ pid reason) =
 handleNodeCrash
     :: NodeMonitorNotification
     -> Controller ()
-handleNodeCrash (NodeMonitorNotification _ nid reason) = do
+handleNodeCrash (NodeMonitorNotification _ nid _reason) = do
     stDeadNodes %= Set.insert nid
     stNodePool  %= Set.filter ((/=nid) . nodeId)
 
