@@ -5,6 +5,9 @@ module Main where
 
 import Control.Monad
 
+import Data.List
+import Data.Yaml
+
 import Flow
 import Flow.Builder ( rule, IsKernelDef )
 import Flow.Kernel
@@ -20,6 +23,8 @@ import Kernel.IO
 import Kernel.Scheduling
 
 import System.Environment
+import System.Directory
+import System.FilePath
 
 -- ----------------------------------------------------------------------------
 -- ---                             Functional                               ---
@@ -255,7 +260,7 @@ continuumStrat cfg = do
 
   -- Major loops
   let start = (createImage, createImage)
-  (model, residual) <- (\f -> foldM f start [1..10]) $ \(mod, _res) i -> do
+  (model, residual) <- (\f -> foldM f start [1..cfgLoops cfg]) $ \(mod, _res) i -> do
 
     -- Calculate/create model
     bindRule createImage $ regionKernel ddomss $ imageInit gpar
@@ -271,46 +276,31 @@ continuumStrat cfg = do
      imageWriter gpar (cfgOutput cfg ++ ".mod") model
   bind createImage $ regionKernel ddomss $ imageInit gpar
   void $ bindNew $ regionKernel ddomss $
-     imageWriter gpar (cfgOutput cfg ++ ".res") residual
+     imageWriter gpar (cfgOutput cfg) residual
 
 main :: IO ()
 main = do
 
-  let gpar = GridPar { gridWidth = 2048
-                     , gridHeight = 2048
-                     , gridPitch = 2048
-                     , gridTheta = 0.10
-                     , gridFacets = 1
-                     , gridTiles = 1
-                     , gridBins = 1
-                     }
-      gcfpar = GCFPar { gcfSize = 16
-                      , gcfOver = 8
-                      , gcfFile = "gcf16.dat"
-                      }
-      cleanPar = CleanPar
-        { cleanGain      = 0.9
-        , cleanThreshold = 4.0
-        , cleanCycles    = 10
-        }
-      config = defaultConfig
-        { cfgInput  = [ OskarInput "test_p00_s00_f00.vis" 2 2
-                      , OskarInput "test_p00_s00_f01.vis" 2 2
-                      ]
-        , cfgPoints = 32131 * 200
-        , cfgLoops  = 10
-        , cfgNodes  = 4
-        , cfgOutput = "out.img"
-        , cfgGrid   = gpar
-        , cfgGCF    = gcfpar
-        , cfgClean  = cleanPar
-        }
-
-  -- Show strategy - but only for the root process
+  -- Determine work directory (might be given on the command line)
   args <- getArgs
-  when (not ("--internal-rank" `elem` args)) $ do
-    dumpSteps $ continuumStrat config
-    putStrLn "----------------------------------------------------------------"
-    putStrLn ""
-  -- Execute strategy
-  execStrategyDNA $ continuumStrat config
+  dir <- case find ((== "--workdir") . fst) $ zip args (tail args) of
+   Just (_, wdir) -> return wdir
+   Nothing        -> getCurrentDirectory
+
+  -- Read configuration
+  let configFile = dir </> "continuum.yaml"
+  putStrLn $ "Reading configuration from " ++ configFile
+  m_config <- decodeFileEither configFile
+
+  case m_config of
+   Left err -> putStrLn $ "Failed to read configuration file: " ++ show err
+   Right config -> do
+
+    -- Show strategy - but only for the root process
+    when (not ("--internal-rank" `elem` args)) $ do
+      dumpSteps $ continuumStrat config
+      putStrLn "----------------------------------------------------------------"
+      putStrLn ""
+
+    -- Execute strategy
+    execStrategyDNA $ continuumStrat config

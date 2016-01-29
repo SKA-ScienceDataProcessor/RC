@@ -59,6 +59,7 @@ executable binning
   main-is:             binning.hs
   other-modules:
     Kernel.Binning
+    Kernel.Config
     Kernel.Data
     Kernel.IO
     Kernel.Scheduling
@@ -67,7 +68,8 @@ executable binning
     containers   >= 0.5,
     dna-flow     >= 0.5,
     oskar        >= 0.1,
-    fixed-vector-hetero
+    fixed-vector-hetero,
+    yaml
 
 executable gridding
   default-language:    Haskell2010
@@ -77,6 +79,7 @@ executable gridding
   main-is:             gridding.hs
   other-modules:
     Kernel.Binning
+    Kernel.Config
     Kernel.Data
     Kernel.FFT
     Kernel.Gridder
@@ -87,7 +90,8 @@ executable gridding
     containers   >= 0.5,
     dna-flow     >= 0.5,
     oskar        >= 0.1,
-    fixed-vector-hetero
+    fixed-vector-hetero,
+    yaml
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp
@@ -102,6 +106,7 @@ executable facetting
   main-is:             facetting.hs
   other-modules:
     Kernel.Binning
+    Kernel.Config
     Kernel.Data
     Kernel.FFT
     Kernel.Facet
@@ -113,7 +118,8 @@ executable facetting
     containers   >= 0.5,
     dna-flow     >= 0.5,
     oskar        >= 0.1,
-    fixed-vector-hetero
+    fixed-vector-hetero,
+    yaml
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp
@@ -133,6 +139,7 @@ executable continuum
   other-modules:
     Kernel.Binning
     Kernel.Cleaning
+    Kernel.Config
     Kernel.Data
     Kernel.Degrid
     Kernel.FFT
@@ -145,7 +152,10 @@ executable continuum
     containers   >= 0.5,
     dna-flow     >= 0.5,
     oskar        >= 0.1,
-    fixed-vector-hetero
+    fixed-vector-hetero,
+    directory,
+    filepath,
+    yaml
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp

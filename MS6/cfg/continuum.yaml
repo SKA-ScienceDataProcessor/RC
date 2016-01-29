@@ -1,0 +1,59 @@
+
+# Number of nodes scheduling should assume to be available.
+nodes:  16
+
+# Number of major loops to run
+loops:  10
+
+# Number of points in input files must be known in advance
+points: 6426200
+
+# Input sets. We are going to read the XX polarisation for each of
+# them. The weights are going to get used for scheduling.
+input:
+-
+  file:    test_p00_s00_f00.vis
+  weight:  48.683353 # guessed
+  repeats: 4
+-
+  file:    test_p00_s00_f01.vis
+  weight:  48.683353 # from 1636389-s
+  repeats: 4
+-
+  file:    test_p00_s01_f00.vis
+  weight:  39.383595 # from 1636389-s
+  repeats: 4
+-
+  file:    test_p00_s01_f01.vis
+  weight:  38.309925 # from 1636389-s
+  repeats: 4
+
+# Where to put the output residual
+output: out.img
+
+# Grid parameters. FFT kernels will be specialised to a concrete
+# width, height and pitch, so these values can only be changed in
+# coordination with the respective constants (see
+# kernels/cpu/gridding/fft.cpp).
+grid:
+  width:   2048
+  height:  2048
+  pitch:   2048
+  theta:   0.04
+
+# Grid convolution function parameters. Kernels will also be
+# specialised to a oversampling factor and GCF size. Change
+#  - kernels/cpu/gridding/scatter.cpp and
+#  - kernels/cpu/gridding/degrid.cpp
+# if you want something different here
+gcf:
+  over:    8
+  size:    16
+  file:    gcf16.dat
+
+# Clean cycle parameters. The "cycles" parameter is similarly
+# hard-coded at this point, see kernels/cpu/gridding/hogbom.cpp
+clean:
+  gain:      0.9
+  threshold: 4
+  cycles:    10
