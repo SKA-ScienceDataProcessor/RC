@@ -6,7 +6,8 @@ module Main where
 import Control.Monad
 
 import Flow
-import Flow.Builder ( IsKernelDef )
+import Flow.Builder ( rule, IsKernelDef )
+import Flow.Kernel
 
 import Kernel.Binning
 import Kernel.Cleaning
@@ -43,6 +44,8 @@ idft = flow "idft"
 -- Image summation for continuum
 createImage :: Flow Image
 createImage = flow "create image"
+facetSum :: Flow Image -> Flow Image -> Flow Image
+facetSum = flow "facet sum"
 sumImage :: Flow Image -> Flow Image -> Flow Image
 sumImage = flow "sum image"
 
@@ -60,7 +63,7 @@ splitResidual = flow "residual from cleaning"
 gridder :: Flow Vis -> Flow Vis -> Flow Image
 gridder vis0 vis = idft (grid vis (gcf vis0) createGrid)
 summed :: Flow Vis -> Flow Vis -> Flow Image
-summed vis0 vis = sumImage (gridder vis0 vis) createImage
+summed vis0 vis = sumImage (facetSum (gridder vis0 vis) createImage) createImage
 
 -- | Calculate a point spread function, which tells us the image shape
 -- of a single point source in the middle of the field of view
@@ -99,10 +102,11 @@ finalLoopIter vis mod = residual vis (degridModel vis mod)
 -- the given input 'Flow's over a number of datasets given by the data
 -- set domains @ddoms@. Internally, we will distribute twice over
 -- @DDom@ and once over @UVDom@.
-continuumGridStrat :: Config -> [DDom] -> TDom -> [UVDom]
+continuumGridStrat :: Config -> [DDom] -> TDom -> [UVDom] -> [LMDom]
                    -> Flow Index -> Flow Vis -> Flow Vis
                    -> Strategy (Flow Image)
-continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] ixs vis0 vis
+continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
+                   ixs vis0 vis
  = implementing (summed vis0 vis) $ do
 
   -- Helpers
@@ -113,6 +117,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] ixs vis0 vis
 
   -- Intermediate Flow nodes
   let gridded = grid vis (gcf vis0) createGrid -- grid from vis
+      images = facetSum (idft gridded) createImage
       summed' = summed vis0 vis  -- images, summed over channels
 
   -- Distribute over nodes
@@ -121,39 +126,56 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] ixs vis0 vis
     -- Loop over data sets
     distribute ddom SeqSchedule $ do
 
-      -- Read in visibilities
-      rebind ixs $ scheduleSplit ddomss ddom
-      bind vis0 $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
+      -- Loop over facets
+      distribute (fst lmdom) SeqSchedule $ distribute (snd lmdom) SeqSchedule $ do
+        let fkern :: IsKernelDef kf => kf -> kf
+            fkern = regionKernel (fst lmdom) . regionKernel (snd lmdom)
+            rkern :: IsKernelDef kf => kf -> kf
+            rkern = dkern . fkern
 
-      -- Create w-binned domain, split
-      wdoms <- makeBinDomain $ dkern $ binSizer gpar tdom uvdom vis0
-      wdom <- split wdoms (gridBins gpar)
+        -- Read in visibilities
+        rebind ixs $ scheduleSplit ddomss ddom
+        bind vis0 $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
 
-      -- Loop over tiles
-      distribute (snd uvdom) SeqSchedule $ distribute (fst uvdom) SeqSchedule $ do
+        -- Create w-binned domain, split
+        wdoms <- makeBinDomain $ dkern $ binSizer gpar tdom uvdom vis0
+        wdom <- split wdoms (gridBins gpar)
 
-        -- Load GCFs
-        bindRule gcf $ dkern $ const $ gcfKernel gcfpar wdom
-        distribute wdom SeqSchedule $ calculate $ gcf vis0
+        -- Loop over tiles
+        distribute (snd uvdom) SeqSchedule $ distribute (fst uvdom) SeqSchedule $ do
 
-        -- Bin visibilities (could distribute, but there's no benefit)
-        rebind vis0 $ dkern $ binner gpar tdom uvdom wdom
+          -- Load GCFs
+          bindRule gcf $ rkern $ const $ gcfKernel gcfpar wdom
+          distribute wdom SeqSchedule $ calculate $ gcf vis0
 
-        -- Degrid / generate PSF (depending on vis)
-        bindRule degrid $ degridKernel gpar gcfpar ddomss ddom uvdom wdom uvdoms
-        bindRule psfVis $ dkern $ psfVisKernel uvdom wdom
-        calculate vis
+          -- Rotate visibilities
+          rebind vis0 $ dkern $ rotateKernel cfg lmdom tdom
 
-        -- Gridding
-        bind createGrid $ dkern $ gridInit gcfpar uvdom
-        bindRule grid $ dkern $ gridKernel gpar gcfpar uvdoms wdom uvdom
-        calculate gridded
+          -- Bin visibilities (could distribute, but there's no benefit)
+          rebind vis0 $ rkern $ binner gpar tdom uvdom wdom
 
-      -- Compute the result by detiling & iFFT on tiles
-      bind createGrid $ dkern $ gridInitDetile uvdoms
-      bind gridded $ dkern $ gridDetiling gcfpar uvdom uvdoms gridded createGrid
-      bindRule idft $ dkern $ ifftKern gpar uvdoms
-      calculate $ idft gridded
+          -- Degrid / generate PSF (depending on vis)
+          rule degrid $ \(gcfs :. uvgrid :. vis :. Z) -> do
+            rebind uvgrid $ distributeGrid ddomss ddom lmdom uvdoms
+            bind (degrid gcfs uvgrid vis) $ rkern $
+              degridKernel gpar gcfpar uvdom wdom uvdoms gcfs uvgrid vis
+          bindRule psfVis $ rkern $ psfVisKernel uvdom wdom
+          calculate vis
+
+          -- Gridding
+          bind createGrid $ rkern $ gridInit gcfpar uvdom
+          bindRule grid $ rkern $ gridKernel gpar gcfpar uvdoms wdom uvdom
+          calculate gridded
+
+        -- Compute the result by detiling & iFFT on tiles
+        bind createGrid $ rkern $ gridInitDetile uvdoms
+        bind gridded $ rkern $ gridDetiling gcfpar uvdom uvdoms gridded createGrid
+        bindRule idft $ rkern $ ifftKern gpar uvdoms
+        calculate $ idft gridded
+
+      -- Sum up facets
+      bind createImage $ dkern $ imageInit gpar
+      bind images $ dkern $ imageDefacet gpar lmdom (idft gridded) createImage
 
     -- Sum up images locally
     bind createImage $ regionKernel ddoms $ imageInit gpar
@@ -165,12 +187,12 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] ixs vis0 vis
   bind createImage $ regionKernel ddomss $ imageInit gpar
   bind summed' $ imageSum gpar ddoms ddomss summed' createImage
 
-continuumGridStrat _ _ _ _ _ _ _ = fail "continuumGridStrat: Not enough domain splits provided!"
+continuumGridStrat _ _ _ _ _ _ _ _ = fail "continuumGridStrat: Not enough domain splits provided!"
 
-majorIterationStrat :: Config -> [DDom] -> TDom -> [UVDom]
+majorIterationStrat :: Config -> [DDom] -> TDom -> [UVDom] -> [LMDom]
                    -> Flow Index -> Flow Vis -> Flow Image
                    -> Strategy (Flow Image, Flow Image)
-majorIterationStrat cfg ddom_s tdom uvdom_s ixs vis mod = do
+majorIterationStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis mod = do
 
   -- Calculate model grid using FFT (once)
   let gpar = cfgGrid cfg
@@ -181,7 +203,7 @@ majorIterationStrat cfg ddom_s tdom uvdom_s ixs vis mod = do
   -- Do continuum gridding for degridded visibilities. The actual
   -- degridding will be done in the inner loop, see continuumGridStrat.
   let vis' = degridModel vis mod
-  continuumGridStrat cfg ddom_s tdom uvdom_s ixs vis vis'
+  continuumGridStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis vis'
 
   -- Clean
   let cpar = cfgClean cfg
@@ -212,18 +234,23 @@ continuumStrat cfg = do
   -- Data flows we want to calculate
   vis <- uniq $ flow "vis" ixs
 
-  -- Create ranged domains for grid coordinates
+  -- Create ranged domains for image coordinates (split into facets)
   let gpar = cfgGrid cfg
+  ldoms <- makeRangeDomain 0 (gridImageWidth gpar)
+  mdoms <- makeRangeDomain 0 (gridImageHeight gpar)
+  ldom <- split ldoms (gridFacets gpar)
+  mdom <- split mdoms (gridFacets gpar)
+  let lmdom_s = [(ldoms, mdoms), (ldom, mdom)]
+
+  -- Create ranged domains for grid coordinates (split into tiles)
   udoms <- makeRangeDomain 0 (gridWidth gpar)
   vdoms <- makeRangeDomain 0 (gridHeight gpar)
-
-  -- Split and distribute over coordinate domain
   vdom <- split vdoms (gridTiles gpar)
   udom <- split udoms (gridTiles gpar)
   let uvdom_s = [(udoms, vdoms), (udom, vdom)]
 
   -- Compute PSF
-  psfFlow <- continuumGridStrat cfg ddom_s tdom uvdom_s ixs vis (psfVis vis)
+  psfFlow <- continuumGridStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis (psfVis vis)
   void $ bindNew $ regionKernel ddomss $ imageWriter gpar "psf.img" psfFlow
 
   -- Major loops
@@ -236,7 +263,7 @@ continuumStrat cfg = do
     calculate mod
 
     -- Run major loop iteration
-    majorIterationStrat cfg ddom_s tdom uvdom_s ixs vis mod
+    majorIterationStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis mod
 
   -- Write out model grid
   bind createImage $ regionKernel ddomss $ imageInit gpar

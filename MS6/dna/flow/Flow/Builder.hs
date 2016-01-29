@@ -13,7 +13,7 @@ module Flow.Builder
   -- * Kernel binding
   , IsReprs(..), IsReprKern(..), IsKernelDef(..)
   , kernel, Kernel
-  , bind, rebind, bindRule, bindNew
+  , bind, rebind, rule, bindRule, bindNew
   , recover, hints
   ) where
 
