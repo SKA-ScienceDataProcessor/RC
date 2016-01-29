@@ -59,13 +59,18 @@ bool inbound(const pre & p){
 
 template <int gsiz, int siz>
 struct streamset {
+  streamset() : n_in(0) {};
+
   const int nb = gsiz / siz;
   
   void put_point(const pre & p, const visData & vis){
     bins[p.u / siz][p.v / siz].push_back(vis);
+    n_in++;
   }
 
+  int n_in;
   vector<visData> bins[gsiz / siz][gsiz / siz];
+  buffer_t bufs[gsiz / siz][gsiz / siz];
 };
 
 // v should be preallocated with right size
@@ -104,16 +109,14 @@ int main(/* int argc, char * argv[] */)
   streamset<grid_size, gcf_size> ss;
 
   printf("Start binning!\n");
-  int n_in = 0;
   for(const visData & vd : vis) {
     pre p;
     p = prep(t2, vd);
     if (inbound(p)){
-      n_in++;
       ss.put_point(p, vd);
     }
   }
-  printf("%d of points are in bounds - %5.3f of the total number\n", n_in, double(n_in)/double(num_of_vis));
+  printf("%d of points are in bounds - %5.3f of the total number\n", ss.n_in, double(ss.n_in)/double(num_of_vis));
 
   vector<complexd> gcf(gcf_storage_size);
 
@@ -133,7 +136,7 @@ int main(/* int argc, char * argv[] */)
 
   buffer_t
       gcf_buffer = mkHalideBuf<double>(over2, gcf_size, gcf_size, 2)
-    , uvg_buffer = mkHalideBuf<double>(grid_size, grid_size, 2)
+    , uvg_buffer = mkHalideBuf<double>(grid_pitch, grid_size, 2)
     ;
 
   gcf_buffer.host = tohost(gcf.data());
@@ -143,18 +146,28 @@ int main(/* int argc, char * argv[] */)
 
   printf("Marshal zero grid and GCF to GPU!\n");
 
-  // We manually marshal the data to GPU
-  // and set 'host_dirty' to false and host pointer to null
-  // to *prevent* each kernel from creating it's own copy
-  // of uvg and gcf buffers on GPU and marshaling the data into them
-  // FIXME: now each kernel implicitly marshals it's part of visibility data
-  // to GPU and this time is added to a kernel time.
-  // Make visibility data marshalling a separate step!
-  res = halide_copy_to_device(nullptr, &gcf_buffer, cuface); __CK
-  gcf_buffer.host_dirty = false; gcf_buffer.host = nullptr;
+  #define __RESET(b)       \
+     b.host_dirty = false; \
+     b.dev_dirty = false;  \
+     b.host = nullptr;
 
+  res = halide_copy_to_device(nullptr, &gcf_buffer, cuface); __CK
+  __RESET(gcf_buffer)
   res = halide_copy_to_device(nullptr, &uvg_buffer, cuface); __CK
-  uvg_buffer.host_dirty = false; uvg_buffer.host = nullptr;
+  __RESET(uvg_buffer)
+  
+  // FIXME: I tried to make the single `sizeof(visData) * ss.n_in` bytes
+  // allocation on device and then only marshal the data to already
+  // allocated memory, but that didn't worked out-of-the-box.
+  // Investigate further!
+  for (int i=0; i < ss.nb; i++)
+  for (int j=0; j < ss.nb; j++)
+  if (! ss.bins[i][j].empty()) {
+    ss.bufs[i][j] = mkHalideBuf<double>(ss.bins[i][j].size(), sizeof(visData)/sizeof(double));
+    ss.bufs[i][j].host = tohost(ss.bins[i][j].data());
+    res = halide_copy_to_device(nullptr, &ss.bufs[i][j], cuface); __CK
+    __RESET(ss.bufs[i][j])
+  }
 
   auto mk_grid_func = [&](buffer_t vis_buffer) {
     return [&] {
@@ -170,12 +183,11 @@ int main(/* int argc, char * argv[] */)
     for (int i=si; i < ss.nb; i+=2)
     for (int j=sj; j < ss.nb; j+=2)
     if (! ss.bins[i][j].empty()) {
-      buffer_t vis_buffer = mkHalideBuf<double>(ss.bins[i][j].size(),5);
-      vis_buffer.host = tohost(vis.data());
-      threads.push_back(thread(mk_grid_func(vis_buffer)));
+      threads.push_back(thread(mk_grid_func(ss.bufs[i][j])));
     }
 
     for (thread & t : threads) t.join();
+    printf("Bunch (%d,%d) finished!\n", si, sj);
   };
 
   run_bunch(0,0);
@@ -189,5 +201,6 @@ int main(/* int argc, char * argv[] */)
   res = halide_copy_to_host(nullptr, &uvg_buffer); __CK
   printf("Done.\n");
 
+  // FIXME: Add cleanup (for purists).
   return 0;
 }
