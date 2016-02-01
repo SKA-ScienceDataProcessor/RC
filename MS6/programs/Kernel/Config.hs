@@ -7,21 +7,23 @@ import Control.Applicative
 import Data.Yaml
 
 data Config = Config
-  { cfgInput  :: [OskarInput] -- ^ Input Oskar files
-  , cfgPoints :: Int      -- ^ Number of points to read from Oskar file
-  , cfgNodes  :: Int      -- ^ Number of data sets to process in parallel
-  , cfgLoops  :: Int      -- ^ Number of major loops to run
-  , cfgLong   :: Double   -- ^ Phase centre longitude
-  , cfgLat    :: Double   -- ^ Phase centre latitude
-  , cfgOutput :: FilePath -- ^ File name for the output image
-  , cfgGrid   :: GridPar
-  , cfgGCF    :: GCFPar
-  , cfgClean  :: CleanPar
+  { cfgInput    :: [OskarInput] -- ^ Input Oskar files
+  , cfgPoints   :: Int      -- ^ Number of points to read from Oskar file
+  , cfgPointsIn :: Int      -- ^ Number of points fit into bounds
+  , cfgNodes    :: Int      -- ^ Number of data sets to process in parallel
+  , cfgLoops    :: Int      -- ^ Number of major loops to run
+  , cfgLong     :: Double   -- ^ Phase centre longitude
+  , cfgLat      :: Double   -- ^ Phase centre latitude
+  , cfgOutput   :: FilePath -- ^ File name for the output image
+  , cfgGrid     :: GridPar
+  , cfgGCF      :: GCFPar
+  , cfgClean    :: CleanPar
   }
 instance FromJSON Config where
   parseJSON (Object v)
     = Config <$> v .: "input"
              <*> v .: "points"
+             <*> v .: "points_in"
              <*> v .: "nodes"
              <*> (v .: "loops" <|> return (cfgLoops defaultConfig))
              <*> (v .: "long" <|> return (cfgLong defaultConfig))
@@ -91,16 +93,17 @@ instance FromJSON CleanPar where
 -- implementations where paramters actually matter.
 defaultConfig :: Config
 defaultConfig = Config
-  { cfgInput  = []
-  , cfgPoints = 32131 * 200
-  , cfgNodes  = 0
-  , cfgLoops  = 1
-  , cfgLong   = 72.1 / 180 * pi -- mostly arbitrary, and probably wrong in some way
-  , cfgLat    = 42.6 / 180 * pi -- ditto
-  , cfgOutput = ""
-  , cfgGrid   = GridPar 0 0 0 0 1 1 1
-  , cfgGCF    = GCFPar 0 8 ""
-  , cfgClean  = CleanPar 0 0 0
+  { cfgInput    = []
+  , cfgPoints   = 32131 * 200
+  , cfgPointsIn = 32131 * 200
+  , cfgNodes    = 0
+  , cfgLoops    = 1
+  , cfgLong     = 72.1 / 180 * pi -- mostly arbitrary, and probably wrong in some way
+  , cfgLat      = 42.6 / 180 * pi -- ditto
+  , cfgOutput   = ""
+  , cfgGrid     = GridPar 0 0 0 0 1 1 1
+  , cfgGCF      = GCFPar 0 8 ""
+  , cfgClean    = CleanPar 0 0 0
   }
 
 -- | Image dimensions for all facets together

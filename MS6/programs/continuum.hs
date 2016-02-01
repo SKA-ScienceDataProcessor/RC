@@ -162,14 +162,14 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
           -- Degrid / generate PSF (depending on vis)
           rule degrid $ \(gcfs :. uvgrid :. vis' :. Z) -> do
             rebind uvgrid $ distributeGrid ddomss ddom lmdom uvdoms
-            bind (degrid gcfs uvgrid vis') $ rkern $ hints [floatHint] $
+            bind (degrid gcfs uvgrid vis') $ rkern $ hints [floatHint {hintDoubleOps = 8 * cfgPointsIn cfg}] $
               degridKernel gpar gcfpar uvdom wdom uvdoms gcfs uvgrid vis'
           bindRule psfVis $ rkern $ psfVisKernel uvdom wdom
           calculate vis
 
           -- Gridding
           bind createGrid $ rkern $ gridInit gcfpar uvdom
-          bindRule grid $ rkern $ hints [floatHint] $ gridKernel gpar gcfpar uvdoms wdom uvdom
+          bindRule grid $ rkern $ hints [floatHint {hintDoubleOps = 8 * cfgPointsIn cfg}] $ gridKernel gpar gcfpar uvdoms wdom uvdom
           calculate gridded
 
         -- Compute the result by detiling & iFFT on tiles
