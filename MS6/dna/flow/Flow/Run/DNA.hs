@@ -179,7 +179,8 @@ execSteps topDeps steps = do
       forM_ (IM.assocs discardMap) $ \(kid, (_repr, m)) ->
         forM_ (Map.assocs m) $ \(rbox, v) -> lift $ do
           logMessage $ "Discarding buffer " ++ show kid ++ " for region box " ++ show rbox
-          kernel ("discard" ++ show kid) [] $ liftIO $
+          -- kernel ("discard" ++ show kid) [] $ liftIO $
+          kernel "" [] $ liftIO $
             freeVector v
 
 -- | Generate code for schedule step. As before, the kernel set is all
