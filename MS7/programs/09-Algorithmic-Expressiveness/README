@@ -1,0 +1,12 @@
+Algorithmic Expressiveness
+==========================
+
+Requirements
+------------
+
+A data flow program will perform a data dependent decision, invoke different actors in the branches of the decision and exit.   Another data flow program will approximate a square root using Newton's algorithm and exit when the square of the result is sufficiently small.
+
+Implementation
+--------------
+
+(pretty straighforward)

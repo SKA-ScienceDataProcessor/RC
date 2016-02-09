@@ -1,0 +1,12 @@
+Support for SMP CPU and GPU
+===========================
+
+Requirements
+------------
+
+A data flow program can be created which optionally runs an actor on the GPU and optionally runs another actor on an SMP CPU.
+
+Implementation
+--------------
+
+Have to look at Legion's built-in support for computation on GPU.

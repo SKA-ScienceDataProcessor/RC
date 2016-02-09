@@ -1,0 +1,14 @@
+SLURM interoperability
+======================
+
+Running Regent/Legion programs using SLURM on cluster.
+
+Requirements
+------------
+
+ # Print information about nodes in a job
+
+Implementation
+--------------
+
+GASnet allows to peek into nodes' information, it seems. But it depends on "conduit" type (communication channel).

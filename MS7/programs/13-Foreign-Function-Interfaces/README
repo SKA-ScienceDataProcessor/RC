@@ -1,0 +1,18 @@
+Foreign function interfaces: C++/OpenMP, and MPI programs execute inside Actors
+===============================================================================
+
+
+Requirements
+------------
+
+An actor in a data flow program shall be able to call C++ functions, parallelized with OpenMP and can leverage MPI programs.
+
+Implementation
+--------------
+
+TODO
+
+Notes
+-----
+
+This is actually three different programs, which have to be built separately (OpenMP is not required for C++).

@@ -1,0 +1,22 @@
+Cluster awareness and static scheduling
+=======================================
+
+Requirements
+------------
+
+The data flow system shall make the programs aware of the cluster architecture.  A sample data flow program will
+
+ # Find the nodes in the cluster
+ # Define a tree structure
+ # Have a coordinator run at level 0
+ # Start processes on level 1
+ # The level 1 processes start island groups of other processes at level 2
+ # The processes at level 2 can have $1...N$ cores per process, and $K$ GB of RAM per process. 
+ # The cluster architecture and process tree with its resources is printed out
+
+Implementation
+--------------
+
+Finding nodes on cluster is implicit in Legion runtime.
+
+The coordination can be done through coloring - we partition data on different nodes using "colors" (node indices).
