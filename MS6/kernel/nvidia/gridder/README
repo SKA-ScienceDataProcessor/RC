@@ -1,0 +1,7 @@
+This is an adaptation of GPU gridder form NVidia: https://github.com/SKA-ScienceDataProcessor/GPUGrid.
+
+Only gather gridder variant is extracted.
+
+API is adapted to be usable on real-world data. Essentially right now only 5-tuples variant can be used out of the box (separate uvw-triples and complex amplitudes won't work because we shouldn't sort uvw triples separately).
+
+Sort utility is improved (sorter is inlined) and factored out of the test code, thus we have isolated library API, usable from any clent code.

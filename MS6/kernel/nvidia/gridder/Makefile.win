@@ -1,0 +1,25 @@
+all: test.exe testc.exe
+
+clean:
+	del *.exe *.exp *.obj *.lib
+
+grid_gpu.obj : grid_gpu.cu Defines.h grid_gpu.cuh cucommon.cuh
+	nvcc -c grid_gpu.cu -o grid_gpu.obj
+
+grid_gpuc.obj : grid_gpuc.cu grid_gpu.cu Defines.h grid_gpu.cuh cucommon.cuh
+	nvcc -c grid_gpuc.cu -o grid_gpuc.obj
+
+cucommon.obj : cucommon.cu Defines.h cucommon.cuh
+	nvcc -c cucommon.cu -o cucommon.obj
+
+binsort.obj : binsort.cu grid_gpu.cuh Defines.h
+	nvcc -c binsort.cu -o binsort.obj
+
+GPUGrid.lib: grid_gpu.obj grid_gpuc.obj cucommon.obj binsort.obj
+	lib /OUT:GPUGrid.lib grid_gpu.obj grid_gpuc.obj cucommon.obj binsort.obj
+
+test.exe : test.cu grid_gpu.cuh Defines.h GPUGrid.lib
+	nvcc -o test test.cu GPUGrid.lib
+
+testc.exe : test.cu grid_gpu.cuh Defines.h GPUGrid.lib
+	nvcc -D__COMBINED -o testc test.cu GPUGrid.lib
