@@ -5,26 +5,28 @@
 
 template <typename T> inline
 void bin_sort(T * in, int npts){
-  // auto comparer = [npts] (T A, T B) {
   auto comparer = [npts] (const T & A, const T & B) {
-    int blocksize = GCF_DIM/2;
-    int mainxa = floor(A.x);
-    int mainxb = floor(B.x);
-    int mainya = floor(A.y);
-    int mainyb = floor(B.y);
-    int gridxa = mainxa/blocksize;
-    int gridxb = mainxb/blocksize;
-    int gridya = mainya/blocksize;
-    int gridyb = mainyb/blocksize;
+    int
+       blocksize = GCF_DIM/2
+     , mainxa = floor(A.x)
+     , mainxb = floor(B.x)
+     , mainya = floor(A.y)
+     , mainyb = floor(B.y)
+     , gridxa = mainxa/blocksize
+     , gridxb = mainxb/blocksize
+     , gridya = mainya/blocksize
+     , gridyb = mainyb/blocksize
+     ; 
     if (gridya*(IMG_SIZE+blocksize-1)/blocksize+gridxa >
-        gridyb*(IMG_SIZE+blocksize-1)/blocksize+gridxb) return 1;
+        gridyb*(IMG_SIZE+blocksize-1)/blocksize+gridxb) return false;
     if (gridya*(IMG_SIZE+blocksize-1)/blocksize+gridxa <
-        gridyb*(IMG_SIZE+blocksize-1)/blocksize+gridxb) return -1;
-    double suba = GCF_GRID*(A.x-mainxa) + A.y-mainya;
-    double subb = GCF_GRID*(B.x-mainxb) + B.y-mainyb;
-    if (suba > subb) return 1;
-    if (suba < subb) return -1;
-    return  0;
+        gridyb*(IMG_SIZE+blocksize-1)/blocksize+gridxb) return true;
+    double
+        suba = GCF_GRID*(A.x-mainxa) + A.y-mainya
+      , subb = GCF_GRID*(B.x-mainxb) + B.y-mainyb
+      ;
+    if (suba > subb) return false;
+    return true;
   };
   std::sort(in, in+npts, comparer);
 }
