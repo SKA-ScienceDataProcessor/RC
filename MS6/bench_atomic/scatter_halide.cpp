@@ -126,9 +126,14 @@ SGridder::SGridder(
    inBound.compute_at(uvg, rvis_inner);
    inBound.gpu_threads(t);
 
+   RVar rgcfxc, rall;
    uvg.update().allow_race_conditions()
-       .split(rvis, rvis_outer, rvis_inner, 200)
-       .gpu_blocks(rvis_outer)
-       .gpu_threads(rgcfx)
-       .unroll(rcmplx);
+      .fuse(rgcfx, rcmplx, rgcfxc)
+      .fuse(rgcfy, rgcfxc, rall)
+      .split(rvis, rvis_outer, rvis_inner, 200)
+      .gpu_blocks(rvis_outer)
+      // .gpu_threads(rgcfx)
+      .gpu_threads(rall)
+      // .unroll(rcmplx)
+      ;
 }
