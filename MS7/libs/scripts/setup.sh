@@ -1,16 +1,20 @@
-#!/bin/sh
+#!/bin/bash
 
 # Setting up the environment to build everything - download packages, build them, etc.
 
 # The root dir is a level above SKA-RC root.
-MS7_DIR = `pwd`/../..
-ROOT = `pwd`/../../../..
+export MS7_DIR="`pwd`/../.."
+export ROOT="`pwd`/../../../.."
+
+# The directory to have all builds in. Easier to clean.
+export BUILDDIR="$ROOT/build"
+mkdir -p $BUILDDIR
 
 # Clean the environment.
-./clean.sh
+./clean-env.sh
 
 # Going to the root.
-cd $ROOT
+cd $BUILDDIR
 
 # -- GASnet --------------------------------------------------------------------
 # Right now GASnet does not seem to be available in any modules on cluster.
@@ -19,13 +23,13 @@ cd $ROOT
 git clone https://github.com/thesz/GASnet.git GASnet
 
 # Build it for cluster architecture.
-cd GASnet
+cd GASnet/GASNet-1.26.0
 # XXX: figure out flags. Right now - UDP.
 ./configure
 make
-cd ..
+cd ../..
 
-GASNET_BIN = $ROOT/GASnet/bin
+set GASNET_BIN = $ROOT/GASnet/GASNet-1.26.0/bin
 
 # -- Terra ---------------------------------------------------------------------
 # Terra also unavailable.
@@ -33,10 +37,10 @@ GASNET_BIN = $ROOT/GASnet/bin
 git clone https://github.com/zdevito/terra.git terra
 cd terra
 ./configure
-make || die "terra build failed."
+make
 cd ..
 
-TERRA_BIN = $ROOT/terra/release/bin
+set TERRA_BIN = $ROOT/terra/release/bin
 
 TERRA = $TERRA_BIN/terra
 
