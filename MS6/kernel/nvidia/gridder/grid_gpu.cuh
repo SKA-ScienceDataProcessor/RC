@@ -9,9 +9,6 @@ struct combined {
   double x, y, z, a_re, a_im;
 };
 
-__global__ void vis2ints(double2 *vis_in, int2* vis_out, int npts);
-__global__ void set_bookmarks(int2* vis_in, int npts, int blocksize, int blockgrid, int* bookmarks);
-
 // GCF size is hardcoded and defined in Defines.h
 
 extern "C" {
