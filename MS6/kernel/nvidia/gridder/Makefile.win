@@ -15,8 +15,11 @@ cucommon.obj : cucommon.cu Defines.h cucommon.cuh
 binsort.obj : binsort.cu grid_gpu.cuh Defines.h
 	nvcc -c binsort.cu -o binsort.obj
 
-GPUGrid.lib: grid_gpu.obj grid_gpuc.obj cucommon.obj binsort.obj
-	lib /OUT:GPUGrid.lib grid_gpu.obj grid_gpuc.obj cucommon.obj binsort.obj
+halide_api.obj: halide_api.cu grid_gpu.cuh
+	nvcc -c halide_api.cu -o halide_api.obj
+
+GPUGrid.lib: grid_gpu.obj grid_gpuc.obj cucommon.obj binsort.obj halide_api.obj
+	lib /OUT:GPUGrid.lib grid_gpu.obj grid_gpuc.obj cucommon.obj binsort.obj halide_api.obj
 
 test.exe : test.cu grid_gpu.cuh Defines.h GPUGrid.lib
 	nvcc -o test test.cu GPUGrid.lib
