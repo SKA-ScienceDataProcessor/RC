@@ -13,7 +13,7 @@ import Foreign.Marshal.Array
 import Foreign.Storable
 
 #ifdef USE_CUDA
-import Foreign.CUDA.Ptr (DevicePtr)
+import Foreign.CUDA.Ptr (DevicePtr, nullDevPtr)
 #endif
 
 -- | Wrapper for buffer_t data type. It's managed by haskell GC
@@ -55,10 +55,24 @@ setHostDirty = setDirty 68
 setDeviceDirty = setDirty 69
 
 #ifdef USE_CUDA
+-- foreign import ccall unsafe
+halide_cuda_wrap_device_ptr :: Ptr () -> Ptr () -> DevicePtr a -> IO ()
+-- Not enabled yet
+halide_cuda_wrap_device_ptr _user_ctx _buffer_t _dev_ptr = return ()
+
 setDevicePtr :: BufferT -> DevicePtr a -> IO ()
 setDevicePtr (BufferT fptr) buf =
   withForeignPtr fptr $ \p ->
-    pokeElemOff (castPtr p) 0 buf
+    halide_cuda_wrap_device_ptr nullPtr p buf
+
+-- foreign import ccall unsafe
+halide_cuda_detach_device_ptr :: Ptr () -> Ptr () -> IO (DevicePtr a)
+-- Not enabled yet. Stub only
+halide_cuda_detach_device_ptr _user_ctx _buffer_t = return nullDevPtr
+
+detachDevicePtr :: BufferT -> IO (DevicePtr a)
+detachDevicePtr (BufferT fptr) =
+  withForeignPtr fptr $ halide_cuda_detach_device_ptr nullPtr
 #endif
 
 setBufferExtents :: BufferT -> Int32 -> Int32 -> Int32 -> Int32 -> IO ()
