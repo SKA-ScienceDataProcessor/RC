@@ -40,7 +40,7 @@ executable dotproduct
                        kernel/cpu/dotproduct/recovery.cpp
                        kernel/cpu/dotproduct/dotp.cpp
                        kernel/cpu/dotproduct/sum.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lm -lstdc++ -lHalide
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lstdc++ -lHalide -lpthread -ldl -lz -lm
 
 executable imaging
   default-language:    Haskell2010
@@ -96,7 +96,7 @@ executable gridding
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp
                        kernel/cpu/gridding/fft.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lstdc++ -lHalide -lpthread -ldl -lz -lm
 
 executable facetting
   default-language:    Haskell2010
@@ -128,7 +128,7 @@ executable facetting
                        kernel/cpu/gridding/image_init.cpp
                        kernel/cpu/gridding/defacet.cpp
                        kernel/cpu/gridding/image_sum.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lstdc++ -lHalide -lpthread -ldl -lz -lm
 
 executable continuum
   default-language:    Haskell2010
@@ -172,4 +172,4 @@ executable continuum
   else
     x-halide-sources:  kernel/cpu/gridding/hogbom.cpp
 
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lstdc++ -lHalide -lpthread -ldl -lz -lm
