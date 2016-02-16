@@ -41,7 +41,7 @@ SGridder::SGridder(
 
   // Grid starts out undefined so we can update the output buffer
   F(uvg);
-  uvg(cmplx, x, y) = cast<double>(0.0f); // undef<double>();
+  uvg(cmplx, x, y) = /* cast<double>(0.0f); */ undef<double>();
 
   // Get grid limits. This limits the uv pixel coordinates we accept
   // for the top-left corner of the GCF.

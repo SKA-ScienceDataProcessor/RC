@@ -143,7 +143,9 @@ int main(/* int argc, char * argv[] */)
 
   vis_buffer.host_dirty = true;
   gcf_buffer.host_dirty = true;
+  uvg_buffer.host_dirty = true;
 
+#if 0
   // Spare run ... only to copy vis and gcf to the device ...
   kern_scatter_gpu(t2, gridSize, &vis_buffer, &gcf_buffer, &uvg_buffer);
   halide_device_sync(nullptr, &uvg_buffer);
@@ -151,15 +153,16 @@ int main(/* int argc, char * argv[] */)
   vis_buffer.host_dirty = false;
   gcf_buffer.host_dirty = false;
   uvg_buffer.dev_dirty = false;
+#endif
 
   printf("GPU gridder started!\n"); 
   clock_start();
   if ( kern_scatter_gpu(t2, gridSize, &vis_buffer, &gcf_buffer, &uvg_buffer) != 0 ){
     printf("Broken!\n"); 
   }
-  halide_device_sync(nullptr, &uvg_buffer);
+  // halide_device_sync(nullptr, &uvg_buffer);
   printf("GPU gridder finished in " TTF "!\nNormalizing ...\n", clock_diff()); fflush(stdout);
-  halide_copy_to_host(nullptr, &uvg_buffer);
+  // halide_copy_to_host(nullptr, &uvg_buffer);
 
   clock_start();
   normalizeCPU(
