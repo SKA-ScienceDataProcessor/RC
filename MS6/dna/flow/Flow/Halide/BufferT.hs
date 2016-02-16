@@ -42,6 +42,18 @@ setHostPtr (BufferT fptr) buf =
   withForeignPtr fptr $ \p ->
     pokeByteOff (castPtr p) 8 buf
 
+setDirty :: Int -> BufferT -> Bool -> IO ()
+setDirty off (BufferT fptr) d =
+  withForeignPtr fptr $ \p ->
+    poke (p `plusPtr` off) dbyte
+  where
+    dbyte :: Int8
+    dbyte = fromIntegral (fromEnum d)
+
+setHostDirty, setDeviceDirty :: BufferT -> Bool -> IO ()
+setHostDirty = setDirty 68
+setDeviceDirty = setDirty 69
+
 #ifdef USE_CUDA
 setDevicePtr :: BufferT -> DevicePtr a -> IO ()
 setDevicePtr (BufferT fptr) buf =
