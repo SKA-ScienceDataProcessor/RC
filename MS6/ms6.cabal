@@ -166,10 +166,11 @@ executable continuum
                        kernel/cpu/gridding/image_sum.cpp
                        kernel/cpu/gridding/psf_vis.cpp
                        kernel/cpu/gridding/degrid.cpp
+                       kernel/gpu/gridding/scatter_gpu.cpp
   if flag(combHogbom)
     x-halide-sources:  kernel/cpu/gridding/hogbom_inner.cpp
     c-sources:         kernel/cpu/gridding/hogbom_outer.cpp
   else
     x-halide-sources:  kernel/cpu/gridding/hogbom.cpp
 
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lstdc++ -lHalide -lpthread -ldl -lz -lm
+  x-halide-options:    -Wall -fno-strict-aliasing -fno-rtti -std=c++11 -lstdc++ -lHalide -lpthread -ldl -lz -lm
