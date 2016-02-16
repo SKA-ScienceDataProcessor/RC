@@ -218,9 +218,9 @@ instance MarshalArray Dim0 where
     setBufferMin     buf 1 0 0 0
     setBufferExtents buf 1 0 0 0
     case arr of
-      CVector _ p -> setHostPtr buf (castPtr p)
+      CVector _ p -> setDirtyHostPtr buf (castPtr p)
 #ifdef USE_CUDA
-      HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
+      HostVector   _ (HostPtr p) -> setDirtyHostPtr buf (castPtr p)
       DeviceVector _ p -> setDevicePtr buf (castDevPtr p)
 #endif
     return buf
@@ -238,9 +238,9 @@ instance MarshalArray Dim1 where
     setBufferMin     buf  off 0 0 0
     setBufferExtents buf size 0 0 0
     case arr of
-      CVector _ p -> setHostPtr buf (castPtr p)
+      CVector _ p -> setDirtyHostPtr buf (castPtr p)
 #ifdef USE_CUDA
-      HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
+      HostVector   _ (HostPtr p) -> setDirtyHostPtr buf (castPtr p)
       DeviceVector _ p -> setDevicePtr buf (castDevPtr p)
 #endif
     return buf
@@ -258,9 +258,9 @@ instance MarshalArray Dim2 where
     setBufferMin     buf  off  off1 0 0
     setBufferExtents buf size size1 0 0
     case arr of
-      CVector _ p -> setHostPtr buf (castPtr p)
+      CVector _ p -> setDirtyHostPtr buf (castPtr p)
 #ifdef USE_CUDA
-      HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
+      HostVector   _ (HostPtr p) -> setDirtyHostPtr buf (castPtr p)
       DeviceVector _ p -> setDevicePtr buf (castDevPtr p)
 #endif
     return buf
@@ -278,9 +278,9 @@ instance MarshalArray Dim3 where
     setBufferMin     buf  off  off1         off2 0
     setBufferExtents buf size size1        size2 0
     case arr of
-      CVector _ p -> setHostPtr buf (castPtr p)
+      CVector _ p -> setDirtyHostPtr buf (castPtr p)
 #ifdef USE_CUDA
-      HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
+      HostVector   _ (HostPtr p) -> setDirtyHostPtr buf (castPtr p)
       DeviceVector _ p -> setDevicePtr buf (castDevPtr p)
 #endif
     return buf
@@ -299,9 +299,9 @@ instance MarshalArray Dim4 where
     setBufferMin     buf  off  off1         off2              off3
     setBufferExtents buf size size1        size2             size3
     case arr of
-      CVector _ p -> setHostPtr buf (castPtr p)
+      CVector _ p -> setDirtyHostPtr buf (castPtr p)
 #ifdef USE_CUDA
-      HostVector   _ (HostPtr p) -> setHostPtr   buf (castPtr p)
+      HostVector   _ (HostPtr p) -> setDirtyHostPtr buf (castPtr p)
       DeviceVector _ p -> setDevicePtr buf (castDevPtr p)
 #endif
     return buf

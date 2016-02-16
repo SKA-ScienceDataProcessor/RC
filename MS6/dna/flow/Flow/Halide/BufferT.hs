@@ -54,6 +54,9 @@ setHostDirty, setDeviceDirty :: BufferT -> Bool -> IO ()
 setHostDirty = setDirty 68
 setDeviceDirty = setDirty 69
 
+setDirtyHostPtr :: BufferT -> Ptr () -> IO ()
+setDirtyHostPtr buf p = setHostPtr buf p >> setHostDirty buf True
+
 #ifdef USE_CUDA
 -- foreign import ccall unsafe
 halide_cuda_wrap_device_ptr :: Ptr () -> Ptr () -> DevicePtr a -> IO ()
