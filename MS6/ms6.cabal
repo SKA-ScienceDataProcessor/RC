@@ -173,8 +173,8 @@ executable continuum
   else
     x-halide-sources:  kernel/cpu/gridding/hogbom.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -fno-rtti -std=c++11 -lstdc++ -lHalide -lpthread -ldl -lz -lm
-  x-cuda-sources:      kernel/gpu/gridding_nvidia/binsort.cu
-                       kernel/gpu/gridding_nvidia/cucommon.cu
-                       kernel/gpu/gridding_nvidia/grid_gpuc.cu
-                       kernel/gpu/gridding_nvidia/halide_api.cu
+  x-cuda-sources:      kernel/nvidia/gridder/binsort.cu
+                       kernel/nvidia/gridder/cucommon.cu
+                       kernel/nvidia/gridder/grid_gpuc.cu
+                       kernel/nvidia/gridder/halide_api.cu
   x-cuda-options:      -D_MWAITXINTRIN_H_INCLUDED -std=c++11 -arch=sm_35
