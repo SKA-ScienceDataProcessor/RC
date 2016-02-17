@@ -189,10 +189,10 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
        return  bi { ldOptions = ldOptions bi ++ outputFiles }
 
   -- Finally build Halide object files
-  let halideOptLine = fromMaybe "" $ lookup "x-halide-options" (customFieldsBI bi)
+  let halideOptLine = fromMaybe "" $ lookup "x-halide-options" (customFieldsBI bi')
       halideOpts = concat $ parseOpt (sepBy parseTokenQ' (munch1 isSpace)) halideOptLine
-  bi'' <- case filter ((== "x-halide-sources") . fst) (customFieldsBI bi) of
-     []             -> return bi
+  bi'' <- case filter ((== "x-halide-sources") . fst) (customFieldsBI bi') of
+     []             -> return bi'
      halideSrcLines -> do
 
        let parses = parseOpt (parseOptCommaList parseFilePathQ) (intercalate "," $ map snd halideSrcLines)
@@ -206,15 +206,15 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
                putStrLn $ "Building Halide source " ++ src ++ "..."
                invalidate
                runProgram verbose gcc $ concat
-                 [ map ("-I"++) (PD.includeDirs bi)
-                 , map ("-L"++) (PD.extraLibDirs bi)
+                 [ map ("-I"++) (PD.includeDirs bi')
+                 , map ("-L"++) (PD.extraLibDirs bi')
                  , [src, "-o", gen]
                  , halideOpts
                  ]
                runProgramInvocation verbose $ simpleProgramInvocation gen [out]
 
        -- Yet again, hackily link the results in.
-       return bi { ldOptions = ldOptions bi ++ outputFiles }
+       return bi' { ldOptions = ldOptions bi' ++ outputFiles }
 
   return (bi'', cubins)
 
