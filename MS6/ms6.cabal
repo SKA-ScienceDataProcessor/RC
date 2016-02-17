@@ -134,7 +134,7 @@ executable continuum
   default-language:    Haskell2010
   cpp-options:         -DUSE_CUDA
   ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
-  extra-libraries:     cudart pthread
+  extra-libraries:     Halide cudart pthread
   Hs-source-dirs:      programs
   main-is:             continuum.hs
   other-modules:
@@ -157,6 +157,8 @@ executable continuum
     directory,
     filepath,
     yaml
+  c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
+  cc-options:          -std=c++11
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp
