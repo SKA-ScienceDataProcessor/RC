@@ -93,7 +93,7 @@ executable gridding
     fixed-vector-hetero,
     yaml
   c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
-  cc-options:          -std=c++11
+  cc-options:          -std=c++11 -Ikernel/common
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp
@@ -124,7 +124,7 @@ executable facetting
     fixed-vector-hetero,
     yaml
   c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
-  cc-options:          -std=c++11
+  cc-options:          -std=c++11 -Ikernel/common
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp
@@ -164,7 +164,7 @@ executable continuum
     filepath,
     yaml
   c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
-  cc-options:          -std=c++11
+  cc-options:          -std=c++11 -Ikernel/common
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp
@@ -186,4 +186,4 @@ executable continuum
                        kernel/nvidia/gridder/cucommon.cu
                        kernel/nvidia/gridder/grid_gpuc.cu
                        kernel/nvidia/gridder/halide_api.cu
-  x-cuda-options:      -D_MWAITXINTRIN_H_INCLUDED -std=c++11 -arch=sm_35
+  x-cuda-options:      -D_MWAITXINTRIN_H_INCLUDED -std=c++11 -Ikernel/common -arch=sm_35
