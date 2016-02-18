@@ -1,15 +1,14 @@
-#ifdef _MSC_VER
-#pragma warning(push, 0)
-#endif
-#include "Halide.h"
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include <stdio.h>
+#include "halide_buf.h"
 
-using namespace Halide;
+extern "C" {
+// Halide runtime
+int halide_device_sync(void *user_context, struct buffer_t *buf);
+int halide_copy_to_host(void *user_context, struct buffer_t *buf);
 
-extern "C"
+// Kernel generated
 int kern_scatter_gpu(const double _scale, const int32_t _grid_size, buffer_t *_vis_buffer, buffer_t *_gcf_buffer, buffer_t *_uvg_buffer);
+}
 
 #define __CK if (res != 0) {printf("Error: %d\n", res); return res; }
 

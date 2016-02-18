@@ -74,7 +74,7 @@ executable binning
 executable gridding
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
-  extra-libraries:     Halide pthread
+  extra-libraries:     pthread
   Hs-source-dirs:      programs
   main-is:             gridding.hs
   other-modules:
@@ -104,7 +104,7 @@ executable gridding
 executable facetting
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
-  extra-libraries:     Halide pthread
+  extra-libraries:     pthread
   Hs-source-dirs:      programs
   main-is:             facetting.hs
   other-modules:
@@ -140,7 +140,7 @@ executable continuum
   default-language:    Haskell2010
   cpp-options:         -DUSE_CUDA
   ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
-  extra-libraries:     Halide cudart pthread
+  extra-libraries:     cudart pthread
   Hs-source-dirs:      programs
   main-is:             continuum.hs
   other-modules:
