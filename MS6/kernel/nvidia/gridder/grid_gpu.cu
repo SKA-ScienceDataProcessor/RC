@@ -60,7 +60,11 @@ __global__ void set_bookmarks(int2* vis_in, int npts, int blocksize, int blockgr
 }
 
 __global__ void
+#if POLARIZATIONS == 1
+__launch_bounds__(1024, 2)
+#else
 __launch_bounds__(GCF_DIM*GCF_DIM/4/4/GCF_STRIPES/PTS, 12)
+#endif
 grid_kernel_gather(CmplxType* out, int2* in, CmplxType* in_vals, size_t npts,
                               int img_dim, CmplxType* gcf, int* bookmarks, int yoff) {
    int2 __shared__ inbuff[32];
