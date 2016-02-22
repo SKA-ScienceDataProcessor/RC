@@ -19,20 +19,37 @@ gridInit :: GCFPar -> UVDom -> Kernel UVGrid
 gridInit gcfp uvdom = halideKernel0 "gridInit" (uvgMarginRepr gcfp uvdom) kern_init
 foreign import ccall unsafe kern_init :: HalideFun '[] UVGRepr
 
--- | Gridder kernel binding
-gridKernel :: GridPar -> GCFPar    -- ^ Configuration
-           -> UVDom -> WDom        -- ^ u/v/w visibility domains
-           -> UVDom                -- ^ u/v grid domains
-           -> Flow Vis -> Flow GCFs -> Flow UVGrid
-           -> Kernel UVGrid
-gridKernel gp gcfp uvdom wdom uvdom' =
-  halideKernel2Write "gridKernel" (visRepr uvdom wdom)
-                                  (gcfsRepr wdom gcfp)
-                                  (uvgMarginRepr gcfp uvdom') $
-  kern_scatter `halideBind` gridScale gp
-               `halideBind` fromIntegral (gridHeight gp)
-foreign import ccall unsafe kern_scatter
-  :: HalideBind Double (HalideBind Int32 (HalideFun '[VisRepr, GCFsRepr] UVGMarginRepr))
+type ForeignGridder = HalideBind Double (HalideBind Int32 (HalideFun '[VisRepr, GCFsRepr] UVGMarginRepr))
+type GridKernel = GridPar -> GCFPar    -- ^ Configuration
+               -> UVDom -> WDom        -- ^ u/v/w visibility domains
+               -> UVDom                -- ^ u/v grid domains
+               -> Flow Vis -> Flow GCFs -> Flow UVGrid
+               -> Kernel UVGrid
+
+-- | Make gridder kernel binding
+mkDslGridKernel :: String -> ForeignGridder -> GridKernel
+mkDslGridKernel kn fg gp gcfp uvdom wdom uvdom' =
+  halideKernel2Write kn (visRepr uvdom wdom)
+                        (gcfsRepr wdom gcfp)
+                        (uvgMarginRepr gcfp uvdom') $
+  fg `halideBind` gridScale gp
+     `halideBind` fromIntegral (gridHeight gp)
+
+foreign import ccall unsafe kern_scatter      :: ForeignGridder
+foreign import ccall unsafe kern_scatter_gpu1 :: ForeignGridder
+foreign import ccall unsafe nvGridder         :: ForeignGridder
+
+gridKernel, gridKernelGPU, gridKernelNV :: GridKernel
+gridKernel    = mkDslGridKernel "gridKernel"    kern_scatter
+gridKernelGPU = mkDslGridKernel "gridKernelGPU" kern_scatter_gpu1
+gridKernelNV  = mkDslGridKernel "gridKernelNV"  nvGridder
+
+selectGridKernel :: Int -> GridKernel
+selectGridKernel n
+  | n == 0 = gridKernel
+  | n == 1 = gridKernelGPU
+  | n == 2 = gridKernelNV
+  | otherwise = gridKernelGPU
 
 -- | Gridder grid initialisation, for detiling. Only differs from
 -- "gridInit" in the produced data representation, we can even re-use

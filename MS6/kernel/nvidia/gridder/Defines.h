@@ -1,11 +1,12 @@
 #ifndef __DEFINES_H
 #define __DEFINES_H
 
-// #define NPOINTS (32131*200)
-#define NPOINTS 80000
-#define GCF_DIM 32
-#define IMG_SIZE 2048
-#define GCF_GRID 8
+#include "../../cpu/gridding/cfg.h"
+
+#define NPOINTS (num_baselines*num_times)
+#define GCF_DIM GCF_SIZE
+#define IMG_SIZE 8192
+#define GCF_GRID OVER
 //PTS and GCF_STRIPES affect only GATHER
 #define PTS 2
 #define GCF_STRIPES 4

@@ -60,7 +60,11 @@ __global__ void set_bookmarks(int2* vis_in, int npts, int blocksize, int blockgr
 }
 
 __global__ void
+#if POLARIZATIONS == 1
+__launch_bounds__(1024, 2)
+#else
 __launch_bounds__(GCF_DIM*GCF_DIM/4/4/GCF_STRIPES/PTS, 12)
+#endif
 grid_kernel_gather(CmplxType* out, int2* in, CmplxType* in_vals, size_t npts,
                               int img_dim, CmplxType* gcf, int* bookmarks, int yoff) {
    int2 __shared__ inbuff[32];
@@ -150,7 +154,7 @@ void gridderFuncName (
    cudaEvent_t start, stop;
    cudaEventCreate(&start); cudaEventCreate(&stop);
    CUDA_CHECK_ERR(__LINE__,__FILE__);
-   cudaHostRegister(out, sizeof(CmplxType)*(img_dim*img_dim+2*img_dim*gcf_dim+2*gcf_dim)*POLARIZATIONS, 0x02);
+   cudaHostRegister(out, sizeof(CmplxType)*(img_dim*img_dim /* Unpadded data on host! +2*img_dim*gcf_dim+2*gcf_dim */)*POLARIZATIONS, 0x02);
    cudaHostRegister(gcf, sizeof(CmplxType)*GCF_GRID*GCF_GRID*gcf_dim*gcf_dim, 0x02);
 #ifdef __COMBINED
    cudaHostRegister(in_c, sizeof(combined)*npts, 0x02);
@@ -204,8 +208,8 @@ void gridderFuncName (
    std::cout << "Processed " << npts << " complex points in " << kernel_time << " ms." << std::endl;
    std::cout << npts / 1000000.0 / kernel_time * gcf_dim * gcf_dim * 8 * POLARIZATIONS << " Gflops" << std::endl;
    CUDA_CHECK_ERR(__LINE__,__FILE__);
-   cudaMemcpy(out, d_out,
-              sizeof(CmplxType)*(img_dim*img_dim+2*img_dim*gcf_dim+2*gcf_dim)*POLARIZATIONS,
+   cudaMemcpy(out, d_out_unpad /* Unpadded data on host! d_out */,
+              sizeof(CmplxType)*(img_dim*img_dim /* Unpadded data on host! +2*img_dim*gcf_dim+2*gcf_dim */)*POLARIZATIONS,
               cudaMemcpyDeviceToHost);
    CUDA_CHECK_ERR(__LINE__,__FILE__);
    cudaHostUnregister(gcf);

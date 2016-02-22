@@ -40,7 +40,7 @@ executable dotproduct
                        kernel/cpu/dotproduct/recovery.cpp
                        kernel/cpu/dotproduct/dotp.cpp
                        kernel/cpu/dotproduct/sum.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lm -lstdc++ -lHalide
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lstdc++ -lHalide -lpthread -ldl -lz -lm
 
 executable imaging
   default-language:    Haskell2010
@@ -74,7 +74,7 @@ executable binning
 executable gridding
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
-  extra-libraries:     pthread
+  extra-libraries:     cudart pthread
   Hs-source-dirs:      programs
   main-is:             gridding.hs
   other-modules:
@@ -92,16 +92,24 @@ executable gridding
     oskar        >= 0.1,
     fixed-vector-hetero,
     yaml
+  c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
+  cc-options:          -std=c++11 -Ikernel/common
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp
                        kernel/cpu/gridding/fft.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
+                       kernel/gpu/gridding/scatter_gpu.cpp
+  x-halide-options:    -Wall -fno-strict-aliasing -fno-rtti -std=c++11 -lstdc++ -lHalide -lpthread -ldl -lz -lm
+  x-cuda-sources:      kernel/nvidia/gridder/binsort.cu
+                       kernel/nvidia/gridder/cucommon.cu
+                       kernel/nvidia/gridder/grid_gpuc.cu
+                       kernel/nvidia/gridder/halide_api.cu
+  x-cuda-options:      -D_MWAITXINTRIN_H_INCLUDED -std=c++11 -Ikernel/common -arch=sm_35
 
 executable facetting
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
-  extra-libraries:     pthread
+  extra-libraries:     cudart pthread
   Hs-source-dirs:      programs
   main-is:             facetting.hs
   other-modules:
@@ -120,6 +128,8 @@ executable facetting
     oskar        >= 0.1,
     fixed-vector-hetero,
     yaml
+  c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
+  cc-options:          -std=c++11 -Ikernel/common
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp
@@ -128,12 +138,18 @@ executable facetting
                        kernel/cpu/gridding/image_init.cpp
                        kernel/cpu/gridding/defacet.cpp
                        kernel/cpu/gridding/image_sum.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
+                       kernel/gpu/gridding/scatter_gpu.cpp
+  x-halide-options:    -Wall -fno-strict-aliasing -fno-rtti -std=c++11 -lstdc++ -lHalide -lpthread -ldl -lz -lm
+  x-cuda-sources:      kernel/nvidia/gridder/binsort.cu
+                       kernel/nvidia/gridder/cucommon.cu
+                       kernel/nvidia/gridder/grid_gpuc.cu
+                       kernel/nvidia/gridder/halide_api.cu
+  x-cuda-options:      -D_MWAITXINTRIN_H_INCLUDED -std=c++11 -Ikernel/common -arch=sm_35
 
 executable continuum
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
-  extra-libraries:     pthread
+  extra-libraries:     cudart pthread
   Hs-source-dirs:      programs
   main-is:             continuum.hs
   other-modules:
@@ -156,6 +172,8 @@ executable continuum
     directory,
     filepath,
     yaml
+  c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
+  cc-options:          -std=c++11 -Ikernel/common
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp
@@ -166,10 +184,15 @@ executable continuum
                        kernel/cpu/gridding/image_sum.cpp
                        kernel/cpu/gridding/psf_vis.cpp
                        kernel/cpu/gridding/degrid.cpp
+                       kernel/gpu/gridding/scatter_gpu.cpp
   if flag(combHogbom)
     x-halide-sources:  kernel/cpu/gridding/hogbom_inner.cpp
     c-sources:         kernel/cpu/gridding/hogbom_outer.cpp
   else
     x-halide-sources:  kernel/cpu/gridding/hogbom.cpp
-
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++11 -lm -lpthread -lstdc++ -lHalide
+  x-halide-options:    -Wall -fno-strict-aliasing -fno-rtti -std=c++11 -lstdc++ -lHalide -lpthread -ldl -lz -lm
+  x-cuda-sources:      kernel/nvidia/gridder/binsort.cu
+                       kernel/nvidia/gridder/cucommon.cu
+                       kernel/nvidia/gridder/grid_gpuc.cu
+                       kernel/nvidia/gridder/halide_api.cu
+  x-cuda-options:      -D_MWAITXINTRIN_H_INCLUDED -std=c++11 -Ikernel/common -arch=sm_35

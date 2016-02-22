@@ -97,11 +97,17 @@ mkFlow :: String -> [FlowI] -> Flow a
 mkFlow name fis = Flow $ FlowI (hash (name, fis, noWild)) name fis noWild
   where noWild = Nothing :: Maybe Int
 
+type ProfileHints = [RegionData] -> [RegionBox] -> [ProfileHint]
+nullHints :: ProfileHints
+nullHints _ _ = []
+mappendHints :: ProfileHints -> ProfileHints -> ProfileHints
+mappendHints hs1 hs2 rds rbs = hs1 rds rbs ++ hs2 rds rbs
+
 -- | Kernel frontend representation
 data Kernel a where
   Kernel :: DataRepr r
          => String
-         -> [ProfileHint]
+         -> ProfileHints
          -> KernelCode
          -> [(FlowI, ReprI)]
          -> r
@@ -120,7 +126,7 @@ data KernelBind = KernelBind
   , kernReprCheck :: ReprI -> Bool
     -- ^ Check whether a sink data representation is compatible with
     -- the data we produce
-  , kernHints :: [ProfileHint]
+  , kernHints :: ProfileHints
   }
 
 kernDomain :: KernelBind -> [DomainId]

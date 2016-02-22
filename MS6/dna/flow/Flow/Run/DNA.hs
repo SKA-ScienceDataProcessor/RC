@@ -303,7 +303,7 @@ execKernelStep deps kbind@KernelBind{kernRepr=ReprI rep} = do
            dataMapInsert (kdepId dep) (kdepRepr dep) (Map.map (const nullVector) rdata) IM.empty
 
     -- Call the kernel using the right regions
-    results <- lift $ kernel (kernName kbind) (kernHints kbind)
+    results <- lift $ kernel (kernName kbind) (kernHints kbind (map snd ins) filteredRegs) -- map snd ins :: [RegionData]
              $ liftIO $ kernCode kbind (map snd ins) filteredRegs
 
     -- Check size
@@ -342,7 +342,7 @@ execRecoverStep kbind kid = do
     -- Generate missing regions
     results <- forM (Set.toList missing) $ \rbox -> do
       lift $ logMessage $ "Running recovery kernel for " ++ show rbox
-      [res] <- lift $ kernel (kernName kbind) (kernHints kbind)
+      [res] <- lift $ kernel (kernName kbind) (kernHints kbind [] [rbox])
              $ liftIO $ kernCode kbind [] [rbox]
       return (rbox,res)
     -- Update data map

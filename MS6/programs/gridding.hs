@@ -83,7 +83,8 @@ gridderStrat cfg = do
 
     -- Bind kernel rules
     bindRule createGrid (dkern $ gridInit gcfpar uvdom)
-    bindRule grid (dkern $ gridKernel gpar gcfpar uvdoms wdom uvdom)
+    let gridkern = selectGridKernel (cfgGridderType cfg)
+    bindRule grid (dkern $ gridkern gpar gcfpar uvdoms wdom uvdom)
 
     -- Run gridding distributed
     calculate gridded
@@ -115,6 +116,7 @@ main = do
       config = defaultConfig
         { cfgInput  = [OskarInput "test_p00_s00_f00.vis" 1 1]
         , cfgPoints = 32131 * 200
+        , cfgPointsIn = 4829180
         , cfgLong   = 72.1 / 180 * pi -- probably wrong in some way
         , cfgLat    = 42.6 / 180 * pi -- ditto
         , cfgOutput = "out.img"

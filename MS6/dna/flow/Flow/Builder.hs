@@ -14,13 +14,14 @@ module Flow.Builder
   , IsReprs(..), IsReprKern(..), IsKernelDef(..)
   , kernel, Kernel
   , bind, rebind, rule, bindRule, bindNew
-  , recover, hints
+  , recover, hints, hintsByPars, hintsByRet
   ) where
 
 import Control.Monad
 import Control.Monad.State.Strict
 
 import qualified Data.HashMap.Strict as HM
+import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
 
@@ -141,7 +142,7 @@ kernel :: forall r rs. (DataRepr r, IsReprs rs, IsReprKern (ReprType r) rs)
        => String -> rs -> r -> KernelCode -> ReprKernFun (ReprType r) rs
 kernel name parReprs retRep code
   = curryReprs (undefined :: rs) $ \fs ->
-    Kernel name [] code (zip (toList fs) (toReprsI parReprs)) retRep
+    Kernel name nullHints code (zip (toList fs) (toReprsI parReprs)) retRep
 
 -- | Prepares the given kernel. This means checking its parameters and
 -- adding it to the kernel list. However, it will not automatically be
@@ -242,9 +243,18 @@ bind fl kfl = do
 -- | Add profiling hints to the kernel. This will enable 'DNA'
 -- profiling for the kernel in question, resulting in suitable data
 -- getting produced for the profiling report.
+hintsGeneral :: IsKernelDef kd => ProfileHints -> kd -> kd
+hintsGeneral hs' = mapKernelDef $ \(Kernel nm hs k xs r) ->
+  Kernel nm (hs `mappendHints` hs') k xs r
+
+hintsByPars :: IsKernelDef kd => ([[RegionBox]] -> [ProfileHint]) -> kd -> kd
+hintsByPars hint = hintsGeneral $ \rdata _ -> hint (map Map.keys rdata)
+
+hintsByRet :: IsKernelDef kd => ([RegionBox] -> [ProfileHint]) -> kd -> kd
+hintsByRet = hintsGeneral . const
+
 hints :: IsKernelDef kd => [ProfileHint] -> kd -> kd
-hints hs' = mapKernelDef $ \(Kernel nm hs k xs r) ->
-  Kernel nm (hs ++ hs') k xs r
+hints = hintsByRet . const
 
 -- | Rebinds the given flow. This is a special case of 'bind' for
 -- kernels that allow data modification - for example to change data
