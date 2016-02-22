@@ -171,7 +171,8 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
 
           -- Gridding
           bind createGrid $ rkern $ gridInit gcfpar uvdom
-          bindRule grid $ rkern $ hints [floatHint {hintDoubleOps = 8 * numOps}] $ gridKernel gpar gcfpar uvdoms wdom uvdom
+          let gridkern = selectGridKernel (cfgGridderType cfg)
+          bindRule grid $ rkern $ hints [floatHint {hintDoubleOps = 8 * numOps}] $ gridkern gpar gcfpar uvdoms wdom uvdom
           calculate gridded
 
         -- Compute the result by detiling & iFFT on tiles
