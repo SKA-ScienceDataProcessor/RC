@@ -13,6 +13,7 @@ import Distribution.Simple.Configure (configure)
 import Distribution.Simple.Setup
 import Distribution.Simple.LocalBuildInfo
 import Distribution.Simple.Program
+import Distribution.Simple.Program.Run ( getEffectiveEnvironment )
 import Distribution.Simple.Program.Find
 import Distribution.Simple.Program.Types
 import Distribution.Simple.Utils
@@ -31,10 +32,13 @@ import Data.Maybe
 import Data.Char
 import Data.List ( intersect )
 import Debug.Trace
+import Data.IORef
 
 import System.Directory hiding (exeExtension)
-import System.Process
+import System.Exit ( ExitCode(..), exitWith )
 import System.FilePath
+import System.IO ( hFlush, stdout )
+import System.Process as Process
 
 -- | Run cabal, ensuring that CUDA & CUPTI get found
 main = defaultMainWithHooks simpleUserHooks {
@@ -124,6 +128,31 @@ buildCuda doBuild package lbi verbose = do
                   , executables = executables' },
           lib_cubins ++ concat cubinss)
 
+-- | Invoke a program, but don't wait for it to return.
+asyncProgramInvocation :: Verbosity -> ProgramInvocation -> IO ProcessHandle
+asyncProgramInvocation
+  verbosity
+  ProgramInvocation {
+    progInvokePath  = path,
+    progInvokeArgs  = args,
+    progInvokeEnv   = envOverrides,
+    progInvokeCwd   = mcwd
+  } = do
+
+  -- Log
+  printRawCommandAndArgs verbosity path args
+  hFlush stdout
+
+  -- Create process
+  menv <- getEffectiveEnvironment envOverrides
+  putStrLn "Creating process..."
+  (_,_,_,ph) <- createProcess $
+                (Process.proc path args) { Process.cwd           = mcwd
+                                         , Process.env           = menv
+                                         }
+  putStrLn "Process created!"
+  return ph
+
 cudaBuildInfo :: Bool -> LocalBuildInfo -> Verbosity -> FilePath -> FilePath -> BuildInfo
               -> IO (BuildInfo, [FilePath])
 cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
@@ -141,7 +170,8 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
   -- Rebuild check
   let checkRebuild src out io = do
         srcMoreRecent <- moreRecentFile src out
-        cabalMoreRecent <- maybe (return False) (flip moreRecentFile out)  (pkgDescrFile lbi)
+        cabalMoreRecent <- return False
+          -- Disabled... maybe (return False) (flip moreRecentFile out)  (pkgDescrFile lbi)
         when (srcMoreRecent || cabalMoreRecent) io
 
   -- Force rebuilding the library/executable by deleting it
@@ -150,6 +180,13 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
         exists <- doesFileExist path
         when exists $ removeFile path
 
+  -- Parallel processes
+  procs <- newIORef []
+  let asyncProgram verbosity prog args = do
+        ph <- asyncProgramInvocation verbosity (programInvocation prog args)
+        modifyIORef procs (ph:)
+
+  putStrLn "Hello world?"
   -- Build CUBINs
   cubins <- case lookup "x-cuda-sources-cubin" (customFieldsBI bi) of
     Nothing          -> return []
@@ -164,7 +201,7 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
            checkRebuild src out $ do
                putStrLn $ "Building CUDA source " ++ src ++ "..."
                invalidate
-               runProgram verbose nvcc (cudaOpts ++ ["--cubin", src, "-o", out])
+               asyncProgram verbose nvcc (cudaOpts ++ ["--cubin", src, "-o", out])
        return outputFiles
 
   -- Build CUDA object files
@@ -181,7 +218,7 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
            checkRebuild src out $ do
                putStrLn $ "Building CUDA source " ++ src ++ "..."
                invalidate
-               runProgram verbose nvcc (cudaOpts ++ ["-c", src, "-o", out])
+               asyncProgram verbose nvcc (cudaOpts ++ ["-c", src, "-o", out])
 
        -- Now for the hacky part: Get the linker to actually link
        -- this. I am 99% sure that this is the wrong way. In fact, it
@@ -211,10 +248,19 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
                  , [src, "-o", gen]
                  , halideOpts
                  ]
-               runProgramInvocation verbose $ simpleProgramInvocation gen [out]
+               ph <- asyncProgramInvocation verbose $ simpleProgramInvocation gen [out]
+               modifyIORef procs (ph:)
 
        -- Yet again, hackily link the results in.
        return bi' { ldOptions = ldOptions bi' ++ outputFiles }
+
+  -- Wait for all processes to finish
+  phs <- readIORef procs
+  forM_ phs $ \ph -> do
+    exitcode <- waitForProcess ph
+    unless (exitcode == ExitSuccess) $ do
+      debug verbose $ "A process returned " ++ show exitcode
+      exitWith exitcode
 
   return (bi'', cubins)
 
