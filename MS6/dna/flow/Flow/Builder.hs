@@ -14,13 +14,14 @@ module Flow.Builder
   , IsReprs(..), IsReprKern(..), IsKernelDef(..)
   , kernel, Kernel
   , bind, rebind, rule, bindRule, bindNew
-  , recover, hints, hintsByRet
+  , recover, hints, hintsByPars, hintsByRet
   ) where
 
 import Control.Monad
 import Control.Monad.State.Strict
 
 import qualified Data.HashMap.Strict as HM
+import qualified Data.Map as Map
 import Data.Maybe
 import Data.Typeable
 
@@ -245,6 +246,9 @@ bind fl kfl = do
 hintsGeneral :: IsKernelDef kd => ProfileHints -> kd -> kd
 hintsGeneral hs' = mapKernelDef $ \(Kernel nm hs k xs r) ->
   Kernel nm (hs `mappendHints` hs') k xs r
+
+hintsByPars :: IsKernelDef kd => ([[RegionBox]] -> [ProfileHint]) -> kd -> kd
+hintsByPars hint = hintsGeneral $ \rdata _ -> hint (map Map.keys rdata)
 
 hintsByRet :: IsKernelDef kd => ([RegionBox] -> [ProfileHint]) -> kd -> kd
 hintsByRet = hintsGeneral . const

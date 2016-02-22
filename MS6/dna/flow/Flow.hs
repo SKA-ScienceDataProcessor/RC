@@ -91,7 +91,8 @@ module Flow
     -- | [Note that 'ProfileHint', 'floatHint', 'memHint', 'ioHint',
     -- 'haskellHint' and 'cudaHint' are imported from "DNA" -- disregard
     -- the examples.]
-    hints, ProfileHint(..), floatHint, memHint, ioHint, haskellHint, cudaHint,
+    hints, hintsByRet, hintsByPars,
+    ProfileHint(..), floatHint, memHint, ioHint, haskellHint, cudaHint,
 
     -- * Domains
 
