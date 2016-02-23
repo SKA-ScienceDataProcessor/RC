@@ -25,155 +25,12 @@ Flag combHogbom
    default: False
 
 ----------------------------------------------------------------
-executable dotproduct
+library
   default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
-  Hs-source-dirs:      programs
-  main-is:             dotproduct.hs
-  build-depends:
-    base         >= 4.8,
-    dna-flow     >= 0.5,
-    fixed-vector-hetero,
-    unix
-  x-halide-sources:    kernel/cpu/dotproduct/generate_f.cpp
-                       kernel/cpu/dotproduct/generate_g.cpp
-                       kernel/cpu/dotproduct/recovery.cpp
-                       kernel/cpu/dotproduct/dotp.cpp
-                       kernel/cpu/dotproduct/sum.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lstdc++ -lHalide -lpthread -ldl -lz -lm
-
-executable imaging
-  default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded
-  Hs-source-dirs:      programs
-  main-is:             imaging.hs
-  build-depends:
-    base         >= 4.8,
-    dna-flow     >= 0.5
-
-executable binning
-  default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
-  extra-libraries:     pthread
-  Hs-source-dirs:      programs
-  main-is:             binning.hs
-  other-modules:
-    Kernel.Binning
-    Kernel.Config
-    Kernel.Data
-    Kernel.IO
-    Kernel.Scheduling
-  build-depends:
-    base         >= 4.8,
-    containers   >= 0.5,
-    dna-flow     >= 0.5,
-    oskar        >= 0.1,
-    fixed-vector-hetero,
-    yaml
-
-executable gridding
-  default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
   extra-libraries:     cudart pthread
-  Hs-source-dirs:      programs
-  main-is:             gridding.hs
-  other-modules:
-    Kernel.Binning
-    Kernel.Config
-    Kernel.Data
-    Kernel.FFT
-    Kernel.Gridder
-    Kernel.IO
-    Kernel.Scheduling
-  build-depends:
-    base         >= 4.8,
-    containers   >= 0.5,
-    dna-flow     >= 0.5,
-    oskar        >= 0.1,
-    fixed-vector-hetero,
-    yaml
   c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
-  cc-options:          -std=c++11 -Ikernel/common
-  x-halide-sources:    kernel/cpu/gridding/scatter.cpp
-                       kernel/cpu/gridding/init.cpp
-                       kernel/cpu/gridding/detile.cpp
-                       kernel/cpu/gridding/fft.cpp
-                       kernel/gpu/gridding/scatter_gpu.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -fno-rtti -std=c++11 -lstdc++ -lHalide -lpthread -ldl -lz -lm
-  x-cuda-sources:      kernel/nvidia/gridder/binsort.cu
-                       kernel/nvidia/gridder/cucommon.cu
-                       kernel/nvidia/gridder/grid_gpuc.cu
-                       kernel/nvidia/gridder/halide_api.cu
-  x-cuda-options:      -D_MWAITXINTRIN_H_INCLUDED -std=c++11 -Ikernel/common -arch=sm_35
-
-executable facetting
-  default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
-  extra-libraries:     cudart pthread
-  Hs-source-dirs:      programs
-  main-is:             facetting.hs
-  other-modules:
-    Kernel.Binning
-    Kernel.Config
-    Kernel.Data
-    Kernel.FFT
-    Kernel.Facet
-    Kernel.Gridder
-    Kernel.IO
-    Kernel.Scheduling
-  build-depends:
-    base         >= 4.8,
-    containers   >= 0.5,
-    dna-flow     >= 0.5,
-    oskar        >= 0.1,
-    fixed-vector-hetero,
-    yaml
-  c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
-  cc-options:          -std=c++11 -Ikernel/common
-  x-halide-sources:    kernel/cpu/gridding/scatter.cpp
-                       kernel/cpu/gridding/init.cpp
-                       kernel/cpu/gridding/detile.cpp
-                       kernel/cpu/gridding/fft.cpp
-                       kernel/cpu/gridding/rotate.cpp
-                       kernel/cpu/gridding/image_init.cpp
-                       kernel/cpu/gridding/defacet.cpp
-                       kernel/cpu/gridding/image_sum.cpp
-                       kernel/gpu/gridding/scatter_gpu.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -fno-rtti -std=c++11 -lstdc++ -lHalide -lpthread -ldl -lz -lm
-  x-cuda-sources:      kernel/nvidia/gridder/binsort.cu
-                       kernel/nvidia/gridder/cucommon.cu
-                       kernel/nvidia/gridder/grid_gpuc.cu
-                       kernel/nvidia/gridder/halide_api.cu
-  x-cuda-options:      -D_MWAITXINTRIN_H_INCLUDED -std=c++11 -Ikernel/common -arch=sm_35
-
-executable continuum
-  default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
-  extra-libraries:     cudart pthread
-  Hs-source-dirs:      programs
-  main-is:             continuum.hs
-  other-modules:
-    Kernel.Binning
-    Kernel.Cleaning
-    Kernel.Config
-    Kernel.Data
-    Kernel.Degrid
-    Kernel.FFT
-    Kernel.Facet
-    Kernel.Gridder
-    Kernel.IO
-    Kernel.Scheduling
-  build-depends:
-    base         >= 4.8,
-    containers   >= 0.5,
-    dna-flow     >= 0.5,
-    oskar        >= 0.1,
-    fixed-vector-hetero,
-    directory,
-    filepath,
-    yaml
-  c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
-  cc-options:          -std=c++11 -Ikernel/common
+  include-dirs:        kernel/common
+  cc-options:          -std=c++11
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
                        kernel/cpu/gridding/init.cpp
                        kernel/cpu/gridding/detile.cpp
@@ -196,3 +53,120 @@ executable continuum
                        kernel/nvidia/gridder/grid_gpuc.cu
                        kernel/nvidia/gridder/halide_api.cu
   x-cuda-options:      -D_MWAITXINTRIN_H_INCLUDED -std=c++11 -Ikernel/common -arch=sm_35
+
+executable imaging
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded
+  Hs-source-dirs:      programs
+  main-is:             imaging.hs
+  build-depends:
+    base         >= 4.8,
+    dna-flow     >= 0.5
+
+executable binning
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
+  Hs-source-dirs:      programs
+  main-is:             binning.hs
+  other-modules:
+    Kernel.Binning
+    Kernel.Config
+    Kernel.Data
+    Kernel.IO
+    Kernel.Scheduling
+  build-depends:
+    base         >= 4.8,
+    containers   >= 0.5,
+    dna-flow     >= 0.5,
+    oskar        >= 0.1,
+    fixed-vector-hetero,
+    yaml
+
+executable dotproduct
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
+  Hs-source-dirs:      programs
+  main-is:             dotproduct.hs
+  build-depends:
+    base         >= 4.8,
+    dna-flow     >= 0.5,
+    fixed-vector-hetero,
+    unix
+  x-halide-sources:    kernel/cpu/dotproduct/generate_f.cpp
+                       kernel/cpu/dotproduct/generate_g.cpp
+                       kernel/cpu/dotproduct/recovery.cpp
+                       kernel/cpu/dotproduct/dotp.cpp
+                       kernel/cpu/dotproduct/sum.cpp
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lstdc++ -lHalide -lpthread -ldl -lz -lm
+
+executable gridding
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
+  Hs-source-dirs:      programs
+  main-is:             gridding.hs
+  other-modules:
+    Kernel.Binning
+    Kernel.Config
+    Kernel.Data
+    Kernel.FFT
+    Kernel.Gridder
+    Kernel.IO
+    Kernel.Scheduling
+  build-depends:
+    base         >= 4.8,
+    containers   >= 0.5,
+    dna-flow     >= 0.5,
+    oskar        >= 0.1,
+    fixed-vector-hetero,
+    yaml,
+    ms6
+
+executable facetting
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
+  Hs-source-dirs:      programs
+  main-is:             facetting.hs
+  other-modules:
+    Kernel.Binning
+    Kernel.Config
+    Kernel.Data
+    Kernel.FFT
+    Kernel.Facet
+    Kernel.Gridder
+    Kernel.IO
+    Kernel.Scheduling
+  build-depends:
+    base         >= 4.8,
+    containers   >= 0.5,
+    dna-flow     >= 0.5,
+    oskar        >= 0.1,
+    fixed-vector-hetero,
+    yaml,
+    ms6
+
+executable continuum
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
+  Hs-source-dirs:      programs
+  main-is:             continuum.hs
+  other-modules:
+    Kernel.Binning
+    Kernel.Cleaning
+    Kernel.Config
+    Kernel.Data
+    Kernel.Degrid
+    Kernel.FFT
+    Kernel.Facet
+    Kernel.Gridder
+    Kernel.IO
+    Kernel.Scheduling
+  build-depends:
+    base         >= 4.8,
+    containers   >= 0.5,
+    dna-flow     >= 0.5,
+    oskar        >= 0.1,
+    fixed-vector-hetero,
+    directory,
+    filepath,
+    yaml,
+    ms6
