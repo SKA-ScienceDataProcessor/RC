@@ -10,9 +10,10 @@
 #include "Halide.h"
 #include <vector>
 
-// We require grid bounds to be given statically
-const int WIDTH = 2048
-        , HEIGHT = 2048;
+std::string mkKernelName(const std::string & prefix, int WIDTH, int HEIGHT){
+  if (WIDTH == 2048 && HEIGHT == 2048) return prefix; // keep old name
+  return prefix + "_" + std::to_string(WIDTH) + "x" + std::to_string(HEIGHT);
+}
 
 const double pi = 3.14159265f;
 
@@ -542,7 +543,7 @@ double log2(double x) {
     return log(x)/log(2.0);
 }
 
-Module ifftKernel(Target target) {
+Module ifftKernel(Target target, int WIDTH, int HEIGHT) {
 
     // ** Input field
 
@@ -599,10 +600,10 @@ Module ifftKernel(Target target) {
     // surplus "select". Let's hope LLVM is smart enough to eliminate
     // it...
 
-    return img_shifted.compile_to_module(args, "kern_ifft", target);
+    return img_shifted.compile_to_module(args, mkKernelName("kern_ifft", WIDTH, HEIGHT), target);
 }
 
-Module fftKernel(Target target) {
+Module fftKernel(Target target, int WIDTH, int HEIGHT) {
 
     ImageParam img(type_of<double>(), 2, "image");
     img.set_min(0,0).set_stride(0,1).set_extent(0,WIDTH)
@@ -650,14 +651,21 @@ Module fftKernel(Target target) {
     // branches...
 
     // uvg_herm.compile_to_lowered_stmt("kern_fft.html", args, HTML, target);
-    return uvg_herm.compile_to_module(args, "kern_fft", target);
+    return uvg_herm.compile_to_module(args, mkKernelName("kern_fft", WIDTH, HEIGHT), target);
 }
 
 int main(int argc, char **argv)
 {
     if (argc < 2) return 1;
-    Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
-    std::vector<Module> modules = { ifftKernel(target), fftKernel(target) };
-    compile_module_to_object(link_modules("kern_ffts", modules), argv[1]);
+    Target target(get_target_from_environment());
+    std::vector<Module> modules =
+      { ifftKernel(target, 2048, 2048)
+      , fftKernel(target, 2048, 2048)
+      , ifftKernel(target, 1024, 1024)
+      , fftKernel(target, 1024, 1024)
+      };
+    Module linked = link_modules("kern_ffts", modules);
+    // compile_module_to_c_header(linked, std::string(argv[1]) + ".h");
+    compile_module_to_object(linked, argv[1]);
     return 0;
 }
