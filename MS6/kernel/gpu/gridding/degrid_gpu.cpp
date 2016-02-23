@@ -112,7 +112,7 @@ int main(int argc, char **argv)
   vis_out.update().allow_race_conditions()
     .fuse(rgcfx, rcmplx, rgcfxc)
     .fuse(rgcfy, rgcfxc, rall)
-    .split(tdim, tdim_outer, tdim_inner, 200)
+    .split(tdim, tdim_outer, tdim_inner, 310)
     .gpu_blocks(tdim_outer)
     .gpu_threads(rall)
     ;
