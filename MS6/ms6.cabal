@@ -29,6 +29,7 @@ library
   default-language:    Haskell2010
   extra-libraries:     cudart pthread
   c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
+                       kernel/gpu/gridding/kern_degrid_gpu1.cpp
   include-dirs:        kernel/common
   cc-options:          -std=c++11
   x-halide-sources:    kernel/cpu/gridding/scatter.cpp
@@ -42,6 +43,7 @@ library
                        kernel/cpu/gridding/psf_vis.cpp
                        kernel/cpu/gridding/degrid.cpp
                        kernel/gpu/gridding/scatter_gpu.cpp
+                       kernel/gpu/gridding/degrid_gpu.cpp
   if flag(combHogbom)
     x-halide-sources:  kernel/cpu/gridding/hogbom_inner.cpp
     c-sources:         kernel/cpu/gridding/hogbom_outer.cpp
