@@ -5,10 +5,10 @@ module Kernel.Degrid where
 import Data.Int
 import qualified Data.Map as Map
 
-import DNA.Logging
 import Flow.Builder
 import Flow.Halide
 import Flow.Kernel
+import Flow
 
 import Kernel.Data
 

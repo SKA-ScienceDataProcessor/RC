@@ -4,9 +4,9 @@ module Kernel.Gridder where
 
 import Data.Int
 
-import DNA.Logging
 import Flow.Builder
 import Flow.Halide
+import Flow
 
 import Kernel.Data
 
