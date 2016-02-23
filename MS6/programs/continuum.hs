@@ -23,6 +23,7 @@ import Kernel.FFT
 import Kernel.Gridder
 import Kernel.IO
 import Kernel.Scheduling
+import Kernel.Utils
 
 import System.Environment
 import System.Directory
@@ -175,7 +176,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
           bind createGrid $ rkern $ gridInit gcfpar uvdom
           let (gridkern, gridhint) = selectGridKernel (cfgGridderType cfg)
               binSize (_,_,s) = s
-              hint (visRegs:_) = [gridhint {hintDoubleOps = 8 * ops}]
+              hint (visRegs:_) = [setDblOpts (8 * ops) gridhint]
                 where wBinReg = (!!5) -- d, l, m, u, v, w - we want region six
                       ops = sum $ map binSize $ concatMap (regionBins . wBinReg) visRegs
           bindRule grid $ rkern $ hintsByPars hint $ gridkern gpar gcfpar uvdoms wdom uvdom

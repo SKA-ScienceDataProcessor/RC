@@ -137,6 +137,7 @@ executable facetting
     Kernel.Gridder
     Kernel.IO
     Kernel.Scheduling
+    Kernel.Utils
   build-depends:
     base         >= 4.8,
     containers   >= 0.5,
