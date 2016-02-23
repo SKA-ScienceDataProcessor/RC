@@ -101,6 +101,7 @@ int main(int argc, char **argv)
   // Compute UV & oversampling coordinates per visibility
   Var Q(tdim_inner), Q(tdim_outer); 
 
+#if 0
   overc.compute_at(vis_out, tdim_inner);
   overc.gpu_threads(tdim);
   uv.compute_at(vis_out, tdim_inner);
@@ -112,10 +113,23 @@ int main(int argc, char **argv)
   vis_out.update().allow_race_conditions()
     .fuse(rgcfx, rcmplx, rgcfxc)
     .fuse(rgcfy, rgcfxc, rall)
-    .split(tdim, tdim_outer, tdim_inner, 310)
+    .split(tdim, tdim_outer, tdim_inner, 310) // 2 2 5 31
     .gpu_blocks(tdim_outer)
     .gpu_threads(rall)
     ;
+#else
+  overc.compute_root();
+  uv.compute_root();
+  inBound.compute_root();
+
+  RVar rgcfxc, rall;
+  vis_out.update().allow_race_conditions()
+    .fuse(rgcfx, rcmplx, rgcfxc)
+    .fuse(rgcfy, rgcfxc, rall)
+    .gpu_blocks(tdim)
+    .gpu_threads(rall)
+    ;
+#endif
 
   Target target_cuda(get_target_from_environment().os, Target::X86, 64,
            { Target::SSE41, Target::AVX, Target::CUDA, Target::CUDACapability35 });
