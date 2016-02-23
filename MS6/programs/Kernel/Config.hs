@@ -12,7 +12,8 @@ data Config = Config
   , cfgPointsIn :: Int      -- ^ Number of points fit into bounds
   , cfgNodes    :: Int      -- ^ Number of data sets to process in parallel
   , cfgLoops    :: Int      -- ^ Number of major loops to run
-  , cfgGridderType :: Int   -- ^ Type of gridder: 0-CPU Halide, 1-GPU Halide, 2-GPU NVidia
+  , cfgGridderType   :: Int   -- ^ Type of gridder: 0-CPU Halide, 1-GPU Halide, 2-GPU NVidia
+  , cfgDegridderType :: Int   -- ^ Type of degridder: 0-CPU Halide, otherwise-GPU Halide
   , cfgLong     :: Double   -- ^ Phase centre longitude
   , cfgLat      :: Double   -- ^ Phase centre latitude
   , cfgOutput   :: FilePath -- ^ File name for the output image
@@ -28,6 +29,7 @@ instance FromJSON Config where
              <*> v .: "nodes"
              <*> (v .: "loops" <|> return (cfgLoops defaultConfig))
              <*> (v .: "gridder_type" <|> return (cfgGridderType defaultConfig))
+             <*> (v .: "degridder_type" <|> return (cfgDegridderType defaultConfig))
              <*> (v .: "long" <|> return (cfgLong defaultConfig))
              <*> (v .: "lat" <|> return (cfgLat defaultConfig))
              <*> v .: "output"
@@ -101,6 +103,7 @@ defaultConfig = Config
   , cfgNodes    = 0
   , cfgLoops    = 1
   , cfgGridderType = 1
+  , cfgDegridderType = 1
   , cfgLong     = 72.1 / 180 * pi -- mostly arbitrary, and probably wrong in some way
   , cfgLat      = 42.6 / 180 * pi -- ditto
   , cfgOutput   = ""
