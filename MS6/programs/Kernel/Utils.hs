@@ -1,6 +1,6 @@
 module Kernel.Utils where
 
-import DNA.Logging
+import Flow(ProfileHint (..))
 
 setDblOpts :: Int -> ProfileHint -> ProfileHint
 setDblOpts opts h@FloatHint{} = h {hintDoubleOps = opts}
