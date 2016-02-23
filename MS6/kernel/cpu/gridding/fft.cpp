@@ -649,7 +649,7 @@ Module fftKernel(Target target) {
     // code. Not quite sure whether or not they give rise to actual
     // branches...
 
-    uvg_herm.compile_to_lowered_stmt("kern_fft.html", args, HTML, target);
+    // uvg_herm.compile_to_lowered_stmt("kern_fft.html", args, HTML, target);
     return uvg_herm.compile_to_module(args, "kern_fft", target);
 }
 

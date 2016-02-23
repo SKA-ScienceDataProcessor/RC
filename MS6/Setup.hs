@@ -186,7 +186,6 @@ cudaBuildInfo doBuild lbi verbose buildDir nameReal bi = do
         ph <- asyncProgramInvocation verbosity (programInvocation prog args)
         modifyIORef procs (ph:)
 
-  putStrLn "Hello world?"
   -- Build CUBINs
   cubins <- case lookup "x-cuda-sources-cubin" (customFieldsBI bi) of
     Nothing          -> return []
