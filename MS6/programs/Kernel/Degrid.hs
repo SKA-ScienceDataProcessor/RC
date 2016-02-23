@@ -24,19 +24,26 @@ distributeGrid ddom0 ddom1 (ldom, mdom) uvdom =
                                   (RegionRepr ddom1 $ RegionRepr ldom $ RegionRepr mdom $ uvgRepr uvdom) $
     \[uvg] _ -> return $ head $ Map.elems uvg
 
--- | Degridder kernel binding
-degridKernel :: GridPar -> GCFPar    -- ^ Configuration
-             -> UVDom -> WDom        -- ^ u/v/w visibility domains
-             -> UVDom                -- ^ u/v grid domain
-             -> Flow GCFs -> Flow UVGrid -> Flow Vis
-             -> Kernel Vis
-degridKernel gp gcfp uvdom wdom uvdom_grid =
-  halideKernel3 "degridKernel" (gcfsRepr wdom gcfp)
-                               (uvgRepr uvdom_grid)
-                               (visRepr uvdom wdom)
-                               (visRepr uvdom wdom) $
-  kern_degrid `halideBind` gridScale gp
-              `halideBind` fromIntegral (gridHeight gp)
+type ForeignDegridder = HalideBind Double (HalideBind Int32 (HalideFun '[GCFsRepr, UVGRepr, VisRepr] VisRepr))
+type DegridKernel = GridPar -> GCFPar    -- ^ Configuration
+                 -> UVDom -> WDom        -- ^ u/v/w visibility domains
+                 -> UVDom                -- ^ u/v grid domain
+                 -> Flow GCFs -> Flow UVGrid -> Flow Vis
+                 -> Kernel Vis
 
-foreign import ccall unsafe kern_degrid
-  :: HalideBind Double (HalideBind Int32 (HalideFun '[GCFsRepr, UVGRepr, VisRepr] VisRepr))
+-- | Make degridder kernel binding
+mkDslDegridKernel :: String -> ForeignDegridder -> DegridKernel
+mkDslDegridKernel kn fd gp gcfp uvdom wdom uvdom_grid =
+  halideKernel3 kn (gcfsRepr wdom gcfp)
+                   (uvgRepr uvdom_grid)
+                   (visRepr uvdom wdom)
+                   (visRepr uvdom wdom) $
+  fd `halideBind` gridScale gp
+     `halideBind` fromIntegral (gridHeight gp)
+
+foreign import ccall unsafe kern_degrid      :: ForeignDegridder
+foreign import ccall unsafe kern_degrid_gpu1 :: ForeignDegridder
+
+degridKernel, degridKernelGPU :: DegridKernel
+degridKernel    = mkDslDegridKernel "degridKernel"    kern_degrid
+degridKernelGPU = mkDslDegridKernel "degridKernelGPU" kern_degrid_gpu1
