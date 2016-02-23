@@ -19,6 +19,9 @@ int kern_scatter_gpu1(const double _scale, const int32_t _grid_size, buffer_t *_
   res = kern_scatter_gpu(_scale, _grid_size, _vis_buffer, _gcf_buffer, _uvg_buffer); __CK
   res = halide_device_sync(nullptr, _uvg_buffer); __CK
   res = halide_copy_to_host(nullptr, _uvg_buffer); __CK
+
+  res = halide_device_free(nullptr, _vis_buffer); __CK
+  res = halide_device_free(nullptr, _gcf_buffer); __CK
   res = halide_device_free(nullptr, _uvg_buffer); __CK
   return 0;
 }
