@@ -5,6 +5,7 @@ module Kernel.Degrid where
 import Data.Int
 import qualified Data.Map as Map
 
+import DNA.Logging
 import Flow.Builder
 import Flow.Halide
 import Flow.Kernel
@@ -47,3 +48,8 @@ foreign import ccall unsafe kern_degrid_gpu1 :: ForeignDegridder
 degridKernel, degridKernelGPU :: DegridKernel
 degridKernel    = mkDslDegridKernel "degridKernel"    kern_degrid
 degridKernelGPU = mkDslDegridKernel "degridKernelGPU" kern_degrid_gpu1
+
+selectDegridKernel :: Int -> (DegridKernel, ProfileHint)
+selectDegridKernel n
+  | n == 0 = (degridKernel, floatHint)
+  | otherwise = (degridKernelGPU, cudaHint)

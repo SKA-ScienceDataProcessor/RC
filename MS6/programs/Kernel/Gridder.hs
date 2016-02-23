@@ -4,6 +4,7 @@ module Kernel.Gridder where
 
 import Data.Int
 
+import DNA.Logging
 import Flow.Builder
 import Flow.Halide
 
@@ -44,12 +45,12 @@ gridKernel    = mkDslGridKernel "gridKernel"    kern_scatter
 gridKernelGPU = mkDslGridKernel "gridKernelGPU" kern_scatter_gpu1
 gridKernelNV  = mkDslGridKernel "gridKernelNV"  nvGridder
 
-selectGridKernel :: Int -> GridKernel
+selectGridKernel :: Int -> (GridKernel, ProfileHint)
 selectGridKernel n
-  | n == 0 = gridKernel
-  | n == 1 = gridKernelGPU
-  | n == 2 = gridKernelNV
-  | otherwise = gridKernelGPU
+  | n == 0 = (gridKernel, floatHint)
+  | n == 1 = (gridKernelGPU, cudaHint)
+  | n == 2 = (gridKernelNV, cudaHint)
+  | otherwise = (gridKernelGPU, cudaHint)
 
 -- | Gridder grid initialisation, for detiling. Only differs from
 -- "gridInit" in the produced data representation, we can even re-use
