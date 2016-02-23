@@ -54,6 +54,23 @@ library
                        kernel/nvidia/gridder/halide_api.cu
   x-cuda-options:      -D_MWAITXINTRIN_H_INCLUDED -std=c++11 -Ikernel/common -arch=sm_35
 
+executable dotproduct
+  default-language:    Haskell2010
+  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
+  Hs-source-dirs:      programs
+  main-is:             dotproduct.hs
+  build-depends:
+    base         >= 4.8,
+    dna-flow     >= 0.5,
+    fixed-vector-hetero,
+    unix
+  x-halide-sources:    kernel/cpu/dotproduct/generate_f.cpp
+                       kernel/cpu/dotproduct/generate_g.cpp
+                       kernel/cpu/dotproduct/recovery.cpp
+                       kernel/cpu/dotproduct/dotp.cpp
+                       kernel/cpu/dotproduct/sum.cpp
+  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lstdc++ -lHalide -lpthread -ldl -lz -lm
+
 executable imaging
   default-language:    Haskell2010
   ghc-options:         -O2 -Wall -threaded
@@ -81,23 +98,6 @@ executable binning
     oskar        >= 0.1,
     fixed-vector-hetero,
     yaml
-
-executable dotproduct
-  default-language:    Haskell2010
-  ghc-options:         -O2 -Wall -threaded -rtsopts -eventlog
-  Hs-source-dirs:      programs
-  main-is:             dotproduct.hs
-  build-depends:
-    base         >= 4.8,
-    dna-flow     >= 0.5,
-    fixed-vector-hetero,
-    unix
-  x-halide-sources:    kernel/cpu/dotproduct/generate_f.cpp
-                       kernel/cpu/dotproduct/generate_g.cpp
-                       kernel/cpu/dotproduct/recovery.cpp
-                       kernel/cpu/dotproduct/dotp.cpp
-                       kernel/cpu/dotproduct/sum.cpp
-  x-halide-options:    -Wall -fno-strict-aliasing -std=c++0x -lstdc++ -lHalide -lpthread -ldl -lz -lm
 
 executable gridding
   default-language:    Haskell2010
