@@ -363,18 +363,22 @@ regionKernel dom = mapKernelDef $ \(Kernel name khints code parReprs retRepr) ->
   let addReg (fl, ReprI rep) = (fl, ReprI $ RegionRepr dom rep)
       parReprs' = map addReg parReprs
       retRepr' = RegionRepr dom retRepr
-      code' pars boxes = do
+      trans :: ([RegionData] -> [[Region]] -> a) -> [RegionData] -> [[Region]] -> [a]
+      trans tr pars boxes =
         -- Go through regions sorted by top-level boxes
         let boxGroups = groupBy ((==) `on` head) boxes
             zpars = zipReprs (map snd parReprs') pars
-        results <- forM boxGroups $ \boxes' -> do
-          let reg = head $ head boxes'
-              limit = limitToRegion ("regionKernel " ++ name) [dhId dom] [reg]
-              pars' = map limit zpars
-              pars'' = map (Map.mapKeysMonotonic tail) pars'
-          code pars'' (map tail boxes')
-        return $ concat results
-   in Kernel name khints code' parReprs' retRepr'
+            act boxes' =
+                  let reg = head $ head boxes'
+                      limit = limitToRegion ("regionKernel " ++ name) [dhId dom] [reg]
+                      pars' = map limit zpars
+                      pars'' = map (Map.mapKeysMonotonic tail) pars'
+                  in tr pars'' (map tail boxes')
+        in map act boxGroups
+      code' pars boxes = fmap concat . sequence $ trans code pars boxes
+      khints' pars boxes = concat $ trans khints pars boxes
+      --
+   in Kernel name khints' code' parReprs' retRepr'
 
 rangeKernel0 :: DataRepr r
              => String -> r -> (Int -> Int -> IO (Vector a))
