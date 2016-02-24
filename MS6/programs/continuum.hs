@@ -177,7 +177,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
           bind createGrid $ rkern $ gridInit gcfpar uvdom
           let (gridkern, gridhint) = selectGridKernel (cfgGridderType cfg)
               binSize (_,_,s) = s
-              hint (visRegs:_) = [setDblOpts (8 * ops) gridhint]
+              hint (visRegs:_) = [setDblOpts (8 * ops * gcfsiz * gcfsiz) gridhint]
                 where wBinReg = (!!5) -- d, l, m, u, v, w - we want region six
                       ops = sum $ map binSize $ concatMap (regionBins . wBinReg) visRegs
           bindRule grid $ rkern $ hintsByPars hint $ gridkern gpar gcfpar uvdoms wdom uvdom
