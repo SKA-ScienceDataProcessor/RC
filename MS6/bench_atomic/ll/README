@@ -1,4 +1,4 @@
-To make this functions available to Halide-generated GPU kernels, please, rebuild Halide from the sources against modified device libraries supplied by NVidia and distributed with Halide sources (they normally reside under Halide's src/runtime/nvidia_libdevice_bitcode).
+To make these functions available to Halide-generated GPU kernels, please, rebuild Halide from the sources against modified device libraries supplied by NVidia and distributed with Halide sources (they normally reside under Halide's src/runtime/nvidia_libdevice_bitcode).
 
 You should compile 'datomic-fixed.ll' with NVPTX-enabled LLVM, link resulting bitcode into NVidia device libraries and rebuild Halide from the sources after that.
 
