@@ -308,11 +308,12 @@ main = do
    Left err -> putStrLn $ "Failed to read configuration file: " ++ show err
    Right config -> do
 
-    -- Show strategy - but only for the root process
+    {--- Show strategy - but only for the root process
     when (not ("--internal-rank" `elem` args)) $ do
       dumpSteps $ continuumStrat config
       putStrLn "----------------------------------------------------------------"
       putStrLn ""
+    -}
 
     -- Execute strategy
     execStrategyDNA $ continuumStrat config
