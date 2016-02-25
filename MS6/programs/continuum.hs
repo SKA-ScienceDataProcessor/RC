@@ -172,7 +172,11 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
           rule degrid $ \(gcfs :. uvgrid :. vis' :. Z) -> do
             rebind uvgrid $ distributeGrid ddomss ddom lmdom uvdoms
             let (degridkern, degridhints) = selectDegridKernel (cfgGridderType cfg)
-            bind (degrid gcfs uvgrid vis') $ rkern $ hints (map (setDblOpts $ 8 * numOps) degridhints) $
+                binSize (_,_,s) = s
+                hint (_:_:visRegs:_) = map (setDblOpts $ 8 * ops * gcfsiz * gcfsiz) degridhints
+                  where wBinReg = (!!2) -- u, v, w - we want region three
+                        ops = sum $ map binSize $ concatMap (regionBins . wBinReg) visRegs
+            bind (degrid gcfs uvgrid vis') $ rkern $ hintsByPars hint $
               degridkern gpar gcfpar uvdom wdom uvdoms gcfs uvgrid vis'
           bindRule psfVis $ rkern $ psfVisKernel uvdom wdom
           calculate vis
