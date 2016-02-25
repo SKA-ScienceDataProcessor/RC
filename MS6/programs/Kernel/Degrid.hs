@@ -49,7 +49,7 @@ degridKernel, degridKernelGPU :: DegridKernel
 degridKernel    = mkDslDegridKernel "degridKernel"    kern_degrid
 degridKernelGPU = mkDslDegridKernel "degridKernelGPU" kern_degrid_gpu1
 
-selectDegridKernel :: Int -> (DegridKernel, ProfileHint)
+selectDegridKernel :: Int -> (DegridKernel, [ProfileHint])
 selectDegridKernel n
-  | n == 0 = (degridKernel, floatHint)
-  | otherwise = (degridKernelGPU, cudaHint)
+  | n == 0 = (degridKernel, [floatHint, memHint])
+  | otherwise = (degridKernelGPU, [cudaHint])

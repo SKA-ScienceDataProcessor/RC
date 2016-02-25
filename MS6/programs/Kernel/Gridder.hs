@@ -45,12 +45,12 @@ gridKernel    = mkDslGridKernel "gridKernel"    kern_scatter
 gridKernelGPU = mkDslGridKernel "gridKernelGPU" kern_scatter_gpu1
 gridKernelNV  = mkDslGridKernel "gridKernelNV"  nvGridder
 
-selectGridKernel :: Int -> (GridKernel, ProfileHint)
+selectGridKernel :: Int -> (GridKernel, [ProfileHint])
 selectGridKernel n
-  | n == 0 = (gridKernel, floatHint)
-  | n == 1 = (gridKernelGPU, cudaHint)
-  | n == 2 = (gridKernelNV, cudaHint)
-  | otherwise = (gridKernelGPU, cudaHint)
+  | n == 0 = (gridKernel, [floatHint, memHint])
+  | n == 1 = (gridKernelGPU, [cudaHint])
+  | n == 2 = (gridKernelNV, [cudaHint])
+  | otherwise = (gridKernelGPU, [cudaHint])
 
 -- | Gridder grid initialisation, for detiling. Only differs from
 -- "gridInit" in the produced data representation, we can even re-use

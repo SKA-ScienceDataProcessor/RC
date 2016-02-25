@@ -124,6 +124,8 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
       gcfpar = cfgGCF cfg
       gcfsiz = gcfSize gcfpar
       numOps = cfgPointsIn cfg * gcfsiz * gcfsiz
+      cpuHints = [floatHint, memHint]
+      allCpuHints = ioHint:cpuHints
 
   -- Intermediate Flow nodes
   let gridded = grid vis (gcf vis0) createGrid -- grid from vis
@@ -145,7 +147,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
 
         -- Read in visibilities
         rebind ixs $ scheduleSplit ddomss ddom
-        bind vis0 $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
+        bind vis0 $ hints [ioHint] $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
 
         -- Create w-binned domain, split
         wdoms <- makeBinDomain $ dkern $ binSizer gpar tdom uvdom vis0
@@ -155,29 +157,29 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
         distribute (snd uvdom) SeqSchedule $ distribute (fst uvdom) SeqSchedule $ do
 
           -- Load GCFs
-          bindRule gcf $ rkern $ const $ gcfKernel gcfpar wdom
+          bindRule gcf $ rkern $ const $ hints allCpuHints $ gcfKernel gcfpar wdom
           distribute wdom SeqSchedule $ calculate $ gcf vis0
 
           -- Rotate visibilities
-          rebind vis0 $ dkern $ rotateKernel cfg lmdom tdom
+          rebind vis0 $ dkern $ hints cpuHints $ rotateKernel cfg lmdom tdom
 
           -- Bin visibilities (could distribute, but there's no benefit)
-          rebind vis0 $ rkern $ binner gpar tdom uvdom wdom
+          rebind vis0 $ rkern $ hints allCpuHints $ binner gpar tdom uvdom wdom
 
           -- Degrid / generate PSF (depending on vis)
           rule degrid $ \(gcfs :. uvgrid :. vis' :. Z) -> do
             rebind uvgrid $ distributeGrid ddomss ddom lmdom uvdoms
-            let (degridkern, degridhint) = selectDegridKernel (cfgGridderType cfg)
-            bind (degrid gcfs uvgrid vis') $ rkern $ hints [setDblOpts (8 * numOps) degridhint] $
+            let (degridkern, degridhints) = selectDegridKernel (cfgGridderType cfg)
+            bind (degrid gcfs uvgrid vis') $ rkern $ hints (map (setDblOpts $ 8 * numOps) degridhints) $
               degridkern gpar gcfpar uvdom wdom uvdoms gcfs uvgrid vis'
           bindRule psfVis $ rkern $ psfVisKernel uvdom wdom
           calculate vis
 
           -- Gridding
           bind createGrid $ rkern $ gridInit gcfpar uvdom
-          let (gridkern, gridhint) = selectGridKernel (cfgGridderType cfg)
+          let (gridkern, gridhints) = selectGridKernel (cfgGridderType cfg)
               binSize (_,_,s) = s
-              hint (visRegs:_) = [setDblOpts (8 * ops * gcfsiz * gcfsiz) gridhint]
+              hint (visRegs:_) = map (setDblOpts $ 8 * ops * gcfsiz * gcfsiz) gridhints
                 where wBinReg = (!!2) -- u, v, w - we want region three
                       ops = sum $ map binSize $ concatMap (regionBins . wBinReg) visRegs
           bindRule grid $ rkern $ hintsByPars hint $ gridkern gpar gcfpar uvdoms wdom uvdom
@@ -186,12 +188,12 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
         -- Compute the result by detiling & iFFT on tiles
         bind createGrid $ rkern $ gridInitDetile uvdoms
         bind gridded $ rkern $ gridDetiling gcfpar uvdom uvdoms gridded createGrid
-        bindRule idft $ rkern $ ifftKern gpar uvdoms
+        bindRule idft $ rkern $ hints cpuHints $ ifftKern gpar uvdoms
         calculate $ idft gridded
 
       -- Sum up facets
       bind createImage $ dkern $ imageInit gpar
-      bind images $ dkern $ imageDefacet gpar lmdom (idft gridded) createImage
+      bind images $ dkern $ hints allCpuHints $ imageDefacet gpar lmdom (idft gridded) createImage
 
     -- Sum up images locally
     bind createImage $ regionKernel ddoms $ imageInit gpar
