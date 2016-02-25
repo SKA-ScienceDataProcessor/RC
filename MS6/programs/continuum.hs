@@ -106,6 +106,10 @@ finalLoopIter vis mdl = residual vis (degridModel vis mdl)
 -- ---                               Strategy                               ---
 -- ----------------------------------------------------------------------------
 
+cpuHints, allCpuHints :: [ProfileHint]
+cpuHints = [floatHint, memHint]
+allCpuHints = ioHint:cpuHints
+
 -- | Implement one major iteration of continuum gridding (@loopIter@) for
 -- the given input 'Flow's over a number of datasets given by the data
 -- set domains @ddoms@. Internally, we will distribute twice over
@@ -124,8 +128,6 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
       gcfpar = cfgGCF cfg
       gcfsiz = gcfSize gcfpar
       numOps = cfgPointsIn cfg * gcfsiz * gcfsiz
-      cpuHints = [floatHint, memHint]
-      allCpuHints = ioHint:cpuHints
 
   -- Intermediate Flow nodes
   let gridded = grid vis (gcf vis0) createGrid -- grid from vis
@@ -214,7 +216,7 @@ majorIterationStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis mdl = do
 
   -- Calculate model grid using FFT (once)
   let gpar = cfgGrid cfg
-  bindRule dft $ regionKernel (head ddom_s) $ fftKern gpar (head uvdom_s)
+  bindRule dft $ regionKernel (head ddom_s) $ hints allCpuHints $ fftKern gpar (head uvdom_s)
   calculate (dft mdl)
 
   -- Do continuum gridding for degridded visibilities. The actual
