@@ -2,13 +2,17 @@
 #include "halide_buf.h"
 
 extern "C"
+EXPORT
 int nvGridder(const double _scale, const int32_t _grid_size, buffer_t *_vis_buffer, buffer_t *_gcf_buffer, buffer_t *_uvg_buffer){
+  #define visptr reinterpret_cast<combined*>(_vis_buffer->host)
+  #define visnum _vis_buffer->extent[1]
+  bin_sort5(visptr, visnum);
   // FIXME: make gridGPUx respect buffers locations, i.e.
   // to check if they already are on GPU and skip allocation and marshaling then
   gridGPUc( _scale
           , reinterpret_cast<CmplxType*>(_uvg_buffer->host)
-          , reinterpret_cast<combined*>(_vis_buffer->host)
-          , _vis_buffer->extent[1]
+          , visptr
+          , visnum
           , _grid_size 
           , reinterpret_cast<CmplxType*>(_gcf_buffer->host)
           );
