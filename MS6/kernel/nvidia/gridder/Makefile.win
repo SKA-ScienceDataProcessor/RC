@@ -3,23 +3,20 @@ all: test.exe testc.exe
 clean:
 	del *.exe *.exp *.obj *.lib
 
-grid_gpu.obj : grid_gpu.cu Defines.h grid_gpu.cuh cucommon.cuh
+grid_gpu.obj : grid_gpu.cu Defines.h grid_gpu.cuh
 	nvcc -c grid_gpu.cu -o grid_gpu.obj
 
-grid_gpuc.obj : grid_gpuc.cu grid_gpu.cu Defines.h grid_gpu.cuh cucommon.cuh
+grid_gpuc.obj : grid_gpuc.cu grid_gpu.cu Defines.h grid_gpu.cuh
 	nvcc -c grid_gpuc.cu -o grid_gpuc.obj
 
-cucommon.obj : cucommon.cu Defines.h cucommon.cuh
-	nvcc -c cucommon.cu -o cucommon.obj
-
-binsort.obj : binsort.cu grid_gpu.cuh Defines.h
-	nvcc -c binsort.cu -o binsort.obj
+binsort.obj : binsort.cpp grid_gpu.cuh Defines.h
+	cl -O2 -c binsort.cpp -o binsort.obj
 
 halide_api.obj: halide_api.cu grid_gpu.cuh
-	nvcc -c halide_api.cu -o halide_api.obj
+	nvcc -I../../common -c halide_api.cu -o halide_api.obj
 
-GPUGrid.lib: grid_gpu.obj grid_gpuc.obj cucommon.obj binsort.obj halide_api.obj
-	lib /OUT:GPUGrid.lib grid_gpu.obj grid_gpuc.obj cucommon.obj binsort.obj halide_api.obj
+GPUGrid.lib: grid_gpu.obj grid_gpuc.obj binsort.obj halide_api.obj
+	lib /OUT:GPUGrid.lib grid_gpu.obj grid_gpuc.obj binsort.obj halide_api.obj
 
 test.exe : test.cu grid_gpu.cuh Defines.h GPUGrid.lib
 	nvcc -o test test.cu GPUGrid.lib

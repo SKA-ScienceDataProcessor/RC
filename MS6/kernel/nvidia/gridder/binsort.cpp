@@ -1,7 +1,7 @@
 #include <algorithm>
 
-#include "grid_gpu.cuh"
 #include "Defines.h"
+#include "grid_gpu.cuh"
 
 template <typename T> inline
 void bin_sort(T * in, int npts){

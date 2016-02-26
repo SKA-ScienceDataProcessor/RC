@@ -2,7 +2,9 @@
 
 #include "Defines.h"
 #include "grid_gpu.cuh"
-#include "cucommon.cuh"
+
+float getElapsed(cudaEvent_t start, cudaEvent_t stop);
+void CUDA_CHECK_ERR(unsigned lineNumber, const char* fileName);
 
 __global__ void vis2ints(double scale, double2 *vis_in, int2* vis_out, int npts);
 __global__ void set_bookmarks(int2* vis_in, int npts, int blocksize, int blockgrid, int* bookmarks);
@@ -18,6 +20,19 @@ __global__ void __launch_bounds__(GCF_DIM*GCF_DIM/4/4/GCF_STRIPES/PTS, 12)
 __device__ double __nvvm_floor_d(double f);
 #define floor __nvvm_floor_d
 #endif
+
+void CUDA_CHECK_ERR(unsigned lineNumber, const char* fileName) {
+   cudaError_t err = cudaGetLastError();
+   if (err) std::cout << "Error " << err << " on line " << lineNumber << " of " << fileName << ": " << cudaGetErrorString(err) << std::endl;
+}
+
+float getElapsed(cudaEvent_t start, cudaEvent_t stop) {
+   float elapsed;
+   cudaEventRecord(stop);
+   cudaEventSynchronize(stop);
+   cudaEventElapsedTime(&elapsed, start, stop);
+   return elapsed;
+}
 
 __global__ void vis2ints(double scale, double2 *vis_in, int2* vis_out, int npts) {
    for (int q=threadIdx.x+blockIdx.x*blockDim.x;
@@ -193,8 +208,8 @@ void gridderFuncName (
    CUDA_CHECK_ERR(__LINE__,__FILE__);
    set_bookmarks<<<4,256>>>(in_ints, npts, gcf_dim/2, (img_dim+gcf_dim/2-1)/(gcf_dim/2),
                                bookmarks);
-   int2* h_ints = (int2*)malloc(sizeof(int2)*npts);
-   cudaMemcpy(h_ints, in_ints, sizeof(int2)*npts, cudaMemcpyDeviceToHost);
+   // int2* h_ints = (int2*)malloc(sizeof(int2)*npts);
+   // cudaMemcpy(h_ints, in_ints, sizeof(int2)*npts, cudaMemcpyDeviceToHost);
    CUDA_CHECK_ERR(__LINE__,__FILE__);
    cudaMemset(d_out, 0, sizeof(CmplxType)*(img_dim*img_dim+2*img_dim*gcf_dim+2*gcf_dim)*POLARIZATIONS);
    cudaEventRecord(start);
