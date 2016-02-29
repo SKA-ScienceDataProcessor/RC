@@ -127,7 +127,6 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
       gpar = cfgGrid cfg
       gcfpar = cfgGCF cfg
       gcfsiz = gcfSize gcfpar
-      numOps = cfgPointsIn cfg * gcfsiz * gcfsiz
 
   -- Intermediate Flow nodes
   let gridded = grid vis (gcf vis0) createGrid -- grid from vis

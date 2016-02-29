@@ -14,9 +14,6 @@ loops:  2
 # Number of points in input files must be known in advance
 points: 6426200
 
-# Number of points in-bounds
-points_in: 4829180
-
 # Input sets. We are going to read the XX polarisation for each of
 # them. The weights are going to get used for scheduling.
 input:

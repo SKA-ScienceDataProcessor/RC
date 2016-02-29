@@ -9,7 +9,6 @@ import Data.Yaml
 data Config = Config
   { cfgInput    :: [OskarInput] -- ^ Input Oskar files
   , cfgPoints   :: Int      -- ^ Number of points to read from Oskar file
-  , cfgPointsIn :: Int      -- ^ Number of points fit into bounds
   , cfgNodes    :: Int      -- ^ Number of data sets to process in parallel
   , cfgLoops    :: Int      -- ^ Number of major loops to run
   , cfgGridderType   :: Int   -- ^ Type of gridder: 0-CPU Halide, 1-GPU Halide, 2-GPU NVidia
@@ -25,7 +24,6 @@ instance FromJSON Config where
   parseJSON (Object v)
     = Config <$> v .: "input"
              <*> v .: "points"
-             <*> v .: "points_in"
              <*> v .: "nodes"
              <*> (v .: "loops" <|> return (cfgLoops defaultConfig))
              <*> (v .: "gridder_type" <|> return (cfgGridderType defaultConfig))
@@ -99,7 +97,6 @@ defaultConfig :: Config
 defaultConfig = Config
   { cfgInput    = []
   , cfgPoints   = 32131 * 200
-  , cfgPointsIn = 32131 * 200
   , cfgNodes    = 0
   , cfgLoops    = 1
   , cfgGridderType = 1
