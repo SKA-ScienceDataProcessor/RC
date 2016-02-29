@@ -11,7 +11,7 @@
 #include <vector>
 
 std::string mkKernelName(const std::string & prefix, int WIDTH, int HEIGHT){
-  if (WIDTH == 2048 && HEIGHT == 2048) return prefix; // keep old name
+  // if (WIDTH == 2048 && HEIGHT == 2048) return prefix; // keep old name
   return prefix + "_" + std::to_string(WIDTH) + "x" + std::to_string(HEIGHT);
 }
 
@@ -659,10 +659,16 @@ int main(int argc, char **argv)
     if (argc < 2) return 1;
     Target target(get_target_from_environment());
     std::vector<Module> modules =
-      { ifftKernel(target, 2048, 2048)
-      , fftKernel(target, 2048, 2048)
-      , ifftKernel(target, 1024, 1024)
-      , fftKernel(target, 1024, 1024)
+      { ifftKernel(target, 1024, 1024)
+      ,  fftKernel(target, 1024, 1024)
+      , ifftKernel(target, 2048, 2048)
+      ,  fftKernel(target, 2048, 2048)
+      , ifftKernel(target, 3072, 3072)
+      ,  fftKernel(target, 3072, 3072)
+      , ifftKernel(target, 4096, 4096)
+      ,  fftKernel(target, 4096, 4096)
+      , ifftKernel(target, 6144, 6144)
+      ,  fftKernel(target, 6144, 6144)
       };
     Module linked = link_modules("kern_ffts", modules);
     // compile_module_to_c_header(linked, std::string(argv[1]) + ".h");
