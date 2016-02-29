@@ -2,11 +2,14 @@
 # Gridder type: 0-CPU Halide, 1-GPU Halide, 2-GPU NVidia
 gridder_type: 1
 
+# Degridder type: 0-CPU Halide, otherwise-GPU Halide
+degridder_type: 1
+
 # Number of nodes scheduling should assume to be available.
 nodes:  16
 
 # Number of major loops to run
-loops:  10
+loops:  2
 
 # Number of points in input files must be known in advance
 points: 6426200
@@ -46,6 +49,7 @@ grid:
   height:  2048
   pitch:   2048
   theta:   0.04
+  lm-facets: 3
 
 # Grid convolution function parameters. Kernels will also be
 # specialised to a oversampling factor and GCF size. Change
