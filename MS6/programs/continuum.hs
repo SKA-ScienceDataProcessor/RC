@@ -162,7 +162,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
           distribute wdom SeqSchedule $ calculate $ gcf vis0
 
           -- Rotate visibilities
-          when (gridFacets gpar > 1) $ rebind vis0 $ dkern $ hints cpuHints $ rotateKernel cfg lmdom tdom
+          rebind vis0 $ dkern $ hints cpuHints $ rotateKernel cfg lmdom tdom
 
           -- Bin visibilities (could distribute, but there's no benefit)
           rebind vis0 $ rkern $ hints allCpuHints $ binner gpar tdom uvdom wdom
