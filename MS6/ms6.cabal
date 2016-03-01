@@ -55,7 +55,7 @@ library
   x-cuda-sources:      kernel/nvidia/gridder/grid_gpu.cu
                        kernel/nvidia/gridder/grid_gpuc.cu
                        kernel/nvidia/gridder/halide_api.cu
-  x-cuda-options:      -std=c++11 -Ikernel/common -arch=sm_35
+  x-cuda-options:      -D__CUDA_RUNTIME_H__ -include kernel/nvidia/gridder/fake_cfg.h -std=c++11 -Ikernel/common -arch=sm_35
 
 executable dotproduct
   default-language:    Haskell2010
