@@ -7,11 +7,11 @@ module Kernel.Data
   , defaultConfig
   , gridImageWidth, gridImageHeight, gridScale, gridXY2UV
   -- * Data tags
-  , Index, Tag, Vis, UVGrid, Image, Cleaned, GCFs
+  , Index, Tag, Vis, UVGrid, FullUVGrid, Image, Cleaned, GCFs
   -- * Data representations
   , DDom, TDom, UDom, VDom, WDom, UVDom, LDom, MDom, LMDom
-  , IndexRepr, UVGRepr, UVGMarginRepr, FacetRepr, ImageRepr, PlanRepr, GCFsRepr
-  , indexRepr, uvgRepr, uvgMarginRepr, facetRepr, imageRepr, planRepr, gcfsRepr
+  , IndexRepr, UVGRepr, UVGMarginRepr, FacetRepr, ImageRepr, FullUVGRepr, PlanRepr, GCFsRepr
+  , indexRepr, uvgRepr, uvgMarginRepr, facetRepr, imageRepr, fullUVGRepr, planRepr, gcfsRepr
   -- * Visibility data representations
   , RawVisRepr, RotatedVisRepr, VisRepr
   , rawVisRepr, rotatedVisRepr, visRepr
@@ -31,6 +31,7 @@ data Index -- ^ Data set index
 data Tag -- ^ Initialisation (e.g. FFT plans)
 data Vis -- ^ Visibilities (File name to OSKAR / raw visibilities / binned ...)
 data UVGrid -- ^ UV grid
+data FullUVGrid -- ^ Full UV grid
 data Image -- ^ Image
 data Cleaned -- ^ Result from cleaning
 data GCFs -- ^ A set of GCFs
@@ -38,6 +39,7 @@ data GCFs -- ^ A set of GCFs
 deriving instance Typeable Tag
 deriving instance Typeable Vis
 deriving instance Typeable UVGrid
+deriving instance Typeable FullUVGrid
 deriving instance Typeable Image
 deriving instance Typeable GCFs
 
@@ -81,6 +83,12 @@ facetRepr gp = halideRepr $ dimY :. dimX :. Z
 type ImageRepr = HalideRepr Dim2 Double Image
 imageRepr :: GridPar -> ImageRepr
 imageRepr gp = halideRepr $ dimY :. dimX :. Z
+  where dimX = (0, fromIntegral $ gridImageWidth gp)
+        dimY = (0, fromIntegral $ gridImageHeight gp)
+
+type FullUVGRepr = HalideRepr Dim3 Double FullUVGrid
+fullUVGRepr :: GridPar -> FullUVGRepr
+fullUVGRepr gp = halideRepr $ dimY :. dimX :. dimCpx :. Z
   where dimX = (0, fromIntegral $ gridImageWidth gp)
         dimY = (0, fromIntegral $ gridImageHeight gp)
 

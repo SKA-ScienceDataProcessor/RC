@@ -11,9 +11,9 @@ import Kernel.Data
 import Data.Vector.HFixed.Class ()
 import Flow.Halide.Types ()
 
-fftKern :: GridPar -> UVDom -> Flow Image -> Kernel UVGrid
-fftKern gp uvdom = halideKernel1 "fftKern" (imageRepr gp) (uvgRepr uvdom) kern_fft
-foreign import ccall unsafe kern_fft :: HalideFun '[ImageRepr] UVGRepr
+fftKern :: GridPar -> Flow Image -> Kernel FullUVGrid
+fftKern gp = halideKernel1 "fftKern" (imageRepr gp) (fullUVGRepr gp) kern_fft
+foreign import ccall unsafe kern_fft :: HalideFun '[ImageRepr] FullUVGRepr
 
 ifftKern :: GridPar -> UVDom -> Flow UVGrid -> Kernel Image
 ifftKern gp uvdom = halideKernel1 "ifftKern" (uvgRepr uvdom) (facetRepr gp) kern_ifft

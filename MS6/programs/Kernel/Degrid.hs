@@ -19,24 +19,23 @@ import Flow.Halide.Types ()
 -- | Trivial kernel for distributing the grid. This is simply about
 -- returning the grid unchanged. *Seriously* something dna-flow should
 -- learn to to automatically at some point.
-distributeGrid :: DDom -> DDom -> LMDom -> UVDom -> Flow UVGrid -> Kernel UVGrid
-distributeGrid ddom0 ddom1 (ldom, mdom) uvdom =
-  mappingKernel "distribute grid" ((RegionRepr ddom0 $ halrWrite $ uvgRepr uvdom) :. Z)
-                                  (RegionRepr ddom1 $ RegionRepr ldom $ RegionRepr mdom $ uvgRepr uvdom) $
+distributeGrid :: DDom -> DDom -> LMDom -> GridPar -> Flow FullUVGrid -> Kernel FullUVGrid
+distributeGrid ddom0 ddom1 (ldom, mdom) gp =
+  mappingKernel "distribute grid" ((RegionRepr ddom0 $ halrWrite $ fullUVGRepr gp) :. Z)
+                                  (RegionRepr ddom1 $ RegionRepr ldom $ RegionRepr mdom $ fullUVGRepr gp) $
     \[uvg] _ -> return $ head $ Map.elems uvg
 
-type ForeignDegridder = HalideBind Double (HalideBind Int32 (HalideFun '[GCFsRepr, UVGRepr, VisRepr] VisRepr))
+type ForeignDegridder = HalideBind Double (HalideBind Int32 (HalideFun '[GCFsRepr, FullUVGRepr, VisRepr] VisRepr))
 type DegridKernel = GridPar -> GCFPar    -- ^ Configuration
                  -> UVDom -> WDom        -- ^ u/v/w visibility domains
-                 -> UVDom                -- ^ u/v grid domain
-                 -> Flow GCFs -> Flow UVGrid -> Flow Vis
+                 -> Flow GCFs -> Flow FullUVGrid -> Flow Vis
                  -> Kernel Vis
 
 -- | Make degridder kernel binding
 mkDslDegridKernel :: String -> ForeignDegridder -> DegridKernel
-mkDslDegridKernel kn fd gp gcfp uvdom wdom uvdom_grid =
+mkDslDegridKernel kn fd gp gcfp uvdom wdom =
   halideKernel3 kn (gcfsRepr wdom gcfp)
-                   (uvgRepr uvdom_grid)
+                   (fullUVGRepr gp)
                    (visRepr uvdom wdom)
                    (visRepr uvdom wdom) $
   fd `halideBind` gridScale gp
