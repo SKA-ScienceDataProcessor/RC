@@ -38,13 +38,13 @@ createGrid :: Flow UVGrid
 createGrid = flow "create grid"
 grid :: Flow Vis -> Flow GCFs -> Flow UVGrid -> Flow UVGrid
 grid = flow "grid"
-degrid :: Flow GCFs -> Flow UVGrid -> Flow Vis -> Flow Vis
+degrid :: Flow GCFs -> Flow FullUVGrid -> Flow Vis -> Flow Vis
 degrid = flow "degrid"
 gcf :: Flow Vis -> Flow GCFs
 gcf = flow "gcf"
 
 -- FFT
-dft :: Flow Image -> Flow UVGrid
+dft :: Flow Image -> Flow FullUVGrid
 dft = flow "dft"
 idft :: Flow UVGrid -> Flow Image
 idft = flow "idft"
@@ -169,14 +169,14 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
 
           -- Degrid / generate PSF (depending on vis)
           rule degrid $ \(gcfs :. uvgrid :. vis' :. Z) -> do
-            rebind uvgrid $ distributeGrid ddomss ddom lmdom uvdoms
+            rebind uvgrid $ distributeGrid ddomss ddom lmdom gpar
             let (degridkern, degridhints) = selectDegridKernel (cfgGridderType cfg)
                 binSize (_,_,s) = s
                 hint (_:_:visRegs:_) = map (setDblOpts $ 8 * ops * gcfsiz * gcfsiz) degridhints
                   where wBinReg = (!!2) -- u, v, w - we want region three
                         ops = sum $ map binSize $ concatMap (regionBins . wBinReg) visRegs
             bind (degrid gcfs uvgrid vis') $ rkern $ hintsByPars hint $
-              degridkern gpar gcfpar uvdom wdom uvdoms gcfs uvgrid vis'
+              degridkern gpar gcfpar uvdom wdom gcfs uvgrid vis'
           bindRule psfVis $ rkern $ psfVisKernel uvdom wdom
           calculate vis
 
@@ -198,7 +198,8 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
 
       -- Sum up facets
       bind createImage $ dkern $ imageInit gpar
-      bind images $ dkern $ hints allCpuHints $ imageDefacet gpar lmdom (idft gridded) createImage
+      let fsize = gridPitch gpar * gridHeight gpar * 8 {-sizeof double-}
+      bind images $ dkern $ hints [floatHint, memHint{hintMemoryReadBytes = fsize}] $ imageDefacet gpar lmdom (idft gridded) createImage
 
     -- Sum up images locally
     bind createImage $ regionKernel ddoms $ imageInit gpar
@@ -219,7 +220,7 @@ majorIterationStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis mdl = do
 
   -- Calculate model grid using FFT (once)
   let gpar = cfgGrid cfg
-  bindRule dft $ regionKernel (head ddom_s) $ hints allCpuHints $ fftKern gpar (head uvdom_s)
+  bindRule dft $ regionKernel (head ddom_s) $ hints allCpuHints $ fftKern gpar
   calculate (dft mdl)
 
   -- Do continuum gridding for degridded visibilities. The actual
