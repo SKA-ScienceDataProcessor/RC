@@ -198,7 +198,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
 
       -- Sum up facets
       bind createImage $ dkern $ imageInit gpar
-      let fsize = gridPitch gpar * gridHeight gpar * 8 {-sizeof double-}
+      let fsize = gridImageWidth gpar * gridImageHeight gpar * 8 {-sizeof double-}
       bind images $ dkern $ hints [floatHint, memHint{hintMemoryReadBytes = fsize}] $ imageDefacet gpar lmdom (idft gridded) createImage
 
     -- Sum up images locally
