@@ -140,7 +140,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
     distribute ddom SeqSchedule $ do
 
       -- Loop over facets
-      distribute (fst lmdom) SeqSchedule $ distribute (snd lmdom) SeqSchedule $ do
+      distribute (fst lmdom) ParSchedule $ distribute (snd lmdom) SeqSchedule $ do
         let fkern :: IsKernelDef kf => kf -> kf
             fkern = regionKernel (fst lmdom) . regionKernel (snd lmdom)
             rkern :: IsKernelDef kf => kf -> kf
