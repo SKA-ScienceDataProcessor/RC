@@ -657,7 +657,7 @@ Module fftKernel(Target target, int WIDTH, int HEIGHT) {
 int main(int argc, char **argv)
 {
     if (argc < 2) return 1;
-    Target target(get_target_from_environment());
+    Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX });
     std::vector<Module> modules =
       { ifftKernel(target, 1024, 1024)
       ,  fftKernel(target, 1024, 1024)
