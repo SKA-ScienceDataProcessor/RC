@@ -90,7 +90,7 @@ class Metric:
     def format_rate(self):
         if self.time == None or self.time == 0: return ('', '')
         if self.hint != None and self.hint != 0:
-            if self.val == 0 or self.val == None: # or self.error() > err_threshold:
+            if self.val == 0 or self.val == None or self.val > self.hint : # or self.error() > err_threshold:
                 return ('hintbased', '[' + format_num(self.hint / self.time) + self.unit + '/s]')
         if self.val == None:
             return ('', '-')
