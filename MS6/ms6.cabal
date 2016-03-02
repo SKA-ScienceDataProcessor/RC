@@ -31,6 +31,8 @@ library
   c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
                        kernel/gpu/gridding/kern_degrid_gpu1.cpp
                        kernel/cpu/gridding/fft1.cpp
+                       kernel/cpu/gridding/scatter1.cpp
+                       kernel/cpu/gridding/degrid1.cpp
                        kernel/nvidia/gridder/binsort.cpp
   include-dirs:        kernel/common
   cc-options:          -std=c++11

@@ -12,6 +12,10 @@ using namespace Halide;
 using namespace Halide::Internal;
 using namespace std;
 
+std::string mkKernelName(const std::string & prefix, int GCF_SIZE){
+  return prefix + "_" + std::to_string(GCF_SIZE);
+}
+
 #include "../../cpu/gridding/cfg.h"
 #include "../../cpu/gridding/utils.h"
 
@@ -30,6 +34,7 @@ struct SGridder {
     , int xpos
     , int ypos
     , int vpos
+    , int GCF_SIZE
     );
 
   Param<double> scale;
@@ -50,6 +55,8 @@ struct SGridder {
     , inBound
     , overc
     ;
+
+  int gcfsize;
 };
 
 
@@ -63,7 +70,8 @@ SGridder::SGridder(
   , int xpos
   , int ypos
   , int vpos
-  ) {
+  , int GCF_SIZE
+  ) : gcfsize(GCF_SIZE) {
   // ** Input
   scale = Param<double>("scale");
   grid_size = Param<int>("grid_size");
@@ -311,24 +319,31 @@ int main(int argc, char * argv[])
            { Target::SSE41, Target::AVX, Target::CUDA, Target::CUDACapability35 });
 
   SGridder
-      gridderGPU = SGridder(0,1,2,3)
+      gridderGPU16 = SGridder(0,1,2,3, 16)
+    , gridderGPU32 = SGridder(0,1,2,3, 32)
+    , gridderGPU64 = SGridder(0,1,2,3, 64)
     ;
 
-  RewriteLoadStore2Atomic rewriter;
-  gridderGPU.uvg.add_custom_lowering_pass(&rewriter, nullptr);
+  auto comp = [=](SGridder & sg) {
+    RewriteLoadStore2Atomic rewriter;
+    sg.uvg.add_custom_lowering_pass(&rewriter, nullptr);
+    vector<Halide::Argument> args = {
+        sg.scale
+      , sg.grid_size
+      , sg.vis
+      , sg.gcf_fused
+      };
+    return sg.uvg.compile_to_module(args, mkKernelName("kern_scatter_gpu", sg.gcfsize), target_cuda);
+  };
 
-  auto comp = [](SGridder & sg, const char * fn, Target target) {
-      vector<Halide::Argument> args = {
-          sg.scale
-        , sg.grid_size
-        , sg.vis
-        , sg.gcf_fused
-        };
-      return sg.uvg.compile_to_module(args, fn, target);
+  std::vector<Module> modules =
+    { comp(gridderGPU16)
+    , comp(gridderGPU32)
+    , comp(gridderGPU64)
     };
 
-  Module mGPU = comp(gridderGPU, "kern_scatter_gpu", target_cuda);
-
-  compile_module_to_object(mGPU, argv[1]);
+  Module linked = link_modules("kern_degrid_gpus", modules);
+  compile_module_to_c_header(linked, std::string(argv[1]) + ".h");
+  compile_module_to_object(linked, argv[1]);
   return 0;
 }

@@ -13,13 +13,11 @@ using namespace Halide;
 
 #define Q(a) a(#a)
 
-int main(int argc, char **argv)
-{
+std::string mkKernelName(const std::string & prefix, int GCF_SIZE){
+  return prefix + "_" + std::to_string(GCF_SIZE);
+}
 
-  // GCF size and oversampling are constants for now
-  const int GCF_SIZE = 16
-          , OVER = 8;
-
+Module degridKernel(Target target, int GCF_SIZE) {
   // ** Input
 
   Param<double> scale("scale");
@@ -131,9 +129,21 @@ int main(int argc, char **argv)
     ;
 #endif
 
-  Target target_cuda(get_target_from_environment().os, Target::X86, 64,
-           { Target::SSE41, Target::AVX, Target::CUDA, Target::CUDACapability35 });
-  Module mod = vis_out.compile_to_module(args, "kern_degrid_gpu", target_cuda);
-  compile_module_to_object(mod, argv[1]);
-  return 0;
+  return vis_out.compile_to_module(args, mkKernelName("kern_degrid_gpu", GCF_SIZE), target);
+}
+
+int main(int argc, char **argv)
+{
+    if (argc < 2) return 1;
+    Target target_cuda(get_target_from_environment().os, Target::X86, 64,
+      { Target::SSE41, Target::AVX, Target::CUDA, Target::CUDACapability35 });
+    std::vector<Module> modules =
+      { degridKernel(target_cuda, 16)
+      , degridKernel(target_cuda, 32)
+      , degridKernel(target_cuda, 64)
+      };
+    Module linked = link_modules("kern_degrid_gpus", modules);
+    compile_module_to_c_header(linked, std::string(argv[1]) + ".h");
+    compile_module_to_object(linked, argv[1]);
+    return 0;
 }

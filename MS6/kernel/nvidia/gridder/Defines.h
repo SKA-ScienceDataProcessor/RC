@@ -4,7 +4,7 @@
 #include "../../cpu/gridding/cfg.h"
 
 #define NPOINTS (num_baselines*num_times)
-#define GCF_DIM GCF_SIZE
+#define GCF_DIM 16
 #define IMG_SIZE 2048
 #define GCF_GRID OVER
 //PTS and GCF_STRIPES affect only GATHER

@@ -1,15 +1,21 @@
-
+#ifdef _MSC_VER
+#pragma warning(push, 0)
+#endif
 #include "Halide.h"
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
 #include "utils.h"
 
 using namespace Halide;
 
-int main(int argc, char **argv)
-{
+std::string mkKernelName(const std::string & prefix, int GCF_SIZE){
+  return prefix + "_" + std::to_string(GCF_SIZE);
+}
 
-  // GCF size and oversampling are constants for now
-  const int GCF_SIZE = 16
-          , OVER = 8;
+Module degridKernel(Target target, int GCF_SIZE) {
+  const int OVER = 8;
 
   // ** Input
 
@@ -96,8 +102,20 @@ int main(int argc, char **argv)
   vis_out.unroll(uvdim);
   vis_out.update().unroll(rcmplx);
 
-  Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX});
-  Module mod = vis_out.compile_to_module(args, "kern_degrid", target);
-  compile_module_to_object(mod, argv[1]);
-  return 0;
+  return vis_out.compile_to_module(args, mkKernelName("kern_degrid", GCF_SIZE), target);
+}
+
+int main(int argc, char **argv)
+{
+    if (argc < 2) return 1;
+    Target target(get_target_from_environment());
+    std::vector<Module> modules =
+      { degridKernel(target, 16)
+      , degridKernel(target, 32)
+      , degridKernel(target, 64)
+      };
+    Module linked = link_modules("kern_degrids", modules);
+    compile_module_to_c_header(linked, std::string(argv[1]) + ".h");
+    compile_module_to_object(linked, argv[1]);
+    return 0;
 }
