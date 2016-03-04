@@ -11,8 +11,8 @@ data Config = Config
   , cfgPoints   :: Int      -- ^ Number of points to read from Oskar file
   , cfgNodes    :: Int      -- ^ Number of data sets to process in parallel
   , cfgLoops    :: Int      -- ^ Number of major loops to run
-  , cfgGridderType   :: Int   -- ^ Type of gridder: 0-CPU Halide, 1-GPU Halide, 2-GPU NVidia
-  , cfgDegridderType :: Int   -- ^ Type of degridder: 0-CPU Halide, otherwise-GPU Halide
+  , cfgGridderType   :: GridKernelType -- ^ Type of gridder: 0-CPU Halide, 1-GPU Halide, 2-GPU NVidia
+  , cfgDegridderType :: DegridKernelType -- ^ Type of degridder: 0-CPU Halide, otherwise-GPU Halide
   , cfgLong     :: Double   -- ^ Phase centre longitude
   , cfgLat      :: Double   -- ^ Phase centre latitude
   , cfgOutput   :: FilePath -- ^ File name for the output image
@@ -26,8 +26,8 @@ instance FromJSON Config where
              <*> v .: "points"
              <*> v .: "nodes"
              <*> (v .: "loops" <|> return (cfgLoops defaultConfig))
-             <*> (v .: "gridder_type" <|> return (cfgGridderType defaultConfig))
-             <*> (v .: "degridder_type" <|> return (cfgDegridderType defaultConfig))
+             <*> (fmap toEnum (v .: "gridder_type") <|> return (cfgGridderType defaultConfig))
+             <*> (fmap toEnum (v .: "degridder_type") <|> return (cfgDegridderType defaultConfig))
              <*> (v .: "long" <|> return (cfgLong defaultConfig))
              <*> (v .: "lat" <|> return (cfgLat defaultConfig))
              <*> v .: "output"
@@ -46,6 +46,17 @@ instance FromJSON OskarInput where
     = OskarInput <$> v .: "file" <*> v .: "weight"
                  <*> (v .: "repeats" <|> return 1)
   parseJSON _ = mempty
+
+data GridKernelType
+  = GridKernelCPU
+  | GridKernelGPU
+  | GridKernelNV
+  deriving (Eq, Ord, Enum, Show)
+
+data DegridKernelType
+  = DegridKernelCPU
+  | DegridKernelGPU
+  deriving (Eq, Ord, Enum, Show)
 
 data GridPar = GridPar
   { gridWidth :: !Int  -- ^ Width of the uv-grid/image in pixels
@@ -99,8 +110,8 @@ defaultConfig = Config
   , cfgPoints   = 32131 * 200
   , cfgNodes    = 0
   , cfgLoops    = 1
-  , cfgGridderType = 1
-  , cfgDegridderType = 1
+  , cfgGridderType = GridKernelGPU
+  , cfgDegridderType = DegridKernelGPU
   , cfgLong     = 72.1 / 180 * pi -- mostly arbitrary, and probably wrong in some way
   , cfgLat      = 42.6 / 180 * pi -- ditto
   , cfgOutput   = ""

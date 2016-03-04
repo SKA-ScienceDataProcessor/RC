@@ -1,11 +1,17 @@
 {-# LANGUAGE DataKinds #-}
 
-module Kernel.Gridder where
+module Kernel.Gridder
+  ( GridKernelType
+  , gridInit, gridKernel
+  , gridInitDetile, gridDetiling
+  )
+  where
 
 import Data.Int
 
 import Flow.Builder
 import Flow.Halide
+import Flow.Domain
 import Flow
 
 import Kernel.Data
@@ -20,37 +26,38 @@ gridInit :: GCFPar -> UVDom -> Kernel UVGrid
 gridInit gcfp uvdom = halideKernel0 "gridInit" (uvgMarginRepr gcfp uvdom) kern_init
 foreign import ccall unsafe kern_init :: HalideFun '[] UVGRepr
 
-type ForeignGridder = HalideBind Double (HalideBind Int32 (HalideFun '[VisRepr, GCFsRepr] UVGMarginRepr))
-type GridKernel = GridPar -> GCFPar    -- ^ Configuration
-               -> UVDom -> WDom        -- ^ u/v/w visibility domains
-               -> UVDom                -- ^ u/v grid domains
-               -> Flow Vis -> Flow GCFs -> Flow UVGrid
-               -> Kernel UVGrid
-
 -- | Make gridder kernel binding
-mkDslGridKernel :: String -> ForeignGridder -> GridKernel
-mkDslGridKernel kn fg gp gcfp uvdom wdom uvdom' =
-  halideKernel2Write kn (visRepr uvdom wdom)
-                        (gcfsRepr wdom gcfp)
-                        (uvgMarginRepr gcfp uvdom') $
-  fg `halideBind` gridScale gp
-     `halideBind` fromIntegral (gridHeight gp)
+gridKernel :: GridKernelType -> GridPar -> GCFPar -- ^ Configuration
+           -> UVDom -> WDom        -- ^ u/v/w visibility domains
+           -> UVDom                -- ^ u/v grid domains
+           -> Flow Vis -> Flow GCFs -> Flow UVGrid
+           -> Kernel UVGrid
+gridKernel ktype gp gcfp uvdom wdom uvdom' =
+  hintsByPars (gridHint ktype) $
+  halideKernel2Write (show ktype) (visRepr uvdom wdom)
+                                  (gcfsRepr wdom gcfp)
+                                  (uvgMarginRepr gcfp uvdom') $
+  gridCKernel ktype `halideBind` gridScale gp
+                    `halideBind` fromIntegral (gridHeight gp)
 
+gridHint :: GridKernelType -> [[RegionBox]] -> [ProfileHint]
+gridHint ktype (visRegs:_) = case ktype of
+  GridKernelCPU -> [floatHint { hintDoubleOps = ops }, memHint]
+  GridKernelGPU -> [cudaHint { hintCudaDoubleOps = ops } ]
+  GridKernelNV  -> [cudaHint { hintCudaDoubleOps = ops } ]
+ where wBinReg = (!!2) -- u, v, w - we want region three (see visRepr definition)
+       ops = sum $ map regionBinSize $ concatMap (regionBins . wBinReg) visRegs
+gridHint _ _ = error "gridHint: Not enough parameters!"
+
+gridCKernel :: GridKernelType -> ForeignGridder
+gridCKernel GridKernelCPU = kern_scatter
+gridCKernel GridKernelGPU = kern_scatter_gpu1
+gridCKernel GridKernelNV  = nvGridder
+
+type ForeignGridder = HalideBind Double (HalideBind Int32 (HalideFun '[VisRepr, GCFsRepr] UVGMarginRepr))
 foreign import ccall unsafe kern_scatter      :: ForeignGridder
 foreign import ccall unsafe kern_scatter_gpu1 :: ForeignGridder
 foreign import ccall unsafe nvGridder         :: ForeignGridder
-
-gridKernel, gridKernelGPU, gridKernelNV :: GridKernel
-gridKernel    = mkDslGridKernel "gridKernel"    kern_scatter
-gridKernelGPU = mkDslGridKernel "gridKernelGPU" kern_scatter_gpu1
-gridKernelNV  = mkDslGridKernel "gridKernelNV"  nvGridder
-
-selectGridKernel :: Int -> (GridKernel, [ProfileHint])
-selectGridKernel n
-  | n == 0 = (gridKernel, [floatHint, memHint])
-  | n == 1 = (gridKernelGPU, [cudaHint])
-  | n == 2 = (gridKernelNV, [cudaHint])
-  | otherwise = (gridKernelGPU, [cudaHint])
 
 -- | Gridder grid initialisation, for detiling. Only differs from
 -- "gridInit" in the produced data representation, we can even re-use

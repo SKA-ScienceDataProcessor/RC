@@ -102,7 +102,8 @@ gridderStrat cfg = do
 
     -- Bind kernel rules
     bindRule createGrid (rkern $ gridInit gcfpar uvdom)
-    bindRule grid (rkern $ hints [floatHint] $ gridKernel gpar gcfpar uvdoms wdom uvdom)
+    bindRule grid $ rkern $ hints [floatHint] $
+      gridKernel GridKernelCPU gpar gcfpar uvdoms wdom uvdom
 
     -- Run gridding distributed
     distribute vdom ParSchedule $ distribute udom ParSchedule $ do

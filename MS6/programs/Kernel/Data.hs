@@ -3,7 +3,8 @@
 -- | Data representation definitions
 module Kernel.Data
   ( -- * Configuration
-    OskarInput(..), Config(..), GridPar(..), GCFPar(..), CleanPar(..)
+    Config(..), OskarInput(..), GridKernelType(..), DegridKernelType(..)
+  , GridPar(..), GCFPar(..), CleanPar(..)
   , defaultConfig
   , gridImageWidth, gridImageHeight, gridScale, gridXY2UV
   -- * Data tags

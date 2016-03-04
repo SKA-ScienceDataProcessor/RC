@@ -83,8 +83,7 @@ gridderStrat cfg = do
 
     -- Bind kernel rules
     bindRule createGrid (dkern $ gridInit gcfpar uvdom)
-    let (gridkern, _) = selectGridKernel (cfgGridderType cfg)
-    bindRule grid (dkern $ gridkern gpar gcfpar uvdoms wdom uvdom)
+    bindRule grid $ dkern $ gridKernel GridKernelCPU gpar gcfpar uvdoms wdom uvdom
 
     -- Run gridding distributed
     calculate gridded
