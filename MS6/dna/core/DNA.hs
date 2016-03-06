@@ -205,6 +205,7 @@ module DNA (
       -- if it was started by SLURM (see 'runDna' for detail of
       -- starting DNA program). They're stored in GHC's eventlog
       -- format.
+    , processId
     , logMessage
     , duration
       -- * Kernels
@@ -316,6 +317,7 @@ module DNA (
     , Group
     , delayGroup
     , gather
+    , gatherM
       -- * Reexports
     , MonadIO(..)
     , remotable

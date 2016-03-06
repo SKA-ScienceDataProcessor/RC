@@ -54,6 +54,7 @@ interpretDNA (DNA m) =
     runOp op = case op of
       Kernel msg mode hints io -> execKernel msg mode hints io
       DnaRank         -> envRank      <$> ask
+      DnaPid          -> liftP  getSelfPid
       DnaGroupSize    -> envGroupSize <$> ask
       AvailNodes      -> do n <- Set.size <$> use stNodePool
                             taggedMessage "DNA" $ "availNodes " ++ (show $ n)

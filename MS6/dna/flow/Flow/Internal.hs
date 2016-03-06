@@ -7,6 +7,8 @@ module Flow.Internal where
 
 import Control.Monad.State.Strict
 
+import Data.Binary.Get ( runGet )
+import Data.Binary.Put ( runPut )
 import Data.Binary hiding (get, put)
 import qualified Data.Binary as B
 import Data.Function ( on )
@@ -17,6 +19,12 @@ import Data.List     ( sort, groupBy, intercalate )
 import qualified Data.Map as Map
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
+
+import qualified Data.ByteString.Lazy as BS
+import System.Directory ( removeFile )
+
+import Data.IORef
+import System.IO.Unsafe
 
 import DNA (ProfileHint)
 import Flow.Vector
@@ -584,10 +592,38 @@ putRegionData rdata = do
     putRegionBox rbox
     putVector vec
 
+ctr :: IORef Int
+{-# NOINLINE ctr #-}
+ctr = unsafePerformIO (newIORef 0)
+
+putIORegionData :: FilePath -> RegionData -> IO BS.ByteString
+putIORegionData fprefix rdata = do
+    n <- atomicModifyIORef' ctr (\x -> (x+1,x))
+    let
+      fp = fprefix ++ 'i':show n
+      putDescr = do
+        B.put (Map.size rdata)
+        forM_ (Map.keys rdata) putRegionBox
+        B.put fp
+    dumpCVectorList (Map.elems rdata) fp >> return (runPut putDescr)
+
 getRegionData :: GetContext -> Get RegionData
 getRegionData ctx = do
   rdsize <- B.get :: Get Int
   Map.fromList <$> replicateM rdsize ((,) <$> getRegionBox ctx <*> getVector)
+
+getIORegionData :: BS.ByteString -> GetContext -> IO RegionData
+getIORegionData bs ctx = do
+    rvecs <- readCVectorList f
+    removeFile f -- consume file
+    return $ Map.fromList (zip rbxs rvecs)
+  where
+    (rbxs, f) = runGet getDescr bs
+    getDescr = do
+      rdsize <- B.get
+      rboxes <- replicateM rdsize (getRegionBox ctx)
+      fp <- B.get
+      return (rboxes, fp)
 
 putRegionBox :: RegionBox -> Put
 putRegionBox rbox = do

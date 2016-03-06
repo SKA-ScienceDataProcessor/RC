@@ -34,6 +34,7 @@ module DNA.DSL (
       -- ** Other
     , Rank
     , rank
+    , processId
     , groupSize
     , kernel
     , unboundKernel
@@ -138,6 +139,7 @@ data DnaF a where
       -> Kern a
       -> DnaF a
     DnaRank :: DnaF Int
+    DnaPid :: DnaF ProcessId
     DnaGroupSize :: DnaF Int
 
     AvailNodes :: DnaF Int
@@ -451,6 +453,15 @@ collectActor = CollectActor
 -- >    ...
 rank :: DNA Int
 rank = DNA $ singleton DnaRank
+
+-- | Obtains the CH pid of the current CH process. It should be used as
+-- follows:
+--
+-- > do ...
+-- >    n <- processId
+-- >    ...
+processId :: DNA ProcessId
+processId = DNA $ singleton DnaPid
 
 -- | Obtains the size of the group that the current process belongs
 -- to. For single processes this is always /1/. It should be used as

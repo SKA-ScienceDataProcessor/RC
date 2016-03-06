@@ -6,10 +6,13 @@ module Flow.Run.Maps where
 
 import Control.Monad
 
+import Data.Binary.Get (runGet)
+import Data.Binary.Put (runPut)
 import Data.Binary
 import qualified Data.IntMap as IM
 import qualified Data.IntSet as IS
 import qualified Data.Map.Strict as Map
+import qualified Data.ByteString.Lazy as BS
 
 import Flow.Internal
 
@@ -46,6 +49,16 @@ writeDataMap dm = do
     put kid
     putRegionData rdata
 
+writeIODataMap :: FilePath -> DataMap -> IO BS.ByteString
+writeIODataMap fprefix dm = do
+    rds <- mapM (putIORegionData fprefix . snd) (IM.elems dm)
+    return $ runPut (putRepIs rds)
+  where
+    putRepIs rd = do
+      put (IM.size dm)
+      forM_ (IM.keys dm) put
+      forM_ rd put
+
 readDataMap :: GetContext -> Get DataMap
 readDataMap ctx = do
   size <- get :: Get Int
@@ -56,6 +69,23 @@ readDataMap ctx = do
           Just kbind -> kernRepr kbind
           Nothing    -> error $ "readDataMap: Unknown kernel ID " ++ show kid ++ "!"
     return (kid, (repr, rdata)))
+
+readIODataMap :: BS.ByteString -> GetContext -> IO DataMap
+readIODataMap bs ctx = do
+    rds <- mapM (`getIORegionData` ctx) rdfs
+    return $ IM.fromList (map proc $ zip kids rds)
+  where
+    proc (kid, rd) = let
+             !repr = case IM.lookup kid (fst ctx) of
+                Just kbind -> kernRepr kbind
+                Nothing    -> error $ "readIODataMap: Unknown kernel ID " ++ show kid ++ "!"
+           in (kid, (repr, rd))
+    (kids, rdfs) = runGet getRepIs bs
+    getRepIs = do
+      size <- get
+      ks <- replicateM size get
+      rs <- replicateM size get
+      return (ks, rs)
 
 writeDomainMap :: DomainMap -> Put
 writeDomainMap dm = do

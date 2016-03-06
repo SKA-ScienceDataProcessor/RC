@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module Flow.Vector
   ( Vector(..)
@@ -26,6 +27,7 @@ module Flow.Vector
 #endif
   , unsafeToByteString, unsafeToByteString'
   , dumpVector, dumpVector'
+  , dumpCVectorList, readCVectorList
   , readVector, readCVector
   , putVector, getVector
   ) where
@@ -325,6 +327,35 @@ dumpVector :: Storable a => Vector a -> FilePath ->  IO ()
 dumpVector v file =
   withBinaryFile file WriteMode $ \h ->
     hPut h =<< unsafeToByteString v
+
+dumpCVectorList :: [Vector a] -> FilePath ->  IO ()
+dumpCVectorList vs file = do
+  withBinaryFile file WriteMode $ \h -> alloca $ \sizebuf -> do
+    let dumpVec (CVector n p) = do
+          poke sizebuf n
+          hPutBuf h sizebuf (sizeOf (undefined :: Int))
+          hPutBuf h p n
+        dumpVec _ = fail "Not a C Vector!"
+    mapM_ dumpVec vs
+
+readCVectorList :: FilePath -> IO [Vector a]
+readCVectorList file = do
+    fmap reverse readAll
+  where
+    readAll = withBinaryFile file ReadMode $ \h -> alloca $ \sizebuf ->
+      let readVec vs = do
+            r <- hGetBuf h sizebuf sizeOfInt
+            if | r == 0 -> return vs
+               | r < sizeOfInt -> fail $ "Bad size: can't read CVector list from " ++ file
+               | otherwise -> do
+                   n <- peek sizebuf
+                   v@(CVector _ p) <- allocCVector n :: IO (Vector Int8)
+                   nb <- hGetBuf h p n
+                   if nb < n
+                     then fail $ "Bad vector data: can't read CVector list from " ++ file
+                     else readVec (castVector v:vs)
+      in readVec []
+    sizeOfInt = sizeOf (undefined :: Int)
 
 -- | Write vector to a file (raw)
 dumpVector' :: Storable a => Vector a -> Int -> Int -> FilePath ->  IO ()
