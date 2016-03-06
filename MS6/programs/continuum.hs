@@ -6,13 +6,11 @@ module Main where
 import Control.Monad
 
 import Data.List
-import qualified Data.Map as Map
 import Data.Yaml
 
 import Flow
 import Flow.Builder ( rule )
 import Flow.Kernel
-import Flow.Domain ( regionBins )
 
 import Kernel.Binning
 import Kernel.Cleaning
@@ -23,7 +21,6 @@ import Kernel.FFT
 import Kernel.Gridder
 import Kernel.IO
 import Kernel.Scheduling
-import Kernel.Utils
 
 import System.Environment
 import System.Directory
@@ -126,7 +123,6 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
       dkern = regionKernel ddom
       gpar = cfgGrid cfg
       gcfpar = cfgGCF cfg
-      gcfsiz = gcfSize gcfpar
 
   -- Intermediate Flow nodes
   let gridded = grid vis (gcf vis0) createGrid -- grid from vis
@@ -170,24 +166,14 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
           -- Degrid / generate PSF (depending on vis)
           rule degrid $ \(gcfs :. uvgrid :. vis' :. Z) -> do
             rebind uvgrid $ distributeGrid ddomss ddom lmdom gpar
-            let (degridkern, degridhints) = selectDegridKernel (cfgGridderType cfg)
-                binSize (_,_,s) = s
-                hint (_:_:visRegs:_) = map (setDblOpts $ 8 * ops * gcfsiz * gcfsiz) degridhints
-                  where wBinReg = (!!2) -- u, v, w - we want region three
-                        ops = sum $ map binSize $ concatMap (regionBins . wBinReg) visRegs
-            bind (degrid gcfs uvgrid vis') $ rkern $ hintsByPars hint $
-              degridkern gpar gcfpar uvdom wdom gcfs uvgrid vis'
+            bind (degrid gcfs uvgrid vis') $ rkern $
+              degridKernel (cfgDegridderType cfg) gpar gcfpar uvdom wdom gcfs uvgrid vis'
           bindRule psfVis $ rkern $ psfVisKernel uvdom wdom
           calculate vis
 
           -- Gridding
           bind createGrid $ rkern $ gridInit gcfpar uvdom
-          let (gridkern, gridhints) = selectGridKernel (cfgGridderType cfg)
-              binSize (_,_,s) = s
-              hint (visRegs:_) = map (setDblOpts $ 8 * ops * gcfsiz * gcfsiz) gridhints
-                where wBinReg = (!!2) -- u, v, w - we want region three
-                      ops = sum $ map binSize $ concatMap (regionBins . wBinReg) visRegs
-          bindRule grid $ rkern $ hintsByPars hint $ gridkern gpar gcfpar uvdoms wdom uvdom
+          bindRule grid $ rkern $ gridKernel (cfgGridderType cfg) gpar gcfpar uvdoms wdom uvdom
           calculate gridded
 
         -- Compute the result by detiling & iFFT on tiles
@@ -199,7 +185,8 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
       -- Sum up facets
       bind createImage $ dkern $ imageInit gpar
       let fsize = gridImageWidth gpar * gridImageHeight gpar * 8 {-sizeof double-}
-      bind images $ dkern $ hints [floatHint, memHint{hintMemoryReadBytes = fsize}] $ imageDefacet gpar lmdom (idft gridded) createImage
+      bind images $ dkern $ hints [floatHint, memHint{hintMemoryReadBytes = fsize}] $
+        imageDefacet gpar lmdom (idft gridded) createImage
 
     -- Sum up images locally
     bind createImage $ regionKernel ddoms $ imageInit gpar

@@ -1,6 +1,9 @@
 {-# LANGUAGE DataKinds #-}
 
-module Kernel.Degrid where
+module Kernel.Degrid
+  ( distributeGrid, degridKernel
+  )
+  where
 
 import Data.Int
 import qualified Data.Map as Map
@@ -8,6 +11,7 @@ import qualified Data.Map as Map
 import Flow.Builder
 import Flow.Halide
 import Flow.Kernel
+import Flow.Domain
 import Flow
 
 import Kernel.Data
@@ -25,30 +29,33 @@ distributeGrid ddom0 ddom1 (ldom, mdom) gp =
                                   (RegionRepr ddom1 $ RegionRepr ldom $ RegionRepr mdom $ fullUVGRepr gp) $
     \[uvg] _ -> return $ head $ Map.elems uvg
 
-type ForeignDegridder = HalideBind Double (HalideBind Int32 (HalideFun '[GCFsRepr, FullUVGRepr, VisRepr] VisRepr))
-type DegridKernel = GridPar -> GCFPar    -- ^ Configuration
-                 -> UVDom -> WDom        -- ^ u/v/w visibility domains
-                 -> Flow GCFs -> Flow FullUVGrid -> Flow Vis
-                 -> Kernel Vis
 
--- | Make degridder kernel binding
-mkDslDegridKernel :: String -> ForeignDegridder -> DegridKernel
-mkDslDegridKernel kn fd gp gcfp uvdom wdom =
-  halideKernel3 kn (gcfsRepr wdom gcfp)
-                   (fullUVGRepr gp)
-                   (visRepr uvdom wdom)
-                   (visRepr uvdom wdom) $
-  fd `halideBind` gridScale gp
-     `halideBind` fromIntegral (gridHeight gp)
+degridKernel :: DegridKernelType
+             -> GridPar -> GCFPar    -- ^ Configuration
+             -> UVDom -> WDom        -- ^ u/v/w visibility domains
+             -> Flow GCFs -> Flow FullUVGrid -> Flow Vis
+             -> Kernel Vis
+degridKernel ktype gp gcfp uvdom wdom =
+  hintsByPars (degridHint ktype) $
+  halideKernel3 (show ktype) (gcfsRepr wdom gcfp)
+                             (fullUVGRepr gp)
+                             (visRepr uvdom wdom)
+                             (visRepr uvdom wdom) $
+  foreignDegridder ktype `halideBind` gridScale gp
+                         `halideBind` fromIntegral (gridHeight gp)
 
+degridHint :: DegridKernelType -> [[RegionBox]] -> [ProfileHint]
+degridHint ktype (_:_:visRegs:_) = case ktype of
+  DegridKernelCPU -> [floatHint { hintDoubleOps = ops }, memHint]
+  DegridKernelGPU -> [cudaHint  { hintCudaDoubleOps = ops }]
+ where wBinReg = (!!2) -- u, v, w - we want region three (see visRepr definition)
+       ops = sum $ map regionBinSize $ concatMap (regionBins . wBinReg) visRegs
+degridHint _ _ = error "degridHint: Not enough parameters!"
+
+type ForeignDegridder = HalideBind Double (HalideBind Int32 (
+                                              HalideFun '[GCFsRepr, FullUVGRepr, VisRepr] VisRepr))
+foreignDegridder :: DegridKernelType -> ForeignDegridder
+foreignDegridder DegridKernelCPU = kern_degrid
+foreignDegridder DegridKernelGPU = kern_degrid_gpu1
 foreign import ccall unsafe kern_degrid      :: ForeignDegridder
 foreign import ccall unsafe kern_degrid_gpu1 :: ForeignDegridder
-
-degridKernel, degridKernelGPU :: DegridKernel
-degridKernel    = mkDslDegridKernel "degridKernel"    kern_degrid
-degridKernelGPU = mkDslDegridKernel "degridKernelGPU" kern_degrid_gpu1
-
-selectDegridKernel :: Int -> (DegridKernel, [ProfileHint])
-selectDegridKernel n
-  | n == 0 = (degridKernel, [floatHint, memHint])
-  | otherwise = (degridKernelGPU, [cudaHint])
