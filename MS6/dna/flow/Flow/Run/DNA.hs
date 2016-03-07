@@ -373,6 +373,8 @@ execDistributeStep deps dh sched steps = do
   -- difference between our "deps" and the dependencies of the nested
   -- steps.
   let rets = deps `IS.difference` stepsKernDeps steps
+  -- We can select data transfer method dynamically.
+  -- At the moment it is hardcoded as 'False'.
   (act, marshal, unmarshal) <- makeActor False rets steps
 
   emitCode $ do
