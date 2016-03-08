@@ -76,8 +76,8 @@ modifyDataMap f = putDataMap . f =<< getDataMap
 
 -- | Shortcut for lifting "IO" into the "DnaCode" monad using a named
 -- "kernel".
-execIO :: String -> IO a -> DnaCode a
-execIO name = lift . kernel name [] . liftIO
+execIO :: String -> [ProfileHint] -> IO a -> DnaCode a
+execIO name h = lift . kernel name h . liftIO
 
 -- * DNA builder monad
 
@@ -223,7 +223,7 @@ execDomainStep m_kid dh = do
 
       -- No parent: Straight-forward creation
       Nothing -> do
-        reg <- execIO "create domain" $ dhCreate dh (fromMaybe Map.empty m_buf)
+        reg <- execIO "create domain" [] $ dhCreate dh (fromMaybe Map.empty m_buf)
         return [reg]
 
       -- Otherwise: Split an existing domain
@@ -234,7 +234,7 @@ execDomainStep m_kid dh = do
         (_, regs) <- fromMaybe err . IM.lookup (dhId parDh) <$> getDomainMap
 
         -- Perform split
-        concat <$> execIO "split domain" (mapM (dhRegion dh) regs)
+        concat <$> execIO "split domain" [] (mapM (dhRegion dh) regs)
 
     -- Debug
     lift $ logMessage $ "New domain " ++ show (dhId dh) ++ " with regions " ++ show regs'
@@ -437,7 +437,7 @@ execDistributeStep deps dh sched steps = do
 
       -- Execute steps with new domain & data maps
       pid <- lift processId
-      execIO "marsh" $ marshal pid localDomainMap localDataMap
+      execIO "marsh" [ioHint] $ marshal pid localDomainMap localDataMap
 
     dataMapNew <- case sched of
      ParSchedule -> lift $ do
@@ -473,7 +473,7 @@ execDistributeStep deps dh sched steps = do
        -- Simply use evalClosure to evaluate actors directly
        lift $ logMessage $ "Distributing " ++ show regs ++ " sequentially"
        eclos <- forM inputs (lift . evalClosure act)
-       ress <- mapM (execIO "unmarsh" . unmarshal) eclos
+       ress <- mapM (execIO "unmarsh" [ioHint] . unmarshal) eclos
        return $ dataMapUnions ress
 
     -- Combine maps.
@@ -510,7 +510,7 @@ makeActor useFiles rets steps = do
         (domainMap, dataMap) <-
           if useFiles
             then let (Right (rest, _, domainMap)) = runGetOrFail (readDomainMap ctx) inp
-                 in fmap (domainMap, ) $ kernel "readIODataMap" [] . liftIO $ readIODataMap rest ctx
+                 in fmap (domainMap, ) $ kernel "readIODataMap" [ioHint] . liftIO $ readIODataMap rest ctx
             else
               return $ flip runGet inp ((,) <$> readDomainMap ctx <*> readDataMap ctx)
 
@@ -524,7 +524,7 @@ makeActor useFiles rets steps = do
         if useFiles
            then do
                   pid <- processId
-                  kernel "writeIODataMap" [] . liftIO $ writeIODataMap (fnprefix ++ pp pid) dataMapNew
+                  kernel "writeIODataMap" [ioHint] . liftIO $ writeIODataMap (fnprefix ++ pp pid) dataMapNew
            else return $ runPut $ writeDataMap dataMapNew
 
   -- Register in remote table
