@@ -141,5 +141,5 @@ main = do
   let size = 1000000
   dumpSteps $ ddpStrat size
   print "================================================================"
-  execStrategyDNA $ ddpStrat size
+  execStrategyDNA False $ ddpStrat size
   putStrLn $ "Expected: " ++ show ((size-1)*size`div`20)
