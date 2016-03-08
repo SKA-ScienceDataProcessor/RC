@@ -19,6 +19,7 @@ data Config = Config
   , cfgGrid     :: GridPar
   , cfgGCF      :: GCFPar
   , cfgClean    :: CleanPar
+  , cfgUseFiles :: Bool
   }
 instance FromJSON Config where
   parseJSON (Object v)
@@ -34,6 +35,7 @@ instance FromJSON Config where
              <*> (v .: "grid" <|> return (cfgGrid defaultConfig))
              <*> (v .: "gcf" <|> return (cfgGCF defaultConfig))
              <*> (v .: "clean" <|> return (cfgClean defaultConfig))
+             <*> (v .: "use_files" <|> return (cfgUseFiles defaultConfig))
   parseJSON _ = mempty
 
 data OskarInput = OskarInput
@@ -118,6 +120,7 @@ defaultConfig = Config
   , cfgGrid     = GridPar 0 0 0 0 1 1 1
   , cfgGCF      = GCFPar 0 8 ""
   , cfgClean    = CleanPar 0 0 0
+  , cfgUseFiles = False
   }
 
 -- | Image dimensions for all facets together

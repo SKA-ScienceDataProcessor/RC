@@ -93,6 +93,7 @@ data DnaBuildState = DnaBuildState
      -- last step's cleanup is the result of the actor. The way our
      -- cleanup system works, this will be exactly the dependencies
      -- that were passed into "execSteps" below.
+  , dbsUseFiles       :: Bool -- Quick and dirty abuse of DnaBuilder monad. Sorry.
   }
 
 type DnaBuilder a
@@ -137,8 +138,8 @@ registerActor act = do
           }
   return actClosure
 
-execStrategyDNA :: Strategy () -> IO ()
-execStrategyDNA strat = do
+execStrategyDNA :: Bool -> Strategy () -> IO ()
+execStrategyDNA useFiles strat = do
 
   -- Convert steps given by strategy into DNA
   let steps = runStrategy strat
@@ -147,6 +148,7 @@ execStrategyDNA strat = do
             , dbsRemoteRegister = id
             , dbsContext        = (IM.empty, IM.empty)
             , dbsCode           = return ()
+            , dbsUseFiles       = useFiles
             }
       (_, state') = runState (execSteps IS.empty steps) dbs
 
@@ -373,9 +375,8 @@ execDistributeStep deps dh sched steps = do
   -- difference between our "deps" and the dependencies of the nested
   -- steps.
   let rets = deps `IS.difference` stepsKernDeps steps
-  -- We can select data transfer method dynamically.
-  -- At the moment it is hardcoded as 'False'.
-  (act, marshal, unmarshal) <- makeActor False rets steps
+  dbs <- get
+  (act, marshal, unmarshal) <- makeActor (dbsUseFiles dbs) rets steps
 
   emitCode $ do
 
