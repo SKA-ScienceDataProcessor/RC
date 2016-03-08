@@ -309,4 +309,4 @@ main = do
     -}
 
     -- Execute strategy
-    execStrategyDNA $ continuumStrat config
+    execStrategyDNA (cfgUseFiles config) $ continuumStrat config

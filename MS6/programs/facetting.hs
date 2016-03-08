@@ -147,4 +147,4 @@ main = do
         }
 
   dumpSteps $ gridderStrat config
-  execStrategyDNA $ gridderStrat config
+  execStrategyDNA (cfgUseFiles config) $ gridderStrat config
