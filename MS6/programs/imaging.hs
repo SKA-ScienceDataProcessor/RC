@@ -334,4 +334,4 @@ testStrat = scatterImagingMain $ Config
     GridPar
 
 main :: IO ()
-main = dumpSteps testStrat >> execStrategy testStrat
+main = dumpSteps testStrat >> execStrategy False testStrat

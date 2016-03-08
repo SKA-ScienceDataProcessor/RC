@@ -69,4 +69,4 @@ main = do
         }
 
   dumpSteps $ gridderStrat config
-  execStrategyDNA $ gridderStrat config
+  execStrategyDNA False $ gridderStrat config
