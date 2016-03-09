@@ -145,12 +145,10 @@ asyncProgramInvocation
 
   -- Create process
   menv <- getEffectiveEnvironment envOverrides
-  putStrLn "Creating process..."
   (_,_,_,ph) <- createProcess $
                 (Process.proc path args) { Process.cwd           = mcwd
                                          , Process.env           = menv
                                          }
-  putStrLn "Process created!"
   return ph
 
 cudaBuildInfo :: Bool -> LocalBuildInfo -> Verbosity -> FilePath -> FilePath -> BuildInfo
