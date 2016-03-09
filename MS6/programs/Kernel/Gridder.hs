@@ -33,23 +33,24 @@ gridKernel :: GridKernelType -> GridPar -> GCFPar -- ^ Configuration
            -> Flow Vis -> Flow GCFs -> Flow UVGrid
            -> Kernel UVGrid
 gridKernel ktype gp gcfp uvdom wdom uvdom' =
-  hintsByPars (gridHint ktype) $
+  hintsByPars (gridHint gcfp ktype) $
   halideKernel2Write (show ktype) (visRepr uvdom wdom)
                                   (gcfsRepr wdom gcfp)
                                   (uvgMarginRepr gcfp uvdom') $
   gridCKernel ktype `halideBind` gridScale gp
                     `halideBind` fromIntegral (gridHeight gp)
 
-gridHint :: GridKernelType -> [[RegionBox]] -> [ProfileHint]
-gridHint ktype (visRegs:_) = case ktype of
+gridHint :: GCFPar -> GridKernelType -> [[RegionBox]] -> [ProfileHint]
+gridHint gcfp ktype (visRegs:_) = case ktype of
   GridKernelCPU -> [floatHint { hintDoubleOps = ops }, memHint]
 #ifdef USE_CUDA
   GridKernelGPU -> [cudaHint { hintCudaDoubleOps = ops } ]
   GridKernelNV  -> [cudaHint { hintCudaDoubleOps = ops } ]
 #endif
  where wBinReg = (!!2) -- u, v, w - we want region three (see visRepr definition)
-       ops = sum $ map regionBinSize $ concatMap (regionBins . wBinReg) visRegs
-gridHint _ _ = error "gridHint: Not enough parameters!"
+       ops = 8 * gcfSize gcfp * gcfSize gcfp * vis
+       vis = sum $ map regionBinSize $ concatMap (regionBins . wBinReg) visRegs
+gridHint _ _ _ = error "gridHint: Not enough parameters!"
 
 gridCKernel :: GridKernelType -> ForeignGridder
 gridCKernel GridKernelCPU = kern_scatter

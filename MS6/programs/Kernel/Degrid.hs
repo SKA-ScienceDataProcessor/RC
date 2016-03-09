@@ -36,7 +36,7 @@ degridKernel :: DegridKernelType
              -> Flow GCFs -> Flow FullUVGrid -> Flow Vis
              -> Kernel Vis
 degridKernel ktype gp gcfp uvdom wdom =
-  hintsByPars (degridHint ktype) $
+  hintsByPars (degridHint gcfp ktype) $
   halideKernel3 (show ktype) (gcfsRepr wdom gcfp)
                              (fullUVGRepr gp)
                              (visRepr uvdom wdom)
@@ -44,15 +44,16 @@ degridKernel ktype gp gcfp uvdom wdom =
   foreignDegridder ktype `halideBind` gridScale gp
                          `halideBind` fromIntegral (gridHeight gp)
 
-degridHint :: DegridKernelType -> [[RegionBox]] -> [ProfileHint]
-degridHint ktype (_:_:visRegs:_) = case ktype of
+degridHint :: GCFPar -> DegridKernelType -> [[RegionBox]] -> [ProfileHint]
+degridHint gcfp ktype (_:_:visRegs:_) = case ktype of
   DegridKernelCPU -> [floatHint { hintDoubleOps = ops }, memHint]
 #ifdef USE_CUDA
   DegridKernelGPU -> [cudaHint  { hintCudaDoubleOps = ops }]
 #endif
  where wBinReg = (!!2) -- u, v, w - we want region three (see visRepr definition)
-       ops = sum $ map regionBinSize $ concatMap (regionBins . wBinReg) visRegs
-degridHint _ _ = error "degridHint: Not enough parameters!"
+       vis = sum $ map regionBinSize $ concatMap (regionBins . wBinReg) visRegs
+       ops = 8 * gcfSize gcfp * gcfSize gcfp * vis
+degridHint _ _ _ = error "degridHint: Not enough parameters!"
 
 type ForeignDegridder = HalideBind Double (HalideBind Int32 (
                                               HalideFun '[GCFsRepr, FullUVGRepr, VisRepr] VisRepr))
