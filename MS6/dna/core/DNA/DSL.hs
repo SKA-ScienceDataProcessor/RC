@@ -230,7 +230,7 @@ data DnaF a where
     GatherM
       :: Serializable a
       => Group a
-      -> (b -> a -> Kern b)
+      -> (b -> a -> DNA b)
       -> b
       -> DnaF b
     CrashMaybe
@@ -366,7 +366,7 @@ gather g f = gatherM g (\b a -> return $ f b a)
 gatherM
     :: Serializable a
     => Group a                  -- ^ Promise to use.
-    -> (b -> a -> Kern b)       -- ^ Stepper function (called for each message)
+    -> (b -> a -> DNA b)        -- ^ Stepper function (called for each message)
     -> b                        -- ^ Initial value
     -> DNA b
 gatherM g f b = DNA $ singleton $ GatherM g f b
@@ -406,9 +406,9 @@ actor = Actor
 --   constructed using 'collectActor' function.
 data CollectActor a b where
     CollectActor :: (Serializable a, Serializable b)
-                 => (s -> a -> Kern s)
-                 -> Kern s
-                 -> (s -> Kern b)
+                 => (s -> a -> DNA s)
+                 -> DNA s
+                 -> (s -> DNA b)
                  -> CollectActor a b
     deriving (Typeable)
 
@@ -431,9 +431,9 @@ data CollectActor a b where
 -- >     (\sum -> return sum)
 collectActor
     :: (Serializable a, Serializable b, Serializable s)
-    => (s -> a -> Kern s) -- ^ stepper function
-    -> Kern s             -- ^ start value
-    -> (s -> Kern b)      -- ^ termination function
+    => (s -> a -> DNA s) -- ^ stepper function
+    -> DNA s             -- ^ start value
+    -> (s -> DNA b)      -- ^ termination function
     -> CollectActor a b
 collectActor = CollectActor
 

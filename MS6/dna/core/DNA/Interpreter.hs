@@ -79,7 +79,7 @@ interpretDNA (DNA m) =
       Delay    loc sh -> execDelay loc sh
       Await p         -> execAwait p
       DelayGroup sh   -> execDelayGroup sh
-      GatherM p f b0  -> execGatherM p f b0
+      GatherM p f b0  -> execGatherM p (\x y -> interpretDNA $ f x y) b0
       CrashMaybe p    -> crashMaybeWorker p
       CreateFileChan l n -> createFileChan l n
       WaitForResources aid -> execWaitForResources aid
@@ -147,7 +147,7 @@ execDelayGroup (Shell aid) = do
     logConnect (Just aid) Nothing
     return $ Group recvB recvN
 
-execGatherM :: Serializable a => Group a -> (b -> a -> Kern b) -> b -> DnaMonad b
+execGatherM :: Serializable a => Group a -> (b -> a -> DnaMonad b) -> b -> DnaMonad b
 -- BLOCKING
 execGatherM = doGatherDna messageHandlers
 

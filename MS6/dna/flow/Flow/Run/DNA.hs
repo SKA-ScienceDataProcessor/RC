@@ -437,8 +437,7 @@ execDistributeStep deps dh sched steps = do
           localDataMap = IM.map filterData dataMap'
 
       -- Execute steps with new domain & data maps
-      pid <- lift processId
-      execIO "marsh" [ioHint] $ marshal pid localDomainMap localDataMap
+      lift $ marshal localDomainMap localDataMap
 
     dataMapNew <- case sched of
      ParSchedule -> lift $ do
@@ -462,7 +461,7 @@ execDistributeStep deps dh sched steps = do
        -- Delay, collect & unmarshal result data maps
        promise <- delayGroup grp
        let collectM dm out = do
-             uout <- liftIO (unmarshal out)
+             uout <- unmarshal out
              return (dm `dataMapUnion` uout)
        result <- gatherM promise collectM IM.empty
 
@@ -474,7 +473,7 @@ execDistributeStep deps dh sched steps = do
        -- Simply use evalClosure to evaluate actors directly
        lift $ logMessage $ "Distributing " ++ show regs ++ " sequentially"
        eclos <- forM inputs (lift . evalClosure act)
-       ress <- mapM (execIO "unmarsh" [ioHint] . unmarshal) eclos
+       ress <- mapM (lift . unmarshal) eclos
        return $ dataMapUnions ress
 
     -- Combine maps.
@@ -488,8 +487,8 @@ execDistributeStep deps dh sched steps = do
 -- the actor - mainly so all all marshalling code is in one place.
 makeActor :: Bool -> KernelSet -> [Step]
           -> DnaBuilder (Closure (Actor LBS.ByteString LBS.ByteString),
-                         ProcessId -> DomainMap -> DataMap -> IO LBS.ByteString,
-                         LBS.ByteString -> IO DataMap)
+                         DomainMap -> DataMap -> DNA LBS.ByteString,
+                         LBS.ByteString -> DNA DataMap)
 makeActor useFiles rets steps = do
 
   -- Generate code for steps.
@@ -499,21 +498,32 @@ makeActor useFiles rets steps = do
               execSteps rets steps
       ctx = dbsContext dbs''
 
-  let fnprefix = "__ch" ++ show (dbsFresh dbs'')
-
   -- Take over all state, but reset code to where it was before.
   put $ dbs'' { dbsCode = dbsCode dbs }
+
+  -- Marshalling / unmarshalling (depends on configuration)
+  let fnprefix = "__ch" ++ show (dbsFresh dbs'')
+      writeDataMap' :: DataMap -> DNA LBS.ByteString
+      writeDataMap' dataMap
+        | not useFiles =
+            return $ runPut $ writeDataMap dataMap
+        | otherwise    = do
+            pid <- processId
+            kernel "writeIODataMap" [ioHint] . liftIO $
+              writeIODataMap (fnprefix ++ pp pid) dataMap
+      readDataMap' :: LBS.ByteString -> DNA DataMap
+      readDataMap'
+        | not useFiles = return . runGet (readDataMap ctx)
+        | otherwise    =
+            kernel "readIODataMap" [ioHint] . liftIO .
+              flip readIODataMap ctx
 
   -- Generate actor code
   let act :: Actor LBS.ByteString LBS.ByteString
       act = actor $ \inp -> do
         -- Unmarshal argument maps
-        (domainMap, dataMap) <-
-          if useFiles
-            then let (Right (rest, _, domainMap)) = runGetOrFail (readDomainMap ctx) inp
-                 in fmap (domainMap, ) $ kernel "readIODataMap" [ioHint] . liftIO $ readIODataMap rest ctx
-            else
-              return $ flip runGet inp ((,) <$> readDomainMap ctx <*> readDataMap ctx)
+        let Right (rest, _, domainMap) = runGetOrFail (readDomainMap ctx) inp
+        dataMap <- readDataMap' rest
 
         -- Run code
         (_, dataMapNew) <- execStateT (dbsCode dbs'') (domainMap, dataMap)
@@ -521,32 +531,19 @@ makeActor useFiles rets steps = do
         -- Marshal result. "execSteps" should have generated code such
         -- that at this point only data mentioned in "rets" is still
         -- left alive.
-
-        if useFiles
-           then do
-                  pid <- processId
-                  kernel "writeIODataMap" [ioHint] . liftIO $ writeIODataMap (fnprefix ++ pp pid) dataMapNew
-           else return $ runPut $ writeDataMap dataMapNew
+        writeDataMap' dataMapNew
 
   -- Register in remote table
   actClosure <- registerActor act
 
   -- Generate actor calling code
   let
-    marshal pid domainMap dataMap =
-      if useFiles
-        then do
-              dmd <- writeIODataMap (fnprefix ++ pp pid) dataMap
-              return $ (runPut $ writeDomainMap domainMap) `LBS.append` dmd
-        else
-          return $ runPut $
-             writeDomainMap domainMap >> writeDataMap dataMap
-    unmarshal =
-      if useFiles
-        then flip readIODataMap ctx
-        else return . runGet (readDataMap ctx)
+    marshal domainMap dataMap = do
+      let domm = runPut $ writeDomainMap domainMap
+      datm <- writeDataMap' dataMap
+      return (domm `LBS.append` datm)
 
-  return (actClosure, marshal, unmarshal)
+  return (actClosure, marshal, readDataMap')
 
   where
     pp :: ProcessId -> String
