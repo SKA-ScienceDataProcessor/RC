@@ -132,6 +132,8 @@ executable gridding
     fixed-vector-hetero,
     yaml,
     ms6
+  if flag(cuda)
+    cpp-options:       -DUSE_CUDA
 
 executable facetting
   default-language:    Haskell2010
@@ -156,6 +158,8 @@ executable facetting
     fixed-vector-hetero,
     yaml,
     ms6
+  if flag(cuda)
+    cpp-options:       -DUSE_CUDA
 
 executable continuum
   default-language:    Haskell2010
@@ -183,3 +187,5 @@ executable continuum
     filepath,
     yaml,
     ms6
+  if flag(cuda)
+    cpp-options:       -DUSE_CUDA
