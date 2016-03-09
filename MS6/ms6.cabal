@@ -24,10 +24,14 @@ Flag combHogbom
    description: Combined C++/Halide Hogbom kernel
    default: False
 
+Flag cuda
+   description: Build with CUDA kernels
+   default: True
+
 ----------------------------------------------------------------
 library
   default-language:    Haskell2010
-  extra-libraries:     cudart pthread
+  extra-libraries:     pthread
   c-sources:           kernel/gpu/gridding/kern_scatter_gpu1.cpp
                        kernel/gpu/gridding/kern_degrid_gpu1.cpp
                        kernel/cpu/gridding/fft1.cpp
@@ -54,10 +58,13 @@ library
   else
     x-halide-sources:  kernel/cpu/gridding/hogbom.cpp
   x-halide-options:    -Wall -fno-strict-aliasing -fno-rtti -std=c++11 -lstdc++ -lHalide -lpthread -ldl -lz -lm
-  x-cuda-sources:      kernel/nvidia/gridder/grid_gpu.cu
+  if flag(cuda)
+    extra-libraries:   cudart
+    x-cuda-sources:    kernel/nvidia/gridder/grid_gpu.cu
                        kernel/nvidia/gridder/grid_gpuc.cu
                        kernel/nvidia/gridder/halide_api.cu
-  x-cuda-options:      -D__CUDA_RUNTIME_H__ -include kernel/nvidia/gridder/fake_cfg.h -std=c++11 -Ikernel/common -arch=sm_35
+    x-cuda-options:    -D__CUDA_RUNTIME_H__ -include kernel/nvidia/gridder/fake_cfg.h -std=c++11 -Ikernel/common -arch=sm_35
+    cpp-options:       -DUSE_CUDA
 
 executable dotproduct
   default-language:    Haskell2010

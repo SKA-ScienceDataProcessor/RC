@@ -1,4 +1,4 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds, CPP #-}
 
 module Kernel.Gridder
   ( GridKernelType
@@ -43,21 +43,27 @@ gridKernel ktype gp gcfp uvdom wdom uvdom' =
 gridHint :: GridKernelType -> [[RegionBox]] -> [ProfileHint]
 gridHint ktype (visRegs:_) = case ktype of
   GridKernelCPU -> [floatHint { hintDoubleOps = ops }, memHint]
+#ifdef USE_CUDA
   GridKernelGPU -> [cudaHint { hintCudaDoubleOps = ops } ]
   GridKernelNV  -> [cudaHint { hintCudaDoubleOps = ops } ]
+#endif
  where wBinReg = (!!2) -- u, v, w - we want region three (see visRepr definition)
        ops = sum $ map regionBinSize $ concatMap (regionBins . wBinReg) visRegs
 gridHint _ _ = error "gridHint: Not enough parameters!"
 
 gridCKernel :: GridKernelType -> ForeignGridder
 gridCKernel GridKernelCPU = kern_scatter
+#ifdef USE_CUDA
 gridCKernel GridKernelGPU = kern_scatter_gpu1
 gridCKernel GridKernelNV  = nvGridder
+#endif
 
 type ForeignGridder = HalideBind Double (HalideBind Int32 (HalideFun '[VisRepr, GCFsRepr] UVGMarginRepr))
 foreign import ccall unsafe kern_scatter      :: ForeignGridder
+#ifdef USE_CUDA
 foreign import ccall unsafe kern_scatter_gpu1 :: ForeignGridder
 foreign import ccall unsafe nvGridder         :: ForeignGridder
+#endif
 
 -- | Gridder grid initialisation, for detiling. Only differs from
 -- "gridInit" in the produced data representation, we can even re-use

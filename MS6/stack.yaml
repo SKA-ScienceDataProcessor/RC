@@ -19,6 +19,8 @@ extra-deps:
 
 # Override default flag values for local packages and extra-deps
 flags:
+  ms6:
+    cuda: true
   dna-core:
     cuda: true
     network-uri: true

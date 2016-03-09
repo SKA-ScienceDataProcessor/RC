@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, CPP #-}
 
 module Kernel.Config where
 
@@ -51,13 +51,17 @@ instance FromJSON OskarInput where
 
 data GridKernelType
   = GridKernelCPU
+#ifdef USE_CUDA
   | GridKernelGPU
   | GridKernelNV
+#endif
   deriving (Eq, Ord, Enum, Show)
 
 data DegridKernelType
   = DegridKernelCPU
+#ifdef USE_CUDA
   | DegridKernelGPU
+#endif
   deriving (Eq, Ord, Enum, Show)
 
 data GridPar = GridPar
@@ -112,8 +116,8 @@ defaultConfig = Config
   , cfgPoints   = 32131 * 200
   , cfgNodes    = 0
   , cfgLoops    = 1
-  , cfgGridderType = GridKernelGPU
-  , cfgDegridderType = DegridKernelGPU
+  , cfgGridderType = GridKernelCPU
+  , cfgDegridderType = DegridKernelCPU
   , cfgLong     = 72.1 / 180 * pi -- mostly arbitrary, and probably wrong in some way
   , cfgLat      = 42.6 / 180 * pi -- ditto
   , cfgOutput   = ""

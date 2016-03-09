@@ -1,4 +1,4 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds, CPP #-}
 
 module Kernel.Degrid
   ( distributeGrid, degridKernel
@@ -47,7 +47,9 @@ degridKernel ktype gp gcfp uvdom wdom =
 degridHint :: DegridKernelType -> [[RegionBox]] -> [ProfileHint]
 degridHint ktype (_:_:visRegs:_) = case ktype of
   DegridKernelCPU -> [floatHint { hintDoubleOps = ops }, memHint]
+#ifdef USE_CUDA
   DegridKernelGPU -> [cudaHint  { hintCudaDoubleOps = ops }]
+#endif
  where wBinReg = (!!2) -- u, v, w - we want region three (see visRepr definition)
        ops = sum $ map regionBinSize $ concatMap (regionBins . wBinReg) visRegs
 degridHint _ _ = error "degridHint: Not enough parameters!"
@@ -56,6 +58,10 @@ type ForeignDegridder = HalideBind Double (HalideBind Int32 (
                                               HalideFun '[GCFsRepr, FullUVGRepr, VisRepr] VisRepr))
 foreignDegridder :: DegridKernelType -> ForeignDegridder
 foreignDegridder DegridKernelCPU = kern_degrid
+#ifdef USE_CUDA
 foreignDegridder DegridKernelGPU = kern_degrid_gpu1
+#endif
 foreign import ccall unsafe kern_degrid      :: ForeignDegridder
+#ifdef USE_CUDA
 foreign import ccall unsafe kern_degrid_gpu1 :: ForeignDegridder
+#endif
