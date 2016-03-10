@@ -399,6 +399,8 @@ execDistributeStep deps dh sched steps = do
     let stepNodes (DistributeStep dom ParSchedule ss)
           | Just (_, rs) <- IM.lookup (dhId dom) domainMap
           = length rs * stepsNodes ss
+        stepNodes (DistributeStep _ _ ss)
+          = stepsNodes ss
         stepNodes _ = 1
         stepsNodes = maximum . map stepNodes
         nodes = stepsNodes steps
@@ -409,7 +411,7 @@ execDistributeStep deps dh sched steps = do
     -- to work on.
     let regs = snd $ fromJust $ IM.lookup (dhId dh) domainMap
     distrib <- case sched of
-      ParSchedule -> max (length regs) . (`div` nodes) <$> lift availableNodes
+      ParSchedule -> min (length regs) . (`div` nodes) . (+1) <$> lift availableNodes
       SeqSchedule -> return (length regs)
     let group _ _ [] = []
         group 1 _ xs = [xs]
