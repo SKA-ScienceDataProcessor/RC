@@ -134,7 +134,6 @@ def makeMetrics(etime, hints, tags, tags_time):
             if tags.has_key(valAttr):
                 sum += weight * tags[valAttr]
                 time_sum += weight * tags_time[valAttr]
-                print tags_time[valAttr]
                 weight_sum += weight
         if time_sum > 0:
             tags[sumAttr] = sum
@@ -239,46 +238,53 @@ def write_timeline_data(logs, conf) :
     f.write('''
       var data = [''')
 
+    overall_time = {}
     for k in sorted(logs) :
-        def pid_func(e) : return e.tags.get('pid',e.tags2.get('pid',''))
-        tt = sorted(logs[k].time, key=pid_func)
+
+        # Bin by message
+        tt_hash = {}
+        for e in logs[k].time:
+            if tt_hash.has_key(e.msg):
+                tt_hash[e.msg].append(e)
+            else:
+                tt_hash[e.msg] = [e]
+
+        # Go through bins, sorted by earliest first message
         pid = None
-        end = 0
-        done = set()
-        for e in tt :
+        for tts in sorted(tt_hash.itervalues(), key=lambda v: v[0].t1):
 
             # Get configuration, check whether we're supposed to ignore
             # this one.
+            e = tts[0]
             if conf.get(e.msg,{}).get('ignore', False) :
                 continue
-            # Already done?
-            if e.msg in done:
-                continue
 
-            # Create row
-            if pid_func(e) == pid:
+            # Create row, declare PID. Note that we are only looking
+            # at the first time for a certain message here - it might
+            # be that other messages were coming from other PIDs. This
+            # - at best - hints at the process distribution.
+            pid_new = e.tags.get('pid',e.tags2.get('pid',''))
+            if pid_new == pid:
                 f.write('\n            {times:[')
             else:
-                f.write('\n            {"label": "%s", times:[' % (pid_func(e)))
-            pid = pid_func(e)
+                f.write('\n            {"label": "%s", times:[' % pid_new)
+                pid = pid_new
+            first = True
 
             # Write entries
-            for e2 in tt :
-                if e.msg != e2.msg:
-                    continue
-                #if pid_func(e2) != pid:
-                #    continue
-                #done.add(e2.msg)
+            for e2 in tts :
 
                 # Get metrics for this kernel
                 hints, tags, tags_time = extractTags(e2, {}, {}, {})
                 metrics = makeMetrics(e2.t2 - e2.t1, hints, tags, tags_time)
-                print e2.msg, hints, tags, tags_time
+                print e2.msg, "Hints:", hints, "Data:", tags, "Time:", tags_time
                 eff = None
                 for m in metrics['instr']:
                     eff = m.efficiency()
                 if eff is None:
                     eff = 0.05
+                if e2.t2 != None :
+                    overall_time[e2.msg] = (e2.t2 - e2.t1) + overall_time.get(e2.msg, 0)
 
                 # Make sure we have a certain minimum width. This is a hack.
                 end = e2.t2
@@ -287,10 +293,9 @@ def write_timeline_data(logs, conf) :
 
                 f.write('''
                 {"starting_time": %g, "ending_time": %g, "label": "%s", "type": "%s", "height": "%g"},'''
-                    % (1000*e2.t1, 1000*end, '' if e2.t1 > e.t1 else e2.msg, e2.msg, eff))
+                    % (1000*e2.t1, 1000*end, e2.msg if first else '', e2.msg, eff))
+                first = False
             f.write('\n            ]},')
-
-            done.add(e.msg)
 
     f.write('''
         ];''')
@@ -318,6 +323,52 @@ def write_timeline_data(logs, conf) :
       d3.selectAll("#timeline svg").remove();
       var svg = d3.select("#timeline").append("svg").attr("width", window.innerWidth-30)
         .datum(data).call(chart);''' % (tickInterval))
+
+    # Generate overview layout. We use a "1-row" stacked bar layout.
+    f.write('''
+      var balanceData = [''')
+    for name, time in overall_time.iteritems():
+        f.write('''
+        [{ name: "%s", x:0, y: %f }],''' % (name, time))
+    f.write('''
+      ];
+      var balanceDataStacked = d3.layout.stack()(balanceData);
+      console.log(balanceDataStacked);''')
+
+    # Generate visualisation
+    f.write('''
+      d3.selectAll("#balance svg").remove();
+      var balance = document.getElementById('balance'),
+          width = balance.offsetWidth, height = balance.offsetHeight;
+      var scale = height / %f;
+      var svg = d3.select("#balance").append("svg")
+         .attr("width", width)
+         .attr("height", height);
+      svg.selectAll('rect')
+         .data(balanceDataStacked)
+         .enter()
+         .append('rect')
+         .attr('y', function (d) { return scale*d[0].y0; })
+         .attr('x', function (d) { return 0; })
+         .attr('width', function (d) { return width; })
+         .attr('height', function (d) { return scale*d[0].y; })
+         .attr('fill', function (d) { return colorScale(d[0].name); });
+      svg.selectAll('text')
+         .data(balanceDataStacked)
+         .enter()
+         .append('text')
+         .text(function(d) {
+            percent = 100 * scale*d[0].y/height;
+            if (scale*d[0].y > 12)
+              return percent.toFixed(1) + "%%";
+            else
+              return "";
+          })
+         .attr('y', function (d) { return 6+scale*(d[0].y0+d[0].y/2); })
+         .attr('x', function (d) { return width/2; })
+         .attr("text-anchor", "middle");
+
+    ''' % (sum(overall_time.itervalues())))
 
 def write_middle():
     f.write('''
@@ -429,7 +480,6 @@ def write_timeline_body(logs, conf) :
 
     # Show timeline
     f.write('''
-    </table>
     <h4>Timeline</h4>
     <div id="timeline"></div>''')
 
@@ -450,26 +500,10 @@ def write_timeline_body(logs, conf) :
                           total_tags.get(e.msg, {}),
                           total_tags_time.get(e.msg, {}))
 
-    # Make table
-    f.write('''
-    </table>
-    <h4>Statistics</h4>
-    <table class="statistics">
-      <colgroup>
-        <col span="2"/>
-        <col span="1" class="group"/>
-        <col span="1" class="group"/>
-        <col span="4"/>
-        <col span="1" class="group"/>
-        <col span="4"/>
-      </colgroup>
-      <tr><td></td><th>Instances</th><th>Time</th><th colspan=5>IO</th><th colspan=5>Instructions</th></tr>
-      <tr><td /><td /><td />
-          <td /><td>Value</td><td>Expected</td><td>Rate</td><td>Time</td>
-          <td /><td>Value</td><td>Expected</td><td>Rate</td><td>Time</td></tr>''')
-
+    # Generate overall metrics
+    all_metrics = []
     for a in instances.iterkeys() :
-        print a, total_hints[a], total_tags[a], total_tags_time[a]
+        # print a, total_hints[a], total_tags[a], total_tags_time[a]
 
         # Get configuration for this key
         econf = conf.get(a, {})
@@ -477,11 +511,40 @@ def write_timeline_body(logs, conf) :
             continue
 
         # Make metrics
-        metrics = makeMetrics(total_time.get(a,0), total_hints[a], total_tags[a], total_tags_time[a])
+        metrics = makeMetrics(total_time.get(a,0),
+                              total_hints[a], total_tags[a], total_tags_time[a])
+        rows = max([1, len(metrics['io']), len(metrics['instr'])])
+        all_metrics.append((a, rows, metrics))
+
+    total_rows = sum(map(lambda m: m[1], all_metrics))
+
+    # Make table
+    f.write('''
+    <h4>Statistics</h4>
+    <table class="statistics">
+      <colgroup>
+        <col span="1"/>
+        <col span="2"/>
+        <col span="1" class="group"/>
+        <col span="1" class="group"/>
+        <col span="4"/>
+        <col span="1" class="group"/>
+        <col span="4"/>
+      </colgroup>
+      <tr><th>Balance</th>
+          <th>Kernel</th>
+          <th>Instances</th><th>Time</th>
+          <th colspan="5">IO</th>
+          <th colspan="5">Instructions</th></tr>
+      <tr><td></td><td></td><td></td><td></td>
+          <td></td><td>Value</td><td>Expected</td><td>Rate</td><td>Time</td>
+          <td></td><td>Value</td><td>Expected</td><td>Rate</td><td>Time</td></tr>''')
+
+    first = True
+    for a, rows, metrics in all_metrics :
 
         # Print row(s)
         defMetric = Metric(None, None, None, None, '')
-        rows = max([1, len(metrics['io']), len(metrics['instr'])])
         for i in range(0, rows):
             time = total_time.get(a, 0)
             ioMetric = instrMetric = defMetric
@@ -490,13 +553,19 @@ def write_timeline_body(logs, conf) :
             row_classes = ''
             if i == 0: row_classes += 'first'
             f.write('''
-      <tr class='%s'>
+            <tr class='%s'>''' % row_classes)
+            if first:
+                f.write('''
+                <td rowspan="%d" id="balance">''' % total_rows)
+            first = False
+            f.write('''
           <td class='key %s'>%s</td><td>%s</td><td>%s</td>
-          <td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>
-          <td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>
+          <td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>
+            <td class='%s'>%s</td><td class='%s'>%s</td>
+          <td class='%s'>%s</td><td class='%s'>%s</td><td class='%s'>%s</td>
+            <td class='%s'>%s</td><td class='%s'>%s</td>
       </tr>'''
-                % ((row_classes,
-                    make_class_name(a),
+                % ((make_class_name(a),
                     a if i == 0 else '',
                     '%d' % instances[a] if i == 0 else '',
                     '%02d:%02d.%03d' % (int(time / 60),
@@ -518,7 +587,7 @@ def write_timeline_body(logs, conf) :
     </table>
     <h4>Legend</h4>
     <table>
-      <th>Colour<th></td><th>Explanation</th>
+      <tr><th>Colour</th><th>Explanation</th></tr>
       <tr><td class='hintokay'>Okay</td><td>Performance as predicted (+-%d%%)</td></tr>
       <tr><td class='hintwarning'>Warning</td><td>Medium performance discrepancy (+-%d%%)</td></tr>
       <tr><td class='hinterror'>Error</td><td>Large performance discrepancy, assuming data corrupt</td></tr>
