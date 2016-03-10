@@ -3,23 +3,24 @@
 module Kernel.Config where
 
 import Control.Applicative
-
 import Data.Yaml
+import Data.List
+import Text.Read ( readMaybe )
+
+import Flow ( Schedule(..) )
 
 data Config = Config
   { cfgInput    :: [OskarInput] -- ^ Input Oskar files
   , cfgPoints   :: Int      -- ^ Number of points to read from Oskar file
   , cfgNodes    :: Int      -- ^ Number of data sets to process in parallel
   , cfgLoops    :: Int      -- ^ Number of major loops to run
-  , cfgGridderType   :: GridKernelType -- ^ Type of gridder: 0-CPU Halide, 1-GPU Halide, 2-GPU NVidia
-  , cfgDegridderType :: DegridKernelType -- ^ Type of degridder: 0-CPU Halide, otherwise-GPU Halide
   , cfgLong     :: Double   -- ^ Phase centre longitude
   , cfgLat      :: Double   -- ^ Phase centre latitude
   , cfgOutput   :: FilePath -- ^ File name for the output image
   , cfgGrid     :: GridPar
   , cfgGCF      :: GCFPar
   , cfgClean    :: CleanPar
-  , cfgUseFiles :: Bool
+  , cfgStrategy :: StrategyPar
   }
 instance FromJSON Config where
   parseJSON (Object v)
@@ -27,15 +28,13 @@ instance FromJSON Config where
              <*> v .: "points"
              <*> v .: "nodes"
              <*> (v .: "loops" <|> return (cfgLoops defaultConfig))
-             <*> (fmap toEnum (v .: "gridder_type") <|> return (cfgGridderType defaultConfig))
-             <*> (fmap toEnum (v .: "degridder_type") <|> return (cfgDegridderType defaultConfig))
              <*> (v .: "long" <|> return (cfgLong defaultConfig))
              <*> (v .: "lat" <|> return (cfgLat defaultConfig))
              <*> v .: "output"
              <*> (v .: "grid" <|> return (cfgGrid defaultConfig))
              <*> (v .: "gcf" <|> return (cfgGCF defaultConfig))
              <*> (v .: "clean" <|> return (cfgClean defaultConfig))
-             <*> (v .: "use_files" <|> return (cfgUseFiles defaultConfig))
+             <*> (v .: "strategy" <|> return (cfgStrategy defaultConfig))
   parseJSON _ = mempty
 
 data OskarInput = OskarInput
@@ -63,6 +62,23 @@ data DegridKernelType
   | DegridKernelGPU
 #endif
   deriving (Eq, Ord, Enum, Show)
+
+instance Read GridKernelType where
+  readsPrec _ str
+    | Just rest <- stripPrefix "cpu" str  = [(GridKernelCPU, rest)]
+#ifdef USE_CUDA
+    | Just rest <- stripPrefix "gpu" str  = [(GridKernelGPU, rest)]
+    | Just rest <- stripPrefix "nv"  str  = [(GridKernelNV,  rest)]
+#endif
+    | otherwise = []
+
+instance Read DegridKernelType where
+  readsPrec _ str
+    | Just rest <- stripPrefix "cpu" str  = [(DegridKernelCPU, rest)]
+#ifdef USE_CUDA
+    | Just rest <- stripPrefix "gpu" str  = [(DegridKernelCPU, rest)]
+#endif
+    | otherwise = []
 
 data GridPar = GridPar
   { gridWidth :: !Int  -- ^ Width of the uv-grid/image in pixels
@@ -108,6 +124,32 @@ instance FromJSON CleanPar where
                <*> v .: "cycles"
   parseJSON _ = mempty
 
+data StrategyPar = StrategyPar
+  { stratGridder   :: GridKernelType -- ^ Type of gridder: 0-CPU Halide, 1-GPU Halide, 2-GPU NVidia
+  , stratDegridder :: DegridKernelType -- ^ Type of degridder: 0-CPU Halide, otherwise-GPU Halide
+  , stratTileSched :: (Schedule, Schedule) -- ^ Strategy to use for U and V distribution
+  , stratFacetSched :: (Schedule, Schedule) -- ^ Strategy to use for L and M distribution
+  , stratUseFiles :: Bool
+  }
+instance FromJSON StrategyPar where
+  parseJSON (Object v)
+    = StrategyPar
+        <$> (fmap (readMaybe =<<) $ v .:? "gridder_type")   .!= stratGridder defaultStrategyPar
+        <*> (fmap (readMaybe =<<) $ v .:? "degridder_type") .!= stratDegridder defaultStrategyPar
+        <*> (fmap (readMaybe =<<) $ v .:? "uv-tiles-sched") .!= stratTileSched defaultStrategyPar
+        <*> (fmap (readMaybe =<<) $ v .:? "lm-facets-sched") .!= stratFacetSched defaultStrategyPar
+        <*> v .:? "use_files" .!= stratUseFiles defaultStrategyPar
+  parseJSON _ = mempty
+
+defaultStrategyPar :: StrategyPar
+defaultStrategyPar = StrategyPar
+  { stratGridder    = GridKernelCPU
+  , stratDegridder  = DegridKernelCPU
+  , stratTileSched  = (SeqSchedule, SeqSchedule)
+  , stratFacetSched = (SeqSchedule, SeqSchedule)
+  , stratUseFiles   = False
+  }
+
 -- | Default configuration. Gets overridden by the actual
 -- implementations where paramters actually matter.
 defaultConfig :: Config
@@ -116,16 +158,25 @@ defaultConfig = Config
   , cfgPoints   = 32131 * 200
   , cfgNodes    = 0
   , cfgLoops    = 1
-  , cfgGridderType = GridKernelCPU
-  , cfgDegridderType = DegridKernelCPU
   , cfgLong     = 72.1 / 180 * pi -- mostly arbitrary, and probably wrong in some way
   , cfgLat      = 42.6 / 180 * pi -- ditto
   , cfgOutput   = ""
   , cfgGrid     = GridPar 0 0 0 0 1 1 1
   , cfgGCF      = GCFPar 0 8 ""
   , cfgClean    = CleanPar 0 0 0
-  , cfgUseFiles = False
+  , cfgStrategy = defaultStrategyPar
   }
+
+-- | Number of data sets we can run in parallel with the given number of nodes
+cfgParallelism :: Config -> Int
+cfgParallelism cfg =
+  cfgNodes cfg `div` mbPar gridTiles (fst . stratTileSched)
+               `div` mbPar gridTiles (snd . stratTileSched)
+               `div` mbPar gridFacets (fst . stratFacetSched)
+               `div` mbPar gridFacets (snd . stratFacetSched)
+ where mbPar amount sched = case sched (cfgStrategy cfg) of
+         ParSchedule -> amount (cfgGrid cfg)
+         SeqSchedule -> 1
 
 -- | Image dimensions for all facets together
 gridImageWidth :: GridPar -> Int

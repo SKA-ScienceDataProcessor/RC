@@ -4,8 +4,8 @@
 module Kernel.Data
   ( -- * Configuration
     Config(..), OskarInput(..), GridKernelType(..), DegridKernelType(..)
-  , GridPar(..), GCFPar(..), CleanPar(..)
-  , defaultConfig
+  , GridPar(..), GCFPar(..), CleanPar(..), StrategyPar(..)
+  , defaultConfig, cfgParallelism
   , gridImageWidth, gridImageHeight, gridScale, gridXY2UV
   -- * Data tags
   , Index, Tag, Vis, UVGrid, FullUVGrid, Image, Cleaned, GCFs

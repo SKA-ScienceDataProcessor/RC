@@ -123,6 +123,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
       dkern = regionKernel ddom
       gpar = cfgGrid cfg
       gcfpar = cfgGCF cfg
+      strat = cfgStrategy cfg
 
   -- Intermediate Flow nodes
   let gridded = grid vis (gcf vis0) createGrid -- grid from vis
@@ -136,7 +137,9 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
     distribute ddom SeqSchedule $ do
 
       -- Loop over facets
-      distribute (fst lmdom) ParSchedule $ distribute (snd lmdom) SeqSchedule $ do
+      distribute (fst lmdom) (fst $ stratFacetSched strat) $
+       distribute (snd lmdom) (snd $ stratFacetSched strat) $ do
+
         let fkern :: IsKernelDef kf => kf -> kf
             fkern = regionKernel (fst lmdom) . regionKernel (snd lmdom)
             rkern :: IsKernelDef kf => kf -> kf
@@ -151,7 +154,8 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
         wdom <- split wdoms (gridBins gpar)
 
         -- Loop over tiles
-        distribute (snd uvdom) SeqSchedule $ distribute (fst uvdom) SeqSchedule $ do
+        distribute (snd uvdom) (snd $ stratTileSched strat) $
+         distribute (fst uvdom) (fst $ stratTileSched strat) $ do
 
           -- Load GCFs
           bindRule gcf $ rkern $ const $ hints allCpuHints $ gcfKernel gcfpar wdom
@@ -167,13 +171,13 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
           rule degrid $ \(gcfs :. uvgrid :. vis' :. Z) -> do
             rebind uvgrid $ distributeGrid ddomss ddom lmdom gpar
             bind (degrid gcfs uvgrid vis') $ rkern $
-              degridKernel (cfgDegridderType cfg) gpar gcfpar uvdom wdom gcfs uvgrid vis'
+              degridKernel (stratDegridder strat) gpar gcfpar uvdom wdom gcfs uvgrid vis'
           bindRule psfVis $ rkern $ psfVisKernel uvdom wdom
           calculate vis
 
           -- Gridding
           bind createGrid $ rkern $ gridInit gcfpar uvdom
-          bindRule grid $ rkern $ gridKernel (cfgGridderType cfg) gpar gcfpar uvdoms wdom uvdom
+          bindRule grid $ rkern $ gridKernel (stratGridder strat) gpar gcfpar uvdoms wdom uvdom
           calculate gridded
 
         -- Compute the result by detiling & iFFT on tiles
@@ -230,14 +234,14 @@ continuumStrat :: Config -> Strategy ()
 continuumStrat cfg = do
 
   -- Make index and point domains for visibilities
-  (ddomss, ixs) <- makeOskarDomain cfg (cfgNodes cfg)
+  (ddomss, ixs) <- makeOskarDomain cfg (cfgParallelism cfg)
   tdom <- makeRangeDomain 0 (cfgPoints cfg)
 
   -- Split index domain - first into bins per node, then into
   -- individual data sets. The repeatSplit must be large enough to
   -- split the largest repeat possible.
   let repeatSplits = 1 + maximum (map oskarRepeat (cfgInput cfg))
-  ddoms <- split ddomss (cfgNodes cfg)
+  ddoms <- split ddomss (cfgParallelism cfg)
   ddom <- split ddoms repeatSplits
   let ddom_s = [ddomss, ddoms, ddom]
 
@@ -301,12 +305,13 @@ main = do
    Left err -> putStrLn $ "Failed to read configuration file: " ++ show err
    Right config -> do
 
-    {--- Show strategy - but only for the root process
+    print $ stratFacetSched $ cfgStrategy config
+
+    -- Show strategy - but only for the root process
     when (not ("--internal-rank" `elem` args)) $ do
       dumpSteps $ continuumStrat config
       putStrLn "----------------------------------------------------------------"
       putStrLn ""
-    -}
 
     -- Execute strategy
-    execStrategyDNA (cfgUseFiles config) $ continuumStrat config
+    execStrategyDNA (stratUseFiles $ cfgStrategy config) $ continuumStrat config

@@ -1,10 +1,4 @@
 
-# Gridder type: 0-CPU Halide, 1-GPU Halide, 2-GPU NVidia
-gridder_type: 1
-
-# Degridder type: 0-CPU Halide, otherwise-GPU Halide
-degridder_type: 1
-
 # Number of nodes scheduling should assume to be available.
 nodes:  16
 
@@ -64,3 +58,11 @@ clean:
   gain:      0.9
   threshold: 4
   cycles:    10
+
+# Strategy data for algorithm and distribution configuration.
+strategy:
+  gridder_type:    cpu # cpu - CPU Halide, gpu - GPU Halide, nv - GPU NVidia
+  degridder_type:  cpu # cpu - CPU Halide, gpu - GPU Halide
+  uv-tiles-sched:  (seq, seq)
+  lm-facets-sched: (seq, seq)
+  use_files:       true

@@ -15,7 +15,7 @@ import Data.Function ( on )
 import Data.Hashable
 import Data.Int
 import qualified Data.IntMap as IM
-import Data.List     ( sort, groupBy, intercalate )
+import Data.List     ( sort, groupBy, intercalate, stripPrefix )
 import qualified Data.Map as Map
 import qualified Data.HashMap.Strict as HM
 import Data.Typeable
@@ -430,6 +430,12 @@ data Schedule
   = SeqSchedule -- ^ Sequentialise work: Loop over all 'Region's.
   | ParSchedule -- ^ Parallelise work: Allocate nodes and give each one 'Region' to work on.
   deriving (Show, Eq)
+
+instance Read Schedule where
+  readsPrec _ str
+    | Just rest <- stripPrefix "seq" str  = [(SeqSchedule, rest)]
+    | Just rest <- stripPrefix "par" str  = [(ParSchedule, rest)]
+    | otherwise = []
 
 -- | A strategy rule, explaining how to implement certain data flow patterns
 newtype StratRule = StratRule (FlowI -> Maybe (Strategy ()))
