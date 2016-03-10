@@ -179,3 +179,8 @@ stepsDomainDeps (step : steps)
 stepsDomainDeps []
   = IS.empty
 
+-- | Map of all kernels defined in steps
+stepKernelBinds :: Step -> IM.IntMap KernelBind
+stepKernelBinds (KernelStep kbind)      = IM.singleton (kernId kbind) kbind
+stepKernelBinds (DistributeStep _ _ ss) = IM.unions $ map stepKernelBinds ss
+stepKernelBinds _                       = IM.empty

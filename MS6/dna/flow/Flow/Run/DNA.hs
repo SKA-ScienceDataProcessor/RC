@@ -87,6 +87,7 @@ data DnaBuildState = DnaBuildState
   { dbsFresh          :: !Int           -- ^ Fresh number source for generating static names
   , dbsRemoteRegister :: RemoteRegister -- ^ Remote table in construction
   , dbsContext        :: GetContext     -- ^ Static domain and kernel maps (for unmarshaling)
+  , dbsKernelBinds    :: IM.IntMap KernelBind -- ^ Kernel lookup map
   , dbsCode           :: DnaCode ()
      -- ^ Collected "DnaCode" for the current actor / top level
      -- routine. When generating an actor, the "DataMap" after the
@@ -147,6 +148,7 @@ execStrategyDNA useFiles strat = do
             { dbsFresh          = 0
             , dbsRemoteRegister = id
             , dbsContext        = (IM.empty, IM.empty)
+            , dbsKernelBinds    = IM.unions $ map stepKernelBinds steps
             , dbsCode           = return ()
             , dbsUseFiles       = useFiles
             }
@@ -256,21 +258,29 @@ filteredRegsFun outRegs outDoms
            Just reg' -> Just $ pre ++ reg':post
            Nothing   -> Nothing
 
-getFilteredOutputRegs :: ReprI -> String -> DnaCode [RegionBox]
-getFilteredOutputRegs (ReprI rep) kname = do
+-- | Returns all in-scope region boxes for the given data
+-- representation. Invalid region combinations are filtered out.
+getFilteredOutputRegs :: DomainMap -> ReprI -> String -> [RegionBox]
+getFilteredOutputRegs domainMap (ReprI rep) kname =
   -- Get domains to execute this kernel over
-  domainMap <- getDomainMap
   let lookupDom did = case IM.lookup did domainMap of
         Just dom -> dom
         Nothing  -> error $ "Kernel " ++ kname ++ " called for non-existant domain " ++ show did ++ "!"
   -- Construct all output regions (cartesian product of all involved
   -- domain regions)
-  let cartProd = sequence :: [[Region]] -> [RegionBox]
+      cartProd = sequence :: [[Region]] -> [RegionBox]
       outDoms = map lookupDom (reprDomain rep)
       outRegs = cartProd $ map snd outDoms
   -- Filter boxes (yeah, ugly & slow)
-  return $ filteredRegsFun outRegs outDoms
+  in filteredRegsFun outRegs outDoms
 
+-- | Returns the size of the given data representations for all in-scope
+-- region boxes. Data representations that do not provide size hints
+-- will return 0 here.
+getRegionBoxesSize :: DomainMap -> ReprI -> Int
+getRegionBoxesSize domainMap ri@(ReprI rep) =
+  sum $ mapMaybe (reprSize rep) $
+  getFilteredOutputRegs domainMap ri "(getRegionBoxesSize)"
 
 -- | Generate code for executing a kernel. This will register the
 -- kernel for unmarshalling, and generate "DNA" code to locate the
@@ -280,7 +290,8 @@ execKernelStep :: KernelSet -> KernelBind -> DnaBuilder ()
 execKernelStep deps kbind@KernelBind{kernRepr=ReprI rep} = do
   registerKernel kbind
   emitCode $ do
-    filteredRegs <- getFilteredOutputRegs (ReprI rep) (show kbind)
+    domainMap <- getDomainMap
+    let filteredRegs = getFilteredOutputRegs domainMap (ReprI rep) (show kbind)
     -- Look up input data. Note that we always pass all available data
     -- here, we do not check whether it satisfies the usual "if split
     -- & distributed domains are used, only pass the current region"
@@ -339,7 +350,8 @@ execRecoverStep kbind kid = do
       Nothing -> return (kernRepr kbind, Map.empty)
       Just a  -> return a
     -- Expected regions
-    filteredRegs <- getFilteredOutputRegs repr ("Recover: " ++ show kbind)
+    domainMap <- getDomainMap
+    let filteredRegs = getFilteredOutputRegs domainMap repr ("Recover: " ++ show kbind)
     -- Compare regions
     let missing = Set.fromList filteredRegs `Set.difference` Map.keysSet regData
     -- Generate missing regions
@@ -374,7 +386,8 @@ execDistributeStep deps dh sched steps = do
   -- data that the following steps depend on - which is exactly the
   -- difference between our "deps" and the dependencies of the nested
   -- steps.
-  let rets = deps `IS.difference` stepsKernDeps steps
+  let stepsDeps = stepsKernDeps steps
+      rets = deps `IS.difference` stepsKernDeps' deps steps
   dbs <- get
   (act, marshal, unmarshal) <- makeActor (dbsUseFiles dbs) rets steps
 
@@ -388,8 +401,7 @@ execDistributeStep deps dh sched steps = do
 
     -- As well as a new data map
     dataMap <- getDataMap
-    let dataDeps = stepsKernDeps steps
-        isDataDep did _ = did `IS.member` dataDeps
+    let isDataDep did _ = did `IS.member` stepsDeps
         dataMap' = IM.filterWithKey isDataDep dataMap
 
     -- Calculate the number of nodes needed. Note that this only works
@@ -499,57 +511,73 @@ makeActor useFiles rets steps = do
       dbs'' = flip execState dbs' $
               execSteps rets steps
       ctx = dbsContext dbs''
+      kbinds = dbsKernelBinds dbs''
 
-  -- Take over all state, but reset code to where it was before.
-  put $ dbs'' { dbsCode = dbsCode dbs }
+  -- Take over all state, but reset code to where it was
+  -- before. Generate a fresh ID for the file channel.
+  let chanId = dbsFresh dbs''
+  put $ dbs'' { dbsCode = dbsCode dbs
+              , dbsFresh = dbsFresh dbs'' + 1
+              }
 
-  -- Marshalling / unmarshalling (depends on configuration)
-  let fnprefix = "__ch" ++ show (dbsFresh dbs'')
-      writeDataMap' :: DataMap -> DNA LBS.ByteString
-      writeDataMap' dataMap
-        | not useFiles =
-            return $ runPut $ writeDataMap dataMap
-        | otherwise    = do
-            pid <- processId
-            kernel "writeIODataMap" [ioHint] . liftIO $
-              writeIODataMap (fnprefix ++ pp pid) dataMap
-      readDataMap' :: LBS.ByteString -> DNA DataMap
-      readDataMap'
-        | not useFiles = return . runGet (readDataMap ctx)
-        | otherwise    =
-            kernel "readIODataMap" [ioHint] . liftIO .
-              flip readIODataMap ctx
+  -- Find size of data representation
+  let marshal domainMap dataMap = do
+        let domm = runPut $ writeDomainMap domainMap
+        datm <- writeDataMap' useFiles chanId dataMap
+        return (domm `LBS.append` datm)
+
+      unmarshal deps inp = do
+        -- Unmarshal argument maps
+        let Right (rest, _, domainMap) = runGetOrFail (readDomainMap ctx) inp
+            depReprs = map (kernRepr . (IM.!) kbinds) $ IS.elems deps
+        dataMap <- readDataMap' useFiles domainMap depReprs ctx rest
+        return (domainMap, dataMap)
 
   -- Generate actor code
   let act :: Actor LBS.ByteString LBS.ByteString
       act = actor $ \inp -> do
         -- Unmarshal argument maps
-        let Right (rest, _, domainMap) = runGetOrFail (readDomainMap ctx) inp
-        dataMap <- readDataMap' rest
+        (domainMap, dataMap) <- unmarshal (stepsKernDeps steps) inp
 
         -- Run code
-        (_, dataMapNew) <- execStateT (dbsCode dbs'') (domainMap, dataMap)
+        results <- execStateT (dbsCode dbs'') (domainMap, dataMap)
 
         -- Marshal result. "execSteps" should have generated code such
         -- that at this point only data mentioned in "rets" is still
         -- left alive.
-        writeDataMap' dataMapNew
+        uncurry marshal results
 
   -- Register in remote table
   actClosure <- registerActor act
+  return (actClosure, marshal, fmap snd . unmarshal rets)
 
-  -- Generate actor calling code
-  let
-    marshal domainMap dataMap = do
-      let domm = runPut $ writeDomainMap domainMap
-      datm <- writeDataMap' dataMap
-      return (domm `LBS.append` datm)
+-- Marshalling / unmarshalling (depends on configuration)
+writeDataMap' :: Bool -> Int -> DataMap
+              -> DNA LBS.ByteString
+writeDataMap' False _      dataMap = return $ runPut $ writeDataMap dataMap
+writeDataMap' True  chanId dataMap = do
 
-  return (actClosure, marshal, readDataMap')
+  -- Make file name
+  pid <- processId
+  let norm ':' = '_'
+      norm '/' = '_'
+      norm x = x
+      fnprefix = "__ch" ++ show chanId
+      file = fnprefix ++ map norm (show pid)
 
-  where
-    pp :: ProcessId -> String
-    pp = map norm . show
-    norm ':' = '_'
-    norm '/' = '_'
-    norm x = x
+  -- I/O hint
+  let size = sum $ map (sum . map vectorByteSize . Map.elems . snd) $ IM.elems dataMap
+      hints = [ioHint { hintWriteBytes = size }]
+
+  -- Execute marshalling as kernel
+  kernel "writeIODataMap" hints . liftIO $
+    writeIODataMap file dataMap
+
+readDataMap' :: Bool -> DomainMap -> [ReprI] -> GetContext -> LBS.ByteString
+             -> DNA DataMap
+readDataMap' False _      _     ctx = return . runGet (readDataMap ctx)
+readDataMap' True  domMap reprs ctx =
+  kernel "readIODataMap" hints . liftIO .
+    flip readIODataMap ctx
+ where expectedRead = sum $ map (getRegionBoxesSize domMap) reprs
+       hints = [ioHint { hintReadBytes = expectedRead }]
