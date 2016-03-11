@@ -147,7 +147,7 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
 
         -- Read in visibilities
         rebind ixs $ scheduleSplit ddomss ddom
-        bind vis0 $ hints [ioHint] $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
+        bind vis0 $ hints [ioHint{hintReadBytes = cfgPoints cfg * 5 * 8 {-sizeof double-}}] $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
 
         -- Create w-binned domain, split
         wdoms <- makeBinDomain $ dkern $ binSizer gpar tdom uvdom vis0
