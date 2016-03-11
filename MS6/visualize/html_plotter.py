@@ -214,6 +214,7 @@ def write_timeline_data(logs, conf) :
     # Collect all delay types, figure out profile length
     delays = set()
     total_time = 0
+    overall_time = {}
     for k in sorted(logs) :
         for e in logs[k].time :
             if conf.get(e.msg,{}).get('ignore', False) :
@@ -221,7 +222,10 @@ def write_timeline_data(logs, conf) :
             delays.add(e.msg)
             if e.t2 != None: total_time = max(e.t2, total_time)
             if e.t1 != None: total_time = max(e.t1, total_time)
+            if e.t1 != None and e.t2 != None:
+                overall_time[e.msg] = (e.t2 - e.t1) + overall_time.get(e.msg, 0)
 
+    delays = sorted(delays)
     f.write('''
       var colorScale = d3.scale.category20().domain({0});'''.format(list(delays)))
 
@@ -238,7 +242,6 @@ def write_timeline_data(logs, conf) :
     f.write('''
       var data = [''')
 
-    overall_time = {}
     for k in sorted(logs) :
 
         # Bin by message
@@ -283,8 +286,6 @@ def write_timeline_data(logs, conf) :
                     eff = m.efficiency()
                 if eff is None:
                     eff = 0.05
-                if e2.t2 != None :
-                    overall_time[e2.msg] = (e2.t2 - e2.t1) + overall_time.get(e2.msg, 0)
 
                 # Make sure we have a certain minimum width. This is a hack.
                 end = e2.t2
@@ -298,7 +299,49 @@ def write_timeline_data(logs, conf) :
             f.write('\n            ]},')
 
     f.write('''
-        ];''')
+        ];
+
+      // Stack up bars?
+      var kernelSplit = document.getElementById('kernel_split').checked;
+      if (!kernelSplit) {
+        newData = [];
+        lastLabel = '';
+        for (var i = 0; i < data.length; i++) {
+          label = lastLabel;
+          if ('label' in data[i]) {
+            label = data[i].label.substr(0, data[i].label.lastIndexOf(':'));
+          }
+          for (var j = 0; j < data[i].times.length; j++) {
+            data[i].times[j].label = undefined;
+          }
+          if (label == lastLabel) {
+            newData[newData.length-1].times =
+              newData[newData.length-1].times.concat(data[i].times);
+          } else {
+            newData.push(data[i]);
+            newData[newData.length-1].label = label;
+            lastLabel = label;
+          }
+        }
+        data = newData
+        console.log(data);
+      }
+
+      // Strip idle times?
+      var stripIdle = document.getElementById('strip_idle').checked;
+      if (stripIdle) {
+        for (var i = 0; i < data.length; i++) {
+          var time = 0;
+          data[i].times.sort(function (a,b) { return a.starting_time - b.starting_time; });
+          for (var j = 0; j < data[i].times.length; j++) {
+            var length = data[i].times[j].ending_time - data[i].times[j].starting_time;
+            data[i].times[j].starting_time = time;
+            time += length;
+            data[i].times[j].ending_time = time;
+          }
+        }
+      }
+    ''')
 
     # Figure out a good tick interval
     tickInterval = 1
@@ -327,13 +370,13 @@ def write_timeline_data(logs, conf) :
     # Generate overview layout. We use a "1-row" stacked bar layout.
     f.write('''
       var balanceData = [''')
-    for name, time in overall_time.iteritems():
+    for name in delays:
         f.write('''
-        [{ name: "%s", x:0, y: %f }],''' % (name, time))
+        [{ name: "%s", x:0, y: %f }],''' % (name, overall_time[name]))
     f.write('''
       ];
       var balanceDataStacked = d3.layout.stack()(balanceData);
-      console.log(balanceDataStacked);''')
+''')
 
     # Generate visualisation
     f.write('''
@@ -481,6 +524,9 @@ def write_timeline_body(logs, conf) :
     # Show timeline
     f.write('''
     <h4>Timeline</h4>
+    <p>Visualisation options:
+       <input onclick="plot();" type="checkbox" id="kernel_split">Split by kernel</input> /
+       <input onclick="plot();" type="checkbox" id="strip_idle">Strip idle times</input></p>
     <div id="timeline"></div>''')
 
     # Build stats
@@ -516,6 +562,7 @@ def write_timeline_body(logs, conf) :
         rows = max([1, len(metrics['io']), len(metrics['instr'])])
         all_metrics.append((a, rows, metrics))
 
+    all_metrics = sorted(all_metrics, key=lambda m: m[0])
     total_rows = sum(map(lambda m: m[1], all_metrics))
 
     # Make table
