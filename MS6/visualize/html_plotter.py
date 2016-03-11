@@ -214,6 +214,7 @@ def write_timeline_data(logs, conf) :
     # Collect all delay types, figure out profile length
     delays = set()
     total_time = 0
+    overall_time = {}
     for k in sorted(logs) :
         for e in logs[k].time :
             if conf.get(e.msg,{}).get('ignore', False) :
@@ -221,7 +222,10 @@ def write_timeline_data(logs, conf) :
             delays.add(e.msg)
             if e.t2 != None: total_time = max(e.t2, total_time)
             if e.t1 != None: total_time = max(e.t1, total_time)
+            if e.t1 != None and e.t2 != None:
+                overall_time[e.msg] = (e.t2 - e.t1) + overall_time.get(e.msg, 0)
 
+    delays = sorted(delays)
     f.write('''
       var colorScale = d3.scale.category20().domain({0});'''.format(list(delays)))
 
@@ -238,7 +242,6 @@ def write_timeline_data(logs, conf) :
     f.write('''
       var data = [''')
 
-    overall_time = {}
     for k in sorted(logs) :
 
         # Bin by message
@@ -283,8 +286,6 @@ def write_timeline_data(logs, conf) :
                     eff = m.efficiency()
                 if eff is None:
                     eff = 0.05
-                if e2.t2 != None :
-                    overall_time[e2.msg] = (e2.t2 - e2.t1) + overall_time.get(e2.msg, 0)
 
                 # Make sure we have a certain minimum width. This is a hack.
                 end = e2.t2
@@ -369,9 +370,9 @@ def write_timeline_data(logs, conf) :
     # Generate overview layout. We use a "1-row" stacked bar layout.
     f.write('''
       var balanceData = [''')
-    for name, time in overall_time.iteritems():
+    for name in delays:
         f.write('''
-        [{ name: "%s", x:0, y: %f }],''' % (name, time))
+        [{ name: "%s", x:0, y: %f }],''' % (name, overall_time[name]))
     f.write('''
       ];
       var balanceDataStacked = d3.layout.stack()(balanceData);
@@ -561,6 +562,7 @@ def write_timeline_body(logs, conf) :
         rows = max([1, len(metrics['io']), len(metrics['instr'])])
         all_metrics.append((a, rows, metrics))
 
+    all_metrics = sorted(all_metrics, key=lambda m: m[0])
     total_rows = sum(map(lambda m: m[1], all_metrics))
 
     # Make table
