@@ -76,7 +76,7 @@ instance Read DegridKernelType where
   readsPrec _ str
     | Just rest <- stripPrefix "cpu" str  = [(DegridKernelCPU, rest)]
 #ifdef USE_CUDA
-    | Just rest <- stripPrefix "gpu" str  = [(DegridKernelCPU, rest)]
+    | Just rest <- stripPrefix "gpu" str  = [(DegridKernelGPU, rest)]
 #endif
     | otherwise = []
 
