@@ -298,7 +298,49 @@ def write_timeline_data(logs, conf) :
             f.write('\n            ]},')
 
     f.write('''
-        ];''')
+        ];
+
+      // Stack up bars?
+      var kernelSplit = document.getElementById('kernel_split').checked;
+      if (!kernelSplit) {
+        newData = [];
+        lastLabel = '';
+        for (var i = 0; i < data.length; i++) {
+          label = lastLabel;
+          if ('label' in data[i]) {
+            label = data[i].label.substr(0, data[i].label.lastIndexOf(':'));
+          }
+          for (var j = 0; j < data[i].times.length; j++) {
+            data[i].times[j].label = undefined;
+          }
+          if (label == lastLabel) {
+            newData[newData.length-1].times =
+              newData[newData.length-1].times.concat(data[i].times);
+          } else {
+            newData.push(data[i]);
+            newData[newData.length-1].label = label;
+            lastLabel = label;
+          }
+        }
+        data = newData
+        console.log(data);
+      }
+
+      // Strip idle times?
+      var stripIdle = document.getElementById('strip_idle').checked;
+      if (stripIdle) {
+        for (var i = 0; i < data.length; i++) {
+          var time = 0;
+          data[i].times.sort(function (a,b) { return a.starting_time - b.starting_time; });
+          for (var j = 0; j < data[i].times.length; j++) {
+            var length = data[i].times[j].ending_time - data[i].times[j].starting_time;
+            data[i].times[j].starting_time = time;
+            time += length;
+            data[i].times[j].ending_time = time;
+          }
+        }
+      }
+    ''')
 
     # Figure out a good tick interval
     tickInterval = 1
@@ -333,7 +375,7 @@ def write_timeline_data(logs, conf) :
     f.write('''
       ];
       var balanceDataStacked = d3.layout.stack()(balanceData);
-      console.log(balanceDataStacked);''')
+''')
 
     # Generate visualisation
     f.write('''
@@ -481,6 +523,9 @@ def write_timeline_body(logs, conf) :
     # Show timeline
     f.write('''
     <h4>Timeline</h4>
+    <p>Visualisation options:
+       <input onclick="plot();" type="checkbox" id="kernel_split">Split by kernel</input> /
+       <input onclick="plot();" type="checkbox" id="strip_idle">Strip idle times</input></p>
     <div id="timeline"></div>''')
 
     # Build stats
