@@ -494,10 +494,9 @@ execDistributeStep deps dh sched steps = do
 
        -- Simply evaluate actor code directly
        lift $ logMessage $ "Distributing " ++ show regs ++ " sequentially"
-       ress <- lift $ forM regs_grouped $ \reg_group -> do
-         let domainMap = localDomainMap reg_group
-             dataMap = localDataMap reg_group
-         snd <$> inlineCode domainMap dataMap
+       ress <- lift $ forM regs_grouped $ \reg_group ->
+         snd <$> inlineCode (localDomainMap reg_group)
+                            (localDataMap reg_group)
        return $ dataMapUnions ress
 
     -- Combine maps.
@@ -517,7 +516,6 @@ makeActorCode rets steps = do
 
   -- Take over all state, but reset code to where it was
   -- before.
-  let chanId = dbsFresh dbs''
   put $ dbs'' { dbsCode = dbsCode dbs }
 
   -- Make code to execute the actor
