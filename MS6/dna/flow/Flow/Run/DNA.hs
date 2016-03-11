@@ -15,16 +15,17 @@ import Control.Distributed.Process.Closure
 import Control.Distributed.Process.Serializable
 import Control.Distributed.Static
 
+import Data.Word ( Word8 )
 import Data.Binary.Get
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as LBS
-import Data.List  ( tails, foldl', nub )
-import Data.Maybe ( fromMaybe, fromJust, mapMaybe )
 import qualified Data.IntMap as IM
 import qualified Data.IntSet as IS
-import qualified Data.Set    as Set
-import Data.Rank1Dynamic ( toDynamic )
+import Data.List  ( tails, foldl', nub )
+import Data.Maybe ( fromMaybe, fromJust, mapMaybe )
 import qualified Data.Map.Strict as Map
+import Data.Rank1Dynamic ( toDynamic )
+import qualified Data.Set    as Set
 import Data.Typeable
 
 import Flow.Internal
@@ -303,22 +304,28 @@ execKernelStep deps kbind@KernelBind{kernRepr=ReprI rep} = do
         Just (_, bufs) -> return (kdep, bufs)
         Nothing        -> fail $ "Internal error for kernel " ++ show (kernName kbind) ++ ": Input " ++
                                  show (kdepId kdep) ++ " not found!"
-           -- This should never happen
+    let inRegData = map snd ins
 
     -- Either remove or duplicate inputs in the data map that will get
     -- "written" by the kernel - for our purposes this is equivalent
     -- with the kernel consuming the data.
     let writtenIns = filter ((== WriteAccess) . kdepAccess . fst) ins
     forM_ writtenIns $ \(dep, rdata) ->
-      if kdepId dep `IS.member` deps
-      then fail $ "Kernel " ++ show (kernName kbind) ++ " writes buffer " ++ show (kdepId dep) ++
-                  ", which is used later. This is not supported yet!"
-      else modifyDataMap $ flip dataMapDifference $
-           dataMapInsert (kdepId dep) (kdepRepr dep) (Map.map (const nullVector) rdata) IM.empty
+      if not (kdepId dep `IS.member` deps)
+      then modifyDataMap $ flip dataMapDifference $
+             dataMapInsert (kdepId dep) (kdepRepr dep) (Map.map (const nullVector) rdata) IM.empty
+      else do
+        -- Duplicate vectors
+        rdata' <- execIO "dup" [] $ forM (Map.assocs rdata) $ \(rbox, v) -> do
+          v' <- dupCVector (castVector v) :: IO (Vector Word8)
+          return (rbox, castVector v')
+        -- Put duplicated region data into data map
+        lift $ logMessage $ "Duplicated buffers for " ++ show dep
+        modifyDataMap $ dataMapInsert (kdepId dep) (kdepRepr dep) (Map.fromList rdata')
 
     -- Call the kernel using the right regions
-    results <- lift $ kernel (kernName kbind) (kernHints kbind (map snd ins) filteredRegs) -- map snd ins :: [RegionData]
-             $ liftIO $ kernCode kbind (map snd ins) filteredRegs
+    results <- lift $ kernel (kernName kbind) (kernHints kbind inRegData filteredRegs)
+             $ liftIO $ kernCode kbind inRegData filteredRegs
 
     -- Check size
     let expectedSizes = map (reprSize rep) filteredRegs
@@ -388,8 +395,12 @@ execDistributeStep deps dh sched steps = do
   -- steps.
   let stepsDeps = stepsKernDeps steps
       rets = deps `IS.difference` stepsKernDeps' deps steps
-  dbs <- get
-  (act, marshal, unmarshal) <- makeActor (dbsUseFiles dbs) rets steps
+  standaloneCode <- makeActorCode rets steps
+  inlineCode <- makeActorCode (deps `IS.union` stepsDeps) steps
+
+  -- Wrap standalone code to be an actual actor
+  useFiles <- dbsUseFiles <$> get
+  (act, marshal, unmarshal) <- wrapActor useFiles stepsDeps rets standaloneCode
 
   emitCode $ do
 
@@ -432,35 +443,30 @@ execDistributeStep deps dh sched steps = do
 
     -- Generate maps for all regions. This is the data that needs to
     -- be sent to the actors.
-    inputs <- forM regs_grouped $ \reg_group -> do
+    let localDomainMap reg_group = IM.insert (dhId dh) (DomainI dh, reg_group) $
+                                   IM.map restrictDomain domainMap'
+          where restrictDomain (DomainI subDom, subRegs) = case cast subDom of
+                  Just subDom' | subDom' `dhIsParent` dh
+                    -> (DomainI subDom, nub $ concatMap (\reg -> dhRestrict dh reg subRegs) reg_group)
+                  _otherwise
+                    -> (DomainI subDom, subRegs)
 
-      -- Make new restricted maps.
-      let restrictDomain (DomainI subDom, subRegs) = case cast subDom of
-            Just subDom' | subDom' `dhIsParent` dh
-                         -> (DomainI subDom, nub $ concatMap (\reg -> dhRestrict dh reg subRegs) reg_group)
-            _otherwise   -> (DomainI subDom, subRegs)
-          localDomainMap = IM.insert (dhId dh) (DomainI dh, reg_group) $
-                           IM.map restrictDomain domainMap'
-
-      -- Also filter data so we only send data for the appropriate region
-      let usesRegion (ReprI repr) = dhId dh `elem` reprDomain repr
-          filterData (ri, bufs) =
-            (ri, if usesRegion ri
-                 then Map.filterWithKey (\ds _ -> any (`elem` ds) reg_group) bufs
-                 else bufs)
-          localDataMap = IM.map filterData dataMap'
-
-      -- Execute steps with new domain & data maps
-      lift $ marshal localDomainMap localDataMap
+    -- Also filter data so we only send data for the appropriate region
+    let localDataMap reg_group = IM.map filterData dataMap'
+          where usesRegion (ReprI repr) = dhId dh `elem` reprDomain repr
+                filterData (ri, bufs) =
+                  (ri, if usesRegion ri
+                       then Map.filterWithKey (\ds _ -> any (`elem` ds) reg_group) bufs
+                       else bufs)
 
     dataMapNew <- case sched of
-     ParSchedule -> lift $ do
+     ParSchedule | length regs_grouped > 1 -> lift $ do
 
        -- Make actor group. Allocation as calculated above, and we always
        -- include the local node, as we are going to block.
-       let totalNodes = length inputs * nodes
+       let totalNodes = length regs_grouped * nodes
        logMessage $ "Distributing " ++ show regs ++ " over " ++
-                    show (length inputs) ++ " x " ++ show nodes ++ " nodes"
+                    show (length regs_grouped) ++ " x " ++ show nodes ++ " nodes"
        grp <- startGroup (N (totalNodes - 1)) (NNodes nodes) $ do
          -- FIXME: We always make use of same node as parent which may
          --        not be good idea in all cases. But scheduling in
@@ -469,7 +475,9 @@ execDistributeStep deps dh sched steps = do
          failout
          return act
 
-       -- Send out inputs
+       -- Marshal and send inputs
+       inputs <- zipWithM marshal (map localDomainMap regs_grouped)
+                                  (map localDataMap regs_grouped)
        distributeWork inputs (const id) grp
 
        -- Delay, collect & unmarshal result data maps
@@ -482,16 +490,40 @@ execDistributeStep deps dh sched steps = do
        waitForResources grp
        return result
 
-     SeqSchedule -> do
+     _otherwise -> do
 
-       -- Simply use evalClosure to evaluate actors directly
+       -- Simply evaluate actor code directly
        lift $ logMessage $ "Distributing " ++ show regs ++ " sequentially"
-       eclos <- forM inputs (lift . evalClosure act)
-       ress <- mapM (lift . unmarshal) eclos
+       ress <- lift $ forM regs_grouped $ \reg_group -> do
+         let domainMap = localDomainMap reg_group
+             dataMap = localDataMap reg_group
+         snd <$> inlineCode domainMap dataMap
        return $ dataMapUnions ress
 
     -- Combine maps.
     modifyDataMap $ dataMapUnion dataMapNew
+
+type ActorCode = DomainMap -> DataMap -> DNA (DomainMap, DataMap)
+
+-- | Generate code for executing the given steps.
+makeActorCode :: KernelSet -> [Step] -> DnaBuilder ActorCode
+makeActorCode rets steps = do
+
+  -- Generate code for steps.
+  dbs <- get
+  let dbs' = dbs { dbsCode = return () }
+      dbs'' = flip execState dbs' $
+              execSteps rets steps
+
+  -- Take over all state, but reset code to where it was
+  -- before.
+  let chanId = dbsFresh dbs''
+  put $ dbs'' { dbsCode = dbsCode dbs }
+
+  -- Make code to execute the actor
+  let execAct :: DomainMap -> DataMap -> DNA (DomainMap, DataMap)
+      execAct domainMap dataMap = execStateT (dbsCode dbs'') (domainMap, dataMap)
+  return execAct
 
 -- | Generate an actor executing the given steps. The result will be a
 -- (marshalled) "DataMap" containing data for the kernels mentioned in
@@ -499,26 +531,18 @@ execDistributeStep deps dh sched steps = do
 --
 -- We also return the marshaling and unmarshaling routines to use with
 -- the actor - mainly so all all marshalling code is in one place.
-makeActor :: Bool -> KernelSet -> [Step]
+wrapActor :: Bool -> KernelSet -> KernelSet -> ActorCode
           -> DnaBuilder (Closure (Actor LBS.ByteString LBS.ByteString),
                          DomainMap -> DataMap -> DNA LBS.ByteString,
                          LBS.ByteString -> DNA DataMap)
-makeActor useFiles rets steps = do
+wrapActor useFiles ins outs actorCode = do
 
-  -- Generate code for steps.
+  -- Generate a fresh ID for the file channel.
   dbs <- get
-  let dbs' = dbs { dbsCode = return () }
-      dbs'' = flip execState dbs' $
-              execSteps rets steps
-      ctx = dbsContext dbs''
-      kbinds = dbsKernelBinds dbs''
-
-  -- Take over all state, but reset code to where it was
-  -- before. Generate a fresh ID for the file channel.
-  let chanId = dbsFresh dbs''
-  put $ dbs'' { dbsCode = dbsCode dbs
-              , dbsFresh = dbsFresh dbs'' + 1
-              }
+  let chanId = dbsFresh dbs
+      ctx = dbsContext dbs
+      kbinds = dbsKernelBinds dbs
+  put $ dbs { dbsFresh = chanId + 1 }
 
   -- Find size of data representation
   let marshal domainMap dataMap = do
@@ -533,14 +557,15 @@ makeActor useFiles rets steps = do
         dataMap <- readDataMap' useFiles domainMap depReprs ctx rest
         return (domainMap, dataMap)
 
-  -- Generate actor code
+  -- Generate actor
   let act :: Actor LBS.ByteString LBS.ByteString
       act = actor $ \inp -> do
+
         -- Unmarshal argument maps
-        (domainMap, dataMap) <- unmarshal (stepsKernDeps steps) inp
+        (domainMap, dataMap) <- unmarshal ins inp
 
         -- Run code
-        results <- execStateT (dbsCode dbs'') (domainMap, dataMap)
+        results <- actorCode domainMap dataMap
 
         -- Marshal result. "execSteps" should have generated code such
         -- that at this point only data mentioned in "rets" is still
@@ -549,7 +574,7 @@ makeActor useFiles rets steps = do
 
   -- Register in remote table
   actClosure <- registerActor act
-  return (actClosure, marshal, fmap snd . unmarshal rets)
+  return (actClosure, marshal, fmap snd . unmarshal outs)
 
 -- Marshalling / unmarshalling (depends on configuration)
 writeDataMap' :: Bool -> Int -> DataMap
