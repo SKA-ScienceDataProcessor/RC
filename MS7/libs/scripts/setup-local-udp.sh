@@ -114,8 +114,8 @@ while ((\$#)); do
             ;;
     esac
 done
-tasks_count=\$((nodes*tasks))
-export RUN="\$GASNET_BIN/amudprun -n \$tasks_count -spawn L \$REGENT_BIN/regent.py"
+
+export RUN="\$GASNET_BIN/amudprun -n \$tasks -spawn L \$REGENT_BIN/regent.py"
 EOF
 
 cat >$SCRIPT_DIR/build-rules.mk <<EOF
