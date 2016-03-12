@@ -129,10 +129,16 @@ cat >$SCRIPT_DIR/build-rules.mk <<EOF
 # include $BUILDDIR/makefile.inc
 # -------------------------------------
 
+# Set nodes counter if none given to 1.
+NODES ?= 1
+
+# Set task counter if none given to 1.
+TASKS ?= 1
+
 exec: \$(EXEC)
 
 run: \$(EXEC)
-    ./\$(EXEC)
+	./\$(EXEC) -nodes=\$(NODES) -tasks=\$(TASKS) \$(EXEC_ARGS)
 
 clean:
 	rm \$(EXEC)
