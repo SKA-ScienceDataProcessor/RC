@@ -171,15 +171,18 @@ SGridder::SGridder(
    inBound.gpu_threads(t);
 
    RVar rgcfxc, rall;
-   uvg.update().allow_race_conditions()
+   Stage sched = uvg.update().allow_race_conditions()
       .fuse(rgcfx, rcmplx, rgcfxc)
       .fuse(rgcfy, rgcfxc, rall)
       .split(rvis, rvis_outer, rvis_inner, 200)
       .gpu_blocks(rvis_outer)
-      // .gpu_threads(rgcfx)
-      .gpu_threads(rall)
-      // .unroll(rcmplx)
       ;
+
+   RVar rall_inner, rall_outer;
+   if(GCF_SIZE > 16)
+     sched.split(rall, rall_outer, rall_inner, 1024).gpu_threads(rall_inner);
+   else
+     sched.gpu_threads(rall);
 }
 
 // Quick util to find node type info

@@ -121,12 +121,17 @@ Module degridKernel(Target target, int GCF_SIZE) {
   inBound.compute_root();
 
   RVar rgcfxc, rall;
-  vis_out.update().allow_race_conditions()
+  Stage sched = vis_out.update().allow_race_conditions()
     .fuse(rgcfx, rcmplx, rgcfxc)
     .fuse(rgcfy, rgcfxc, rall)
     .gpu_blocks(tdim)
-    .gpu_threads(rall)
     ;
+
+  RVar rall_inner, rall_outer;
+  if(GCF_SIZE > 16)
+    sched.split(rall, rall_outer, rall_inner, 1024).gpu_threads(rall_inner);
+  else
+    sched.gpu_threads(rall);
 #endif
 
   return vis_out.compile_to_module(args, mkKernelName("kern_degrid_gpu", GCF_SIZE), target);
