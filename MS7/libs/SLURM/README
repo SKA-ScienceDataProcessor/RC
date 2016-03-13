@@ -1,0 +1,4 @@
+SLURM support functions
+=======================
+
+Functions that parse various SLURM information in environment, abstracted away.
