@@ -13,8 +13,8 @@ local c = regentlib.c
 -- Main entry point.
 task main()
     c.printf("nodes count %d.\n", SLURM.num_nodes())
-    var nodes = SLURM.nodes_list()
-    for n in nodes do
+    --var nodes = SLURM.nodes_list
+    for n in SLURM.nodes_list do
 	c.printf("node: '%s'\n", n);
     end
 end

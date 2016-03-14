@@ -12,15 +12,13 @@ function SLURM.num_nodes()
 end
 
 -- return list of nodes allocated by SLURM as Lua table.
-function SLURM.nodes_list()
-    nodes = {}
-    SLURM_nodes = os.getenv("SLURM_NODELIST")
-    print("nodes: "..SLURN_nodes)
-    for n in SLURM_nodes:gmatch("[^ ]+") do
-	print("node "..n)
-        nodes.insert(n)
-    end
-    return nodes
+SLURM.nodes_list = {}
+local SLURM_nodes = os.getenv("SLURM_NODELIST")
+print("nodes: "..SLURM_nodes)
+
+for n in SLURM_nodes:gmatch("[^ ]+") do
+    print("node "..n)
+    table.insert(SLURM.nodes_list, n)
 end
 
 return SLURM
