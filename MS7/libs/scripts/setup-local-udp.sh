@@ -100,13 +100,14 @@ export REGENT_BIN=$REGENT_BIN
 nodes=1
 tasks=1
 while ((\$#)); do
-    case \$1 in
+    arg=\$1
+    case \$arg in
         -nodes=*|--nodes=*)
-            nodes="\${\$1#*=}"
+            nodes="\${arg#*=}"
             shift
             ;;
         -tasks=*|--tasks=*)
-            tasks="\${\$1#*=}"
+            tasks="\${arg#*=}"
             shift
             ;;
         *)
@@ -114,6 +115,15 @@ while ((\$#)); do
             ;;
     esac
 done
+
+# Emulating SLURM: number of nodes in local run is always 1.
+export SLURM_NNODES=1
+
+# Emulating SLURM: list of nodes is always single local computer.
+export SLURM_NODELIST="`hostname`"
+
+# Setting the Lua path to our modules. We will use pattern "MODULE/MODULE.lua" for our modules.
+export LUA_PATH="$SCRIPT_DIR/../?/?.lua;\$LUA_PATH"
 
 export RUN="\$GASNET_BIN/amudprun -n \$tasks -spawn L \$REGENT_BIN/regent.py"
 EOF
