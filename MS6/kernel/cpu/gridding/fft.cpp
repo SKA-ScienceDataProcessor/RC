@@ -669,6 +669,8 @@ int main(int argc, char **argv)
       ,  fftKernel(target, 4096, 4096)
       , ifftKernel(target, 6144, 6144)
       ,  fftKernel(target, 6144, 6144)
+      , ifftKernel(target, 8192, 8192)
+      ,  fftKernel(target, 8192, 8192)
       };
     Module linked = link_modules("kern_ffts", modules);
     // compile_module_to_c_header(linked, std::string(argv[1]) + ".h");

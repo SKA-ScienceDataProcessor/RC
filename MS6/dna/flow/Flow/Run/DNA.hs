@@ -304,24 +304,28 @@ execKernelStep deps kbind@KernelBind{kernRepr=ReprI rep} = do
         Just (_, bufs) -> return (kdep, bufs)
         Nothing        -> fail $ "Internal error for kernel " ++ show (kernName kbind) ++ ": Input " ++
                                  show (kdepId kdep) ++ " not found!"
-    let inRegData = map snd ins
 
-    -- Either remove or duplicate inputs in the data map that will get
-    -- "written" by the kernel - for our purposes this is equivalent
-    -- with the kernel consuming the data.
-    let writtenIns = filter ((== WriteAccess) . kdepAccess . fst) ins
-    forM_ writtenIns $ \(dep, rdata) ->
-      if not (kdepId dep `IS.member` deps)
-      then modifyDataMap $ flip dataMapDifference $
-             dataMapInsert (kdepId dep) (kdepRepr dep) (Map.map (const nullVector) rdata) IM.empty
-      else do
-        -- Duplicate vectors
-        rdata' <- execIO "dup" [] $ forM (Map.assocs rdata) $ \(rbox, v) -> do
-          v' <- dupCVector (castVector v) :: IO (Vector Word8)
-          return (rbox, castVector v')
-        -- Put duplicated region data into data map
-        lift $ logMessage $ "Duplicated buffers for " ++ show dep
-        modifyDataMap $ dataMapInsert (kdepId dep) (kdepRepr dep) (Map.fromList rdata')
+    -- Get actual buffers to use
+    inRegData <- forM ins $ \(dep, rdata) -> case kdepAccess dep of
+      ReadAccess -> return rdata
+      WriteAccess
+        -- Write access, buffer unused afterwards? Then we see the
+        -- kernel as consoming the buffer, and consider it freed from
+        -- here on out.
+        | not (kdepId dep `IS.member` deps) -> do
+            modifyDataMap $ flip dataMapDifference $
+              dataMapInsert (kdepId dep) (kdepRepr dep) (Map.map (const nullVector) rdata) IM.empty
+            return rdata
+        -- If the buffer is actually in use afterwards, we need to
+        -- make a copy for this kernel to work with.
+        | otherwise -> do
+            -- Duplicate vectors
+            rdata' <- execIO "duplicate" [] $ forM (Map.assocs rdata) $ \(rbox, v) -> do
+              v' <- dupCVector (castVector v) :: IO (Vector Word8)
+              return (rbox, castVector v')
+            -- Put duplicated region data into data map
+            lift $ logMessage $ "Duplicated buffers for " ++ show dep
+            return (Map.fromList rdata')
 
     -- Call the kernel using the right regions
     results <- lift $ kernel (kernName kbind) (kernHints kbind inRegData filteredRegs)

@@ -16,12 +16,14 @@ int kern_ifft_2048x2048(buffer_t *_uvg_buffer, buffer_t *_img_shifted_buffer);
 int kern_ifft_3072x3072(buffer_t *_uvg_buffer, buffer_t *_img_shifted_buffer);
 int kern_ifft_4096x4096(buffer_t *_uvg_buffer, buffer_t *_img_shifted_buffer);
 int kern_ifft_6144x6144(buffer_t *_uvg_buffer, buffer_t *_img_shifted_buffer);
+int kern_ifft_8192x8192(buffer_t *_uvg_buffer, buffer_t *_img_shifted_buffer);
 
 int kern_fft_1024x1024(buffer_t *_image_buffer, buffer_t *_uvg_herm_buffer);
 int kern_fft_2048x2048(buffer_t *_image_buffer, buffer_t *_uvg_herm_buffer);
 int kern_fft_3072x3072(buffer_t *_image_buffer, buffer_t *_uvg_herm_buffer);
 int kern_fft_4096x4096(buffer_t *_image_buffer, buffer_t *_uvg_herm_buffer);
 int kern_fft_6144x6144(buffer_t *_image_buffer, buffer_t *_uvg_herm_buffer);
+int kern_fft_8192x8192(buffer_t *_image_buffer, buffer_t *_uvg_herm_buffer);
 
 
 int kern_ifft(buffer_t *_uvg_buffer, buffer_t *_img_shifted_buffer){
@@ -33,6 +35,7 @@ int kern_ifft(buffer_t *_uvg_buffer, buffer_t *_img_shifted_buffer){
     __I_CASE(6144)
     __I_CASE(1024)
     __I_CASE(4096)
+    __I_CASE(8192)
   }
   return -666;
 }
@@ -46,6 +49,7 @@ int kern_fft(buffer_t *_image_buffer, buffer_t *_uvg_herm_buffer){
     __R_CASE(6144)
     __R_CASE(1024)
     __R_CASE(4096)
+    __R_CASE(8192)
   }
   return -666;
 }
