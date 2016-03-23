@@ -65,13 +65,13 @@ data DegridKernelType
   deriving (Eq, Ord, Enum, Show)
 
 instance Read GridKernelType where
-  readsPrec _ str
-    | Just rest <- stripPrefix "cpu" str  = [(GridKernelCPU, rest)]
+  readsPrec _ str = case lex str of
+    ("cpu", rest):_ -> [(GridKernelCPU, rest)]
 #ifdef USE_CUDA
-    | Just rest <- stripPrefix "gpu" str  = [(GridKernelGPU, rest)]
-    | Just rest <- stripPrefix "nv"  str  = [(GridKernelNV,  rest)]
+    ("gpu", rest):_ -> [(GridKernelGPU, rest)]
+    ("nv",  rest):_ -> [(GridKernelNV,  rest)]
 #endif
-    | otherwise = []
+    _other          -> []
 
 instance Read DegridKernelType where
   readsPrec _ str

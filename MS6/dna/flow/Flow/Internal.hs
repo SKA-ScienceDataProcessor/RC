@@ -432,10 +432,10 @@ data Schedule
   deriving (Show, Eq)
 
 instance Read Schedule where
-  readsPrec _ str
-    | Just rest <- stripPrefix "seq" str  = [(SeqSchedule, rest)]
-    | Just rest <- stripPrefix "par" str  = [(ParSchedule, rest)]
-    | otherwise = []
+  readsPrec _ str = case lex str of
+    ("seq",rest):_ -> [(SeqSchedule, rest)]
+    ("par",rest):_ -> [(ParSchedule, rest)]
+    _other         -> []
 
 -- | A strategy rule, explaining how to implement certain data flow patterns
 newtype StratRule = StratRule (FlowI -> Maybe (Strategy ()))
