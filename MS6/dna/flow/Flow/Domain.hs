@@ -4,8 +4,7 @@ module Flow.Domain
   ( Domain, Region, RegionBox
   , Schedule(..)
   , Range, makeRangeDomain, regionRange
-  , Bins, makeBinDomain, regionBins
-  , regionBinSize
+  , Bins, makeBinDomain, regionBins, RegionBinDesc(..)
   , split, distribute
   ) where
 
@@ -216,18 +215,18 @@ regionRange (RangeRegion _ (Range low high))
                = (low, high)
 regionRange _  = error "regionRange: Not a range region!"
 
-type RegionBinDesc = (Double, Double, Int)
+data RegionBinDesc = RegionBinDesc
+  { regionBinLow :: Double
+  , regionBinHigh :: Double
+  , regionBinSize :: Int
+  }
 
 -- | Return the bins in a bin domain
 regionBins :: Region -> [RegionBinDesc]
 regionBins (BinRegion _ (Bins bins))
-             = let sumBin ((low, high), m) = (low, high, sum $ Map.elems m)
+             = let sumBin ((low, high), m) = RegionBinDesc low high (sum $ Map.elems m)
                in map sumBin (Map.toList bins)
 regionBins _ = error "regionBins: Not a bin domain!"
-
--- | Get size of a region bin
-regionBinSize :: RegionBinDesc -> Int
-regionBinSize (_,_,s) = s
 
 -- | Split a 'Domain' up to produce a new 'Domain' with more 'Region's.
 --

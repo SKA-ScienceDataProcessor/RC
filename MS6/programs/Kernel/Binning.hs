@@ -120,7 +120,7 @@ binner gpar tdom uvdom wdom =
              ((ul,uh),(vl,vh),(wl,wh),pRef)
            | let (ul,uh) = xy2uv $ regionRange ureg
                  (vl,vh) = xy2uv $ regionRange vreg
-           , (wl,wh,_) <- regionBins wreg
+           , RegionBinDesc wl wh _ <- regionBins wreg
            ]
   let outPtrMap = Map.unionsWith (Map.unionWith Map.union) $ concat outPtrs
 
@@ -154,11 +154,12 @@ binner gpar tdom uvdom wdom =
   -- Check bin sizes and pad with zeroes if we did not fill the bin
   -- completely (TODO: Should not happen actually, figure out what is
   -- going on...)
-  forM_ outVecs $ \([ureg,vreg,wreg], CVector _ p) -> forM_ (regionBins wreg) $ \(w,_,s) -> do
+  forM_ outVecs $ \([ureg,vreg,wreg], CVector _ p) -> forM_ (regionBins wreg) $ \bin -> do
 
     -- Get coordinates
     let u = fst $ xy2uv $ regionRange ureg
         v = fst $ xy2uv $ regionRange vreg
+        w = regionBinLow bin
 
     putStr $ show ureg ++ " / " ++ show vreg ++ " / " ++ show wreg ++ ": "
 
@@ -169,7 +170,7 @@ binner gpar tdom uvdom wdom =
           p' <- readIORef pRef
           let size = (p' `minusPtr` p) `div` (5*8)
           -- putStrLn $ show ((_ul,_uh), (_vl,_vh), (_wl,_wh)) ++ " -> " ++ show size ++ " vs " ++ show s
-          forM_ [size..s-1] $ \i -> do
+          forM_ [size..regionBinSize bin-1] $ \i -> do
             poke (p `advancePtr` (5*i+0)) 0
             poke (p `advancePtr` (5*i+1)) 0
             poke (p `advancePtr` (5*i+2)) 0

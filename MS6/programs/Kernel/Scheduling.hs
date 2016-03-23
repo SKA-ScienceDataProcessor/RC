@@ -75,8 +75,7 @@ scheduleSplit inDom outDom = mappingKernel "schedule splitter" (indexRepr inDom 
         outBins = regionBins $ head outRBox
 
     -- Check how many bins we need to drop
-    let binStart (s,_,_) = s
-        isOutStart bin = binStart bin == binStart (head outBins)
+    let isOutStart bin = regionBinLow bin == regionBinLow (head outBins)
         toDrop = fromMaybe (error "Could not find start output bin in input bins!")
                            (findIndex isOutStart inBins)
 

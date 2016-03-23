@@ -343,7 +343,7 @@ dumpFileName file rbox
           = printf "%04d-%04d" low high
         regName binr@BinRegion{}
           = intercalate "_" $ map binName $ regionBins binr
-        binName (low, high, _) = printf "%010.2f-%010.2f" low high
+        binName (RegionBinDesc low high _) = printf "%010.2f-%010.2f" low high
 
 -- | Simple kernel that dumps the contents of a channel with Halide
 -- data representation to a file.
