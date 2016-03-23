@@ -29,13 +29,14 @@ foreign import ccall unsafe kern_init :: HalideFun '[] UVGRepr
 -- | Make gridder kernel binding
 gridKernel :: GridKernelType -> GridPar -> GCFPar -- ^ Configuration
            -> UVDom -> WDom        -- ^ u/v/w visibility domains
+           -> GUVDom               -- ^ GCF u/v domains
            -> UVDom                -- ^ u/v grid domains
            -> Flow Vis -> Flow GCFs -> Flow UVGrid
            -> Kernel UVGrid
-gridKernel ktype gp gcfp uvdom wdom uvdom' =
+gridKernel ktype gp gcfp uvdom wdom guvdom uvdom' =
   hintsByPars (gridHint gcfp ktype) $
   halideKernel2Write (show ktype) (visRepr uvdom wdom)
-                                  (gcfsRepr wdom gcfp)
+                                  (gcfsRepr gcfp wdom guvdom)
                                   (uvgMarginRepr gcfp uvdom') $
   gridCKernel ktype `halideBind` gridScale gp
                     `halideBind` fromIntegral (gridHeight gp)
@@ -48,8 +49,9 @@ gridHint gcfp ktype (visRegs:_) = case ktype of
   GridKernelNV  -> [cudaHint { hintCudaDoubleOps = ops } ]
 #endif
  where wBinReg = (!!2) -- u, v, w - we want region three (see visRepr definition)
-       ops = 8 * gcfSize gcfp * gcfSize gcfp * vis
-       vis = sum $ map regionBinSize $ concatMap (regionBins . wBinReg) visRegs
+       ops = sum $ map binOps $ concatMap (regionBins . wBinReg) visRegs
+       binOps bin = 8 * gcfSize gcf * gcfSize gcf * regionBinSize bin
+         where gcf = gcfGet gcfp (regionBinLow bin) (regionBinHigh bin)
 gridHint _ _ _ = error "gridHint: Not enough parameters!"
 
 gridCKernel :: GridKernelType -> ForeignGridder

@@ -147,18 +147,24 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
 
         -- Read in visibilities
         rebind ixs $ scheduleSplit ddomss ddom
-        bind vis0 $ hints [ioHint{hintReadBytes = cfgPoints cfg * 5 * 8 {-sizeof double-}}] $ oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
+        bind vis0 $ hints [ioHint{hintReadBytes = cfgPoints cfg * 5 * 8 {-sizeof double-}}] $
+          oskarReader ddom tdom (cfgInput cfg) 0 0 ixs
 
         -- Create w-binned domain, split
         wdoms <- makeBinDomain $ dkern $ binSizer gpar tdom uvdom vis0
         wdom <- split wdoms (gridBins gpar)
+
+        -- Create GCF u/v domains
+        gudom <- makeBinDomain $ dkern $ gcfSizer gcfpar wdom
+        gvdom <- makeBinDomain $ dkern $ gcfSizer gcfpar wdom
+        let guvdom = (gudom, gvdom)
 
         -- Loop over tiles
         distribute (snd uvdom) (snd $ stratTileSched strat) $
          distribute (fst uvdom) (fst $ stratTileSched strat) $ do
 
           -- Load GCFs
-          bindRule gcf $ rkern $ const $ hints allCpuHints $ gcfKernel gcfpar wdom
+          bindRule gcf $ rkern $ const $ hints allCpuHints $ gcfKernel gcfpar wdom guvdom
           distribute wdom SeqSchedule $ calculate $ gcf vis0
 
           -- Rotate visibilities
@@ -171,13 +177,13 @@ continuumGridStrat cfg [ddomss,ddoms,ddom] tdom [uvdoms,uvdom] [_lmdoms,lmdom]
           rule degrid $ \(gcfs :. uvgrid :. vis' :. Z) -> do
             rebind uvgrid $ distributeGrid ddomss ddom lmdom gpar
             bind (degrid gcfs uvgrid vis') $ rkern $
-              degridKernel (stratDegridder strat) gpar gcfpar uvdom wdom gcfs uvgrid vis'
+              degridKernel (stratDegridder strat) gpar gcfpar uvdom wdom guvdom gcfs uvgrid vis'
           bindRule psfVis $ rkern $ psfVisKernel uvdom wdom
           calculate vis
 
           -- Gridding
           bind createGrid $ rkern $ gridInit gcfpar uvdom
-          bindRule grid $ rkern $ gridKernel (stratGridder strat) gpar gcfpar uvdoms wdom uvdom
+          bindRule grid $ rkern $ gridKernel (stratGridder strat) gpar gcfpar uvdoms wdom guvdom uvdom
           calculate gridded
 
         -- Compute the result by detiling & iFFT on tiles

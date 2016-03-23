@@ -33,11 +33,12 @@ distributeGrid ddom0 ddom1 (ldom, mdom) gp =
 degridKernel :: DegridKernelType
              -> GridPar -> GCFPar    -- ^ Configuration
              -> UVDom -> WDom        -- ^ u/v/w visibility domains
+             -> GUVDom               -- ^ GCF u/v domains
              -> Flow GCFs -> Flow FullUVGrid -> Flow Vis
              -> Kernel Vis
-degridKernel ktype gp gcfp uvdom wdom =
+degridKernel ktype gp gcfp uvdom wdom guvdom =
   hintsByPars (degridHint gcfp ktype) $
-  halideKernel3 (show ktype) (gcfsRepr wdom gcfp)
+  halideKernel3 (show ktype) (gcfsRepr gcfp wdom guvdom)
                              (fullUVGRepr gp)
                              (visRepr uvdom wdom)
                              (visRepr uvdom wdom) $
@@ -51,8 +52,9 @@ degridHint gcfp ktype (_:_:visRegs:_) = case ktype of
   DegridKernelGPU -> [cudaHint  { hintCudaDoubleOps = ops }]
 #endif
  where wBinReg = (!!2) -- u, v, w - we want region three (see visRepr definition)
-       vis = sum $ map regionBinSize $ concatMap (regionBins . wBinReg) visRegs
-       ops = 8 * gcfSize gcfp * gcfSize gcfp * vis
+       ops = sum $ map binOps $ concatMap (regionBins . wBinReg) visRegs
+       binOps bin = 8 * gcfSize gcf * gcfSize gcf * regionBinSize bin
+         where gcf = gcfGet gcfp (regionBinLow bin) (regionBinHigh bin)
 degridHint _ _ _ = error "degridHint: Not enough parameters!"
 
 type ForeignDegridder = HalideBind Double (HalideBind Int32 (

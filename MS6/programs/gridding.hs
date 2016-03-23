@@ -74,16 +74,21 @@ gridderStrat cfg = do
     wdoms <- makeBinDomain $ dkern $ binSizer gpar tdom uvdom vis
     wdom <- split wdoms (gridBins gpar)
 
+    -- Create GCF u/v domains
+    gudom <- makeBinDomain $ dkern $ gcfSizer gcfpar wdom
+    gvdom <- makeBinDomain $ dkern $ gcfSizer gcfpar wdom
+    let guvdom = (gudom, gvdom)
+
     -- Load GCFs
     distribute wdom SeqSchedule $
-      bind gcfs (dkern $ gcfKernel gcfpar wdom)
+      bind gcfs (dkern $ gcfKernel gcfpar wdom guvdom)
 
     -- Bin visibilities (could distribute, but there's no benefit)
     rebind vis (dkern $ binner gpar tdom uvdom wdom)
 
     -- Bind kernel rules
     bindRule createGrid (dkern $ gridInit gcfpar uvdom)
-    bindRule grid $ dkern $ gridKernel GridKernelCPU gpar gcfpar uvdoms wdom uvdom
+    bindRule grid $ dkern $ gridKernel GridKernelCPU gpar gcfpar uvdoms wdom guvdom uvdom
 
     -- Run gridding distributed
     calculate gridded
@@ -108,9 +113,8 @@ main = do
                      , gridTiles = 2
                      , gridBins = 10
                      }
-      gcfpar = GCFPar { gcfSize = 16
+      gcfpar = GCFPar { gcfFiles = [GCFFile "gcf0.dat" 16 0]
                       , gcfOver = 8
-                      , gcfFile = "gcf16.dat"
                       }
       config = defaultConfig
         { cfgInput  = [OskarInput "test_p00_s00_f00.vis" 1 1]

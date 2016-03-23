@@ -4,13 +4,13 @@
 module Kernel.Data
   ( -- * Configuration
     Config(..), OskarInput(..), GridKernelType(..), DegridKernelType(..)
-  , GridPar(..), GCFPar(..), CleanPar(..), StrategyPar(..)
+  , GridPar(..), GCFPar(..), GCFFile(..), CleanPar(..), StrategyPar(..)
   , defaultConfig, cfgParallelism
-  , gridImageWidth, gridImageHeight, gridScale, gridXY2UV
+  , gridImageWidth, gridImageHeight, gridScale, gridXY2UV, gcfMaxSize, gcfGet
   -- * Data tags
   , Index, Tag, Vis, UVGrid, FullUVGrid, Image, Cleaned, GCFs
   -- * Data representations
-  , DDom, TDom, UDom, VDom, WDom, UVDom, LDom, MDom, LMDom
+  , DDom, TDom, UDom, VDom, WDom, UVDom, LDom, MDom, LMDom, GUDom, GVDom, GUVDom
   , IndexRepr, UVGRepr, UVGMarginRepr, FacetRepr, ImageRepr, FullUVGRepr, PlanRepr, GCFsRepr
   , indexRepr, uvgRepr, uvgMarginRepr, facetRepr, imageRepr, fullUVGRepr, planRepr, gcfsRepr
   -- * Visibility data representations
@@ -53,6 +53,9 @@ type UVDom = (UDom, VDom) -- ^ Domain used for the (u,v) grid dimensions
 type LDom = Domain Range -- ^ Domain used for the l image dimension
 type MDom = Domain Range -- ^ Domain used for the m image dimension
 type LMDom = (LDom, MDom) -- ^ Domain used for the (l,m) image dimensions
+type GUDom = Domain Bins  -- ^ Domain used for u grid dimension of grid convolution functions
+type GVDom = Domain Bins  -- ^ Domain used for v grid dimension of grid convolution functions
+type GUVDom = (GUDom, GVDom) -- ^ Domain used for (u,v) grid dimensions of grid convolution functions
 
 type IndexRepr = BinRepr (HalideRepr Dim0 Int32 Index)
 indexRepr :: DDom -> IndexRepr
@@ -68,8 +71,8 @@ uvgRepr (udom, vdom) =
 type UVGMarginRepr = MarginRepr (MarginRepr (HalideRepr Dim1 Double UVGrid))
 uvgMarginRepr :: GCFPar -> UVDom -> UVGMarginRepr
 uvgMarginRepr gcfp (udom, vdom) =
-  marginRepr vdom (gcfSize gcfp `div` 2) $
-  marginRepr udom (gcfSize gcfp `div` 2) $
+  marginRepr vdom (gcfMaxSize gcfp `div` 2) $
+  marginRepr udom (gcfMaxSize gcfp `div` 2) $
   halideRepr (dim1 dimCpx)
 
 dimCpx :: Dim
@@ -119,8 +122,12 @@ visRepr (udom, vdom) wdom =
 dimVisFields :: Dim
 dimVisFields = (0, 5)
 
-type GCFsRepr = RegionRepr Bins (HalideRepr Dim4 Double GCFs)
-gcfsRepr :: WDom -> GCFPar -> GCFsRepr
-gcfsRepr wdom gcfp = RegionRepr wdom $ halideRepr $ dimOver :. dimSize :. dimSize :. dimCpx :. Z
+type GCFsRepr = RegionRepr Bins (ArrayRepr (BinRepr (BinRepr (HalideRepr Dim1 Double GCFs))))
+gcfsRepr :: GCFPar -> WDom -> GUVDom -> GCFsRepr
+gcfsRepr gcfp wdom (gudom, gvdom) =
+    RegionRepr wdom $
+    ArrayRepr dimOver $
+    BinRepr gvdom $
+    BinRepr gudom $
+    halideRepr (dim1 dimCpx)
   where dimOver = (0, fromIntegral $ gcfOver gcfp * gcfOver gcfp)
-        dimSize = (0, fromIntegral $ gcfSize gcfp)

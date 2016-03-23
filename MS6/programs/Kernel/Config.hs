@@ -5,6 +5,7 @@ module Kernel.Config where
 import Control.Applicative
 import Data.Yaml
 import Data.List
+import Data.Ord  ( comparing )
 import Text.Read ( readMaybe )
 
 import Flow ( Schedule(..) )
@@ -32,7 +33,7 @@ instance FromJSON Config where
              <*> (v .: "lat" <|> return (cfgLat defaultConfig))
              <*> v .: "output"
              <*> (v .: "grid" <|> return (cfgGrid defaultConfig))
-             <*> (v .: "gcf" <|> return (cfgGCF defaultConfig))
+             <*> v .: "gcf"
              <*> (v .: "clean" <|> return (cfgClean defaultConfig))
              <*> (v .: "strategy" <|> return (cfgStrategy defaultConfig))
   parseJSON _ = mempty
@@ -102,16 +103,33 @@ instance FromJSON GridPar where
               <*> (v .: "w-bins" <|> return 1)
   parseJSON _ = mempty
 
+data GCFFile = GCFFile
+  { gcfFile :: FilePath
+  , gcfSize :: Int
+  , gcfW :: Double
+  }
+instance FromJSON GCFFile where
+  parseJSON (Object v)
+    = GCFFile <$> v .: "file" <*> v .: "size" <*> v .: "w"
+  parseJSON _ = mempty
 data GCFPar = GCFPar
-  { gcfSize :: Int
+  { gcfFiles :: [GCFFile]
   , gcfOver :: Int
-  , gcfFile :: FilePath
   }
 instance FromJSON GCFPar where
   parseJSON (Object v)
-    = GCFPar <$> v .: "size" <*> v .: "over"
-             <*> v .: "file"
+    = GCFPar <$> v .: "list" <*> v .: "over"
   parseJSON _ = mempty
+
+gcfMaxSize :: GCFPar -> Int
+gcfMaxSize = maximum . map gcfSize . gcfFiles
+
+-- | Returns the GCF to use for the given w-range.
+gcfGet :: GCFPar -> Double -> Double -> GCFFile
+gcfGet gcfp w0 w1 = maximumBy (comparing gcfW) $
+                    filter ((<= w) . gcfW) $
+                    gcfFiles gcfp
+  where w = max (abs w0) (abs w1)
 
 data CleanPar = CleanPar
   { cleanGain      :: Double
@@ -162,7 +180,7 @@ defaultConfig = Config
   , cfgLat      = 42.6 / 180 * pi -- ditto
   , cfgOutput   = ""
   , cfgGrid     = GridPar 0 0 0 0 1 1 1
-  , cfgGCF      = GCFPar 0 8 ""
+  , cfgGCF      = GCFPar [] 8
   , cfgClean    = CleanPar 0 0 0
   , cfgStrategy = defaultStrategyPar
   }

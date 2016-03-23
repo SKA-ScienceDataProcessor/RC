@@ -7,7 +7,7 @@ import Foreign.C.Types ( CDouble(..) )
 import Foreign.Storable
 import qualified Data.Map as Map
 import Data.Complex
-import Data.Int        ( Int32 )
+import Data.Int        ( Int32, Int64 )
 
 import OskarReader
 
@@ -73,13 +73,39 @@ oskarReader ddom tdom files freq pol
   finalizeTaskData taskData
   return $ castVector visVector
 
-gcfKernel :: GCFPar -> Domain Bins -> Kernel GCFs
-gcfKernel gcfp wdom =
- mergingKernel "gcfs" Z (gcfsRepr wdom gcfp) $ \_ doms -> do
+-- | Make GCF coordinate domain. Size depends on w.
+gcfSizer
+  :: GCFPar
+  -> WDom             -- ^ w domain
+  -> Kernel ()
+gcfSizer gcfp wdom =
+  -- Make one bin per w region, with the size of the appropriate gcf.
+  let binRepr :: RegionRepr Bins (VectorRepr Int ())
+      binRepr = RegionRepr wdom (VectorRepr WriteAccess)
+  in mappingKernel "scheduler" Z binRepr $ \_ [wreg] -> do
+    let bins = regionBins wreg
+        low = minimum $ map regionBinLow bins
+        high = maximum $ map regionBinHigh bins
+    binVec <- allocCVector 3 :: IO (Vector Int64)
+    let binVecDbl = castVector binVec :: Vector Double
+        gcf = gcfGet gcfp low high
+    pokeVector binVecDbl 0 low
+    pokeVector binVecDbl 1 high
+    pokeVector binVec    2 (fromIntegral $ gcfSize gcf)
+    return (castVector binVec)
+
+gcfKernel :: GCFPar -> WDom -> GUVDom -> Kernel GCFs
+gcfKernel gcfp wdom guvdom =
+ mappingKernel "gcfs" Z (gcfsRepr gcfp wdom guvdom) $ \_ doms -> do
 
   -- Simply read it from the file
-  let size = nOfElements (halrDim (gcfsRepr wdom gcfp) doms)
-  v <- readCVector (gcfFile gcfp) size :: IO (Vector Double)
+  let size = nOfElements (halrDim (gcfsRepr gcfp wdom guvdom) doms)
+      bins = regionBins $ head doms
+      low = minimum $ map regionBinLow bins
+      high = maximum $ map regionBinHigh bins
+      gcf = gcfGet gcfp low high
+  putStrLn $ "Choosing " ++ gcfFile gcf ++ " for w range " ++ show low ++ "-" ++ show high
+  v <- readCVector (gcfFile gcf) size :: IO (Vector Double)
   return (castVector v)
 
 imageWriter :: GridPar -> FilePath -> Flow Image -> Kernel ()
