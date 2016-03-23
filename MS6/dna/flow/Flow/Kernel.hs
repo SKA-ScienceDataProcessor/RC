@@ -11,7 +11,7 @@ module Flow.Kernel
   ( -- * Data representation
     DataRepr(..), ReprAccess(..), NoRepr(..)
     -- ** Distributed
-  , RegionRepr(..), RangeRepr(..), BinRepr(..), MarginRepr(..)
+  , RegionRepr(..), ArrayRepr(..), RangeRepr(..), BinRepr(..), MarginRepr(..)
   , marginRepr
     -- * Kernel types
     -- ** Primitive
@@ -98,6 +98,23 @@ instance (DataRepr rep, Typeable dom, Typeable rep) => DataRepr (RegionRepr dom 
   reprSize rep                _      = fail $ "Not enough domains passed to reprSize for " ++ show rep ++ "!"
   reprShows ds (RegionRepr dh r) = reprShows (d:ds) r
     where d = "regs(" ++ show dh ++ ")"
+
+-- | The data is represented as a const-size vector of elements according to the
+-- underlying data representation. No distribution possible.
+data ArrayRepr rep = ArrayRepr (Int, Int) rep
+  deriving Typeable
+instance DataRepr rep => Show (ArrayRepr rep) where
+  showsPrec _ = reprShows []
+instance DataRepr rep => DataRepr (ArrayRepr rep) where
+  type ReprType (ArrayRepr rep) = ReprType rep
+  reprNop _ = False
+  reprAccess (ArrayRepr _ rep) = reprAccess rep
+  reprDomain (ArrayRepr _ rep) = reprDomain rep
+  reprCompatible (ArrayRepr s0 rep0) (ArrayRepr s1 rep1)
+    = s0 == s1 && reprCompatible rep0 rep1
+  reprSize (ArrayRepr (l, h) r) ds  = fmap (*(h-l)) (reprSize r ds)
+  reprShows ds (ArrayRepr (l, h) r) = reprShows (d:ds) r
+    where d = show l ++ ":" ++ show h
 
 -- | The data is represented as a vector of elements according to the
 -- underlying data representation and size of the region's

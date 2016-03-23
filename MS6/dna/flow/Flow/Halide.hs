@@ -184,7 +184,20 @@ instance (HalideReprClass rep, MarshalArray (HalrDim rep)) =>
   halrCall      r _ fun doms = call fun (halrDim r doms)
   halrCallWrite _ _ fun      = callWrite fun
 
--- Here is where we need undecideable instance, regrettably
+-- Here is where we need an undecideable instance, regrettably
+instance (HalideReprClass rep, MarshalArray (Dim :. HalrDim rep)) =>
+         HalideReprClass (ArrayRepr rep) where
+  type HalrDim (ArrayRepr rep) = Dim :. HalrDim rep
+  type HalrVal (ArrayRepr rep) = HalrVal rep
+  type HalideFun xs (ArrayRepr rep)
+    = HalideKernel (KernelParams xs) (Array (Dim :. HalrDim rep) (HalrVal rep))
+  halrDim (ArrayRepr (l, h) rep) rbox
+    = (fromIntegral l, fromIntegral (h-l)) :. halrDim rep rbox
+  halrWrite (ArrayRepr dh rep) = ArrayRepr dh (halrWrite rep)
+  halrCall      r _ fun doms = call fun (halrDim r doms)
+  halrCallWrite _ _ fun      = callWrite fun
+
+-- Here is where we need an undecideable instance, regrettably
 instance (HalideReprClass rep, MarshalArray (Dim :. HalrDim rep)) =>
          HalideReprClass (RangeRepr rep) where
   type HalrDim (RangeRepr rep) = Dim :. HalrDim rep

@@ -180,7 +180,7 @@ module Flow
     --     representations, which are going to get checked for
     --     consistency automatically.
 
-    NoRepr(..), RegionRepr(..), RangeRepr(..), BinRepr(..),
+    NoRepr(..), RegionRepr(..), ArrayRepr(..), RangeRepr(..), BinRepr(..),
     MarginRepr, marginRepr,
 
     -- * Kernel
