@@ -22,6 +22,7 @@ Module degridKernel(Target target, int GCF_SIZE) {
 
   Param<double> scale("scale");
   Param<int> grid_size("grid_size");
+  Param<int> margin_size("margin_size");
 
   // Visibilities: Array of 5-pairs, packed together with UVW
   enum VisFields { _U=0, _V, _W, _R, _I,  _VIS_FIELDS };
@@ -43,12 +44,13 @@ Module degridKernel(Target target, int GCF_SIZE) {
   ImageParam uvg(type_of<double>(), 3, "uvg");
   uvg.set_stride(0,1).set_extent(0,_CPLX_FIELDS)
      .set_stride(1,_CPLX_FIELDS);
-  Expr min_u = uvg.min(1);
-  Expr max_u = uvg.min(1) + uvg.extent(1) - GCF_SIZE - 1;
-  Expr min_v = uvg.min(2);
-  Expr max_v = uvg.min(2) + uvg.extent(2) - GCF_SIZE - 1;
+  Expr gcf_margin = max(0, (margin_size - GCF_SIZE) / 2);
+  Expr min_u = uvg.min(1) + gcf_margin;
+  Expr max_u = uvg.min(1) + uvg.extent(1) - GCF_SIZE - 1 - gcf_margin;
+  Expr min_v = uvg.min(2) + gcf_margin;
+  Expr max_v = uvg.min(2) + uvg.extent(2) - GCF_SIZE - 1 - gcf_margin;
 
-  std::vector<Halide::Argument> args = { scale, grid_size, gcf_fused, uvg, vis };
+  std::vector<Halide::Argument> args = { scale, grid_size, margin_size, gcf_fused, uvg, vis };
 
   // ** Helpers
 

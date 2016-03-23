@@ -39,6 +39,7 @@ struct SGridder {
 
   Param<double> scale;
   Param<int>    grid_size;
+  Param<int>    margin_size;
   ImageParam
       vis
     , gcf_fused
@@ -75,6 +76,7 @@ SGridder::SGridder(
   // ** Input
   scale = Param<double>("scale");
   grid_size = Param<int>("grid_size");
+  margin_size = Param<int>("margin_size");
   vis = ImageParam(type_of<double>(), 2, "vis");
 
   // GCF: Array of OxOxSxS complex numbers. We "fuse" two dimensions
@@ -89,10 +91,11 @@ SGridder::SGridder(
 
   // Get grid limits. This limits the uv pixel coordinates we accept
   // for the top-left corner of the GCF.
-  Expr min_u = uvg.output_buffer().min(1);
-  Expr max_u = uvg.output_buffer().min(1) + uvg.output_buffer().extent(1) - GCF_SIZE - 1;
-  Expr min_v = uvg.output_buffer().min(2);
-  Expr max_v = uvg.output_buffer().min(2) + uvg.output_buffer().extent(2) - GCF_SIZE - 1;
+  Expr gcf_margin = max(0, (margin_size - GCF_SIZE) / 2);
+  Expr min_u = uvg.output_buffer().min(1) + gcf_margin;
+  Expr max_u = uvg.output_buffer().min(1) + uvg.output_buffer().extent(1) - GCF_SIZE - 1 - gcf_margin;
+  Expr min_v = uvg.output_buffer().min(2) + gcf_margin;
+  Expr max_v = uvg.output_buffer().min(2) + uvg.output_buffer().extent(2) - GCF_SIZE - 1 - gcf_margin;
 
   // ** Helpers
 
@@ -333,6 +336,7 @@ int main(int argc, char * argv[])
     vector<Halide::Argument> args = {
         sg.scale
       , sg.grid_size
+      , sg.margin_size
       , sg.vis
       , sg.gcf_fused
       };

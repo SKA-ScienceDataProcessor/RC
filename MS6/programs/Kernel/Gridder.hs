@@ -40,6 +40,7 @@ gridKernel ktype gp gcfp uvdom wdom guvdom uvdom' =
                                   (uvgMarginRepr gcfp uvdom') $
   gridCKernel ktype `halideBind` gridScale gp
                     `halideBind` fromIntegral (gridHeight gp)
+                    `halideBind` fromIntegral (gcfMaxSize gcfp)
 
 gridHint :: GCFPar -> GridKernelType -> [[RegionBox]] -> [ProfileHint]
 gridHint gcfp ktype (visRegs:_) = case ktype of
@@ -61,7 +62,8 @@ gridCKernel GridKernelGPU = kern_scatter_gpu1
 gridCKernel GridKernelNV  = nvGridder
 #endif
 
-type ForeignGridder = HalideBind Double (HalideBind Int32 (HalideFun '[VisRepr, GCFsRepr] UVGMarginRepr))
+type ForeignGridder = HalideBind Double (HalideBind Int32 (HalideBind Int32 (
+                      HalideFun '[VisRepr, GCFsRepr] UVGMarginRepr)))
 foreign import ccall unsafe kern_scatter      :: ForeignGridder
 #ifdef USE_CUDA
 foreign import ccall unsafe kern_scatter_gpu1 :: ForeignGridder

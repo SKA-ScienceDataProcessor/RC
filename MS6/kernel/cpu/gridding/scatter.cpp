@@ -23,6 +23,7 @@ Module scatterKernel(Target target, int GCF_SIZE) {
 
   Param<double> scale("scale");
   Param<int> grid_size("grid_size");
+  Param<int> margin_size("margin_size");
 
   // Visibilities: Array of 5-pairs, packed together with UVW
   enum VisFields { _U=0, _V, _W, _R, _I,  _VIS_FIELDS };
@@ -39,7 +40,7 @@ Module scatterKernel(Target target, int GCF_SIZE) {
      .set_min(2,0).set_stride(2,_CPLX_FIELDS*GCF_SIZE).set_extent(2,GCF_SIZE)
      .set_min(3,0).set_stride(3,_CPLX_FIELDS*GCF_SIZE*GCF_SIZE).set_extent(3,OVER*OVER);
 
-  std::vector<Halide::Argument> args = { scale, grid_size, vis, gcf_fused };
+  std::vector<Halide::Argument> args = { scale, grid_size, margin_size, vis, gcf_fused };
 
   // ** Output
 
@@ -54,10 +55,11 @@ Module scatterKernel(Target target, int GCF_SIZE) {
 
   // Get grid limits. This limits the uv pixel coordinates we accept
   // for the top-left corner of the GCF.
-  Expr min_u = uvg.output_buffer().min(1);
-  Expr max_u = uvg.output_buffer().min(1) + uvg.output_buffer().extent(1) - GCF_SIZE - 1;
-  Expr min_v = uvg.output_buffer().min(2);
-  Expr max_v = uvg.output_buffer().min(2) + uvg.output_buffer().extent(2) - GCF_SIZE - 1;
+  Expr gcf_margin = max(0, (margin_size - GCF_SIZE) / 2);
+  Expr min_u = uvg.output_buffer().min(1) + gcf_margin;
+  Expr max_u = uvg.output_buffer().min(1) + uvg.output_buffer().extent(1) - GCF_SIZE - 1 - gcf_margin;
+  Expr min_v = uvg.output_buffer().min(2) + gcf_margin;
+  Expr max_v = uvg.output_buffer().min(2) + uvg.output_buffer().extent(2) - GCF_SIZE - 1 - gcf_margin;
 
   // ** Helpers
 

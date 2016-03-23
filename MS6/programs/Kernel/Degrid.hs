@@ -44,6 +44,7 @@ degridKernel ktype gp gcfp uvdom wdom guvdom =
                              (visRepr uvdom wdom) $
   foreignDegridder ktype `halideBind` gridScale gp
                          `halideBind` fromIntegral (gridHeight gp)
+                         `halideBind` fromIntegral (gcfMaxSize gcfp)
 
 degridHint :: GCFPar -> DegridKernelType -> [[RegionBox]] -> [ProfileHint]
 degridHint gcfp ktype (_:_:visRegs:_) = case ktype of
@@ -57,8 +58,8 @@ degridHint gcfp ktype (_:_:visRegs:_) = case ktype of
          where gcf = gcfGet gcfp (regionBinLow bin) (regionBinHigh bin)
 degridHint _ _ _ = error "degridHint: Not enough parameters!"
 
-type ForeignDegridder = HalideBind Double (HalideBind Int32 (
-                                              HalideFun '[GCFsRepr, FullUVGRepr, VisRepr] VisRepr))
+type ForeignDegridder = HalideBind Double (HalideBind Int32 (HalideBind Int32 (
+                                              HalideFun '[GCFsRepr, FullUVGRepr, VisRepr] VisRepr)))
 foreignDegridder :: DegridKernelType -> ForeignDegridder
 foreignDegridder DegridKernelCPU = kern_degrid
 #ifdef USE_CUDA
