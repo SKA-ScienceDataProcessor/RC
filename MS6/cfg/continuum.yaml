@@ -41,16 +41,28 @@ grid:
   pitch:   2048
   theta:   0.04
   lm-facets: 3
+  w-bins:  10
 
 # Grid convolution function parameters. Kernels will also be
-# specialised to a oversampling factor and GCF size. Change
+# specialised to a set of oversampling factors and GCF sizes. Change
 #  - kernels/cpu/gridding/scatter.cpp and
 #  - kernels/cpu/gridding/degrid.cpp
-# if you want something different here
+# if you want some more choices different here
 gcf:
   over:    8
-  size:    16
-  file:    gcf16.dat
+  list:
+  -
+    file:    gcf16.dat
+    size:    16
+    w:       0
+  -
+    file:    gcf32.dat
+    size:    32
+    w:       30000
+  -
+    file:    gcf64.dat
+    size:    64
+    w:       60000
 
 # Clean cycle parameters. The "cycles" parameter is similarly
 # hard-coded at this point, see kernels/cpu/gridding/hogbom.cpp
