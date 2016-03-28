@@ -54,12 +54,12 @@ void addGrids(
     complexd dst[]
   , const complexd srcs[]
   , int nthreads
-  , int grid_size
+  , size_t grid_size
   )
 {
-  int siz = grid_size*grid_size;
+  size_t siz = grid_size*grid_size;
 #pragma omp parallel for
-  for (int i = 0; i < int(siz*sizeof(complexd)/__MMSIZE); i++) {
+  for (size_t i = 0; i < siz*sizeof(complexd)/__MMSIZE; i++) {
     __mdType sum = asMdpc(srcs)[i];
     // __m256d sum = _mm256_loadu_pd(reinterpret_cast<const double*>(as256pc(srcs)+i));
 
@@ -71,24 +71,24 @@ void addGrids(
 }
 
 struct pre {
-  short u, v, overu, overv;
+  int u, v, overu, overv;
 };
 
 template <int gcf_size>
 inline
-pre prep(int grid_size, double scale, const visData & vd){
+pre prep(size_t grid_size, double scale, const visData & vd){
   double
       us = vd.u * scale
     , vs = vd.v * scale
     ;
-  short
-      u = short(floor(us))
-    , v = short(floor(vs))
-    , overu = short(floor(over * (us - u)))
-    , overv = short(floor(over * (vs - v)))
+  int
+      u = int(floor(us))
+    , v = int(floor(vs))
+    , overu = int(floor(over * (us - u)))
+    , overv = int(floor(over * (vs - v)))
     ;
-  u += short(grid_size / 2 - gcf_size / 2);
-  v += short(grid_size / 2 - gcf_size / 2);
+  u += int(grid_size / 2 - gcf_size / 2);
+  v += int(grid_size / 2 - gcf_size / 2);
   return {u, v, overu, overv};
 }
 
@@ -98,11 +98,11 @@ void gridKernel_scatter_chunked(
   , complexd grids[]
   , const complexd gcf[over][over][gcf_size][gcf_size]
   , const visData data[num_baselines][num_times]
-  , int grid_size
+  , size_t grid_size
   ) {
 #pragma omp parallel
   {
-    int siz = grid_size*grid_size;
+    size_t siz = grid_size*grid_size;
     complexd * grid = grids + omp_get_thread_num() * siz;
 
 #pragma omp for schedule(dynamic)
@@ -134,28 +134,28 @@ void gridKernel_scatter_chunked(
 }
 
 struct preover {
-  short overu, overv;
+  int overu, overv;
 };
 
 struct preuv {
-  short u, v;
+  int u, v;
 };
 
 template <int gcf_size>
 inline void
-prep(int grid_size, double scale, const visData & vd, preover & po, preuv & puv){
+prep(size_t grid_size, double scale, const visData & vd, preover & po, preuv & puv){
   double
       us = vd.u * scale
     , vs = vd.v * scale
     ;
-  short
-      u = short(floor(us))
-    , v = short(floor(vs))
+  int
+      u = int(floor(us))
+    , v = int(floor(vs))
     ;
-  po.overu = short(floor(over * (us - u)));
-  po.overv = short(floor(over * (vs - v)));
-  puv.u = u + short(grid_size / 2 - gcf_size / 2);
-  puv.v = v + short(grid_size / 2 - gcf_size / 2);
+  po.overu = int(floor(over * (us - u)));
+  po.overv = int(floor(over * (vs - v)));
+  puv.u = u + int(grid_size / 2 - gcf_size / 2);
+  puv.v = v + int(grid_size / 2 - gcf_size / 2);
 }
 
 template <int gcf_size>
@@ -164,11 +164,11 @@ void gridKernel_scatter(
   , complexd grids[]
   , const complexd gcf[over][over][gcf_size][gcf_size]
   , const visData data[num_baselines*num_times]
-  , int grid_size
+  , size_t grid_size
   ) {
 #pragma omp parallel
   {
-    int siz = grid_size*grid_size;
+    size_t siz = grid_size*grid_size;
     complexd * grid = grids + omp_get_thread_num() * siz;
 
     const int tms = num_baselines*num_times;
@@ -210,9 +210,9 @@ void gridKernel_scatter_full(
   , complexd grid[]
   , const complexd gcf[over][over][gcf_size][gcf_size]
   , typename dlayout<chunked>::type data
-  , int grid_size
+  , size_t grid_size
   ) {
-  int siz = grid_size*grid_size;
+  size_t siz = grid_size*grid_size;
   int nthreads;
 #ifdef _OPENMP
 #pragma omp parallel

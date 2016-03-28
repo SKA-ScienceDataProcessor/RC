@@ -13,12 +13,11 @@ typedef complex<double> complexd;
 // Config
 const double t2 = 0.2/2.0;
 const int pad = 0;
-const int over2 = over*over;
-const int gridSize = 8192;
-const int gridPad = 0;
+const size_t gridSize = 6 * 8192;
+const size_t gridPad = 0;
 
-const int gridPitch = gridSize + gridPad;
-const int fullSize = gridPitch * gridSize;
+const size_t gridPitch = gridSize + gridPad;
+const size_t fullSize = gridPitch * gridSize;
 
 const int numOfVis = num_baselines * num_times;
 const int numOfDoubles = numOfVis * 5;

@@ -22,7 +22,7 @@ template <bool chunked, int gcf_size> using kern_type = void (&)(
   , complexd[]
   , const complexd[over][over][gcf_size][gcf_size]
   , typename dlayout<chunked>::type data
-  , int
+  , size_t
   );
 
 // We still keep them usable with FFI.
@@ -33,7 +33,7 @@ void gridKernel_scatter_full_chunked##GCF_SIZE(        \
   , complexd grid[]                                    \
   , const complexd gcf[over][over][GCF_SIZE][GCF_SIZE] \
   , const visData data[num_baselines][num_times]       \
-  , int grid_size                                      \
+  , size_t grid_size                                   \
   )
 __KERNEL_CHUNKED_DECL(16);
 __KERNEL_CHUNKED_DECL(32);
@@ -45,7 +45,7 @@ void gridKernel_scatter_full##GCF_SIZE(                \
   , complexd grid[]                                    \
   , const complexd gcf[over][over][GCF_SIZE][GCF_SIZE] \
   , const visData data[num_baselines*num_times]        \
-  , int grid_size                                      \
+  , size_t grid_size                                   \
   )
 __KERNEL_DECL(16);
 __KERNEL_DECL(32);
