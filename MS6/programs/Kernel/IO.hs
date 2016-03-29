@@ -106,6 +106,12 @@ gcfKernel gcfp wdom guvdom =
       gcf = gcfGet gcfp low high
   putStrLn $ "Choosing " ++ gcfFile gcf ++ " for w range " ++ show low ++ "-" ++ show high
   v <- readCVector (gcfFile gcf) size :: IO (Vector Double)
+
+  -- Conjugate for negative w (= negate imaginary parts)
+  when (low < -high) $ do
+    forM_ [1,3..vectorSize v-1] $ \i ->
+      pokeVector v i =<< fmap negate (peekVector v i)
+
   return (castVector v)
 
 imageWriter :: GridPar -> FilePath -> Flow Image -> Kernel ()
