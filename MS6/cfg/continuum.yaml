@@ -13,19 +13,19 @@ points: 6426200
 input:
 -
   file:    test_p00_s00_f00.vis
-  weight:  48.683353 # guessed
+  weight:  8.5581828704
   repeats: 4
 -
   file:    test_p00_s00_f01.vis
-  weight:  48.683353 # from 1636389-s
+  weight:  8.451412037
   repeats: 4
 -
   file:    test_p00_s01_f00.vis
-  weight:  39.383595 # from 1636389-s
+  weight:  5.3733564815
   repeats: 4
 -
   file:    test_p00_s01_f01.vis
-  weight:  38.309925 # from 1636389-s
+  weight:  5.4750347222
   repeats: 4
 
 # Where to put the output residual
@@ -40,7 +40,7 @@ grid:
   height:  2048
   pitch:   2048
   theta:   0.04
-  lm-facets: 3
+  lm-facets: 2
   w-bins:  10
 
 # Grid convolution function parameters. Kernels will also be
@@ -58,23 +58,23 @@ gcf:
   -
     file:    gcf32.dat
     size:    32
-    w:       30000
+    w:       5000
   -
     file:    gcf64.dat
     size:    64
-    w:       60000
+    w:       20000
 
 # Clean cycle parameters. The "cycles" parameter is similarly
 # hard-coded at this point, see kernels/cpu/gridding/hogbom.cpp
 clean:
-  gain:      0.9
-  threshold: 4
-  cycles:    10
+  gain:      0.65
+  threshold: 25
+  cycles:    12
 
 # Strategy data for algorithm and distribution configuration.
 strategy:
   gridder_type:    cpu # cpu - CPU Halide, gpu - GPU Halide, nv - GPU NVidia
   degridder_type:  cpu # cpu - CPU Halide, gpu - GPU Halide
   uv-tiles-sched:  (seq, seq)
-  lm-facets-sched: (seq, seq)
+  lm-facets-sched: (par, seq)
   use_files:       true
