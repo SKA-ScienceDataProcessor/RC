@@ -136,6 +136,7 @@ import qualified Control.Distributed.Process.Node as Node
   , newLocalNode
   , runProcess
   )
+import Network.BSD        (getHostName)
 import qualified Network.Socket as N
 import qualified Network.Transport.TCP as NT
   ( createTransport
@@ -143,6 +144,7 @@ import qualified Network.Transport.TCP as NT
   , encodeEndPointAddress
   )
 import qualified Network.Transport as NT (Transport(..))
+import System.IO.Error ( isAlreadyInUseError )
 
 import DNA.Logging (eventMessage)
 
@@ -176,8 +178,9 @@ initializeBackend
     -> N.HostName               -- ^ Host name for 
     -> N.ServiceName            -- ^ Port number as bytestring
     -> RemoteTable              -- ^ Remote table for backend
+    -> Int                      -- ^ Number of retries
     -> IO Backend
-initializeBackend cad host port rtable = do
+initializeBackend cad host port rtable retries = do
     mTransport <- NT.createTransport host port NT.defaultTCPParameters
     let addresses = case cad of
             -- passing 0 as a endpointid is a hack. Again, I haven't found any better way.
@@ -198,7 +201,14 @@ initializeBackend cad host port rtable = do
                       , _peers           = addresses
                       }
     case mTransport of
-        Left  err       -> throw err
+        Left err | isAlreadyInUseError err && retries > 0
+                 -> do host     <- getHostName
+                       putStrLn $ host ++ ": Retrying createTransport on port " ++ show port ++
+                                  " (" ++ show (retries-1) ++ " left)"
+                       threadDelay (500 * 1000)
+                       initializeBackend cad host port rtable (retries - 1)
+                 | otherwise
+                 -> throw err
         Right transport ->
             let backend = Backend
                     { newLocalNode     = apiNewLocalNode transport rtable backendState

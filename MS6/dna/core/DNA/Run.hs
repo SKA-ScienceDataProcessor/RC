@@ -313,7 +313,7 @@ runUnixWorker rtable opts common dna = do
               Nothing -> terminateProcess pid
     -- Initialize backend
     let ports = map (+ basePort) [0 .. nProc - 1]
-    backend <- initializeBackend (CH.Local ports) "localhost" (show port) rtable
+    backend <- initializeBackend (CH.Local ports) "localhost" (show port) rtable 10
     -- FIXME: this is source of potential problems if we get exception
     --        during checking children state
     let reapChildren = mapM_ killChild pids
