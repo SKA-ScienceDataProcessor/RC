@@ -325,7 +325,7 @@ int main(int argc, char * argv[])
            { Target::SSE41, Target::AVX, Target::CUDA, Target::CUDACapability35 });
 
   SGridder
-      gridderGPU16 = SGridder(0,1,2,3,  8)
+      gridderGPU8  = SGridder(0,1,2,3,  8)
     , gridderGPU16 = SGridder(0,1,2,3, 16)
     , gridderGPU32 = SGridder(0,1,2,3, 32)
     , gridderGPU64 = SGridder(0,1,2,3, 64)
