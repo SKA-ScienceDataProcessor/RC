@@ -199,10 +199,9 @@ getBinRegion dom ctx = do
 -- compatible with any region box.
 filterBoxBin :: RegionBox -> Region -> Maybe Region
 filterBoxBin rbox (BinRegion dom (Bins bins))
-  | Map.null (Map.filter (not . Map.null) bins')
-               = Nothing
-  | otherwise  = Just $ BinRegion dom (Bins bins')
- where bins' = Map.map (Map.filterWithKey hasDeps) bins
+  | Map.null bins' = Nothing
+  | otherwise      = Just $ BinRegion dom (Bins bins')
+ where bins' = Map.filter (not . null) $ Map.map (Map.filterWithKey hasDeps) bins
        doms = map regionDomain rbox
        hasDeps deps _ = not $ any incompatible deps
        incompatible dep = (regionDomain dep `elem` doms) && not (dep `elem` rbox)

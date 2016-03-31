@@ -229,8 +229,12 @@ majorIterationStrat cfg ddom_s tdom uvdom_s lmdom_s ixs vis mdl = do
   let cpar = cfgClean cfg
   bindRule (\psfImg img mdl' -> splitModel $ clean psfImg img mdl') $
     regionKernel (head ddom_s) $ cleanModel gpar cpar
-  bindRule (\psfImg img mdl' -> splitResidual $ clean psfImg img mdl') $
+  bindRule (\mdl' psfImg img -> splitResidual $ clean psfImg img mdl') $
     regionKernel (head ddom_s) $ const $ cleanResidual gpar cpar
+  -- (Note that the order of parameters to bindRule determines the
+  --  order the Flows get passed to the kernel. So in the above
+  --  definition, the "const" removes mdl' and passes the concrete
+  --  Flows for psfImg and img to the kernel)
 
   return (loopIter vis mdl,
           finalLoopIter vis mdl)
