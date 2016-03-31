@@ -279,7 +279,10 @@ def write_timeline_data(logs, conf) :
 
                 # Get metrics for this kernel
                 hints, tags, tags_time = extractTags(e2, {}, {}, {})
-                metrics = makeMetrics(e2.t2 - e2.t1, hints, tags, tags_time)
+                t2 = e2.t2
+                if t2 is None:
+                    t2 = e2.t1
+                metrics = makeMetrics(e2.t1 - t2, hints, tags, tags_time)
                 print e2.msg, "Hints:", hints, "Data:", tags, "Time:", tags_time
                 eff = None
                 for m in metrics['instr']:
@@ -289,7 +292,7 @@ def write_timeline_data(logs, conf) :
 
                 f.write('''
                 {"starting_time": %g, "ending_time": %g, "label": "%s", "type": "%s", "height": "%g"},'''
-                    % (1000*e2.t1, 1000*e2.t2, e2.msg if first else '', e2.msg, eff))
+                    % (1000*e2.t1, 1000*t2, e2.msg if first else '', e2.msg, eff))
                 first = False
             f.write('\n            ]},')
 
