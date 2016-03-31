@@ -1,0 +1,2 @@
+cabal install filemanip ghc-events
+to use this.
