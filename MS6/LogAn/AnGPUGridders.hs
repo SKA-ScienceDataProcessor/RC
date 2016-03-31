@@ -23,9 +23,7 @@ dumpAn el =
     ns = 1000000000
     dlops !m = fromIntegral (gmHintCudaDoubleOps m) * ns / fromIntegral (gmKernelTime m)
     (Event _ (EventBlock _ _ evts)) = head $ drop 1 $ events $ dat el
-  in do
-       print (fst $ suckDescr evts)
-       return $! "Gridder FLOPS: ":(map show gridDops) ++ "DeGridder FLOPS: ":(map show degridDops)
+  in return $! (show . fst . suckDescr $ evts):"Gridder FLOPS: ":(map show gridDops) ++ "DeGridder FLOPS: ":(map show degridDops)
 
 
 main :: IO ()
