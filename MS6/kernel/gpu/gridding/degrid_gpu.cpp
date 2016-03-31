@@ -145,7 +145,8 @@ int main(int argc, char **argv)
     Target target_cuda(get_target_from_environment().os, Target::X86, 64,
       { Target::SSE41, Target::AVX, Target::CUDA, Target::CUDACapability35 });
     std::vector<Module> modules =
-      { degridKernel(target_cuda, 16)
+      { degridKernel(target_cuda,  8)
+      , degridKernel(target_cuda, 16)
       , degridKernel(target_cuda, 32)
       , degridKernel(target_cuda, 64)
       };

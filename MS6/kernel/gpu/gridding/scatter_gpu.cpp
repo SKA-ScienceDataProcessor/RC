@@ -325,7 +325,8 @@ int main(int argc, char * argv[])
            { Target::SSE41, Target::AVX, Target::CUDA, Target::CUDACapability35 });
 
   SGridder
-      gridderGPU16 = SGridder(0,1,2,3, 16)
+      gridderGPU16 = SGridder(0,1,2,3,  8)
+    , gridderGPU16 = SGridder(0,1,2,3, 16)
     , gridderGPU32 = SGridder(0,1,2,3, 32)
     , gridderGPU64 = SGridder(0,1,2,3, 64)
     ;
@@ -344,7 +345,8 @@ int main(int argc, char * argv[])
   };
 
   std::vector<Module> modules =
-    { comp(gridderGPU16)
+    { comp(gridderGPU8 )
+    , comp(gridderGPU16)
     , comp(gridderGPU32)
     , comp(gridderGPU64)
     };

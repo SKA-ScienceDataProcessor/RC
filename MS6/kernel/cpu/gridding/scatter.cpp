@@ -133,7 +133,8 @@ int main(int argc, char **argv)
     if (argc < 2) return 1;
     Target target(get_target_from_environment().os, Target::X86, 64, { Target::SSE41, Target::AVX });
     std::vector<Module> modules =
-      { scatterKernel(target, 16)
+      { scatterKernel(target,  8)
+      , scatterKernel(target, 16)
       , scatterKernel(target, 32)
       , scatterKernel(target, 64)
       };

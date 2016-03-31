@@ -23,6 +23,7 @@ int kern_scatter_gpu1(const double _scale, const int32_t _grid_size, const int32
   int32_t size = checkSize(*_gcf_buffer);
   #define __I_CASE(siz) case siz: res = kern_scatter_gpu_ ## siz (_scale, _grid_size, _margin_size, _vis_buffer, _gcf_buffer, _uvg_buffer); __CK break;
   switch( size ) {
+    __I_CASE( 8)
     __I_CASE(16)
     __I_CASE(32)
     __I_CASE(64)
