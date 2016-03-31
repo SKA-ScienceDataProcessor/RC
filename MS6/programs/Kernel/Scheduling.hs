@@ -31,7 +31,8 @@ makeScheduleDomain
 makeScheduleDomain items repeats weight nodes = do
 
   -- Balance
-  let balance = balancer nodes (map weight items)
+  let totalWeight a = fromIntegral (repeats a) * weight a
+      balance = balancer nodes (map totalWeight items)
 
   -- We will now make a bin domain where every repeat is going to be
   -- one bin, with the size of the bin given by the faction of nodes
