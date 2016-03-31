@@ -287,14 +287,9 @@ def write_timeline_data(logs, conf) :
                 if eff is None:
                     eff = 0.05
 
-                # Make sure we have a certain minimum width. This is a hack.
-                end = e2.t2
-                if end == None or end < e2.t1+total_time/1000:
-                    end = e2.t1 + total_time/1000
-
                 f.write('''
                 {"starting_time": %g, "ending_time": %g, "label": "%s", "type": "%s", "height": "%g"},'''
-                    % (1000*e2.t1, 1000*end, e2.msg if first else '', e2.msg, eff))
+                    % (1000*e2.t1, 1000*e2.t2, e2.msg if first else '', e2.msg, eff))
                 first = False
             f.write('\n            ]},')
 
@@ -341,7 +336,16 @@ def write_timeline_data(logs, conf) :
           }
         }
       }
-    ''')
+
+      // Make sure all bars have a certain minimum width
+      var total_time = %f;
+      for (var i = 0; i < data.length; i++) {
+        for (var j = 0; j < data[i].times.length; j++) {
+          data[i].times[j].ending_time =
+            Math.max(data[i].times[j].ending_time, data[i].times[j].starting_time + total_time / 1000);
+        }
+      }
+    ''' % total_time)
 
     # Figure out a good tick interval
     tickInterval = 1
@@ -490,7 +494,7 @@ def write_timeline_body(logs, conf) :
 
     # Get arguments (we assume they are the same for all nodes - which
     # right now they often are)
-    args = logs[0].get_args()
+    args = logs["0"].get_args()
     f.write('''
     <h4>Program Configuration</h4>
     <table class="program-conf">
@@ -500,7 +504,7 @@ def write_timeline_body(logs, conf) :
             .format(args[0], ' '.join(args[1:])))
 
     # Get program environment (see above)
-    env = logs[0].get_env()
+    env = logs["0"].get_env()
     if env.has_key('SLURM_NODEID') :
         f.write('''
     <h4>SLURM Configuration</h4>

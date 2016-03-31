@@ -88,6 +88,7 @@ def recompose_split_lines(stream) :
 
 def stream_eventlog(fname) :
     "Read eventlog using ghc-event unility line by line"
+    print fname
     p = subprocess.Popen(['ghc-events','show',fname], stdout=subprocess.PIPE)
     while True :
         l = p.stdout.readline()
@@ -265,5 +266,5 @@ def read_timelines(dir) :
         [nm] = fnmatch.filter(os.listdir(logd), '*.eventlog')
         nm   = os.path.join(logd,nm)
         t = Timeline(  recompose_split_lines( read_log_entries(stream_eventlog(nm) ) ) )
-        res[int(d)] = t
+        res[d] = t
     return res
