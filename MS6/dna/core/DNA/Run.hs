@@ -82,12 +82,15 @@ runSlurm common = do
     dir       <- getCurrentDirectory
     mslurmJID <- lookupEnv "SLURM_JOBID"
     slurmRnk  <- slurmRank
+    localID   <- slurmLocalID
     let slurmJID = case mslurmJID of
             Just s  -> s ++ "-s"
             Nothing -> error "SLURM_JOBID is not set!"
     -- Cd to log dir and reexec
     home <- getEnv "HOME"
-    let logDir = home </> "_dna" </> "logs" </> slurmJID </> show slurmRnk
+    let rankDir | localID == 0  = show slurmRnk
+                | otherwise     = show slurmRnk ++ "-" ++ show localID
+        logDir = home </> "_dna" </> "logs" </> slurmJID </> rankDir
     createDirectoryIfMissing True logDir
     setCurrentDirectory logDir
     program <- getExecutablePath
@@ -111,9 +114,9 @@ runSlurmWorker rtable dir common dna = do
     -- FIXME: treat several tasks per node correctly
     backend <- initializeBackend
                  (CH.SLURM (dnaBasePort common) hostList)
-                 host (show port) rtable
-    case rank of
-      0 -> startMaster backend $ \n -> do
+                 host (show port) rtable 10
+    case (rank, localID) of
+      (0,0) -> startMaster backend $ \n -> do
                synchronizationPoint "CH"
                r <- executeDNA (dnaLogger common) dir dna n
                terminateAllSlaves backend
@@ -133,10 +136,20 @@ slurmRank = do
 
 slurmLocalID :: IO Int
 slurmLocalID = do
-    mslurmRnk <- (safeRead =<<) <$> lookupEnv "SLURM_LOCALID" :: IO (Maybe Int)
-    case mslurmRnk of
-      Just r  -> return r
-      Nothing -> error "SLURM_LOCALID is not set!"
+    -- Should work, but doesn't
+    -- mslurmRnk <- (safeRead =<<) <$> lookupEnv "SLURM_LOCALID" :: IO (Maybe Int)
+
+    -- Instead, use PMI_RANK and SLURM_TASKS_PER_NODE to derive it
+    mMpiRnk <- (safeRead =<<) <$> lookupEnv "PMI_RANK" :: IO (Maybe Int)
+    case mMpiRnk of
+      Just r -> do
+        numTasksStr <- getEnv "SLURM_TASKS_PER_NODE"
+        nodeStr <- getEnv "SLURM_NODEID"
+        let numTasks = runReadP parseNumNode  =<< split ',' numTasksStr
+            -- Number of tasks on nodes with lower ranks
+            tasksLower = sum $ take (read nodeStr) numTasks
+        return (r - tasksLower)
+      Nothing -> error "PMI_RANK is not set!"
 
 
 -- | Obtain list of hosts from SLURM together with number of tasks per

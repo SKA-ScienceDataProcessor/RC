@@ -387,7 +387,7 @@ startMaster :: Backend -> ([NodeId] -> Process ()) -> IO ()
 startMaster backend proc = do
   node <- newLocalNode backend
   Node.runProcess node $ do
-    slaves <- findSlaves 2 backend
+    slaves <- findSlaves 5 backend
     redirectLogsHere backend slaves
     proc (map processNodeId slaves) `finally` shutdownLogger
 
