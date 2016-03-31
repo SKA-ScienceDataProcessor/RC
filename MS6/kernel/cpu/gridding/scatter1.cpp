@@ -1,6 +1,7 @@
 #include "gcf_common.h"
 
 extern "C" {
+int kern_scatter_8(const double _scale, const int32_t _grid_size, const int32_t _margin_size, buffer_t *_vis_buffer, buffer_t *_gcf_buffer, buffer_t *_uvg_buffer);
 int kern_scatter_16(const double _scale, const int32_t _grid_size, const int32_t _margin_size, buffer_t *_vis_buffer, buffer_t *_gcf_buffer, buffer_t *_uvg_buffer);
 int kern_scatter_32(const double _scale, const int32_t _grid_size, const int32_t _margin_size, buffer_t *_vis_buffer, buffer_t *_gcf_buffer, buffer_t *_uvg__2_buffer);
 int kern_scatter_64(const double _scale, const int32_t _grid_size, const int32_t _margin_size, buffer_t *_vis_buffer, buffer_t *_gcf_buffer, buffer_t *_uvg__3_buffer);

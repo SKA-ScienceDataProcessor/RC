@@ -9,6 +9,7 @@ int halide_copy_to_host(void *user_context, struct buffer_t *buf);
 int halide_device_free(void *user_context, struct buffer_t *buf);
 
 // Kernel generated
+int kern_degrid_gpu_8(const double _scale, const int32_t _grid_size, const int32_t _margin_size, buffer_t *_gcf_buffer, buffer_t *_uvg_buffer, buffer_t *_vis_buffer, buffer_t *_vis_out_buffer);
 int kern_degrid_gpu_16(const double _scale, const int32_t _grid_size, const int32_t _margin_size, buffer_t *_gcf_buffer, buffer_t *_uvg_buffer, buffer_t *_vis_buffer, buffer_t *_vis_out_buffer);
 int kern_degrid_gpu_32(const double _scale, const int32_t _grid_size, const int32_t _margin_size, buffer_t *_gcf_buffer, buffer_t *_uvg_buffer, buffer_t *_vis_buffer, buffer_t *_vis_out_buffer);
 int kern_degrid_gpu_64(const double _scale, const int32_t _grid_size, const int32_t _margin_size, buffer_t *_gcf_buffer, buffer_t *_uvg_buffer, buffer_t *_vis_buffer, buffer_t *_vis_out_buffer);
