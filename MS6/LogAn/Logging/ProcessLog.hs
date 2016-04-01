@@ -130,6 +130,8 @@ data CudaTime =
   | OverheadTime  -- C
   deriving (Show, Eq, Enum)
 
+-- FIXME: need no timing for each metrix
+--   because time reported is exactly "kernel-time"
 parseCO, parseCM, parseCT :: ReadM Attr
 parseCO =
      pc2 "gpu-double-ops"      GpuDoubleOps

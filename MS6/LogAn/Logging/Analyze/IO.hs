@@ -13,8 +13,6 @@ data IOMtxs = IOMtxs {
     -- Proc
   , imReadBytes      :: !Int
   , imWriteBytes     :: !Int
-    --
-  , imTime           :: !Int
   } deriving Show
 
 zim :: IOMtxs
