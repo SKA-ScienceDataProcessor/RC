@@ -32,7 +32,7 @@ $SCRIPT_DIR/mk-llvm.sh || exit 1
 
 # Provide one true LLVM.
 export LLVM_BIN=$BUILDDIR/llvm-install/bin
-export PATH=$LLV_BIN:$PATH
+export PATH=$LLVM_BIN:$PATH
 export LLVM_CONFIG=$PWD/llvm-install/bin/llvm-config
 
 # -- GASnet --------------------------------------------------------------------
@@ -45,7 +45,7 @@ clonepull https://github.com/SKA-ScienceDataProcessor/gasnet.git gasnet
 
 # Build it for default config - MPI and UDP, nothing else.
 cd gasnet
-make
+make || exit 1
 cd ..
 
 export GASNET_ROOT="$PWD/gasnet/release"
@@ -70,6 +70,8 @@ clonepull git@github.com:SKA-ScienceDataProcessor/legion.git Legion
 
 # Go to Regent place.
 cd Legion/language
+
+sh
 
 # Running the installation, enabling the GASnet.
 # TODO: optionally enable CUDA.
