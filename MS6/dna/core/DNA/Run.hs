@@ -132,14 +132,13 @@ slurmRank = do
     mslurmRnk <- (safeRead =<<) <$> lookupEnv "SLURM_PROCID" :: IO (Maybe Int)
     case mslurmRnk of
       Just r  -> return r
-      Nothing -> error "SLURM_PROCID is not set!"
+      Nothing -> error "SLURM_PROCID is not set! Try starting with --nprocs [n] if you want a local configuration!"
 
 slurmLocalID :: IO Int
 slurmLocalID = do
-    -- Should work, but doesn't
-    -- mslurmRnk <- (safeRead =<<) <$> lookupEnv "SLURM_LOCALID" :: IO (Maybe Int)
 
-    -- Instead, use PMI_RANK and SLURM_TASKS_PER_NODE to derive it
+    -- Instead, use PMI_RANK and SLURM_TASKS_PER_NODE to derive
+    -- it. This is set if we get launched by mpirun.
     mMpiRnk <- (safeRead =<<) <$> lookupEnv "PMI_RANK" :: IO (Maybe Int)
     case mMpiRnk of
       Just r -> do
@@ -149,8 +148,16 @@ slurmLocalID = do
             -- Number of tasks on nodes with lower ranks
             tasksLower = sum $ take (read nodeStr) numTasks
         return (r - tasksLower)
-      Nothing -> error "PMI_RANK is not set!"
 
+      Nothing -> do
+
+        -- Fall back to the SLURM rank. This only works when we are
+        -- run by srun - for Intel's mpirun it apparently always
+        -- returns "0".
+        mslurmRnk <- (safeRead =<<) <$> lookupEnv "SLURM_LOCALID"
+        case mslurmRnk of
+         Just r -> return r
+         Nothing -> error "Neither PMI_RANK nor SLURM_LOCALID are set!"
 
 -- | Obtain list of hosts from SLURM together with number of tasks per
 --   host
