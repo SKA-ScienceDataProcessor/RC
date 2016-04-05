@@ -9,8 +9,12 @@
 # download.
 git clone https://github.com/zdevito/terra.git
 
+#git checkout tags/release-2016-02-26
+
 # go into terra to build.
 cd terra
+
+git checkout c501af43915
 
 make
 
