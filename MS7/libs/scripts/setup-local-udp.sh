@@ -2,6 +2,9 @@
 
 # Setting up the environment to build everything - download packages, build them, etc.
 
+# Check for gcc version.
+(gcc -v |& egrep "^gcc version 4.9") || (echo "needs gcc 4.9"; exit 1)
+
 # Bolierplate reduction.
 function clonepull {
     git clone $1 $2 || (cd $2 ; git pull) || exit 1
@@ -54,9 +57,13 @@ export GASNET_BIN="$GASNET_ROOT/bin"
 # -- Terra ---------------------------------------------------------------------
 # Terra also unavailable on cluster.
 
-clonepull https://github.com/zdevito/terra.git terra
+git clone https://github.com/zdevito/terra.git terra	# won't pull for a while.
 
 cd terra
+
+# Known good commit.
+git checkout c501af43915
+
 
 make all || exit 1
 cd ..
@@ -66,12 +73,14 @@ export TERRA_DIR=$BUILDDIR/terra/release
 # -- Legion --------------------------------------------------------------------
 # We will build Legion by compiling one of the applications.
 
-clonepull git@github.com:SKA-ScienceDataProcessor/legion.git Legion
+git clone git@github.com:SKA-ScienceDataProcessor/legion.git Legion
+cd Legion
+git pull origin master
+git checkout -b master
+cd ..
 
 # Go to Regent place.
 cd Legion/language
-
-sh
 
 # Running the installation, enabling the GASnet.
 # TODO: optionally enable CUDA.
