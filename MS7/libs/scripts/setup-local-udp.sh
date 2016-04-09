@@ -73,7 +73,8 @@ export TERRA_DIR=$BUILDDIR/terra/release
 # -- Legion --------------------------------------------------------------------
 # We will build Legion by compiling one of the applications.
 
-git clone git@github.com:SKA-ScienceDataProcessor/legion.git Legion
+git clone https://github.com/SKA-ScienceDataProcessor/legion.git Legion
+
 cd Legion
 git pull origin master
 git checkout -b master
