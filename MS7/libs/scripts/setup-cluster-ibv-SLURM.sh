@@ -61,24 +61,38 @@ clonepull https://github.com/zdevito/terra.git terra
 
 cd terra
 
+# Known good commit.
+git checkout c501af43915
+
+
 make all || exit 1
 cd ..
 
 export TERRA_DIR=$BUILDDIR/terra/release
 
 # -- Legion --------------------------------------------------------------------
-# We will build Legion by compiling one of the applications.
+# Legion build structure is such that we cannot easily build
+# and install libraries/header files somewhere.
+# Executables/libraries build with IBV conduit may or may not use UDP conduit.
+# So we build two versions separately.
 
-clonepull git@github.com:SKA-ScienceDataProcessor/legion.git Legion
+clonepull https://github.com/SKA-ScienceDataProcessor/legion.git Legion-udp
+clonepull Legion-udp Legion-ibv
 
 # Go to Regent place.
-cd Legion/language
+cd Legion-udp/language
 
 # Running the installation, enabling the GASnet.
-# TODO: optionally enable CUDA.
-CONDUIT=ibv ./install.py --with-terra=$TERRA_DIR --gasnet || exit 1
+CONDUIT=udp ./install.py --with-terra=$TERRA_DIR --gasnet || exit 1
 
-export REGENT_BIN=$BUILDDIR/Legion/language
+# Up from Regent.
+cd $BUILDDIR
+
+# Go to Regent place.
+cd Legion-ibv/language
+
+# Running the installation, enabling the GASnet.
+CONDUIT=ibv ./install.py --with-terra=$TERRA_DIR --gasnet || exit 1
 
 # Up from Regent.
 cd $BUILDDIR
