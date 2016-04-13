@@ -6,8 +6,8 @@
 # Errors are: non-zero exit codes, reference to unset vars and something else.
 set -eou
 
-# Load gcc 4.9.2, the only gcc that works good.
-module load gcc/4.9.2
+# Check for gcc version.
+(gcc -v |& egrep "^gcc version 4.9") || (echo "needs gcc 4.9; please execute 'module load gcc/4.9.2' before running"; exit 1)
 
 # Bolierplate reduction.
 function clonepull {

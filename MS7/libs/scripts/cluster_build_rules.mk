@@ -29,25 +29,30 @@ THREADS ?= 1
 #  - GPU accelerator type (GPU)
 #  - network conduit (NET)
 
-all: \$(EXEC)
+all: $(EXEC)
 
 help:
 	echo "Available targets: help (this text), exec (will build $(EXEC)), run, clean"
 
-run: \$(EXEC) \$(EXEC)-local \$(EXEC)-ibv
-	./\${word 1, \$(EXEC)} -nodes=\$(NODES) -tasks=\$(TASKS) -threads=\$(THREADS) -mem=\$(TASKMB) -gpu=\$(GPU) -net=\$(NET) \$(EXEC_ARGS)
+run: $(EXEC)
+	./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) $(EXEC_ARGS)
 
 clean:
-	rm -f \$(EXEC) \$(*(EXEC)-local \$(EXEC)-ibv
+	rm -f $(EXEC) $(*(EXEC)-local $(EXEC)-ibv
 
-\$(EXEC)-local: \$(SRCS)
-	CONDUIT=udp GASNET_CONDUIT=udp GASNET_ROOT=$GASNET_ROOT LG_RT_DIR=$BUILDDIR/Legion-udp/runtime OUTFILE=\$(EXEC)-local \
-	make -f $BUILDDIR/Legion-udp/runtime/runtime.mk
+$(EXEC): $(EXEC)-local $(EXEC)-ibv
+	cp $(SCRIPT_DIR)/runner_script $(EXEC)
+	echo "run $(EXEC)" >>$(EXEC)
+	chmod a+x $(EXEC)
 
-\$(EXEC)-ibv: \$(SRCS)
-	CONDUIT=ibv GASNET_CONDUIT=ibv GASNET_ROOT=$GASNET_ROOT LG_RT_DIR=$BUILDDIR/Legion-ibv/runtime OUTFILE=\$(EXEC)-ibv \
-	make -f $BUILDDIR/Legion-ibv/runtime/runtime.mk
+$(EXEC)-local: $(SRCS)
+	CONDUIT=udp GASNET_CONDUIT=udp LG_RT_DIR=$(BUILDDIR)/Legion-udp/runtime OUTFILE=$(EXEC)-local \
+	make -f $(BUILDDIR)/Legion-udp/runtime/runtime.mk
 
-$\(EXEC): \$(SRCS)
-	cp $SCRIPT_DIR
+$(EXEC)-ibv: $(SRCS)
+	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(BUILDDIR)/Legion-ibv/runtime OUTFILE=$(EXEC)-ibv \
+	make -f $(BUILDDIR)/Legion-ibv/runtime/runtime.mk
+
+$\(EXEC): $(SRCS)
+	cp $(SCRIPT_DIR)
 
