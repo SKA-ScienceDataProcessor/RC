@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# Runner script for MS7 programs.
+
+# Parse command line.
+# Parsing command line args.
+nodes=1
+tasks=1
+net=""
+mem=""
+threads=1
+usage="usage: $0 [-[-]nodes=nodes to use] [-[-]tasks=tasks to run] [-[-]threads=CPU cores to allocate per task] [-[-]mem=MB per task] [--] [other arguments]"
+while (($#)); do
+    arg=$1
+    case $arg in
+        -nodes=*|--nodes=*)
+            nodes="${arg#*=}"
+            shift
+            ;;
+        -tasks=*|--tasks=*)
+            tasks="${arg#*=}"
+            shift
+            ;;
+        -net=*|--net=*)
+            net="${arg#*=}"
+            shift
+            ;;
+        -threads=*|--threads=*)
+            threads="${arg#*=}"
+            shift
+            ;;
+        -mem=*|--mem=*)
+            mem=="${arg#*=}"
+            shift
+            ;;
+        -h|--help)
+            echo $usage
+            exit 1
+            ;;
+        --)
+            break
+            ;;
+        -*)
+            echo "invalid option $arg"
+            echo "(use -- to delimite RT and program arguments)"
+            echo ""
+            echo $usage
+            exit 1
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+# Execute command
+function run {
+    # Select between srun/amudprun.
+    if [ -z "$net" ] ; then	# amudprun execution
+    fi
+    if [ -n "$net" ] ; then
+    fi
+}
+
+# Add invocation of run here.

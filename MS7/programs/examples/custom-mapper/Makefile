@@ -2,8 +2,8 @@
 #
 # We use it as a useful test harness for our build script.
 
-EXEC = 	cuastom-mapper-example
+EXEC = 	custom-mapper-example
 
 SRCS = custom_mapper.cc
 
-include ../../../libs/scripts/makefile.inc
+include ../../../libs/scripts/build_rules.mk
