@@ -6,4 +6,4 @@ EXEC = 	custom-mapper-example
 
 SRCS = custom_mapper.cc
 
-include ../../../libs/scripts/build_rules.mk
+include ../../../libs/scripts/build-rules.mk

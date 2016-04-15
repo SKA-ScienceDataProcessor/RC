@@ -40,19 +40,49 @@ run: $(EXEC)
 clean:
 	rm -f $(EXEC) $(*(EXEC)-local $(EXEC)-ibv
 
-$(EXEC): $(EXEC)-local $(EXEC)-ibv
-	cp $(SCRIPT_DIR)/runner_script $(EXEC)
+EXEC_WITH_CONDUITS = $(EXEC)-local
+
+ifeq ($(SDP_USE_IBV),1)
+EXEC_WITH_CONDUITS = $(EXEC_WITH_CONDUITS) $(EXEC)-ibv
+endif
+
+# Flags for directing the runtime makefile what to include
+DEBUG           ?= 1		# Include debugging symbols
+OUTPUT_LEVEL    ?= LEVEL_DEBUG	# Compile time logging level
+SHARED_LOWLEVEL ?= 0		# Use shared-memory runtime (not recommended)
+USE_CUDA        ?= 0		# Include CUDA support (requires CUDA)
+USE_GASNET      ?= 0		# Include GASNet support (requires GASNet)
+USE_HDF         ?= 0		# Include HDF5 support (requires HDF5)
+ALT_MAPPERS     ?= 0		# Include alternative mappers (not recommended)
+
+# You can modify these variables, some will be appended to by the runtime makefile
+INC_FLAGS	?=
+CC_FLAGS	?= -DMAX_FIELDS=64 #-DPREDICATED_EXECUTION
+NVCC_FLAGS	?=
+GASNET_FLAGS	?=
+LD_FLAGS	?=
+
+###########################################################################
+#
+#   Don't change anything below here
+#   
+###########################################################################
+
+
+$(EXEC): $(EXEC_WITH_CONDUITS)
+	cp $(SDP_SCRIPT_DIR)/runner_script $(EXEC)
 	echo "run $(EXEC)" >>$(EXEC)
 	chmod a+x $(EXEC)
 
 $(EXEC)-local: $(SRCS)
-	CONDUIT=udp GASNET_CONDUIT=udp LG_RT_DIR=$(BUILDDIR)/Legion-udp/runtime OUTFILE=$(EXEC)-local \
-	make -f $(BUILDDIR)/Legion-udp/runtime/runtime.mk
+	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS=$(CC_FLAGS) USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
+	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet/release GEN_SRC=$(SRCS) \
+	CONDUIT=udp GASNET_CONDUIT=udp LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime OUTFILE=$(EXEC)-local \
+	make -f $(SDP_BUILDDIR)/Legion-udp/runtime/runtime.mk
 
+ifeq ($(SDP_USE_IBV),1)
 $(EXEC)-ibv: $(SRCS)
-	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(BUILDDIR)/Legion-ibv/runtime OUTFILE=$(EXEC)-ibv \
-	make -f $(BUILDDIR)/Legion-ibv/runtime/runtime.mk
-
-$\(EXEC): $(SRCS)
-	cp $(SCRIPT_DIR)
-
+ibv err!!! (for now)
+	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime OUTFILE=$(EXEC)-ibv \
+	make -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk
+endif

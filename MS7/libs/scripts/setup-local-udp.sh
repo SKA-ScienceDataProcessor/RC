@@ -2,6 +2,9 @@
 
 # Setting up the environment to build everything - download packages, build them, etc.
 
+# Enable "unofficial bash strict mode"
+set -eou
+
 # Check for gcc version.
 (gcc -v |& egrep "^gcc version 4.9") || (echo "needs gcc 4.9"; exit 1)
 
@@ -18,7 +21,7 @@ export MS7_DIR="`pwd`/../.."
 export ROOT="`pwd`/../../../.."
 
 # The directory to have all builds in. Easier to clean.
-export BUILDDIR="$ROOT/build"
+export BUILDDIR="$ROOT/build-local"
 mkdir -p $BUILDDIR
 
 # Going to the root.

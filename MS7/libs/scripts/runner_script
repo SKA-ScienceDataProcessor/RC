@@ -38,6 +38,7 @@ while (($#)); do
             exit 1
             ;;
         --)
+            shift
             break
             ;;
         -*)
@@ -56,10 +57,18 @@ done
 # Execute command
 function run {
     # Select between srun/amudprun.
-    if [ -z "$net" ] ; then	# amudprun execution
-    fi
-    if [ -n "$net" ] ; then
-    fi
+    case "$net" in
+        )
+            echo "running with amudprun"
+            ;;
+        ibv)
+            echo "running with IB."
+            ;;
+        *)
+            echo "invalid net '$net'"
+            exit 1
+            ;;
+    esac
 }
 
 # Add invocation of run here.
