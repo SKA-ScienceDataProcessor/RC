@@ -4,7 +4,7 @@ Distributed Partial Data Transposition
 Requirements
 ------------
 
-A first actor creates a Region with a two dimensional index space, naturally ordered row-wise (i.e. subsequent elements rows are contiguous in memory, different rows become contiguous memory segments).  A set of $k$ second actors performs work on $k$ sets of columns of the region.  The data is transfered to the second actors in such a manner that it is contiguous.
+Documentation is [here](https://docs.google.com/document/d/1qK4YqM_avtN62ijsy_3F69nZDjgOM7FiInmVofIVvNQ/edit?ts=57093891#heading=h.atelac7tbhz9).
 
 Implementation
 --------------

@@ -4,7 +4,7 @@ Scalability and bi-sectional bandwidth
 Requirements
 ------------
 
-The program shall start an actor on each core on a subset of the cluster for a total of at least 15,000 cores.  A communication scheme among the actors will transfer data which should approximate the bi-sectional bandwidth of the cluster with actors.
+Documentation is [here](https://docs.google.com/document/d/1qK4YqM_avtN62ijsy_3F69nZDjgOM7FiInmVofIVvNQ/edit?ts=57093891#heading=h.yci5sbnhd7hy).
 
 Implementation
 --------------

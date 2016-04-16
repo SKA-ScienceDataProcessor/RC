@@ -4,20 +4,7 @@ Profiling information
 Requirements
 ------------
 
-Event and debug logs shall be handled as follows.  Under ~/.df-logs the data flow system will create multiple directories. Filenames surrounded by square brackets will be substituted by values:
-
- # slurm/[jobid]/ - global parameters and output of the job here - like the nodes on which it is running
- # slurm/[jobid]/[network nodeid]/ - log files here
- # slurm/[jobid]/[task rank] - a symbolic link to the corresponding network-nodeid directory 
- # local/pid’s/ - global parameters and output of the job here
- # local/pid’s/nodeid’s/logs
- # names/symbolic-links contain a string with [time-job-name-job params] and point to slurm jobid or process id directories
-
-In this milestone we can rely on a shared file system to unify this into a global directory of log / debug / profiling information for the job.
-
-The log files will leverage CPU performance counters, and a similar set of data for GPU.
-
-The debug target and level can be amended dynamically.
+Documentation is [here](https://docs.google.com/document/d/1qK4YqM_avtN62ijsy_3F69nZDjgOM7FiInmVofIVvNQ/edit?ts=57093891#heading=h.gifm5sc1d7ck).
 
 Implementation
 --------------

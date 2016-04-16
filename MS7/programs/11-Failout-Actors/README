@@ -4,7 +4,7 @@ Failout Actors
 Requirements
 ------------
 
-An actor named $\bf C$  collecting data from $k$ other actors to compute $\bf C$'s output can be made aware of the liveness of its $k$-inputs and upon failure of up to $m$ of the $k$ inputs compute a partial answer without an error condition.
+Documentation is [here](https://docs.google.com/document/d/1qK4YqM_avtN62ijsy_3F69nZDjgOM7FiInmVofIVvNQ/edit?ts=57093891#heading=h.34db2ujyrrek).
 
 Implementation
 --------------

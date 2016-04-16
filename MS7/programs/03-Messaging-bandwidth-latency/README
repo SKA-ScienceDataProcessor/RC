@@ -4,12 +4,7 @@ Messaging - bandwidth and latency
 Requirements
 ------------
 
-The data flow system shall use a high performance interconnect between processes.  A latency and bandwidth study will demonstrate the utilization of the link.
-
- # The data flow system will spawn two processes that communicate in a client server fashion.  
- # The client will send buffers of $K$ bytes each at least 3 times, where $K=1...2^32$.  
- # When the buffer has been received, the server process will send a response to the client, upon which the client will send the next buffer.
- # The program will print out bandwidth and latency of the communication process.
+Documentation is [here](https://docs.google.com/document/d/1qK4YqM_avtN62ijsy_3F69nZDjgOM7FiInmVofIVvNQ/edit?ts=57093891#heading=h.8w06xm9otssl).
 
 Implementation
 --------------

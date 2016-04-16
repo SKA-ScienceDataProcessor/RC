@@ -4,7 +4,7 @@ Support for SMP CPU and GPU
 Requirements
 ------------
 
-A data flow program can be created which optionally runs an actor on the GPU and optionally runs another actor on an SMP CPU.
+Documentation is [here](https://docs.google.com/document/d/1qK4YqM_avtN62ijsy_3F69nZDjgOM7FiInmVofIVvNQ/edit?ts=57093891#heading=h.v7yx1z0k8es).
 
 Implementation
 --------------

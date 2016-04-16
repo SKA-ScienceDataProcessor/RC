@@ -4,8 +4,7 @@ Binning irregular Visibility Data
 Requirements
 ------------
 
-A data flow program that reads visibility data from file in OSKAR binary file format, estimates computation complexity for tiles and produces HDF5 file. The HDF5 file should contain two-dimensional array with groups as elements, each group provide visibilities relevant to tile.
-
+Documentation is [here](https://docs.google.com/document/d/1qK4YqM_avtN62ijsy_3F69nZDjgOM7FiInmVofIVvNQ/edit?ts=57093891#heading=h.4v5z5a34jdo4).
 
 Implementation
 --------------

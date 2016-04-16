@@ -4,12 +4,7 @@ Resource Management
 Requirements
 ------------
 
-The data flow system shall handle resource management in its scheduling.
-
- # A program will start 4 actors, two senders running on separate nodes, and two receivers running on a single node.
- # Each processes will be allowed to use $K$ bytes of memory.
- # Each sender will send $K$ bytes to each receiver, which acknowledges receipt and exits.
- # The program will demonstrate that if $K$ is more than $\frac{1}{2}$ of available RAM on the receiving node, the two receiving actors will be scheduled sequentially (to avoid deadlock). \item When $K$ is less than $\frac{1}{2}$ available RAM on the receiver, the two receiving actors will be scheduled concurrently.
+Documentation is [here](https://docs.google.com/document/d/1qK4YqM_avtN62ijsy_3F69nZDjgOM7FiInmVofIVvNQ/edit?ts=57093891#heading=h.17pap5209ant).
 
 Implementation
 --------------

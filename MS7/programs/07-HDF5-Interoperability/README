@@ -4,7 +4,7 @@ HDF5 inter-operability
 Requirements
 ------------
 
-A data flow program can start an actor upon completion of reading an HDF indexed set.  The HDF5 fields will become a Regions fields.  The program shall achieve I/O rates equal to 95\% of the iozone benchmark. 
+Documentation is [here](https://docs.google.com/document/d/1qK4YqM_avtN62ijsy_3F69nZDjgOM7FiInmVofIVvNQ/edit?ts=57093891#heading=h.bwm80nmqmtj).
 
 Implementation
 --------------
