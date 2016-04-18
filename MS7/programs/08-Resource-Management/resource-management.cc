@@ -7,7 +7,9 @@
 #include <cstdlib>
 #include <stdint.h>
 #include "legion.h"
+
 using namespace LegionRuntime::HighLevel;
+using namespace LegionRuntime::Accessor;
 
 /*
  * To illustrate task launches and futures in Legion
@@ -28,7 +30,7 @@ enum TaskIDs {
 
 enum FieldIDs {
   FIELD
-}
+};
 
 void top_level_task(const Task *task,
                     const std::vector<PhysicalRegion> &regions,
@@ -45,8 +47,8 @@ void top_level_task(const Task *task,
     }
 
     printf("Top level region size %d.\n", region_size);
-    runtime->execute_task(ctx, TaskLauncher(SENDER_TASK_ID, TaskArgument(region_size, sizeof(region_size))));
-    runtime->execute_task(ctx, TaskLauncher(SENDER_TASK_ID, TaskArgument(region_size, sizeof(region_size))));
+    runtime->execute_task(ctx, TaskLauncher(SENDER1_TASK_ID, TaskArgument(&region_size, sizeof(region_size))));
+    runtime->execute_task(ctx, TaskLauncher(SENDER2_TASK_ID, TaskArgument(&region_size, sizeof(region_size))));
 }
 
 void sender_task(const Task *task,
@@ -63,7 +65,7 @@ void sender_task(const Task *task,
   // what they expect in their values.
   assert(task->arglen == sizeof(int));
 
-  const double region_size = *((const int*)task->args);
+  const int region_size = *((const int*)task->args);
 
 
   printf("sender entered, id %d, region size %d.\n", task->task_id, region_size);
@@ -91,7 +93,7 @@ void sender_task(const Task *task,
   main_region.wait_until_valid();
 
   RegionAccessor<AccessorType::Generic, int8_t> acc_field = 
-    main_region.get_field_accessor(FIELD).typeify<int8>();
+    main_region.get_field_accessor(FIELD).typeify<int8_t>();
 
   int i = 1971;
   int sum = 0;
