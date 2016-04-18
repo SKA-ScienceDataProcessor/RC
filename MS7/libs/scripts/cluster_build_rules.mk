@@ -82,7 +82,8 @@ $(EXEC)-local: $(SRCS)
 
 ifeq ($(SDP_USE_IBV),1)
 $(EXEC)-ibv: $(SRCS)
-ibv err!!! (for now)
+	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS=$(CC_FLAGS) USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
+	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet/release GEN_SRC=$(SRCS) \
 	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime OUTFILE=$(EXEC)-ibv \
 	make -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk
 endif
