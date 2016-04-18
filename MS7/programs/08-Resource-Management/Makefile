@@ -4,6 +4,6 @@
 
 EXEC = resource-management
 
-SRCS = resource-nanagement.cc
+SRCS = resource-management.cc
 
-include ../../../libs/scripts/makefile.inc
+include ../../libs/scripts/build-rules.mk
