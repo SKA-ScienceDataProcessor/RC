@@ -79,7 +79,7 @@ export TERRA_DIR=$BUILDDIR/terra/release
 git clone https://github.com/SKA-ScienceDataProcessor/legion.git Legion
 
 cd Legion
-git pull origin master
+git pull
 git checkout -b master
 cd ..
 
