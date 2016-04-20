@@ -24,6 +24,7 @@ enum TaskIDs {
   TOP_LEVEL_TASK_ID,
   SENDER1_TASK_ID,
   SENDER2_TASK_ID,
+  FILL_TASK_ID,
   RECEIVER1_TASK_ID,
   RECEIVER2_TASK_ID
 };
@@ -51,6 +52,12 @@ void top_level_task(const Task *task,
     runtime->execute_task(ctx, TaskLauncher(SENDER2_TASK_ID, TaskArgument(&region_size, sizeof(region_size))));
 }
 
+void fill_task(const Task *task,
+const std::vector<PhysicalRegion> &regions,
+                   Context ctx, HighLevelRuntime *runtime)
+{
+} /* fill_task */
+
 void sender_task(const Task *task,
                    const std::vector<PhysicalRegion> &regions,
                    Context ctx, HighLevelRuntime *runtime)
@@ -66,7 +73,6 @@ void sender_task(const Task *task,
   assert(task->arglen == sizeof(int));
 
   const int region_size = *((const int*)task->args);
-
 
   printf("sender entered, id %d, region size %d.\n", task->task_id, region_size);
 
@@ -85,32 +91,22 @@ void sender_task(const Task *task,
   }
   LogicalRegion main_lr = runtime->create_logical_region(ctx, is, main_fs);
 
-  RegionRequirement req(main_lr, READ_WRITE, ATOMIC, main_lr);
-  req.add_field(FIELD);
-  InlineLauncher main_launcher(req);
+  int start = task->task_id == SPAWNER1_ID ? 1 : 2;
+  TaskArgument fill_start = TaskArgument(&start, sizeof(start));
+  TaskLauncher fill_launcher(FILL_TASK_ID, fill_start);
+  launcher.add_region_requirement(RegionRequirement(main_lr, WRITE_ONLY, ATOMIC, main_lr);
+  launcher.add_field(FIELD);
+  runtime->execute_task(ctx, fill_launcher);
 
-  PhysicalRegion main_region = runtime->map_region(ctx, main_launcher);
-  main_region.wait_until_valid();
+  TaskArgument ta = TaskArgument();
+  TaskLauncher launcher(receiver_id, ta);
+  launcher.add_region_requirement(RegionRequirement(main_lr, READ_ONLY, ATOMIC, main_lr);
+  launcher.add_field(FIELD);
+  runtime->execute_task(ctx, t1);
 
-  RegionAccessor<AccessorType::Generic, int8_t> acc_field = 
-    main_region.get_field_accessor(FIELD).typeify<int8_t>();
-
-  int i = 1971;
-  int sum = 0;
-  for (GenericPointInRectIterator<1> pir(elem_rect); pir; pir++)
-  {
-    sum += (int8_t)i;
-    acc_field.write(DomainPoint::from_point<1>(pir.p), i++);
-  }
-  printf("sum must be %d.\n",sum);
-
-  runtime->unmap_region(ctx, main_region);
   runtime->destroy_logical_region(ctx, main_lr);
   runtime->destroy_field_space(ctx, main_fs);
   runtime->destroy_index_space(ctx, is);
-
-  TaskLauncher t1(receiver_id, TaskArgument());
-  runtime->execute_task(ctx, t1);
 
 }
 
@@ -121,7 +117,10 @@ void receiver_task(const Task *task,
   printf("receiver task, task id %d.\n", task->task_id);
 
   assert(regions.size() == 1);
+printf("assert(regions.size() == 1);\n");
   assert(task->regions.size() == 1);
+printf("assert(task->regions.size() == 1);\n");
+
 
   RegionAccessor<AccessorType::Generic, int8_t> acc_f = 
     regions[0].get_field_accessor(FIELD).typeify<int8_t>();

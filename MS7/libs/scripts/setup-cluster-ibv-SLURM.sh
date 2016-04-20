@@ -104,6 +104,9 @@ export TERRA_DIR=$BUILDDIR/terra/release
 # Executables/libraries build with IBV conduit may or may not use UDP conduit.
 # So we build two versions separately.
 
+# Enable Legion Spy.
+export CC_FLAGS="-DDEBUG"
+
 # We always build with UDP - even cluster development requires some experimentation outside of cluster nodes.
 clonepull https://github.com/SKA-ScienceDataProcessor/legion.git Legion-udp
 

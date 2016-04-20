@@ -35,10 +35,11 @@ help:
 	echo "Available targets: help (this text), exec (will build $(EXEC)), run, clean"
 
 run: $(EXEC)
-	./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) $(EXEC_ARGS)
+	SDP_SCRIPT_DIR="$(SDP_SCRIPT_DIR)" \
+	    ./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) $(EXEC_ARGS)
 
 clean:
-	rm -f $(EXEC) $(*(EXEC)-local $(EXEC)-ibv
+	rm -f $(EXEC) $(EXEC)-local $(EXEC)-ibv *.o *.a
 
 EXEC_WITH_CONDUITS = $(EXEC)-local
 
@@ -61,6 +62,10 @@ CC_FLAGS	?= -DMAX_FIELDS=64 #-DPREDICATED_EXECUTION
 NVCC_FLAGS	?=
 GASNET_FLAGS	?=
 LD_FLAGS	?=
+
+ifeq ($(DEBUG),1)
+CC_FLAGS += -DDEBUG=1
+endif
 
 ###########################################################################
 #

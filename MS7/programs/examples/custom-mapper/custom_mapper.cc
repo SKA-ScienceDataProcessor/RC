@@ -574,6 +574,7 @@ void top_level_task(const Task *task,
   int num_elements = 1024; 
   {
     const InputArgs &command_args = HighLevelRuntime::get_input_args();
+    printf("command_args.argc %d\n",command_args.argc);
     for (int i = 1; i < command_args.argc; i++)
     {
       if (!strcmp(command_args.argv[i],"-n"))
@@ -788,6 +789,8 @@ int main(int argc, char **argv)
   // Here is where we register the callback function for 
   // creating custom mappers.
   HighLevelRuntime::set_registration_callback(mapper_registration);
+
+  printf("argc %d\n",argc);
 
   return HighLevelRuntime::start(argc, argv);
 }
