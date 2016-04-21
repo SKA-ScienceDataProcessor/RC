@@ -56,6 +56,37 @@ void fill_task(const Task *task,
 const std::vector<PhysicalRegion> &regions,
                    Context ctx, HighLevelRuntime *runtime)
 {
+  printf("fill task\n");
+
+  assert(task->arglen == sizeof(int));
+
+  const int start = *((const int*)task->args);
+printf("start %d.\n",start);
+
+  assert(regions.size() == 1);
+printf("assert(regions.size() == 1);\n");
+  assert(task->regions.size() == 1);
+printf("assert(task->regions.size() == 1);\n");
+
+
+  RegionAccessor<AccessorType::Generic, int8_t> acc_f = 
+    regions[0].get_field_accessor(FIELD).typeify<int8_t>();
+
+  Domain dom = runtime->get_index_space_domain(ctx, 
+      task->regions[0].region.get_index_space());
+
+  Rect<1> rect = dom.get_rect<1>();
+
+  int sum = 0;
+  int i = start;
+
+  for (GenericPointInRectIterator<1> pir(rect); pir; pir++)
+  {
+    sum += i;
+    acc_f.write(DomainPoint::from_point<1>(pir.p), i);
+  }
+
+  printf("sum %d.\n", sum);
 } /* fill_task */
 
 void sender_task(const Task *task,
@@ -91,18 +122,18 @@ void sender_task(const Task *task,
   }
   LogicalRegion main_lr = runtime->create_logical_region(ctx, is, main_fs);
 
-  int start = task->task_id == SPAWNER1_ID ? 1 : 2;
+  int start = task->task_id == SENDER1_TASK_ID ? 1 : 2;
   TaskArgument fill_start = TaskArgument(&start, sizeof(start));
   TaskLauncher fill_launcher(FILL_TASK_ID, fill_start);
-  launcher.add_region_requirement(RegionRequirement(main_lr, WRITE_ONLY, ATOMIC, main_lr);
-  launcher.add_field(FIELD);
+  fill_launcher.add_region_requirement(RegionRequirement(main_lr, WRITE_ONLY, ATOMIC, main_lr));
+  fill_launcher.add_field(0, FIELD);
   runtime->execute_task(ctx, fill_launcher);
 
   TaskArgument ta = TaskArgument();
   TaskLauncher launcher(receiver_id, ta);
-  launcher.add_region_requirement(RegionRequirement(main_lr, READ_ONLY, ATOMIC, main_lr);
-  launcher.add_field(FIELD);
-  runtime->execute_task(ctx, t1);
+  launcher.add_region_requirement(RegionRequirement(main_lr, READ_ONLY, ATOMIC, main_lr));
+  launcher.add_field(0, FIELD);
+  runtime->execute_task(ctx, launcher);
 
   runtime->destroy_logical_region(ctx, main_lr);
   runtime->destroy_field_space(ctx, main_fs);
