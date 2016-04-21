@@ -35,7 +35,7 @@ help:
 	echo "Available targets: help (this text), exec (will build $(EXEC)), run, clean"
 
 run: $(EXEC)
-	SDP_SCRIPT_DIR="$(SDP_SCRIPT_DIR)" \
+	SDP_SCRIPT_DIR="$(SDP_SCRIPT_DIR)" SDP_BUILDDIR=$(SDP_BUILDDIR) \
 	    ./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) $(EXEC_ARGS)
 
 clean:

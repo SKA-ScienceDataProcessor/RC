@@ -66,14 +66,24 @@ function run {
 
     # Export two variables for command and arguments. They will be used in the
     # SLURM and amudprun launchers below.
-    export SDP_LAUNCH_COMMAND="$program"
+    export SDP_LAUNCH_COMMAND="$1"
     export SDP_LAUNCH_ARGUMENTS="$program_args"
     export SDP_MEM_LIMIT="$mem"
 
     cmdline="$program $program_args"
     # Select between srun/amudprun.
     case "$net" in
-        )
+        ibv)
+            if [ -n "$mem" ] ; then
+                cmdline="--mem-per-cpu=$mem $cmdline"
+            fi
+            if [ -n "$gpu" ] ; then
+                # XXX is it right way?
+                cmdline="--gres=$gpu $cmdline"
+            fi
+            srun --nodes=$nodes --ntasks=$tasks --cpus-per-tasks=$threads $cmdline
+            ;;
+        "")
             # Check arguments for local run.
 
             # nodes == 1
@@ -86,17 +96,7 @@ function run {
             export CSPAWN_CMD="$SDP_SCRIPT_DIR/custom_spawner %N %C"
 
             # Execute!
-            amduprun -n $tasks -spawn C $program $program_args
-            ;;
-        ibv)
-            if [ -n "$mem" ] ; then
-                cmdline="--mem-per-cpu=$mem $cmdline"
-            fi
-            if [ -n "$gpu" ] ; then
-                # XXX is it right way?
-                cmdline="--gres=$gpu $cmdline"
-            fi
-            srun --nodes=$nodes --ntasks=$tasks --cpus-per-tasks=$threads $cmdline
+            $SDP_BUILDDIR/gasnet/release/bin/amudprun -n $tasks -spawn L $program $program_args
             ;;
         *)
             echo "invalid net '$net'"
