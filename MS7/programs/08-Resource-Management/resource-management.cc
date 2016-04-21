@@ -177,6 +177,8 @@ int main(int argc, char **argv)
   HighLevelRuntime::set_top_level_task_id(TOP_LEVEL_TASK_ID);
   HighLevelRuntime::register_legion_task<top_level_task>(TOP_LEVEL_TASK_ID,
       Processor::LOC_PROC, true/*single*/, false/*index*/);
+  HighLevelRuntime::register_legion_task<fill_task>(FILL_TASK_ID,
+      Processor::LOC_PROC, true/*single*/, false/*index*/);
   HighLevelRuntime::register_legion_task<sender_task>(SENDER1_TASK_ID,
       Processor::LOC_PROC, true/*single*/, false/*index*/);
   HighLevelRuntime::register_legion_task<sender_task>(SENDER2_TASK_ID,
