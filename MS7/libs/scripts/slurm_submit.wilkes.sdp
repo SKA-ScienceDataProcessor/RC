@@ -14,11 +14,11 @@
 #! Which project should be charged (NB Wilkes projects end in '-GPU'):
 #SBATCH -A CORTEX-GPU
 #! How many whole nodes should be allocated?
-#SBATCH --nodes=2
+#! SBATCH --nodes=2
 #! How many (MPI) tasks will there be in total? (<=nodes*12)
-#SBATCH --ntasks=2
+#! SBATCH --ntasks=2
 #! How much wallclock time will be required?
-#SBATCH --time=00:02:00
+#! SBATCH --time=00:02:00
 #! What types of email messages do you wish to receive?
 #SBATCH --mail-type=FAIL
 #! Uncomment this to prevent the job from being requeued (e.g. if

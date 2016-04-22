@@ -24,6 +24,10 @@ TASKS ?= 1
 # Set threads count per task to 1 if none given.
 THREADS ?= 1
 
+# Set time required, HH:MM:SS. By default - one minute.
+TIME ?= 00:01:00
+
+
 # We do not provide default values for:
 #  - memory bounds (TASKMB, set to be empty - no bounds needed)
 #  - GPU accelerator type (GPU)
@@ -36,7 +40,7 @@ help:
 
 run: $(EXEC)
 	SDP_SCRIPT_DIR="$(SDP_SCRIPT_DIR)" SDP_BUILDDIR=$(SDP_BUILDDIR) \
-	    ./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) $(EXEC_ARGS)
+	    ./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) -time=$(TIME) $(EXEC_ARGS)
 
 clean:
 	rm -f $(EXEC) $(EXEC)-local $(EXEC)-ibv *.o *.a

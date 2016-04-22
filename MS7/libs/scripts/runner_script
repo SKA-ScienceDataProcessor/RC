@@ -32,11 +32,15 @@ while (($#)); do
             shift
             ;;
         -mem=*|--mem=*)
-            mem=="${arg#*=}"
+            mem="${arg#*=}"
             shift
             ;;
         -gpu=*|--gpu=*)
-            gpu=="${arg#*=}"
+            gpu="${arg#*=}"
+            shift
+            ;;
+        -time=*|--time=*)
+            $time="${arg#*=}"
             shift
             ;;
         -h|--help)
@@ -49,7 +53,7 @@ while (($#)); do
             ;;
         -*)
             echo "invalid option $arg"
-            echo "(use -- to delimite RT and program arguments)"
+            echo "(use -- to delimite launcher and program arguments)"
             echo ""
             echo $usage
             exit 1
@@ -81,7 +85,7 @@ function run {
                 # XXX is it right way?
                 cmdline="--gres=$gpu $cmdline"
             fi
-            srun --nodes=$nodes --ntasks=$tasks --cpus-per-tasks=$threads $cmdline
+            sbatch --nodes=$nodes --ntasks=$tasks --cpus-per-tasks=$threads --time=$time $SDP_SCRIPT_DIR/slurm_submit.wilkes.sdp
             ;;
         "")
             # Check arguments for local run.
