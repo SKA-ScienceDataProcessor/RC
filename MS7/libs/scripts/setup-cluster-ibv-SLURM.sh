@@ -72,7 +72,7 @@ clonepull https://github.com/SKA-ScienceDataProcessor/gasnet.git gasnet
 
 # Build it for default config - cambridge-wilkes-ibv.
 cd gasnet
-if ["$with_ibv" == "1"] ; then
+if [ "$with_ibv" == "1" ] ; then
     ICTYPE=cambridge-wilkes-ibv make
 else
     ICTYPE=cambridge-wilkes make
