@@ -40,10 +40,14 @@ help:
 
 run: $(EXEC)
 	SDP_SCRIPT_DIR="$(SDP_SCRIPT_DIR)" SDP_BUILDDIR=$(SDP_BUILDDIR) \
-	    ./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) -time=$(TIME) $(EXEC_ARGS)
+	    ./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) -time=$(TIME) -- $(EXEC_ARGS)
 
 clean:
 	rm -f $(EXEC) $(EXEC)-local $(EXEC)-ibv *.o *.a
+	LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime make -f $(SDP_BUILDDIR)/Legion-udp/runtime/runtime.mk clean
+ifeq ($(SDP_USE_IBV),1)
+	LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime make -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk clean
+endif
 
 EXEC_WITH_CONDUITS = $(EXEC)-local
 
@@ -62,13 +66,17 @@ ALT_MAPPERS     ?= 0		# Include alternative mappers (not recommended)
 
 # You can modify these variables, some will be appended to by the runtime makefile
 INC_FLAGS	?=
-CC_FLAGS	?= -DMAX_FIELDS=64 #-DPREDICATED_EXECUTION
+CC_FLAGS	?= -DMAX_FIELDS=64
 NVCC_FLAGS	?=
 GASNET_FLAGS	?=
 LD_FLAGS	?=
 
 ifeq ($(DEBUG),1)
 CC_FLAGS += -DDEBUG=1
+endif
+
+ifeq ($(PROFILING),1)
+CC_FLAGS += -DLEGION_PROF_MESSAGES=1 -DLEGION_PROFILE=1
 endif
 
 ###########################################################################
@@ -84,15 +92,15 @@ $(EXEC): $(EXEC_WITH_CONDUITS)
 	chmod a+x $(EXEC)
 
 $(EXEC)-local: $(SRCS)
-	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS=$(CC_FLAGS) USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
+	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS)" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
 	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet/release GEN_SRC=$(SRCS) \
 	CONDUIT=udp GASNET_CONDUIT=udp LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime OUTFILE=$(EXEC)-local \
-	make -f $(SDP_BUILDDIR)/Legion-udp/runtime/runtime.mk
+	make -j4 -f $(SDP_BUILDDIR)/Legion-udp/runtime/runtime.mk
 
 ifeq ($(SDP_USE_IBV),1)
 $(EXEC)-ibv: $(SRCS)
-	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS=$(CC_FLAGS) USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
+	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS)" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
 	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet/release GEN_SRC=$(SRCS) \
 	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime OUTFILE=$(EXEC)-ibv \
-	make -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk
+	make -j4 -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk
 endif

@@ -33,6 +33,91 @@ enum FieldIDs {
   FIELD
 };
 
+enum {
+  PARTITIONING_MAPPER_ID = 1,
+};
+
+#if 0
+/*
+ * One of the primary goals of Legion is
+ * to make it easy to remap applications
+ * onto different hardware.  Up to this point
+ * all of our applications have been mapped
+ * by the DefaultMapper that we provide.  The
+ * DefaultMapper class provides heuristics for
+ * performing mappings that are good but often
+ * not optimal for a specific application or
+ * architecture.   By creating a custom mapper
+ * programmers can make application- or
+ * architecture-specific mapping decisions.
+ * Furthermore, many custom mappers can be
+ * used to map the same application onto many
+ * different architectures without having to
+ * modify the primary application code.
+ *
+ * A common concern when mapping applications
+ * onto a target machine is whether or not
+ * mapping impacts correctness.  In Legion
+ * all mapping decisions are orthogonal to
+ * correctness.  In cases when correctness may
+ * be impacted by a mapping decision (e.g. a
+ * mapper maps a physical region for a task
+ * into a memory not visible from the target
+ * processor), then the Legion runtime will
+ * notify the mapper that it tried to perform
+ * an illegal mapping and allow it to retry.
+ *
+ * To introduce how to write a custom mapper
+ * we'll implement an adversarial mapper 
+ * that makes random mapping decisions
+ * designed to stress the Legion runtime. 
+ * We'll report the chosen mapping decisions
+ * to show that Legion computes the correct
+ * answer regardless of the mapping.
+ */
+
+// Mappers are classes that implement the
+// mapping interface declared in legion.h.
+// Legion provides a default impelmentation
+// of this interface defined by the
+// DefaultMapper class.  Programmers can
+// implement custom mappers either by 
+// extending the DefaultMapper class
+// or by declaring their own class which
+// implements the mapping interface from
+// scratch.  Here we will extend the
+// DefaultMapper which means that we only
+// need to override the methods that we
+// want to in order to change our mapping.
+// In this example, we'll override four
+// of the mapping calls to illustrate
+// how they work.
+class SenderReceiverMapper : public DefaultMapper {
+public:
+  SenderReceiverMapper(Machine machine, 
+      HighLevelRuntime *rt, Processor local);
+public:
+  virtual void select_task_options(Task *task);
+  virtual void slice_domain(const Task *task, const Domain &domain,
+                            std::vector<DomainSplit> &slices);
+  virtual bool map_task(Task *task); 
+  virtual void notify_mapping_result(const Mappable *mappable);
+};
+
+void mapper_registration(Machine machine, HighLevelRuntime *rt,
+                          const std::set<Processor> &local_procs)
+{
+  for (std::set<Processor>::const_iterator it = local_procs.begin();
+        it != local_procs.end(); it++)
+  {
+    rt->replace_default_mapper(
+        new SenderReceiverMapper(machine, rt, *it), *it);
+    rt->add_mapper(PARTITIONING_MAPPER_ID,
+        new PartitioningMapper(machine, rt, *it), *it);
+  }
+}
+#endif
+
 void top_level_task(const Task *task,
                     const std::vector<PhysicalRegion> &regions,
                     Context ctx, HighLevelRuntime *runtime)
@@ -41,11 +126,15 @@ void top_level_task(const Task *task,
 
     printf("Top level entered.\n");
     const InputArgs &command_args = HighLevelRuntime::get_input_args();
-    if (command_args.argc > 1)
+    for (int i = 0; i < command_args.argc; i++)
     {
-        region_size = atoi(command_args.argv[1]);
-        assert(region_size > 0);
+        if (strcmp("-n",command_args.argv[i]) == 0)
+        {
+            region_size = atoi(command_args.argv[i+1]);
+            break;
+        }
     }
+    assert(region_size > 0);
 
     printf("Top level region size %d.\n", region_size);
     runtime->execute_task(ctx, TaskLauncher(SENDER1_TASK_ID, TaskArgument(&region_size, sizeof(region_size))));
@@ -189,6 +278,8 @@ int main(int argc, char **argv)
   HighLevelRuntime::register_legion_task<receiver_task>(RECEIVER2_TASK_ID,
       Processor::LOC_PROC, true/*single*/, false/*index*/, 
       AUTO_GENERATE_ID, TaskConfigOptions(true/*leaf*/), "receiver2_task");
+
+//  HighLevelRuntime::set_registration_callback(mapper_registration);
 
   return HighLevelRuntime::start(argc, argv);
 }

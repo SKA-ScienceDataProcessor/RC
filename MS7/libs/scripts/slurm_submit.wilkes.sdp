@@ -100,8 +100,13 @@ export GASNET_CONDUIT=ibv
 
 export I_MPI_PMI_LIBRARY=/usr/local/Cluster-Apps/slurm/lib/libpmi.so
 
+mkdir -p $HOME/.dflogs/$SLURM_JOB_ID
+
+mkdir -p $HOME/.dflogs/$SLURM_JOB_ID/logs
+mkdir -p $HOME/.dflogs/$SLURM_JOB_ID/profile
+
 #CMD="mpirun -ppn $mpi_tasks_per_node -np $np $application $options"
-CMD="srun -n $np ./regent.py examples/circuit.rg"
+CMD="srun -n $np --error=$HOME/.dflogs/$SLURM_JOB_ID/logs/node-%n-task-%t --output=$HOME/.dflogs/$SLURM_JOB_ID/logs/node-%n-task-%t $SDP_LAUNCH_COMMANDS $SDP_LAUNCH_ARGS"
 
 #CMD="srun $application"
 
