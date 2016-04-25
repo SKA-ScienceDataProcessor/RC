@@ -52,7 +52,7 @@ endif
 EXEC_WITH_CONDUITS = $(EXEC)-local
 
 ifeq ($(SDP_USE_IBV),1)
-EXEC_WITH_CONDUITS = $(EXEC_WITH_CONDUITS) $(EXEC)-ibv
+EXEC_WITH_CONDUITS += $(EXEC)-ibv
 endif
 
 # Flags for directing the runtime makefile what to include
@@ -69,7 +69,7 @@ INC_FLAGS	?=
 CC_FLAGS	?= -DMAX_FIELDS=64
 NVCC_FLAGS	?=
 GASNET_FLAGS	?=
-LD_FLAGS	?=
+LD_FLAGS	?= -lirc
 
 ifeq ($(DEBUG),1)
 CC_FLAGS += -DDEBUG=1
@@ -92,15 +92,17 @@ $(EXEC): $(EXEC_WITH_CONDUITS)
 	chmod a+x $(EXEC)
 
 $(EXEC)-local: $(SRCS)
+	rm -f *.o
 	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS)" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
-	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet/release GEN_SRC=$(SRCS) \
+	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet/release GEN_SRC=$(SRCS) LD_FLAGS="$LD_FLAGS)" \
 	CONDUIT=udp GASNET_CONDUIT=udp LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime OUTFILE=$(EXEC)-local \
 	make -j4 -f $(SDP_BUILDDIR)/Legion-udp/runtime/runtime.mk
 
 ifeq ($(SDP_USE_IBV),1)
 $(EXEC)-ibv: $(SRCS)
+	rm -f *.o
 	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS)" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
-	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet/release GEN_SRC=$(SRCS) \
+	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet/release GEN_SRC=$(SRCS) LD_FLAGS="$LD_FLAGS)" \
 	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime OUTFILE=$(EXEC)-ibv \
 	make -j4 -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk
 endif

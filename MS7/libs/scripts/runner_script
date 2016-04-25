@@ -40,7 +40,7 @@ while (($#)); do
             shift
             ;;
         -time=*|--time=*)
-            $time="${arg#*=}"
+            time="${arg#*=}"
             shift
             ;;
         -h|--help)
@@ -85,7 +85,7 @@ function run {
                 # XXX is it right way?
                 cmdline="--gres=$gpu $cmdline"
             fi
-            sbatch --nodes=$nodes --ntasks=$tasks --cpus-per-tasks=$threads --time=$time $SDP_SCRIPT_DIR/slurm_submit.wilkes.sdp
+            sbatch --nodes=$nodes --ntasks=$tasks --cpus-per-task=$threads --time=$time $SDP_SCRIPT_DIR/slurm_submit.wilkes.sdp
             ;;
         "")
             # Check arguments for local run.
