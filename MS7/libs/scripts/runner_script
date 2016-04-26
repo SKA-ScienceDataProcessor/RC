@@ -100,7 +100,7 @@ function run {
             export CSPAWN_CMD="$SDP_SCRIPT_DIR/custom_spawner %N %C"
 
             # Execute!
-            $SDP_BUILDDIR/gasnet/release/bin/amudprun -n $tasks -spawn L $program-local $program_args
+            $SDP_BUILDDIR/gasnet-udp/release/bin/amudprun -n $tasks -spawn L $program-local $program_args
             ;;
         *)
             echo "invalid net '$net'"

@@ -69,7 +69,12 @@ INC_FLAGS	?=
 CC_FLAGS	?= -DMAX_FIELDS=64
 NVCC_FLAGS	?=
 GASNET_FLAGS	?=
+
+ifeq ($(DEV_ENV),1)
+LD_FLAGS	?=
+else
 LD_FLAGS	?= -lirc
+endif
 
 ifeq ($(DEBUG),1)
 CC_FLAGS += -DDEBUG=1
