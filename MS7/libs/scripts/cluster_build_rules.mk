@@ -97,7 +97,7 @@ $(EXEC): $(EXEC_WITH_CONDUITS)
 	chmod a+x $(EXEC)
 
 $(EXEC)-local: $(SRCS)
-	rm -f *.o
+	rm -f *.o liblegion.a librealm.a
 	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS)" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
 	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet-udp/release GEN_SRC=$(SRCS) LD_FLAGS="$(LD_FLAGS)" \
 	CONDUIT=udp GASNET_CONDUIT=udp LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime OUTFILE=$(EXEC)-local \
@@ -105,7 +105,7 @@ $(EXEC)-local: $(SRCS)
 
 ifeq ($(SDP_USE_IBV),1)
 $(EXEC)-ibv: $(SRCS)
-	rm -f *.o
+	rm -f *.o liblegion.a librealm.a
 	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS)" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
 	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet-ibv/release GEN_SRC=$(SRCS) LD_FLAGS="$(LD_FLAGS)" \
 	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime OUTFILE=$(EXEC)-ibv \
