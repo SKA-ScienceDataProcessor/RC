@@ -10,7 +10,7 @@
 
 #! sbatch directives begin here ###############################
 #! Name of the job:
-#SBATCH -J gasnet-mxm
+#! SBATCH -J sdp-
 #! Which project should be charged (NB Wilkes projects end in '-GPU'):
 #SBATCH -A CORTEX-GPU
 #! How many whole nodes should be allocated?
@@ -106,7 +106,7 @@ mkdir -p $HOME/.dflogs/$SLURM_JOB_ID/logs
 mkdir -p $HOME/.dflogs/$SLURM_JOB_ID/profile
 
 #CMD="mpirun -ppn $mpi_tasks_per_node -np $np $application $options"
-CMD="srun -n $np --error=$HOME/.dflogs/$SLURM_JOB_ID/logs/node-%n-task-%t --output=$HOME/.dflogs/$SLURM_JOB_ID/logs/node-%n-task-%t $SDP_LAUNCH_COMMANDS $SDP_LAUNCH_ARGS"
+CMD="srun -n $np --error=$HOME/.dflogs/$SLURM_JOB_ID/logs/node-%n-task-%t --output=$HOME/.dflogs/$SLURM_JOB_ID/logs/node-%n-task-%t $SDP_LAUNCH_COMMAND $SDP_LAUNCH_ARGUMENTS"
 
 #CMD="srun $application"
 
