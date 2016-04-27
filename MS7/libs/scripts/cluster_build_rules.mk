@@ -33,6 +33,10 @@ TIME ?= 00:01:00
 #  - GPU accelerator type (GPU)
 #  - network conduit (NET)
 
+ifeq ($(PROFILING),1)
+RUNTIME_ARGS += -hl:prof $(NODES)
+endif
+
 all: $(EXEC)
 
 help:
@@ -40,7 +44,7 @@ help:
 
 run: $(EXEC)
 	SDP_SCRIPT_DIR="$(SDP_SCRIPT_DIR)" SDP_BUILDDIR=$(SDP_BUILDDIR) \
-	    ./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) -time=$(TIME) -- $(EXEC_ARGS)
+	    ./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) -time=$(TIME) -- $(RUNTIME_ARGS) $(EXEC_ARGS)
 
 clean:
 	rm -f $(EXEC) $(EXEC)-local $(EXEC)-ibv *.o *.a

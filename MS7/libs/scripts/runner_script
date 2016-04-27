@@ -11,6 +11,7 @@ mem=""
 gpu=""
 threads=1
 program=$0
+original_arguments=$*
 usage="usage: $0 [-[-]nodes=nodes to use] [-[-]tasks=tasks to run] [-[-]threads=CPU cores to allocate per task] [-[-]mem=MB per task] [--] [other arguments]"
 while (($#)); do
     arg=$1
@@ -83,8 +84,10 @@ function run {
             fi
             if [ -n "$gpu" ] ; then
                 # XXX is it right way?
-                cmdline="--gres=$gpu $cmdline"
+                echo "selecting GPUs is not supported right now!"
+                exit 1
             fi
+            export SDP_LAUNCH_COMMAND="$SDP_LAUNCH_COMMAND-ibv"
             sbatch --job-name="SDP: $SDP_LAUNCH_COMMAND" --nodes=$nodes --ntasks=$tasks --cpus-per-task=$threads --time=$time $SDP_SCRIPT_DIR/slurm_submit.wilkes.sdp
             ;;
         "")
