@@ -33,14 +33,15 @@ TIME ?= 00:01:00
 #  - GPU accelerator type (GPU)
 #  - network conduit (NET)
 
-ifeq ($(PROFILING),1)
+ifeq ($(strip $(PROFILING)),1)
 RUNTIME_ARGS += -hl:prof $(NODES)
+DEBUG := 0
 endif
 
 all: $(EXEC)
 
 help:
-	echo "Available targets: help (this text), exec (will build $(EXEC)), run, clean"
+	echo "Available targets: all (will build $(EXEC)), help (this text), run, clean"
 
 run: $(EXEC)
 	SDP_SCRIPT_DIR="$(SDP_SCRIPT_DIR)" SDP_BUILDDIR=$(SDP_BUILDDIR) \
@@ -61,7 +62,7 @@ endif
 
 # Flags for directing the runtime makefile what to include
 DEBUG           ?= 1		# Include debugging symbols
-OUTPUT_LEVEL    ?= LEVEL_DEBUG	# Compile time logging level
+OUTPUT_LEVEL    ?= LEVEL_PRINT	# Compile time logging level
 SHARED_LOWLEVEL ?= 0		# Use shared-memory runtime (not recommended)
 USE_CUDA        ?= 0		# Include CUDA support (requires CUDA)
 USE_GASNET      ?= 0		# Include GASNet support (requires GASNet)
@@ -94,6 +95,8 @@ endif
 #   
 ###########################################################################
 
+process-profile:
+	$(SDP_BUILDDIR)/Legion-udp/tools/legion_prof.py $(PROF_OPTIONS) $(PROF_FILES)
 
 $(EXEC): $(EXEC_WITH_CONDUITS)
 	cp $(SDP_SCRIPT_DIR)/runner_script $(EXEC)

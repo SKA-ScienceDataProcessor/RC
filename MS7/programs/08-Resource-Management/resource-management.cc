@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <stdint.h>
 #include "legion.h"
+#include "realm.h"
+#include "legion_types.h"
 #include "default_mapper.h"
 #include "id.h"
 
@@ -98,14 +100,21 @@ public:
   virtual void select_task_options(Task *task);
 //  virtual void slice_domain(const Task *task, const Domain &domain,
 //                            std::vector<DomainSplit> &slices);
-  virtual bool map_task(Task *task);
+//  virtual bool map_task(Task *task);
   virtual void notify_mapping_result(const Mappable *mappable);
 private:
   // compute CPU index for a task from task's ID.
-  Processor task_cpu(Task*task) {
+  Processor task_cpu(Task*task, Processor old_proc) {
     std::set<Processor> all_procs;
     machine.get_all_processors(all_procs);
     unsigned cpu = 0;
+    unsigned max_node = 0;
+    for (std::set<Processor>::const_iterator it = all_procs.begin();
+            it != all_procs.end(); it++) {
+      Realm::ID cpuid(*it);
+      if (cpuid.node() > max_node)
+        max_node = cpuid.node();
+    }
     switch (task->task_id) {
       case SENDER1_TASK_ID: cpu = 0; break;
       case SENDER2_TASK_ID: cpu = 1; break;
@@ -114,10 +123,13 @@ private:
       case FILL2_TASK_ID: cpu = 1; break;
       case RECEIVER1_TASK_ID: cpu = 2; break;
       case RECEIVER2_TASK_ID: cpu = 3; break;
+      default:
+        printf("Unknown task id %x.\n",task->task_id);
+        return old_proc;
     }
-    if (cpu > all_procs.size()) {
+    if (cpu > max_node) {
       printf("Too high CPU index %d for task %x.\n",cpu,task->task_id);
-      cpu = all_procs.size()-1;
+      cpu = max_node;
     }
     printf("task %x has cpu index %d.\n",task->task_id, cpu);
     for (std::set<Processor>::const_iterator it = all_procs.begin();
@@ -128,7 +140,7 @@ private:
         return (*it);
     }
     printf("no processor for cpu %d.\n", cpu);
-    return Processor::NO_PROC;
+    return old_proc;
   }
 };
 
@@ -168,7 +180,8 @@ SenderReceiverMapper::SenderReceiverMapper(Machine m,
   // only want to print out this information one time, so only
   // do it if we are the mapper for the first processor in the
   // list of all processors in the machine.
-  if ((*(all_procs.begin())) == local_proc)
+  unsigned this_node = Realm::ID(local_proc).node();
+  if (this_node == 0)
   {
     // Print out how many processors there are and each
     // of their kinds.
@@ -288,7 +301,8 @@ SenderReceiverMapper::SenderReceiverMapper(Machine m,
             break;
           }
         default:
-          assert(false);
+            printf("  unknown type %d id %llx has %ld KB\n", kind,
+                    it->id, memory_size_in_kb);
       }
     }
 
@@ -369,7 +383,7 @@ void SenderReceiverMapper::select_task_options(Task *task)
   task->map_locally = false;
   task->profile_task = false;
   task->task_priority = 0;
-  task->target_proc = task_cpu(task);
+  task->target_proc = task_cpu(task, task->target_proc);
 }
 
 #if 0
@@ -448,8 +462,10 @@ void SenderReceiverMapper::slice_domain(const Task *task, const Domain &domain,
 // in a random order as the target set of memories, thereby
 // challenging the Legion runtime to maintain correctness
 // of data moved through random sets of memories.
+#if 0
 bool SenderReceiverMapper::map_task(Task *task)
 { 
+printf("called map_task\n");
   std::set<Memory> vis_mems;
   machine.get_visible_memories(task->target_proc, vis_mems);  
   assert(!vis_mems.empty());
@@ -474,6 +490,7 @@ bool SenderReceiverMapper::map_task(Task *task)
   // Report successful mapping results
   return true;
 }
+#endif
 
 // The last mapper call we override is the notify_mapping_result
 // call which is invoked by the runtime if the mapper indicated
@@ -527,7 +544,7 @@ void fill_task(const Task *task,
     const std::vector<PhysicalRegion> &regions,
                    Context ctx, HighLevelRuntime *runtime)
 {
-  printf("fill task\n");
+  printf("fill task, id %d\n", task->task_id);
 
   assert(task->arglen == sizeof(int));
 
@@ -578,12 +595,15 @@ void sender_task(const Task *task,
 
   printf("sender entered, id %d, region size %d.\n", task->task_id, region_size);
 
+  int start = 1;
   int receiver_id = RECEIVER1_TASK_ID;
   int fill_id = FILL1_TASK_ID;
   if (task->task_id == SENDER2_TASK_ID) {
     receiver_id = RECEIVER2_TASK_ID;
     fill_id = FILL2_TASK_ID;
+    start = 2;
   }
+  printf("sender, receiver_id %d, fill_id %d.\n", receiver_id, fill_id);
 
   Rect<1> elem_rect(Point<1>(0),Point<1>(region_size-1));
   IndexSpace is = runtime->create_index_space(ctx, 
@@ -596,7 +616,6 @@ void sender_task(const Task *task,
   }
   LogicalRegion main_lr = runtime->create_logical_region(ctx, is, main_fs);
 
-  int start = task->task_id == SENDER1_TASK_ID ? 1 : 2;
   TaskArgument fill_start = TaskArgument(&start, sizeof(start));
   TaskLauncher fill_launcher(fill_id, fill_start);
   fill_launcher.add_region_requirement(RegionRequirement(main_lr, WRITE_ONLY, ATOMIC, main_lr));
@@ -645,9 +664,11 @@ printf("assert(task->regions.size() == 1);\n");
   printf("sum %d.\n", sum);
 
 }
-              
+
+char buf[1024];
 int main(int argc, char **argv)
 {
+  setvbuf(stdout, buf, _IONBF, sizeof(buf));
   HighLevelRuntime::set_top_level_task_id(TOP_LEVEL_TASK_ID);
   HighLevelRuntime::register_legion_task<top_level_task>(TOP_LEVEL_TASK_ID,
       Processor::LOC_PROC, true/*single*/, false/*index*/);
