@@ -116,6 +116,7 @@ cd Legion-udp/language
 
 # Running the installation, enabling the GASnet.
 export GASNET_ROOT="$BUILDDIR/gasnet-udp/release"
+export GASNET="$GASNET_ROOT"
 export GASNET_BIN="$GASNET_ROOT/bin"
 CONDUIT=udp ./install.py --with-terra=$TERRA_DIR --gasnet || exit 1
 
@@ -125,6 +126,7 @@ cd $BUILDDIR
 # We build with IBV when not asked not to.
 if [ "$with_ibv" == "1" ] ; then
   export GASNET_ROOT="$BUILDDIR/gasnet-ibv/release"
+  export GASNET="$GASNET_ROOT"
   export GASNET_BIN="$GASNET_ROOT/bin"
   clonepull Legion-udp Legion-ibv
 
