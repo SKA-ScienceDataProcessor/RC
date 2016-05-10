@@ -66,6 +66,10 @@ while (($#)); do
 done
 program_args="$*"
 
+if [ -n $mem ] ; then
+    total_mem_ll=$(($mem*$nodes))
+fi
+
 # Execute command
 function run {
 
@@ -80,7 +84,7 @@ function run {
     case "$net" in
         ibv)
             if [ -n "$mem" ] ; then
-                cmdline="--mem-per-cpu=$mem $cmdline"
+                cmdline="$program -ll:gsize $total_mem_ll $program_args"
             fi
             if [ -n "$gpu" ] ; then
                 # XXX is it right way?
@@ -97,6 +101,10 @@ function run {
             if [ "$nodes" -ne "1" ] ; then
                 echo "number of nodes for local run should be 1."
                 exit 1
+            fi
+
+            if [ -n "$mem" ] ; then
+                cmdline="$program -ll:gsize $total_mem_ll $program_args"
             fi
 
             # setup env for amudprun.
