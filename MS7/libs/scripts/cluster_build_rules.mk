@@ -38,6 +38,17 @@ RUNTIME_ARGS += -hl:prof $(NODES)
 DEBUG := 0
 endif
 
+REGENT_EXEC = $(strip $(EXEC)).rg
+
+# Determine whether we build Regent executable.
+ifndef REGENT_BUILD
+ifeq ($(findstring $(REGENT_EXEC), $(SRCS)),$(REGENT_EXEC))
+REGENT_BUILD := 1
+else
+REGENT_BUILD := 0
+endif
+endif
+
 all: $(EXEC)
 
 help:
@@ -98,10 +109,16 @@ endif
 process-profile:
 	$(SDP_BUILDDIR)/Legion-udp/tools/legion_prof.py $(PROF_OPTIONS) $(PROF_FILES)
 
+ifeq ($(REGENT_BUILD),0)
 $(EXEC): $(EXEC_WITH_CONDUITS)
 	cp $(SDP_SCRIPT_DIR)/runner_script $(EXEC)
 	echo "run $(EXEC)" >>$(EXEC)
 	chmod a+x $(EXEC)
+else
+$(EXEC): $(EXEC).rg
+	echo "compiling with Regent is not supported right now"
+	exit 1
+endif
 
 $(EXEC)-local: $(SRCS)
 	rm -f *.o liblegion.a librealm.a

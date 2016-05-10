@@ -15,6 +15,8 @@
 using namespace LegionRuntime::HighLevel;
 using namespace LegionRuntime::Accessor;
 
+LegionRuntime::Logger::Category log_logging("logging");
+
 /*
  * To illustrate task launches and futures in Legion
  * we implement a program to compute the first N
@@ -107,7 +109,7 @@ private:
   Processor task_cpu(Task*task, Processor old_proc) {
     std::set<Processor> all_procs;
     machine.get_all_processors(all_procs);
-    unsigned cpu = 0;
+    unsigned node = 0, cpu = 0;
     unsigned max_node = 0;
     for (std::set<Processor>::const_iterator it = all_procs.begin();
             it != all_procs.end(); it++) {
@@ -116,30 +118,30 @@ private:
         max_node = cpuid.node();
     }
     switch (task->task_id) {
-      case SENDER1_TASK_ID: cpu = 0; break;
-      case SENDER2_TASK_ID: cpu = 1; break;
+      case SENDER1_TASK_ID: node = 0; break;
+      case SENDER2_TASK_ID: node = 1; break;
       // cpu is the same for FILL tasks as for SENDER tasks.
-      case FILL1_TASK_ID: cpu = 0; break;
-      case FILL2_TASK_ID: cpu = 1; break;
-      case RECEIVER1_TASK_ID: cpu = 2; break;
-      case RECEIVER2_TASK_ID: cpu = 3; break;
+      case FILL1_TASK_ID: node = 0; break;
+      case FILL2_TASK_ID: node = 1; break;
+      case RECEIVER1_TASK_ID: node = 2; break;
+      case RECEIVER2_TASK_ID: node = 2; cpu = 1; break;
       default:
-        printf("Unknown task id %x.\n",task->task_id);
+        log_logging.print("Unknown task id %x.\n",task->task_id);
         return old_proc;
     }
-    if (cpu > max_node) {
-      printf("Too high CPU index %d for task %x.\n",cpu,task->task_id);
-      cpu = max_node;
+    if (node > max_node) {
+      log_logging.print("Too high node index %d for task %x.\n",node,task->task_id);
+      node = max_node;
     }
-    printf("task %x has cpu index %d.\n",task->task_id, cpu);
+    log_logging.print("task %x has cpu index %d.\n",task->task_id, cpu);
     for (std::set<Processor>::const_iterator it = all_procs.begin();
             it != all_procs.end(); it++) {
-      printf("considering cpu %llx.\n",it->id);
+      log_logging.print("considering cpu %llx.\n",it->id);
       Realm::ID cpuid(*it);
-      if (it->kind() == Processor::LOC_PROC && cpuid.node() == cpu)
+      if (it->kind() == Processor::LOC_PROC && cpuid.node() == node && cpuid.index() == cpu)
         return (*it);
     }
-    printf("no processor for cpu %d.\n", cpu);
+    printf("no processor for node %d, cpu %d.\n", node, cpu);
     return old_proc;
   }
 };
