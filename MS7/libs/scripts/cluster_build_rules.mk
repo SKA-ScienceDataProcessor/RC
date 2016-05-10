@@ -36,6 +36,7 @@ TIME ?= 00:01:00
 ifeq ($(strip $(PROFILING)),1)
 RUNTIME_ARGS += -hl:prof $(NODES)
 DEBUG := 0
+OUTPUT_LEVEL := LEVEL_DEBUG
 endif
 
 REGENT_EXEC = $(strip $(EXEC)).rg
