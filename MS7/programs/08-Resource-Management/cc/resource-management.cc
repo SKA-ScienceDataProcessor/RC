@@ -133,13 +133,18 @@ private:
       log_logging.print("Too high node index %d for task %x.\n",node,task->task_id);
       node = max_node;
     }
-    log_logging.print("task %x has cpu index %d.\n",task->task_id, cpu);
+    log_logging.print("task %x has node %d, cpu index %d.\n",task->task_id, node, cpu);
     for (std::set<Processor>::const_iterator it = all_procs.begin();
             it != all_procs.end(); it++) {
       log_logging.print("considering cpu %llx.\n",it->id);
       Realm::ID cpuid(*it);
-      if (it->kind() == Processor::LOC_PROC && cpuid.node() == node && cpuid.index() == cpu)
-        return (*it);
+      if (it->kind() == Processor::LOC_PROC && cpuid.node() == node) { // our node - look for CPU.
+        if (cpu == 0) {
+          log_logging.print("assigned cpu %llx.\n",it->id);
+          return (*it);
+        }
+        cpu--;
+      }
     }
     printf("no processor for node %d, cpu %d.\n", node, cpu);
     return old_proc;
@@ -187,7 +192,7 @@ SenderReceiverMapper::SenderReceiverMapper(Machine m,
   {
     // Print out how many processors there are and each
     // of their kinds.
-    printf("There are %ld processors:\n", all_procs.size());
+    log_logging.print("There are %ld processors:\n", all_procs.size());
     for (std::set<Processor>::const_iterator it = all_procs.begin();
           it != all_procs.end(); it++)
     {
@@ -198,13 +203,13 @@ SenderReceiverMapper::SenderReceiverMapper(Machine m,
         // Latency-optimized cores (LOCs) are CPUs
         case Processor::LOC_PROC:
           {
-            printf("  Processor ID %llx is CPU\n", it->id); 
+            log_logging.print("  Processor ID %llx is CPU\n", it->id); 
             break;
           }
         // Throughput-optimized cores (TOCs) are GPUs
         case Processor::TOC_PROC:
           {
-            printf("  Processor ID %llx is GPU\n", it->id);
+            log_logging.print("  Processor ID %llx is GPU\n", it->id);
             break;
           }
         // Utility processors are helper processors for
@@ -212,7 +217,7 @@ SenderReceiverMapper::SenderReceiverMapper(Machine m,
         // should not be used for running application tasks
         case Processor::UTIL_PROC:
           {
-            printf("  Processor ID %llx is utility\n", it->id);
+            log_logging.print("  Processor ID %llx is utility\n", it->id);
             break;
           }
         default:
@@ -223,7 +228,7 @@ SenderReceiverMapper::SenderReceiverMapper(Machine m,
     // on the target architecture and print out their info.
     std::set<Memory> all_mems;
     machine.get_all_memories(all_mems);
-    printf("There are %ld memories:\n", all_mems.size());
+    log_logging.print("There are %ld memories:\n", all_mems.size());
     for (std::set<Memory>::const_iterator it = all_mems.begin();
           it != all_mems.end(); it++)
     {
@@ -234,28 +239,28 @@ SenderReceiverMapper::SenderReceiverMapper(Machine m,
         // RDMA addressable memory when running with GASNet
         case Memory::GLOBAL_MEM:
           {
-            printf("  GASNet Global Memory ID %llx has %ld KB\n", 
+            log_logging.print("  GASNet Global Memory ID %llx has %ld KB\n", 
                     it->id, memory_size_in_kb);
             break;
           }
         // DRAM on a single node
         case Memory::SYSTEM_MEM:
           {
-            printf("  System Memory ID %llx has %ld KB\n",
+            log_logging.print("  System Memory ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // Pinned memory on a single node
         case Memory::REGDMA_MEM:
           {
-            printf("  Pinned Memory ID %llx has %ld KB\n",
+            log_logging.print("  Pinned Memory ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // A memory associated with a single socket
         case Memory::SOCKET_MEM:
           {
-            printf("  Socket Memory ID %llx has %ld KB\n",
+            log_logging.print("  Socket Memory ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
@@ -263,47 +268,47 @@ SenderReceiverMapper::SenderReceiverMapper(Machine m,
         // all GPUs on a single node
         case Memory::Z_COPY_MEM:
           {
-            printf("  Zero-Copy Memory ID %llx has %ld KB\n",
+            log_logging.print("  Zero-Copy Memory ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // GPU framebuffer memory for a single GPU
         case Memory::GPU_FB_MEM:
           {
-            printf("  GPU Frame Buffer Memory ID %llx has %ld KB\n",
+            log_logging.print("  GPU Frame Buffer Memory ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // Disk memory on a single node
         case Memory::DISK_MEM:
           {
-            printf("  Disk Memory ID %llx has %ld KB\n",
+            log_logging.print("  Disk Memory ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // Block of memory sized for L3 cache
         case Memory::LEVEL3_CACHE:
           {
-            printf("  Level 3 Cache ID %llx has %ld KB\n",
+            log_logging.print("  Level 3 Cache ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // Block of memory sized for L2 cache
         case Memory::LEVEL2_CACHE:
           {
-            printf("  Level 2 Cache ID %llx has %ld KB\n",
+            log_logging.print("  Level 2 Cache ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // Block of memory sized for L1 cache
         case Memory::LEVEL1_CACHE:
           {
-            printf("  Level 1 Cache ID %llx has %ld KB\n",
+            log_logging.print("  Level 1 Cache ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         default:
-            printf("  unknown type %d id %llx has %ld KB\n", kind,
+            log_logging.print("  unknown type %d id %llx has %ld KB\n", kind,
                     it->id, memory_size_in_kb);
       }
     }
@@ -322,7 +327,7 @@ SenderReceiverMapper::SenderReceiverMapper(Machine m,
     // using the 'get_visible_memories' method on the machine.
     std::set<Memory> vis_mems;
     machine.get_visible_memories(local_proc, vis_mems);
-    printf("There are %ld memories visible from processor %llx\n",
+    log_logging.print("There are %ld memories visible from processor %llx\n",
             vis_mems.size(), local_proc.id);
     for (std::set<Memory>::const_iterator it = vis_mems.begin();
           it != vis_mems.end(); it++)
@@ -340,7 +345,7 @@ SenderReceiverMapper::SenderReceiverMapper(Machine m,
       // We should only have found 1 results since we
       // explicitly specified both values.
       assert(results == 1);
-      printf("  Memory %llx has bandwidth %d and latency %d\n",
+      log_logging.print("  Memory %llx has bandwidth %d and latency %d\n",
               it->id, affinities[0].bandwidth, affinities[0].latency);
     }
   }
@@ -467,7 +472,7 @@ void SenderReceiverMapper::slice_domain(const Task *task, const Domain &domain,
 #if 0
 bool SenderReceiverMapper::map_task(Task *task)
 { 
-printf("called map_task\n");
+log_logging.print("called map_task\n");
   std::set<Memory> vis_mems;
   machine.get_visible_memories(task->target_proc, vis_mems);  
   assert(!vis_mems.empty());
@@ -511,7 +516,7 @@ void SenderReceiverMapper::notify_mapping_result(const Mappable *mappable)
     assert(task != NULL);
     for (unsigned idx = 0; idx < task->regions.size(); idx++)
     {
-      printf("Mapped region %d of task %s (ID %lld) to memory %llx\n",
+      log_logging.print("Mapped region %d of task %s (ID %lld) to memory %llx\n",
               idx, task->variants->name, 
               task->get_unique_task_id(),
               task->regions[idx].selected_memory.id);
@@ -525,7 +530,7 @@ void top_level_task(const Task *task,
 {
     int region_size = 16*1024*1024;
 
-    printf("Top level entered.\n");
+    log_logging.print("Top level entered.\n");
     const InputArgs &command_args = HighLevelRuntime::get_input_args();
     for (int i = 0; i < command_args.argc; i++)
     {
@@ -537,7 +542,7 @@ void top_level_task(const Task *task,
     }
     assert(region_size > 0);
 
-    printf("Top level region size %d.\n", region_size);
+    log_logging.print("Top level region size %d.\n", region_size);
     runtime->execute_task(ctx, TaskLauncher(SENDER1_TASK_ID, TaskArgument(&region_size, sizeof(region_size))));
     runtime->execute_task(ctx, TaskLauncher(SENDER2_TASK_ID, TaskArgument(&region_size, sizeof(region_size))));
 }
@@ -546,17 +551,17 @@ void fill_task(const Task *task,
     const std::vector<PhysicalRegion> &regions,
                    Context ctx, HighLevelRuntime *runtime)
 {
-  printf("fill task, id %d\n", task->task_id);
+  log_logging.print("fill task, id %d\n", task->task_id);
 
   assert(task->arglen == sizeof(int));
 
   const int start = *((const int*)task->args);
-printf("start %d.\n",start);
+log_logging.print("start %d.\n",start);
 
   assert(regions.size() == 1);
-printf("assert(regions.size() == 1);\n");
+log_logging.print("assert(regions.size() == 1);\n");
   assert(task->regions.size() == 1);
-printf("assert(task->regions.size() == 1);\n");
+log_logging.print("assert(task->regions.size() == 1);\n");
 
 
   RegionAccessor<AccessorType::Generic, int8_t> acc_f = 
@@ -576,7 +581,7 @@ printf("assert(task->regions.size() == 1);\n");
     acc_f.write(DomainPoint::from_point<1>(pir.p), i);
   }
 
-  printf("sum %d.\n", sum);
+  log_logging.print("sum %d.\n", sum);
 } /* fill_task */
 
 void sender_task(const Task *task,
@@ -595,7 +600,7 @@ void sender_task(const Task *task,
 
   const int region_size = *((const int*)task->args);
 
-  printf("sender entered, id %d, region size %d.\n", task->task_id, region_size);
+  log_logging.print("sender entered, id %d, region size %d.\n", task->task_id, region_size);
 
   int start = 1;
   int receiver_id = RECEIVER1_TASK_ID;
@@ -605,7 +610,7 @@ void sender_task(const Task *task,
     fill_id = FILL2_TASK_ID;
     start = 2;
   }
-  printf("sender, receiver_id %d, fill_id %d.\n", receiver_id, fill_id);
+  log_logging.print("sender, receiver_id %d, fill_id %d.\n", receiver_id, fill_id);
 
   Rect<1> elem_rect(Point<1>(0),Point<1>(region_size-1));
   IndexSpace is = runtime->create_index_space(ctx, 
@@ -640,12 +645,12 @@ void receiver_task(const Task *task,
              const std::vector<PhysicalRegion> &regions,
              Context ctx, HighLevelRuntime *runtime)
 {
-  printf("receiver task, task id %d.\n", task->task_id);
+  log_logging.print("receiver task, task id %d.\n", task->task_id);
 
   assert(regions.size() == 1);
-printf("assert(regions.size() == 1);\n");
+log_logging.print("assert(regions.size() == 1);\n");
   assert(task->regions.size() == 1);
-printf("assert(task->regions.size() == 1);\n");
+log_logging.print("assert(task->regions.size() == 1);\n");
 
 
   RegionAccessor<AccessorType::Generic, int8_t> acc_f = 
@@ -663,7 +668,7 @@ printf("assert(task->regions.size() == 1);\n");
     sum += acc_f.read(DomainPoint::from_point<1>(pir.p));
   }
 
-  printf("sum %d.\n", sum);
+  log_logging.print("sum %d.\n", sum);
 
 }
 

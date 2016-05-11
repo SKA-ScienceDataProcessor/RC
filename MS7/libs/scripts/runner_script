@@ -76,6 +76,9 @@ function run {
     # Export two variables for command and arguments. They will be used in the
     # SLURM and amudprun launchers below.
     export SDP_LAUNCH_COMMAND="$1"
+    if [ -n "$mem" ] ; then
+      program_args="-ll:gsize $total_mem_ll $program_args"
+    fi
     export SDP_LAUNCH_ARGUMENTS="$program_args"
     export SDP_MEM_LIMIT="$mem"
 
@@ -83,9 +86,6 @@ function run {
     # Select between srun/amudprun.
     case "$net" in
         ibv)
-            if [ -n "$mem" ] ; then
-                cmdline="$program -ll:gsize $total_mem_ll $program_args"
-            fi
             if [ -n "$gpu" ] ; then
                 # XXX is it right way?
                 echo "selecting GPUs is not supported right now!"
@@ -101,10 +101,6 @@ function run {
             if [ "$nodes" -ne "1" ] ; then
                 echo "number of nodes for local run should be 1."
                 exit 1
-            fi
-
-            if [ -n "$mem" ] ; then
-                cmdline="$program -ll:gsize $total_mem_ll $program_args"
             fi
 
             # setup env for amudprun.
