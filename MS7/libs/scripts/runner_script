@@ -69,11 +69,6 @@ while (($#)); do
 done
 program_args="$*"
 
-if [ -n "$mem" ] ; then
-    echo "computing total mem, mem $mem."
-    total_mem_ll=$(($mem*$nodes))
-fi
-
 # Execute command
 function run {
 
@@ -82,7 +77,7 @@ function run {
     export SDP_LAUNCH_COMMAND="$1"
     if [ -n "$mem" ] ; then
       echo "setting mem"
-      program_args="-ll:gsize $total_mem_ll $program_args"
+      program_args="-ll:gsize $mem $program_args"
     fi
     export SDP_LAUNCH_ARGUMENTS="$program_args"
     export SDP_MEM_LIMIT="$mem"
