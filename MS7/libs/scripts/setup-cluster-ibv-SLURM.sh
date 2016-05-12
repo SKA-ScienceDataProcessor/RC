@@ -4,7 +4,7 @@
 
 # Enabling "unofficial bash strict mode".
 # Errors are: non-zero exit codes, reference to unset vars and something else.
-set -eou
+set -euo pipefail
 
 # Check for gcc version.
 (gcc -v |& egrep "^gcc version 4.9") || (echo "needs gcc 4.9; please execute 'module load gcc/4.9.2' before running"; exit 1)
