@@ -11,6 +11,7 @@ tasks=1
 net=""
 mem=""
 gpu=""
+timebound="00:01:00"
 threads=1
 program=$0
 original_arguments=$*
@@ -43,7 +44,7 @@ while (($#)); do
             shift
             ;;
         -time=*|--time=*)
-            time="${arg#*=}"
+            timebound="${arg#*=}"
             shift
             ;;
         -h|--help)
@@ -68,7 +69,8 @@ while (($#)); do
 done
 program_args="$*"
 
-if [ -n $mem ] ; then
+if [ -n "$mem" ] ; then
+    echo "computing total mem, mem $mem."
     total_mem_ll=$(($mem*$nodes))
 fi
 
@@ -79,6 +81,7 @@ function run {
     # SLURM and amudprun launchers below.
     export SDP_LAUNCH_COMMAND="$1"
     if [ -n "$mem" ] ; then
+      echo "setting mem"
       program_args="-ll:gsize $total_mem_ll $program_args"
     fi
     export SDP_LAUNCH_ARGUMENTS="$program_args"
@@ -94,7 +97,7 @@ function run {
                 exit 1
             fi
             export SDP_LAUNCH_COMMAND="$SDP_LAUNCH_COMMAND-ibv"
-            sbatch --job-name="SDP: $SDP_LAUNCH_COMMAND" --nodes=$nodes --ntasks=$tasks --cpus-per-task=$threads --time=$time $SDP_SCRIPT_DIR/slurm_submit.wilkes.sdp
+            sbatch --job-name="SDP: $SDP_LAUNCH_COMMAND" --nodes=$nodes --ntasks=$tasks --cpus-per-task=$threads --time=$timebound $SDP_SCRIPT_DIR/slurm_submit.wilkes.sdp
             ;;
         "")
             # Check arguments for local run.
