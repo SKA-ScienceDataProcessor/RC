@@ -63,7 +63,7 @@ clean:
 	rm -f $(EXEC) $(EXEC)-local $(EXEC)-ibv *.o *.a
 	LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime make -f $(SDP_BUILDDIR)/Legion-udp/runtime/runtime.mk clean
 ifeq ($(SDP_USE_IBV),1)
-	LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime make -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk clean
+	LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime make -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk clean
 endif
 
 EXEC_WITH_CONDUITS = $(EXEC)-local
@@ -106,6 +106,15 @@ endif
 #   Don't change anything below here
 #   
 ###########################################################################
+
+ifneq ($(strip $(PROF_USEC_PIX)),)
+PROF_OPTIONS += -m $(PROF_USEC_PIX)
+endif
+
+ifneq ($(strip $(PROF_JOB_ID)),)
+PROF_FILES := $(HOME)/.dflogs/$(PROF_JOB_ID)/logs/node-*
+PROF_OPTIONS += -o profile_$(PROF_JOB_ID)
+endif
 
 process-profile:
 	$(SDP_BUILDDIR)/Legion-udp/tools/legion_prof.py $(PROF_OPTIONS) $(PROF_FILES)
