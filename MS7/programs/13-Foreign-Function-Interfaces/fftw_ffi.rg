@@ -44,18 +44,20 @@ terra do_fftw(N : int, data : &c.fftw_complex)
   return result
 end
 
-terra show_mag(N : int, data : &c.fftw_complex)
+terra show_max(N : int, data : &c.fftw_complex)
+  var maxa : double = 0.0
   for n = 0,N do
     var mag : double = c.sqrt(data[n][c.REAL] * data[n][c.REAL] + data[n][c.IMAG] * data[n][c.IMAG])
-    c.printf("%g\n", mag)
+    if mag > maxa then maxa = mag end
   end
+  c.printf("%g\n", maxa)
 end
 
 task toplevel()
   var data = gen_data(64)
   var result = do_fftw(64, data)
   c.free(data)
-  show_mag(64, result)
+  show_max(64, result)
   c.free(result)
 end
 
