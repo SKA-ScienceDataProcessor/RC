@@ -7,14 +7,25 @@ local c = terralib.includecstring [[
 #include <slurm.h>
 ]]
 
+terra get_env_int(ev: rawstring)
+  var val = c.getenv(ev)
+  if val ~= [rawstring](0) then
+    return c.atoi(val)
+  end
+  return 0
+end
+
 terra main()
-  -- This is a real code to use on cluster:
-  -- var nlists = c.getenv("SLURM_NODELIST")
-  -- c.printf("NODELIST is: %s\n", nlists)
-  -- var hl = c.slurm_hostlist_create(nlists)
+
+  c.printf("Allocated nodes: %s\n", c.getenv("SLURMD_NODENAME"))
+  c.printf("I'm %d, and I have %d CPUs\n", get_env_int("SLURM_NODEID"), get_env_int("SLURM_CPUS_ON_NODE"))
+  
+  var nlists = c.getenv("SLURM_NODELIST")
+  c.printf("NODELIST is: %s\n", nlists)
+  var hl = c.slurm_hostlist_create(nlists)
 
   -- This is desktop test code
-  var hl = c.slurm_hostlist_create("test[1-9]")
+  -- var hl = c.slurm_hostlist_create("test[1-9]")
 
   var hname = c.slurm_hostlist_shift(hl)
   while hname ~= [rawstring](0) do
