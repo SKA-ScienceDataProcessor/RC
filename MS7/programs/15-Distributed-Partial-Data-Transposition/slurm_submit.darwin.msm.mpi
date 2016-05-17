@@ -1,0 +1,69 @@
+#!/bin/bash
+#!
+#! Example SLURM job script for Wilkes (Ivy Bridge, Connect-IB, K20c)
+#! Last updated: Sat Apr 18 13:05:27 BST 2015
+#!
+
+#!#############################################################
+#!#### Modify the options in this section as appropriate ######
+#!#############################################################
+
+#! sbatch directives begin here ###############################
+#! Name of the job:
+#SBATCH -J transpose
+#! Redirect stderr and stdout
+#SBATCH --output OUTPUT/gasnet-mxm-transpose-darwin.%j.out
+#SBATCH --error OUTPUT/gasnet-mxm-transpose-darwin.%j.err
+#! Which project should be charged (NB Wilkes projects end in '-GPU'):
+#SBATCH -A SKA-SDP
+#! How many whole nodes should be allocated?
+#SBATCH --nodes=2
+#! How many (MPI) tasks will there be in total? (<=nodes*12)
+#SBATCH --ntasks=24
+#! How much wallclock time will be required?
+#SBATCH --time=01:30:00
+#! What types of email messages do you wish to receive?
+#SBATCH --mail-type=FAIL
+#! Uncomment this to prevent the job from being requeued (e.g. if
+#! interrupted by node failure or system downtime):
+#SBATCH --no-requeue
+
+
+# Request the nodes in exclusive mode
+#SBATCH --exclusive
+# Request the nodes to be on the same switch
+##SBATCH --switches=1
+
+#! Do not change:
+#SBATCH -p sandybridge
+
+. /etc/profile.d/modules.sh
+module load gcc/5.2.0
+export LG_RT_DIR="$HOME/LegionRT/legion/runtime"
+export GASNET_HOME="$HOME/GASNetInstall/"
+#GASNET=/home/mf582/GASNetInstall
+export CUDA_INSTALL_PATH="/usr/local/Cluster-Apps/cuda/7.0/"
+
+#! sbatch directives end here (put any additional directives above this line)
+#! Number of nodes and tasks per node allocated by SLURM (do not change):
+numnodes=$SLURM_JOB_NUM_NODES
+numprocs=$SLURM_NTASKS
+#! Full path to application executable: 
+application="./transpose"
+#application="./gasnet_amsend"
+
+#! Run options for the application:
+options=""
+LL_OPTIONS="-ll:cpu 6 -ll:util 6" 
+options=$LL_OPTIONS
+
+export GASNET_IBV_SPAWNER=mpi
+export PATH=$GASNET_HOME/bin/:$PATH
+ldd $application
+CMD="gasnetrun_mxm -n $numprocs -N $numnodes -v -k -E PATH,LD_LIBRARY_PATH -spawner=mpi  $application $options"
+CMD="time gasnetrun_mxm -n $numprocs -N $numnodes -v -k -E PATH,LD_LIBRARY_PATH -spawner=mpi  $application $options"
+echo $CMD
+strings /usr/local/Cluster-Apps/gcc/5.2.0/lib64/libstdc++.so.6 | grep GLIBC
+#echo "Randomize value is:"
+#cat /proc/sys/kernel/randomize_va_space
+eval $CMD 
