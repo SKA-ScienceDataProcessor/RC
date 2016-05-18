@@ -1,58 +1,43 @@
-/* Copyright 2016 Stanford University
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
+// Resource management demo program.
+//
+// Copyright (C) 2016 Braam Research, LLC.
 
 #include <cstdio>
 #include <cassert>
 #include <cstdlib>
+#include <stdint.h>
 #include "legion.h"
-
+#include "realm.h"
+#include "legion_types.h"
 #include "default_mapper.h"
+#include "id.h"
 
 using namespace LegionRuntime::HighLevel;
 using namespace LegionRuntime::Accessor;
-using namespace LegionRuntime::Arrays;
+
+LegionRuntime::Logger::Category log_logging("logging");
 
 /*
- * In this example, we perform the same
- * daxpy computation as example 07.  While
- * the source code for the actual computation
- * between the two examples is identical, we 
- * show to create a custom mapper that changes 
- * the mapping of the computation onto the hardware.
+ * To illustrate task launches and futures in Legion
+ * we implement a program to compute the first N
+ * Fibonacci numbers.  While we note that this is not
+ * the fastest way to compute Fibonacci numbers, it
+ * is designed to showcase the functional nature of
+ * Legion tasks and futures.
  */
 
 enum TaskIDs {
   TOP_LEVEL_TASK_ID,
-  INIT_FIELD_TASK_ID,
-  DAXPY_TASK_ID,
-  CHECK_TASK_ID,
+  SENDER1_TASK_ID,
+  SENDER2_TASK_ID,
+  FILL1_TASK_ID,
+  FILL2_TASK_ID,
+  RECEIVER1_TASK_ID,
+  RECEIVER2_TASK_ID
 };
 
 enum FieldIDs {
-  FID_X,
-  FID_Y,
-  FID_Z,
-};
-
-enum {
-  SUBREGION_TUNABLE,
-};
-
-enum {
-  PARTITIONING_MAPPER_ID = 1,
+  FIELD
 };
 
 /*
@@ -109,64 +94,63 @@ enum {
 // In this example, we'll override four
 // of the mapping calls to illustrate
 // how they work.
-class AdversarialMapper : public DefaultMapper {
+class SenderReceiverMapper : public DefaultMapper {
 public:
-  AdversarialMapper(Machine machine, 
+  SenderReceiverMapper(Machine machine, 
       HighLevelRuntime *rt, Processor local);
 public:
   virtual void select_task_options(Task *task);
-  virtual void slice_domain(const Task *task, const Domain &domain,
-                            std::vector<DomainSplit> &slices);
-  virtual bool map_task(Task *task); 
+//  virtual void slice_domain(const Task *task, const Domain &domain,
+//                            std::vector<DomainSplit> &slices);
+//  virtual bool map_task(Task *task);
   virtual void notify_mapping_result(const Mappable *mappable);
+private:
+  // compute CPU index for a task from task's ID.
+  Processor task_cpu(Task*task, Processor old_proc) {
+    std::set<Processor> all_procs;
+    machine.get_all_processors(all_procs);
+    unsigned node = 0, cpu = 0;
+    unsigned max_node = 0;
+    for (std::set<Processor>::const_iterator it = all_procs.begin();
+            it != all_procs.end(); it++) {
+      Realm::ID cpuid(*it);
+      if (cpuid.node() > max_node)
+        max_node = cpuid.node();
+    }
+    switch (task->task_id) {
+      case SENDER1_TASK_ID: node = 0; break;
+      case SENDER2_TASK_ID: node = 1; break;
+      // cpu is the same for FILL tasks as for SENDER tasks.
+      case FILL1_TASK_ID: node = 0; break;
+      case FILL2_TASK_ID: node = 1; break;
+      case RECEIVER1_TASK_ID: node = 2; break;
+      case RECEIVER2_TASK_ID: node = 2; cpu = 1; break;
+      default:
+        log_logging.print("Unknown task id %x.\n",task->task_id);
+        return old_proc;
+    }
+    if (node > max_node) {
+      log_logging.print("Too high node index %d for task %x.\n",node,task->task_id);
+      node = max_node;
+    }
+    log_logging.print("task %x has node %d, cpu index %d.\n",task->task_id, node, cpu);
+    for (std::set<Processor>::const_iterator it = all_procs.begin();
+            it != all_procs.end(); it++) {
+      log_logging.print("considering cpu %llx.\n",it->id);
+      Realm::ID cpuid(*it);
+      if (it->kind() == Processor::LOC_PROC && cpuid.node() == node) { // our node - look for CPU.
+        if (cpu == 0) {
+          log_logging.print("assigned cpu %llx.\n",it->id);
+          return (*it);
+        }
+        cpu--;
+      }
+    }
+    printf("no processor for node %d, cpu %d.\n", node, cpu);
+    return old_proc;
+  }
 };
 
-class PartitioningMapper : public DefaultMapper {
-public:
-  PartitioningMapper(Machine machine,
-      HighLevelRuntime *rt, Processor local);
-public:
-  virtual int get_tunable_value(const Task *task,
-                                TunableID tid,
-                                MappingTagID tag);
-};
-
-// Mappers are created after the Legion runtime
-// starts but before the application begins 
-// executing.  To create mappers the application
-// registers a callback function for the runtime
-// to perform prior to beginning execution.  In
-// this example we call it the 'mapper_registration'
-// function.  (See below for where we register
-// this callback with the runtime.)  The callback
-// function must have this type, which allows the
-// runtime to pass the necessary paramterers in
-// for creating new mappers.
-//
-// In Legion, mappers are identified by a MapperID.
-// Zero is reserved for the DefaultMapper, but 
-// other mappers can replace it by using the 
-// 'replace_default_mapper' call.  Other mappers
-// can be registered with their own IDs using the
-// 'add_mapper' method call on the runtime.
-//
-// The model for Legion is that there should always
-// be one mapper for every processor in the system.
-// This guarantees that there is never contention
-// for the mappers because multiple processors need
-// to access the same mapper object.  When the
-// runtime invokes the 'mapper_registration' callback,
-// it gives a list of local processors which 
-// require a mapper if a new mapper class is to be
-// created.  In a multi-node setting, the runtime
-// passes in a subset of the processors for which
-// mappers need to be created on the local node.
-//
-// Here we override the DefaultMapper ID so that
-// all tasks that normally would have used the
-// DefaultMapper will now use our AdversarialMapper.
-// We create one new mapper for each processor
-// and register it with the runtime.
 void mapper_registration(Machine machine, HighLevelRuntime *rt,
                           const std::set<Processor> &local_procs)
 {
@@ -174,16 +158,14 @@ void mapper_registration(Machine machine, HighLevelRuntime *rt,
         it != local_procs.end(); it++)
   {
     rt->replace_default_mapper(
-        new AdversarialMapper(machine, rt, *it), *it);
-    rt->add_mapper(PARTITIONING_MAPPER_ID,
-        new PartitioningMapper(machine, rt, *it), *it);
+        new SenderReceiverMapper(machine, rt, *it), *it);
   }
 }
 
 // Here is the constructor for our adversial mapper.
 // We'll use the constructor to illustrate how mappers can
 // get access to information regarding the current machine.
-AdversarialMapper::AdversarialMapper(Machine m, 
+SenderReceiverMapper::SenderReceiverMapper(Machine m, 
                                      HighLevelRuntime *rt, Processor p)
   : DefaultMapper(m, rt, p) // pass arguments through to DefaultMapper
 {
@@ -205,11 +187,12 @@ AdversarialMapper::AdversarialMapper(Machine m,
   // only want to print out this information one time, so only
   // do it if we are the mapper for the first processor in the
   // list of all processors in the machine.
-  if ((*(all_procs.begin())) == local_proc)
+  unsigned this_node = Realm::ID(local_proc).node();
+  if (this_node == 0)
   {
     // Print out how many processors there are and each
     // of their kinds.
-    printf("There are %ld processors:\n", all_procs.size());
+    log_logging.print("There are %ld processors:\n", all_procs.size());
     for (std::set<Processor>::const_iterator it = all_procs.begin();
           it != all_procs.end(); it++)
     {
@@ -220,13 +203,13 @@ AdversarialMapper::AdversarialMapper(Machine m,
         // Latency-optimized cores (LOCs) are CPUs
         case Processor::LOC_PROC:
           {
-            printf("  Processor ID %x is CPU\n", it->id); 
+            log_logging.print("  Processor ID %llx is CPU\n", it->id); 
             break;
           }
         // Throughput-optimized cores (TOCs) are GPUs
         case Processor::TOC_PROC:
           {
-            printf("  Processor ID %x is GPU\n", it->id);
+            log_logging.print("  Processor ID %llx is GPU\n", it->id);
             break;
           }
         // Utility processors are helper processors for
@@ -234,7 +217,7 @@ AdversarialMapper::AdversarialMapper(Machine m,
         // should not be used for running application tasks
         case Processor::UTIL_PROC:
           {
-            printf("  Processor ID %x is utility\n", it->id);
+            log_logging.print("  Processor ID %llx is utility\n", it->id);
             break;
           }
         default:
@@ -245,7 +228,7 @@ AdversarialMapper::AdversarialMapper(Machine m,
     // on the target architecture and print out their info.
     std::set<Memory> all_mems;
     machine.get_all_memories(all_mems);
-    printf("There are %ld memories:\n", all_mems.size());
+    log_logging.print("There are %ld memories:\n", all_mems.size());
     for (std::set<Memory>::const_iterator it = all_mems.begin();
           it != all_mems.end(); it++)
     {
@@ -256,28 +239,28 @@ AdversarialMapper::AdversarialMapper(Machine m,
         // RDMA addressable memory when running with GASNet
         case Memory::GLOBAL_MEM:
           {
-            printf("  GASNet Global Memory ID %x has %ld KB\n", 
+            log_logging.print("  GASNet Global Memory ID %llx has %ld KB\n", 
                     it->id, memory_size_in_kb);
             break;
           }
         // DRAM on a single node
         case Memory::SYSTEM_MEM:
           {
-            printf("  System Memory ID %x has %ld KB\n",
+            log_logging.print("  System Memory ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // Pinned memory on a single node
         case Memory::REGDMA_MEM:
           {
-            printf("  Pinned Memory ID %x has %ld KB\n",
+            log_logging.print("  Pinned Memory ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // A memory associated with a single socket
         case Memory::SOCKET_MEM:
           {
-            printf("  Socket Memory ID %x has %ld KB\n",
+            log_logging.print("  Socket Memory ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
@@ -285,47 +268,48 @@ AdversarialMapper::AdversarialMapper(Machine m,
         // all GPUs on a single node
         case Memory::Z_COPY_MEM:
           {
-            printf("  Zero-Copy Memory ID %x has %ld KB\n",
+            log_logging.print("  Zero-Copy Memory ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // GPU framebuffer memory for a single GPU
         case Memory::GPU_FB_MEM:
           {
-            printf("  GPU Frame Buffer Memory ID %x has %ld KB\n",
+            log_logging.print("  GPU Frame Buffer Memory ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // Disk memory on a single node
         case Memory::DISK_MEM:
           {
-            printf("  Disk Memory ID %x has %ld KB\n",
+            log_logging.print("  Disk Memory ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // Block of memory sized for L3 cache
         case Memory::LEVEL3_CACHE:
           {
-            printf("  Level 3 Cache ID %x has %ld KB\n",
+            log_logging.print("  Level 3 Cache ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // Block of memory sized for L2 cache
         case Memory::LEVEL2_CACHE:
           {
-            printf("  Level 2 Cache ID %x has %ld KB\n",
+            log_logging.print("  Level 2 Cache ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         // Block of memory sized for L1 cache
         case Memory::LEVEL1_CACHE:
           {
-            printf("  Level 1 Cache ID %x has %ld KB\n",
+            log_logging.print("  Level 1 Cache ID %llx has %ld KB\n",
                     it->id, memory_size_in_kb);
             break;
           }
         default:
-          assert(false);
+            log_logging.print("  unknown type %d id %llx has %ld KB\n", kind,
+                    it->id, memory_size_in_kb);
       }
     }
 
@@ -343,7 +327,7 @@ AdversarialMapper::AdversarialMapper(Machine m,
     // using the 'get_visible_memories' method on the machine.
     std::set<Memory> vis_mems;
     machine.get_visible_memories(local_proc, vis_mems);
-    printf("There are %ld memories visible from processor %x\n",
+    log_logging.print("There are %ld memories visible from processor %llx\n",
             vis_mems.size(), local_proc.id);
     for (std::set<Memory>::const_iterator it = vis_mems.begin();
           it != vis_mems.end(); it++)
@@ -361,7 +345,7 @@ AdversarialMapper::AdversarialMapper(Machine m,
       // We should only have found 1 results since we
       // explicitly specified both values.
       assert(results == 1);
-      printf("  Memory %x has bandwidth %d and latency %d\n",
+      log_logging.print("  Memory %llx has bandwidth %d and latency %d\n",
               it->id, affinities[0].bandwidth, affinities[0].latency);
     }
   }
@@ -399,19 +383,17 @@ AdversarialMapper::AdversarialMapper(Machine m,
 //  choices for all options except the last one.  Here
 //  we choose a random processor in our system to 
 //  send the task to.
-void AdversarialMapper::select_task_options(Task *task)
+void SenderReceiverMapper::select_task_options(Task *task)
 {
   task->inline_task = false;
   task->spawn_task = false;
   task->map_locally = false;
   task->profile_task = false;
   task->task_priority = 0;
-  std::set<Processor> all_procs;
-  machine.get_all_processors(all_procs);
-  task->target_proc = 
-    DefaultMapper::select_random_processor(all_procs, Processor::LOC_PROC, machine);
+  task->target_proc = task_cpu(task, task->target_proc);
 }
 
+#if 0
 // The second call that we override is the slice_domain
 // method. The slice_domain call is used by the runtime
 // to query the mapper about the best way to distribute
@@ -433,7 +415,7 @@ void AdversarialMapper::select_task_options(Task *task)
 // a single point in them. This creates a tree of slices of
 // depth log(N) in the number of points in the domain with
 // each slice being sent to a random processor.
-void AdversarialMapper::slice_domain(const Task *task, const Domain &domain,
+void SenderReceiverMapper::slice_domain(const Task *task, const Domain &domain,
                                      std::vector<DomainSplit> &slices)
 {
   std::set<Processor> all_procs;
@@ -457,6 +439,7 @@ void AdversarialMapper::slice_domain(const Task *task, const Domain &domain,
       it->recurse = true;
   }
 }
+#endif
 
 // The next mapping call that we override is the map_task
 // mapper method. Once a task has been assigned to map on
@@ -486,8 +469,10 @@ void AdversarialMapper::slice_domain(const Task *task, const Domain &domain,
 // in a random order as the target set of memories, thereby
 // challenging the Legion runtime to maintain correctness
 // of data moved through random sets of memories.
-bool AdversarialMapper::map_task(Task *task)
+#if 0
+bool SenderReceiverMapper::map_task(Task *task)
 { 
+log_logging.print("called map_task\n");
   std::set<Memory> vis_mems;
   machine.get_visible_memories(task->target_proc, vis_mems);  
   assert(!vis_mems.empty());
@@ -512,6 +497,7 @@ bool AdversarialMapper::map_task(Task *task)
   // Report successful mapping results
   return true;
 }
+#endif
 
 // The last mapper call we override is the notify_mapping_result
 // call which is invoked by the runtime if the mapper indicated
@@ -522,7 +508,7 @@ bool AdversarialMapper::map_task(Task *task)
 // this example to record the memories in which physical instances
 // were mapped for each logical region of each task so we can
 // see that the assignment truly is random.
-void AdversarialMapper::notify_mapping_result(const Mappable *mappable)
+void SenderReceiverMapper::notify_mapping_result(const Mappable *mappable)
 {
   if (mappable->get_mappable_kind() == Mappable::TASK_MAPPABLE)
   {
@@ -530,7 +516,7 @@ void AdversarialMapper::notify_mapping_result(const Mappable *mappable)
     assert(task != NULL);
     for (unsigned idx = 0; idx < task->regions.size(); idx++)
     {
-      printf("Mapped region %d of task %s (ID %lld) to memory %x\n",
+      log_logging.print("Mapped region %d of task %s (ID %lld) to memory %llx\n",
               idx, task->variants->name, 
               task->get_unique_task_id(),
               task->regions[idx].selected_memory.id);
@@ -538,260 +524,177 @@ void AdversarialMapper::notify_mapping_result(const Mappable *mappable)
   }
 }
 
-PartitioningMapper::PartitioningMapper(Machine m,
-                                       HighLevelRuntime *rt,
-                                       Processor p)
-  : DefaultMapper(m, rt, p)
-{
-}
-
-int PartitioningMapper::get_tunable_value(const Task *task,
-                                          TunableID tid,
-                                          MappingTagID tag)
-{
-  if (tid == SUBREGION_TUNABLE)
-  {
-    const std::set<Processor> &cpu_procs = 
-      machine_interface.filter_processors(Processor::LOC_PROC);
-    return cpu_procs.size();
-  }
-  // Should never get here
-  assert(false);
-  return 0;
-}
-
-/*
- * Everything below here is the standard daxpy example
- * except for the registration of the callback function
- * for creating custom mappers which is explicitly commented
- * and the call to get_tunable_value to determine the number
- * of sub-regions.
- */
 void top_level_task(const Task *task,
                     const std::vector<PhysicalRegion> &regions,
                     Context ctx, HighLevelRuntime *runtime)
 {
-  int num_elements = 1024; 
-  {
+    int region_size = 16*1024*1024;
+
+    log_logging.print("Top level entered.\n");
     const InputArgs &command_args = HighLevelRuntime::get_input_args();
-    printf("command_args.argc %d\n",command_args.argc);
-    for (int i = 1; i < command_args.argc; i++)
+    for (int i = 0; i < command_args.argc; i++)
     {
-      if (!strcmp(command_args.argv[i],"-n"))
-        num_elements = atoi(command_args.argv[++i]);
+        if (strcmp("-n",command_args.argv[i]) == 0)
+        {
+            region_size = atoi(command_args.argv[i+1]);
+            break;
+        }
     }
+    assert(region_size > 0);
+
+    log_logging.print("Top level region size %d.\n", region_size);
+    runtime->execute_task(ctx, TaskLauncher(SENDER1_TASK_ID, TaskArgument(&region_size, sizeof(region_size))));
+    runtime->execute_task(ctx, TaskLauncher(SENDER2_TASK_ID, TaskArgument(&region_size, sizeof(region_size))));
+}
+
+void fill_task(const Task *task,
+    const std::vector<PhysicalRegion> &regions,
+                   Context ctx, HighLevelRuntime *runtime)
+{
+  log_logging.print("fill task, id %d\n", task->task_id);
+
+  assert(task->arglen == sizeof(int));
+
+  const int start = *((const int*)task->args);
+log_logging.print("start %d.\n",start);
+
+  assert(regions.size() == 1);
+log_logging.print("assert(regions.size() == 1);\n");
+  assert(task->regions.size() == 1);
+log_logging.print("assert(task->regions.size() == 1);\n");
+
+
+  RegionAccessor<AccessorType::Generic, int8_t> acc_f = 
+    regions[0].get_field_accessor(FIELD).typeify<int8_t>();
+
+  Domain dom = runtime->get_index_space_domain(ctx, 
+      task->regions[0].region.get_index_space());
+
+  Rect<1> rect = dom.get_rect<1>();
+
+  int sum = 0;
+  int i = start;
+
+  for (GenericPointInRectIterator<1> pir(rect); pir; pir++)
+  {
+    sum += i;
+    acc_f.write(DomainPoint::from_point<1>(pir.p), i);
   }
-  int num_subregions = runtime->get_tunable_value(ctx, SUBREGION_TUNABLE, 
-                                                  PARTITIONING_MAPPER_ID);
 
-  printf("Running daxpy for %d elements...\n", num_elements);
-  printf("Partitioning data into %d sub-regions...\n", num_subregions);
+  log_logging.print("sum %d.\n", sum);
+} /* fill_task */
 
-  Rect<1> elem_rect(Point<1>(0),Point<1>(num_elements-1));
+void sender_task(const Task *task,
+                   const std::vector<PhysicalRegion> &regions,
+                   Context ctx, HighLevelRuntime *runtime)
+{
+  // The 'TaskArgument' value passed to a task and its size
+  // in bytes is available in the 'args' and 'arglen' fields
+  // on the 'Task' object.
+  //
+  // Since there is no type checking when writing to
+  // the runtime API (a benefit provided by our Legion compiler)
+  // we encourage programmers to check that they are getting
+  // what they expect in their values.
+  assert(task->arglen == sizeof(int));
+
+  const int region_size = *((const int*)task->args);
+
+  log_logging.print("sender entered, id %d, region size %d.\n", task->task_id, region_size);
+
+  int start = 1;
+  int receiver_id = RECEIVER1_TASK_ID;
+  int fill_id = FILL1_TASK_ID;
+  if (task->task_id == SENDER2_TASK_ID) {
+    receiver_id = RECEIVER2_TASK_ID;
+    fill_id = FILL2_TASK_ID;
+    start = 2;
+  }
+  log_logging.print("sender, receiver_id %d, fill_id %d.\n", receiver_id, fill_id);
+
+  Rect<1> elem_rect(Point<1>(0),Point<1>(region_size-1));
   IndexSpace is = runtime->create_index_space(ctx, 
                           Domain::from_rect<1>(elem_rect));
-  FieldSpace input_fs = runtime->create_field_space(ctx);
+  FieldSpace main_fs = runtime->create_field_space(ctx);
   {
     FieldAllocator allocator = 
-      runtime->create_field_allocator(ctx, input_fs);
-    allocator.allocate_field(sizeof(double),FID_X);
-    allocator.allocate_field(sizeof(double),FID_Y);
+      runtime->create_field_allocator(ctx, main_fs);
+    allocator.allocate_field(sizeof(int8_t),FIELD);
   }
-  FieldSpace output_fs = runtime->create_field_space(ctx);
-  {
-    FieldAllocator allocator = 
-      runtime->create_field_allocator(ctx, output_fs);
-    allocator.allocate_field(sizeof(double),FID_Z);
-  }
-  LogicalRegion input_lr = runtime->create_logical_region(ctx, is, input_fs);
-  LogicalRegion output_lr = runtime->create_logical_region(ctx, is, output_fs);
+  LogicalRegion main_lr = runtime->create_logical_region(ctx, is, main_fs);
 
-  Rect<1> color_bounds(Point<1>(0),Point<1>(num_subregions-1));
-  Domain color_domain = Domain::from_rect<1>(color_bounds);
+  TaskArgument fill_start = TaskArgument(&start, sizeof(start));
+  TaskLauncher fill_launcher(fill_id, fill_start);
+  fill_launcher.add_region_requirement(RegionRequirement(main_lr, WRITE_ONLY, ATOMIC, main_lr));
+  fill_launcher.add_field(0, FIELD);
+  runtime->execute_task(ctx, fill_launcher);
 
-  IndexPartition ip;
-  if ((num_elements % num_subregions) != 0)
-  {
-    const int lower_bound = num_elements/num_subregions;
-    const int upper_bound = lower_bound+1;
-    const int number_small = num_subregions - (num_elements % num_subregions);
-    DomainColoring coloring;
-    int index = 0;
-    for (int color = 0; color < num_subregions; color++)
-    {
-      int num_elmts = color < number_small ? lower_bound : upper_bound;
-      assert((index+num_elmts) <= num_elements);
-      Rect<1> subrect(Point<1>(index),Point<1>(index+num_elmts-1));
-      coloring[color] = Domain::from_rect<1>(subrect);
-      index += num_elmts;
-    }
-    ip = runtime->create_index_partition(ctx, is, color_domain, 
-                                      coloring, true/*disjoint*/);
-  }
-  else
-  { 
-    Blockify<1> coloring(num_elements/num_subregions);
-    ip = runtime->create_index_partition(ctx, is, coloring);
-  }
+  TaskArgument ta = TaskArgument();
+  TaskLauncher launcher(receiver_id, ta);
+  launcher.add_region_requirement(RegionRequirement(main_lr, READ_ONLY, ATOMIC, main_lr));
+  launcher.add_field(0, FIELD);
+  runtime->execute_task(ctx, launcher);
 
-  LogicalPartition input_lp = runtime->get_logical_partition(ctx, input_lr, ip);
-  LogicalPartition output_lp = runtime->get_logical_partition(ctx, output_lr, ip);
-
-  Domain launch_domain = color_domain; 
-  ArgumentMap arg_map;
-
-  IndexLauncher init_launcher(INIT_FIELD_TASK_ID, launch_domain, 
-                              TaskArgument(NULL, 0), arg_map);
-  init_launcher.add_region_requirement(
-      RegionRequirement(input_lp, 0/*projection ID*/, 
-                        WRITE_DISCARD, EXCLUSIVE, input_lr));
-  init_launcher.add_field(0, FID_X);
-  runtime->execute_index_space(ctx, init_launcher);
-
-  init_launcher.region_requirements[0].privilege_fields.clear();
-  init_launcher.region_requirements[0].instance_fields.clear();
-  init_launcher.add_field(0, FID_Y);
-  runtime->execute_index_space(ctx, init_launcher);
-
-  const double alpha = drand48();
-  IndexLauncher daxpy_launcher(DAXPY_TASK_ID, launch_domain,
-                TaskArgument(&alpha, sizeof(alpha)), arg_map);
-  daxpy_launcher.add_region_requirement(
-      RegionRequirement(input_lp, 0/*projection ID*/,
-                        READ_ONLY, EXCLUSIVE, input_lr));
-  daxpy_launcher.add_field(0, FID_X);
-  daxpy_launcher.add_field(0, FID_Y);
-  daxpy_launcher.add_region_requirement(
-      RegionRequirement(output_lp, 0/*projection ID*/,
-                        WRITE_DISCARD, EXCLUSIVE, output_lr));
-  daxpy_launcher.add_field(1, FID_Z);
-  runtime->execute_index_space(ctx, daxpy_launcher);
-                    
-  TaskLauncher check_launcher(CHECK_TASK_ID, TaskArgument(&alpha, sizeof(alpha)));
-  check_launcher.add_region_requirement(
-      RegionRequirement(input_lr, READ_ONLY, EXCLUSIVE, input_lr));
-  check_launcher.region_requirements[0].add_field(FID_X);
-  check_launcher.region_requirements[0].add_field(FID_Y);
-  check_launcher.add_region_requirement(
-      RegionRequirement(output_lr, READ_ONLY, EXCLUSIVE, output_lr));
-  check_launcher.region_requirements[1].add_field(FID_Z);
-  runtime->execute_task(ctx, check_launcher);
-
-  runtime->destroy_logical_region(ctx, input_lr);
-  runtime->destroy_logical_region(ctx, output_lr);
-  runtime->destroy_field_space(ctx, input_fs);
-  runtime->destroy_field_space(ctx, output_fs);
+  runtime->destroy_logical_region(ctx, main_lr);
+  runtime->destroy_field_space(ctx, main_fs);
   runtime->destroy_index_space(ctx, is);
+
 }
 
-void init_field_task(const Task *task,
-                     const std::vector<PhysicalRegion> &regions,
-                     Context ctx, HighLevelRuntime *runtime)
+void receiver_task(const Task *task,
+             const std::vector<PhysicalRegion> &regions,
+             Context ctx, HighLevelRuntime *runtime)
 {
-  assert(regions.size() == 1); 
+  log_logging.print("receiver task, task id %d.\n", task->task_id);
+
+  assert(regions.size() == 1);
+log_logging.print("assert(regions.size() == 1);\n");
   assert(task->regions.size() == 1);
-  assert(task->regions[0].privilege_fields.size() == 1);
+log_logging.print("assert(task->regions.size() == 1);\n");
 
-  FieldID fid = *(task->regions[0].privilege_fields.begin());
-  const int point = task->index_point.point_data[0];
-  printf("Initializing field %d for block %d...\n", fid, point);
 
-  RegionAccessor<AccessorType::Generic, double> acc = 
-    regions[0].get_field_accessor(fid).typeify<double>();
+  RegionAccessor<AccessorType::Generic, int8_t> acc_f = 
+    regions[0].get_field_accessor(FIELD).typeify<int8_t>();
 
   Domain dom = runtime->get_index_space_domain(ctx, 
       task->regions[0].region.get_index_space());
+
   Rect<1> rect = dom.get_rect<1>();
+
+  int sum = 0;
+
   for (GenericPointInRectIterator<1> pir(rect); pir; pir++)
   {
-    acc.write(DomainPoint::from_point<1>(pir.p), drand48());
+    sum += acc_f.read(DomainPoint::from_point<1>(pir.p));
   }
+
+  log_logging.print("sum %d.\n", sum);
+
 }
 
-void daxpy_task(const Task *task,
-                const std::vector<PhysicalRegion> &regions,
-                Context ctx, HighLevelRuntime *runtime)
-{
-  assert(regions.size() == 2);
-  assert(task->regions.size() == 2);
-  assert(task->arglen == sizeof(double));
-  const double alpha = *((const double*)task->args);
-  const int point = task->index_point.point_data[0];
-
-  RegionAccessor<AccessorType::Generic, double> acc_x = 
-    regions[0].get_field_accessor(FID_X).typeify<double>();
-  RegionAccessor<AccessorType::Generic, double> acc_y = 
-    regions[0].get_field_accessor(FID_Y).typeify<double>();
-  RegionAccessor<AccessorType::Generic, double> acc_z = 
-    regions[1].get_field_accessor(FID_Z).typeify<double>();
-  printf("Running daxpy computation with alpha %.8g for point %d...\n", 
-          alpha, point);
-
-  Domain dom = runtime->get_index_space_domain(ctx, 
-      task->regions[0].region.get_index_space());
-  Rect<1> rect = dom.get_rect<1>();
-  for (GenericPointInRectIterator<1> pir(rect); pir; pir++)
-  {
-    double value = alpha * acc_x.read(DomainPoint::from_point<1>(pir.p)) + 
-                           acc_y.read(DomainPoint::from_point<1>(pir.p));
-    acc_z.write(DomainPoint::from_point<1>(pir.p), value);
-  }
-}
-
-void check_task(const Task *task,
-                const std::vector<PhysicalRegion> &regions,
-                Context ctx, HighLevelRuntime *runtime)
-{
-  assert(regions.size() == 2);
-  assert(task->regions.size() == 2);
-  assert(task->arglen == sizeof(double));
-  const double alpha = *((const double*)task->args);
-  RegionAccessor<AccessorType::Generic, double> acc_x = 
-    regions[0].get_field_accessor(FID_X).typeify<double>();
-  RegionAccessor<AccessorType::Generic, double> acc_y = 
-    regions[0].get_field_accessor(FID_Y).typeify<double>();
-  RegionAccessor<AccessorType::Generic, double> acc_z = 
-    regions[1].get_field_accessor(FID_Z).typeify<double>();
-  printf("Checking results...");
-  Domain dom = runtime->get_index_space_domain(ctx, 
-      task->regions[0].region.get_index_space());
-  Rect<1> rect = dom.get_rect<1>();
-  bool all_passed = true;
-  for (GenericPointInRectIterator<1> pir(rect); pir; pir++)
-  {
-    double expected = alpha * acc_x.read(DomainPoint::from_point<1>(pir.p)) + 
-                           acc_y.read(DomainPoint::from_point<1>(pir.p));
-    double received = acc_z.read(DomainPoint::from_point<1>(pir.p));
-    // Probably shouldn't check for floating point equivalence but
-    // the order of operations are the same should they should
-    // be bitwise equal.
-    if (expected != received)
-      all_passed = false;
-  }
-  if (all_passed)
-    printf("SUCCESS!\n");
-  else
-    printf("FAILURE!\n");
-}
-
+char buf[1024];
 int main(int argc, char **argv)
 {
+  setvbuf(stdout, buf, _IONBF, sizeof(buf));
   HighLevelRuntime::set_top_level_task_id(TOP_LEVEL_TASK_ID);
   HighLevelRuntime::register_legion_task<top_level_task>(TOP_LEVEL_TASK_ID,
       Processor::LOC_PROC, true/*single*/, false/*index*/);
-  HighLevelRuntime::register_legion_task<init_field_task>(INIT_FIELD_TASK_ID,
-      Processor::LOC_PROC, true/*single*/, true/*index*/);
-  HighLevelRuntime::register_legion_task<daxpy_task>(DAXPY_TASK_ID,
-      Processor::LOC_PROC, true/*single*/, true/*index*/);
-  HighLevelRuntime::register_legion_task<check_task>(CHECK_TASK_ID,
-      Processor::LOC_PROC, true/*single*/, true/*index*/);
+  HighLevelRuntime::register_legion_task<fill_task>(FILL1_TASK_ID,
+      Processor::LOC_PROC, true/*single*/, false/*index*/);
+  HighLevelRuntime::register_legion_task<fill_task>(FILL2_TASK_ID,
+      Processor::LOC_PROC, true/*single*/, false/*index*/);
+  HighLevelRuntime::register_legion_task<sender_task>(SENDER1_TASK_ID,
+      Processor::LOC_PROC, true/*single*/, false/*index*/);
+  HighLevelRuntime::register_legion_task<sender_task>(SENDER2_TASK_ID,
+      Processor::LOC_PROC, true/*single*/, false/*index*/);
+  HighLevelRuntime::register_legion_task<receiver_task>(RECEIVER1_TASK_ID,
+      Processor::LOC_PROC, true/*single*/, false/*index*/, 
+      AUTO_GENERATE_ID, TaskConfigOptions(true/*leaf*/), "receiver1_task");
+  HighLevelRuntime::register_legion_task<receiver_task>(RECEIVER2_TASK_ID,
+      Processor::LOC_PROC, true/*single*/, false/*index*/, 
+      AUTO_GENERATE_ID, TaskConfigOptions(true/*leaf*/), "receiver2_task");
 
-  // Here is where we register the callback function for 
-  // creating custom mappers.
   HighLevelRuntime::set_registration_callback(mapper_registration);
-
-  printf("argc %d\n",argc);
 
   return HighLevelRuntime::start(argc, argv);
 }
-

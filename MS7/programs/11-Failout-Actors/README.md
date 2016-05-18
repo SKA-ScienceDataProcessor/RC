@@ -9,3 +9,4 @@ Documentation is [here](https://docs.google.com/document/d/1qK4YqM_avtN62ijsy_3F
 Implementation
 --------------
 
+No Legion support for failout right now, so - unimplementable.

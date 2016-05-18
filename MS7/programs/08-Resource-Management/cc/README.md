@@ -9,8 +9,4 @@ Documentation is [here](https://docs.google.com/document/d/1qK4YqM_avtN62ijsy_3F
 Implementation
 --------------
 
-=== C++ version
-
-C++ version of program resides in cc/ directory.
-
-=== Regent version
+Have to see whether it is possible to use GASnet active messaging from Legion.

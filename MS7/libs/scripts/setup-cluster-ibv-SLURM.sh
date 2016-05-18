@@ -4,7 +4,7 @@
 
 # Enabling "unofficial bash strict mode".
 # Errors are: non-zero exit codes, reference to unset vars and something else.
-set -eou
+set -euo pipefail
 
 # Check for gcc version.
 (gcc -v |& egrep "^gcc version 4.9") || (echo "needs gcc 4.9; please execute 'module load gcc/4.9.2' before running"; exit 1)
@@ -68,19 +68,20 @@ cd $BUILDDIR
 # it has config for the Cambridge cluster.
 # It enables MPI, UDP (for local run), IBV (for cluster), disables MXM
 # (also available on cluster).
-clonepull https://github.com/SKA-ScienceDataProcessor/gasnet.git gasnet
+clonepull https://github.com/SKA-ScienceDataProcessor/gasnet.git gasnet-udp
 
-# Build it for default config - cambridge-wilkes-ibv.
-cd gasnet
-if ["$with_ibv" == "1"] ; then
-    ICTYPE=cambridge-wilkes-ibv make
-else
-    ICTYPE=cambridge-wilkes make
-fi
+# We always build with UDP.
+cd gasnet-udp
+ICTYPE=cambridge-wilkes make
 cd ..
 
-export GASNET_ROOT="$PWD/gasnet/release"
-export GASNET_BIN="$GASNET_ROOT/bin"
+# Build for IBV
+if [ "$with_ibv" == "1" ] ; then
+    clonepull gasnet-udp gasnet-ibv
+    cd gasnet-ibv
+    ICTYPE=cambridge-wilkes-ibv make
+    cd ..
+fi
 
 # -- Terra ---------------------------------------------------------------------
 # Terra also unavailable on cluster.
@@ -104,6 +105,9 @@ export TERRA_DIR=$BUILDDIR/terra/release
 # Executables/libraries build with IBV conduit may or may not use UDP conduit.
 # So we build two versions separately.
 
+# Enable Legion Spy.
+export CC_FLAGS="-DDEBUG"
+
 # We always build with UDP - even cluster development requires some experimentation outside of cluster nodes.
 clonepull https://github.com/SKA-ScienceDataProcessor/legion.git Legion-udp
 
@@ -111,6 +115,9 @@ clonepull https://github.com/SKA-ScienceDataProcessor/legion.git Legion-udp
 cd Legion-udp/language
 
 # Running the installation, enabling the GASnet.
+export GASNET_ROOT="$BUILDDIR/gasnet-udp/release"
+export GASNET="$GASNET_ROOT"
+export GASNET_BIN="$GASNET_ROOT/bin"
 CONDUIT=udp ./install.py --with-terra=$TERRA_DIR --gasnet || exit 1
 
 # Up from Regent.
@@ -118,16 +125,19 @@ cd $BUILDDIR
 
 # We build with IBV when not asked not to.
 if [ "$with_ibv" == "1" ] ; then
-clonepull Legion-udp Legion-ibv
+  export GASNET_ROOT="$BUILDDIR/gasnet-ibv/release"
+  export GASNET="$GASNET_ROOT"
+  export GASNET_BIN="$GASNET_ROOT/bin"
+  clonepull Legion-udp Legion-ibv
 
-# Go to Regent place.
-cd Legion-ibv/language
+  # Go to Regent place.
+  cd Legion-ibv/language
 
-# Running the installation, enabling the GASnet.
-CONDUIT=ibv ./install.py --with-terra=$TERRA_DIR --gasnet || exit 1
+  # Running the installation, enabling the GASnet.
+  CONDUIT=ibv ./install.py --with-terra=$TERRA_DIR --gasnet || exit 1
 
-# Up from Regent.
-cd $BUILDDIR
+  # Up from Regent.
+  cd $BUILDDIR
 fi
 
 # Configuration of Makefile variables.

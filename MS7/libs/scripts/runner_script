@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # Runner script for MS7 programs.
 
 # Parse command line.
@@ -8,7 +10,11 @@ nodes=1
 tasks=1
 net=""
 mem=""
+gpu=""
+timebound="00:01:00"
 threads=1
+program=$0
+original_arguments=$*
 usage="usage: $0 [-[-]nodes=nodes to use] [-[-]tasks=tasks to run] [-[-]threads=CPU cores to allocate per task] [-[-]mem=MB per task] [--] [other arguments]"
 while (($#)); do
     arg=$1
@@ -30,7 +36,15 @@ while (($#)); do
             shift
             ;;
         -mem=*|--mem=*)
-            mem=="${arg#*=}"
+            mem="${arg#*=}"
+            shift
+            ;;
+        -gpu=*|--gpu=*)
+            gpu="${arg#*=}"
+            shift
+            ;;
+        -time=*|--time=*)
+            timebound="${arg#*=}"
             shift
             ;;
         -h|--help)
@@ -43,7 +57,7 @@ while (($#)); do
             ;;
         -*)
             echo "invalid option $arg"
-            echo "(use -- to delimite RT and program arguments)"
+            echo "(use -- to delimite launcher and program arguments)"
             echo ""
             echo $usage
             exit 1
@@ -53,16 +67,47 @@ while (($#)); do
             ;;
     esac
 done
+program_args="$*"
 
 # Execute command
 function run {
+
+    # Export two variables for command and arguments. They will be used in the
+    # SLURM and amudprun launchers below.
+    export SDP_LAUNCH_COMMAND="$1"
+    if [ -n "$mem" ] ; then
+      echo "setting mem"
+      program_args="-ll:gsize $mem $program_args"
+    fi
+    export SDP_LAUNCH_ARGUMENTS="$program_args"
+    export SDP_MEM_LIMIT="$mem"
+
+    cmdline="$program $program_args"
     # Select between srun/amudprun.
     case "$net" in
-        )
-            echo "running with amudprun"
-            ;;
         ibv)
-            echo "running with IB."
+            if [ -n "$gpu" ] ; then
+                # XXX is it right way?
+                echo "selecting GPUs is not supported right now!"
+                exit 1
+            fi
+            export SDP_LAUNCH_COMMAND="$SDP_LAUNCH_COMMAND-ibv"
+            sbatch --job-name="SDP: $SDP_LAUNCH_COMMAND" --nodes=$nodes --ntasks=$tasks --cpus-per-task=$threads --time=$timebound $SDP_SCRIPT_DIR/slurm_submit.wilkes.sdp
+            ;;
+        "")
+            # Check arguments for local run.
+
+            # nodes == 1
+            if [ "$nodes" -ne "1" ] ; then
+                echo "number of nodes for local run should be 1."
+                exit 1
+            fi
+
+            # setup env for amudprun.
+            export CSPAWN_CMD="$SDP_SCRIPT_DIR/custom_spawner %N %C"
+
+            # Execute!
+            $SDP_BUILDDIR/gasnet-udp/release/bin/amudprun -n $tasks -spawn L $program-local $program_args
             ;;
         *)
             echo "invalid net '$net'"
