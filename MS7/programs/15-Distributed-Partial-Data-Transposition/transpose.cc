@@ -54,7 +54,7 @@ void top_level_task(const Task *task,
                     Context ctx, HighLevelRuntime *runtime)
 {
   int num_elements = 50; 
-  int num_subregions = 50; //num_elements;
+  int num_subregions = 5; //num_elements;
   printf("Running vector transpose for %d elements...\n", num_elements);
   printf("Partitioning data into %d sub-regions...\n", num_subregions);
 
