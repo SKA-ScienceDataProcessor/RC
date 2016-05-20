@@ -26,6 +26,13 @@
 #define TRACE(x)
 #endif
 
+#define __USE_COORD_T
+
+#ifdef __USE_COORD_T
+typedef coord_t geom_t;
+#else
+typedef int geom_t;
+#endif
 
 using namespace LegionRuntime::HighLevel;
 using namespace LegionRuntime::Accessor;
@@ -59,8 +66,9 @@ void top_level_task(const Task *task,
   printf("Partitioning data into %d sub-regions...\n", num_subregions);
 
   // Create our logical regions using the same schemas as earlier examples
-  int lo[2]={0,0};
-  int hi[2];
+  geom_t lo[2]={0,0};
+  geom_t hi[2];
+
   hi[0]=num_elements-1;
   hi[1]=num_elements-1;
   Point<2> po_lo(lo);
@@ -113,14 +121,14 @@ void top_level_task(const Task *task,
   //assert(num_elmts == 1);
   for(int i=0; i< num_subregions; i++){
 	  for(int j=0; j<num_subregions; j++){
-		  int g_lo[2];
+		  geom_t g_lo[2];
 		  g_lo[0] = i*num_elmts;
 		  g_lo[1] = j*num_elmts;
-		  int g_hi[2];
+		  geom_t g_hi[2];
 		  g_hi[0] = g_lo[0] +num_elmts-1;
 		  g_hi[1] = g_lo[1] +num_elmts-1;
 		  Rect<2> subrect((Point<2>(g_lo)),(Point<2>(g_hi)));
-		  int x[2];
+		  geom_t x[2];
 		  x[0]=i;
 		  x[1]=j;
 		  coloring[(DomainPoint::from_point<2>(Point<2>(x)))] = Domain::from_rect<2>(subrect);
@@ -152,7 +160,7 @@ void top_level_task(const Task *task,
   for (int i = 0; i < num_subregions; i++)
     for (int j = 0; j < num_subregions; j++)
     { 
-	    int x[2];
+	    geom_t x[2];
 	    x[0]=i;
 	    x[1]=j;
      DomainPoint point = DomainPoint::from_point<2>(Point<2>(x));
@@ -197,7 +205,7 @@ void top_level_task(const Task *task,
   for (int i = 0; i < num_subregions; i++)
     for (int j = 0; j < num_subregions; j++)
     {
-	    int x[2];
+	    geom_t x[2];
 	    x[0]=i;
 	    x[1]=j;
      DomainPoint point = DomainPoint::from_point<2>(Point<2>(x));
@@ -327,12 +335,16 @@ void transpose_task(const Task *task,
   {
     int value = acc_a.read(DomainPoint::from_point<2>(pir.p));
 #if 1
-    int x[2];
+    geom_t x[2];
     x[0] = pir.p[1];
     x[1] = pir.p[0];
     int value_old = acc_b.read(DomainPoint::from_point<2>(Point<2>(x)));
     acc_b.write(DomainPoint::from_point<2>(Point<2>(x)), value);
+#ifdef __USE_COORD_T
+    TRACE(("Swapping: Writing value %d (%lld %lld) on top of %d (%lld %lld)\n",
+#else
     TRACE(("Swapping: Writing value %d (%d %d) on top of %d (%d %d)\n",
+#endif
 		    value, pir.p[0], pir.p[1],
 		    value_old, x[0], x[1]));
     int res = acc_b.read(DomainPoint::from_point<2>(Point<2>(x)));
@@ -370,11 +382,15 @@ void check_task(const Task *task,
   for (GenericPointInRectIterator<2> pir(rect); pir; pir++)
   {
     int expected =  acc_a.read(DomainPoint::from_point<2>(pir.p));
-    int x[2];
+    geom_t x[2];
     x[0]= pir.p[1];
     x[1]= pir.p[0];
     int received = acc_b.read(DomainPoint::from_point<2>(Point<2>(x)));
+#ifdef __USE_COORD_T
+    TRACE(("A[%lld,%lld] is %d and B[%lld,%lld] is %d\n",pir.p[0],pir.p[1],expected,x[0],x[1],received));
+#else
     TRACE(("A[%d,%d] is %d and B[%d,%d] is %d\n",pir.p[0],pir.p[1],expected,x[0],x[1],received));
+#endif
     if (expected != received)
       all_passed = false;
   }
