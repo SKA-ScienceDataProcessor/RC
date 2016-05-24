@@ -16,6 +16,8 @@ terra main()
     sfree(hname)
     hname = hostlist_shift(hl)
   end
+  hostlist_destroy(hl)
+
 end
 
 import "regent"
