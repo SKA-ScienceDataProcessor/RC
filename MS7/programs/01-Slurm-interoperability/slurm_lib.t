@@ -51,5 +51,5 @@ terra slurm_topology_addr_pattern() : rawstring return get_env("SLURM_TOPOLOGY_A
 -- host list handling
 terra slurm_job_nodelist() : c.hostlist_t return c.slurm_hostlist_create(slurm_job_nodelist_()) end
 terra hostlist_shift(hl : c.hostlist_t) : rawstring return c.slurm_hostlist_shift(hl) end
-terra sfree(s : rawstring) c.free(s) end
-terra hostlist_destroy(hl : c.hostlist_t) c.slurm_hostlist_destroy() end
+terra sfree(s : rawstring) : {} c.free(s) end
+terra hostlist_destroy(hl : c.hostlist_t) : {} c.slurm_hostlist_destroy(hl) end
