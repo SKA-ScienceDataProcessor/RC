@@ -4,6 +4,8 @@
 
 EXEC = bandwidth-latency
 
-SRCS = bandwidth-latency.rg bandwidth-latency.cc
+LIBRARY = bandwidth-latency-support
 
-include ../../../libs/scripts/build-rules.mk
+SRCS = bandwidth-latency.rg bandwidth-latency-support.cc
+
+include ../../libs/scripts/build-rules.mk

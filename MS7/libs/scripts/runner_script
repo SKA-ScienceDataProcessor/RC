@@ -116,4 +116,51 @@ function run {
     esac
 }
 
+function runregent {
+    # Export two variables for command and arguments. They will be used in the
+    # SLURM and amudprun launchers below.
+    if [ -n "$mem" ] ; then
+      echo "setting mem"
+      program_args="-ll:gsize $mem $program_args"
+    fi
+    export SDP_LAUNCH_ARGUMENTS="$2.rg $program_args"
+    export SDP_MEM_LIMIT="$mem"
+
+    cmdline="$program $program_args"
+    # Select between srun/amudprun.
+    case "$net" in
+        ibv)
+            if [ -n "$gpu" ] ; then
+                # XXX is it right way?
+                echo "selecting GPUs is not supported right now!"
+                exit 1
+            fi
+            export SDP_SUPPORT_LIBRARY=./$1-ibv.so
+            export SDP_LAUNCH_COMMAND="$SDP_BUILDDIR/Legion-ibv/language/regent.py"
+
+            sbatch --job-name="SDP Regent run: $1" --nodes=$nodes --ntasks=$tasks --cpus-per-task=$threads --time=$timebound $SDP_SCRIPT_DIR/slurm_submit.wilkes.sdp
+            ;;
+        "")
+            # Check arguments for local run.
+
+            # nodes == 1
+            if [ "$nodes" -ne "1" ] ; then
+                echo "number of nodes for local run should be 1."
+                exit 1
+            fi
+
+            # setup env for amudprun.
+            export CSPAWN_CMD="$SDP_SCRIPT_DIR/custom_spawner %N %C"
+
+            # Execute!
+            export SDP_SUPPORT_LIBRARY=./$1-local.so
+            $SDP_BUILDDIR/gasnet-udp/release/bin/amudprun -n $tasks -spawn L $SDP_BUILDDIR/Legion-udp/language/regent.py $program.rg $program_args
+            ;;
+        *)
+            echo "invalid net '$net'"
+            exit 1
+            ;;
+    esac
+}
+
 # Add invocation of run here.
