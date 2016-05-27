@@ -14,7 +14,9 @@ task receive_change(is : ispace(int1d), r : region(is, int))
 where writes(r)
 do
     support.node_log("received")
-    r[0] = 1
+    for i in is do
+        r[i] = 1
+    end
     support.node_log("modified, sent back")
 end
 
@@ -26,10 +28,13 @@ task top_level()
         fill (r,0)
         support.node_log("sending message size %d",size)
         receive_change(is, r)
-        if r[0] == 1 then
-            support.node_log("received back")
-        else
-            support.node_log("invalid data received")
+        for j in is do
+            if r[j] == 1 then
+                support.node_log("received back")
+            else
+                support.node_log("invalid data received")
+            end
+            break
         end
         size = size * 2
     end

@@ -47,20 +47,15 @@ private:
     std::set<Processor> all_procs;
     machine.get_all_processors(all_procs);
     std::string taskname(task->variants->name);
-    int cpu = -1;
-    int i = -1;
-    int j = -1;
-    int* args = (int*)task->args;
-    if (task->arglen >= sizeof(int)) {
-        cpu = args[0];
-    }
-    if (task -> arglen >= sizeof(int)*2) {
-        i = args[1];
-    }
-    if (task -> arglen >= sizeof(int)*3) {
-        i = args[2];
-    }
-    if (equal_to(taskname, "level_0_task")) {
+    if (equal_to(taskname, "receive_change")) {
+      for (std::set<Processor>::const_iterator it = all_procs.begin();
+            it != all_procs.end(); it++) {
+        log_logging.print("considering cpu %llx.\n",it->id);
+        Realm::ID cpuid(*it);
+        if (it->kind() == Processor::LOC_PROC && cpuid.node() == 1) { // selecting second node.
+            return (*it);
+        }
+      }
     }
     return old_proc;
   }
