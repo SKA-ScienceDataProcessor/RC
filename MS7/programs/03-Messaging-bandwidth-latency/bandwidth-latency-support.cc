@@ -31,6 +31,7 @@ public:
   BandwidthLatencyMapper(Machine machine, 
       HighLevelRuntime *rt, Processor local) : DefaultMapper(machine, rt, local)
   {
+fprintf(stderr, "logging level %d\n", log_logging.get_level());
   }
 public:
   virtual void select_task_options(Task *task);

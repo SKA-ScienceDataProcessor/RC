@@ -21,8 +21,8 @@ do
 end
 
 task top_level()
-    var size = 1048576
-    for i=20, 27 do
+    var size = 1024
+    for i=10, 27 do
         var is = ispace(int1d, size)
         var r = region (is, int)
         fill (r,0)
