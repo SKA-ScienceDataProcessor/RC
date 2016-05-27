@@ -135,7 +135,7 @@ $(LIBRARY)-ibv.so: $(LIBRARY_SRCS)
 	rm -f *.o liblegion.a librealm.a
 	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS) -fPIC" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
 	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet-ibv/release GEN_SRC="$(LIBRARY_SRCS)" LD_FLAGS="$(LD_FLAGS) -shared" \
-	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime OUTFILE=$(LIBRARY)-ibv \
+	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime OUTFILE=$(LIBRARY)-ibv.so \
 	make -j4 -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk
 endif
 
