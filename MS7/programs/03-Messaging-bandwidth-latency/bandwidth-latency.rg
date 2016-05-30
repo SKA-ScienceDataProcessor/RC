@@ -45,4 +45,3 @@ support.register_mappers()
 
 -- start main work.
 regentlib.start(top_level)
-
