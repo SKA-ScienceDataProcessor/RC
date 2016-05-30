@@ -135,7 +135,7 @@ ifeq ($(SDP_USE_IBV),1)
 LIBRARIES += $(LIBRARY)-ibv.so
 
 $(SDP_BUILDDIR)/Legion-ibv/bindings/terra/liblegion_terra.so:
-	GASNET=$(SDP_BUILDDIR)/gasnet-ibv/release OUTPUT_LEVEL=$(OUTPUT_LEVEL) CC_FLAGS="$(CC_FLAGS)" $(SDP_BUILDDIR)/Legion-ibv/language/install.py --with-terra=$(SDP_BUILDDIR)/terra/release --gasnet || exit 1
+	GASNET_CONDUIT=ibv GASNET=$(SDP_BUILDDIR)/gasnet-ibv/release OUTPUT_LEVEL=$(OUTPUT_LEVEL) CC_FLAGS="$(CC_FLAGS)" $(SDP_BUILDDIR)/Legion-ibv/language/install.py --with-terra=$(SDP_BUILDDIR)/terra/release --gasnet || exit 1
 
 $(LIBRARY)-ibv.so: $(LIBRARY_SRCS) $(SDP_BUILDDIR)/Legion-ibv/bindings/terra/liblegion_terra.so
 	rm -f *.o liblegion.a librealm.a
@@ -146,7 +146,7 @@ $(LIBRARY)-ibv.so: $(LIBRARY_SRCS) $(SDP_BUILDDIR)/Legion-ibv/bindings/terra/lib
 endif
 
 $(SDP_BUILDDIR)/Legion-udp/bindings/terra/liblegion_terra.so:
-	GASNET=$(SDP_BUILDDIR)/gasnet-udp/release OUTPUT_LEVEL=$(OUTPUT_LEVEL) CC_FLAGS="$(CC_FLAGS)" $(SDP_BUILDDIR)/Legion-udp/language/install.py --with-terra=$(SDP_BUILDDIR)/terra/release --gasnet || exit 1
+	GASNET_CONDUIT=udp GASNET=$(SDP_BUILDDIR)/gasnet-udp/release OUTPUT_LEVEL=$(OUTPUT_LEVEL) CC_FLAGS="$(CC_FLAGS)" $(SDP_BUILDDIR)/Legion-udp/language/install.py --with-terra=$(SDP_BUILDDIR)/terra/release --gasnet || exit 1
 $(LIBRARY)-local.so: $(LIBRARY_SRCS) $(SDP_BUILDDIR)/Legion-udp/bindings/terra/liblegion_terra.so
 	rm -f *.o liblegion.a librealm.a
 	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS) -fPIC" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
