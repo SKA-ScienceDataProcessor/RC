@@ -90,9 +90,6 @@ git clone https://github.com/zdevito/terra.git terra || echo "terra already clon
 
 cd terra
 
-# Known good commit.
-git checkout c501af43915
-
 
 make all || exit 1
 cd ..
