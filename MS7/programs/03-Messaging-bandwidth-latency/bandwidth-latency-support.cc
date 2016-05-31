@@ -12,6 +12,7 @@
 
 #include "bandwidth-latency-support.h"
 
+using namespace Realm;
 using namespace Legion;
 using namespace Legion::Mapping;
 using namespace LegionRuntime::Accessor;
@@ -81,3 +82,9 @@ void register_mappers()
 {
   HighLevelRuntime::set_registration_callback(create_mappers);
 }
+
+/* return (runtime instance initialization) relative time in microseconds (good enough for our benchmark) */
+long current_time_microseconds() {
+  return Clock::current_time_in_microseconds();
+} /* current_time_microseconds */
+
