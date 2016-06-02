@@ -2,8 +2,10 @@
 #
 # We use it as a useful test harness for our build script.
 
-EXEC = hdf5-access
+EXEC = hdf_attach
 
-SRCS = hdf5-access.cc
+SRCS = hdf_attach.cc
+
+CC_FLAGS += -I/usr/include/hdf5/serial
 
 include ../../libs/scripts/build-rules.mk
