@@ -6,8 +6,8 @@ local c = terralib.includecstring [[
 
 terra main()
 
-  c.printf("Allocated nodes: %s\n", slurmd_nodename())
-  c.printf("I'm %d, and I have %d CPUs\n", slurm_nodeid(), slurm_cpus_on_node())
+  c.printf("Allocated nodes: %s\n", slurm.nodename())
+  c.printf("I'm %d, and I have %d CPUs\n", slurm.nodeid(), slurm.cpus_on_node())
   
   var hl = slurm_job_nodelist()
   var hname = hostlist_shift(hl)
