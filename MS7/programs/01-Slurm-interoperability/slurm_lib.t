@@ -53,17 +53,17 @@ local slurm_env_int = {
 
 slurm = {}
 
-function make_funs(env_table, rettype, fun_quote)
+function make_funs(env_table, rettype, fun)
   for _, e in pairs(env_table) do
     local j
     _, j = string.find(e, "_")
     local fname = string.lower(string.sub(e, j+1))
-    slurm[fname] = terra() : rettype return [fun_quote](e) end
+    slurm[fname] = terra() : rettype return fun(e) end
   end
 end
 
-make_funs(slurm_env_str, rawstring, `get_env)
-make_funs(slurm_env_int, int, `get_env_int)
+make_funs(slurm_env_str, rawstring, get_env)
+make_funs(slurm_env_int, int, get_env_int)
 
 -- host list handling
 terra slurm_job_nodelist() : c.hostlist_t return c.slurm_hostlist_create(slurm.job_nodelist()) end
