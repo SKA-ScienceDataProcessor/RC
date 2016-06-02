@@ -54,6 +54,34 @@ terra pp(x : int, y : int)
   c.printf("%5d %5d\n", x, y)
 end
 
+function make_coloring_task(fun)
+  local task gago(r : region(ispace(ptr), sparse))
+          where
+            reads(r)
+          do
+            var coloring = c.legion_coloring_create()
+            for i in r.ispace do
+              var color = [fun (rexpr r[i].x end)]
+              c.legion_coloring_add_point(coloring, color, __raw(i))
+            end
+            var p = partition(disjoint, r, coloring)
+            c.legion_coloring_destroy(coloring)
+            return p
+         end
+  return gago
+end
+  
+local function chequer(body)
+  return rexpr (([body] / tile_size) % 2) end
+end
+
+local function tile(body)
+  return rexpr ([body] / tile_size) end
+end
+
+local chequer_task = make_coloring_task(chequer)
+local tile_task = make_coloring_task(tile)
+
 task top_level()
   -- Sample sparse
   var is = ispace(ptr, num_of_points)
@@ -67,20 +95,11 @@ task top_level()
     n = n + 1
   end
 
-  var bw = c.legion_coloring_create()
-  for i in is do
-    var color = (r[i].x / tile_size) % 2
-    -- c.printf("%d-th elt valued as %d is colored to %d\n", r[i].x, r[i].v, color)
-    c.legion_coloring_add_point(bw, color, __raw(i))
-  end
-  var chequered = partition(disjoint, r, bw)
-  c.legion_coloring_destroy(bw)
-
-  -- To make Regent happy
-  var c0 = chequered[0]
-  var c1 = chequered[1]
+  var chequered = chequer_task(r)
 
   --[[
+  var c0 = chequered[0]
+  var c1 = chequered[1]
   for c in c0 do
     pp(c.x, c.v)
   end
@@ -89,21 +108,8 @@ task top_level()
   end
   --]]
 
-  var col0 = c.legion_coloring_create()
-  for i in c0.ispace do
-    var color = c0[i].x / tile_size
-    c.legion_coloring_add_point(col0, color, __raw(i))
-  end
-  var p0 = partition(disjoint, c0, col0)
-  c.legion_coloring_destroy(col0)
-
-  var col1 = c.legion_coloring_create()
-  for i in c1.ispace do
-    var color = c1[i].x / tile_size
-    c.legion_coloring_add_point(col1, color, __raw(i))
-  end
-  var p1 = partition(disjoint, c1, col1)
-  c.legion_coloring_destroy(col1)
+  var p0 = tile_task(chequered[0])
+  var p1 = tile_task(chequered[1])
 
   ---[[
   for n = 0, num_of_pieces do
