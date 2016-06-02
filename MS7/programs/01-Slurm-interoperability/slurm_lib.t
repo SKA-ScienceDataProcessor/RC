@@ -65,11 +65,6 @@ end
 make_funs(slurm_env_str, rawstring, `get_env)
 make_funs(slurm_env_int, int, `get_env_int)
 
-
-for k,_ in pairs(slurm) do
-    print(k)
-end
-
 -- host list handling
 terra slurm_job_nodelist() : c.hostlist_t return c.slurm_hostlist_create(slurm.job_nodelist()) end
 terra hostlist_shift(hl : c.hostlist_t) : rawstring return c.slurm_hostlist_shift(hl) end
