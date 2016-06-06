@@ -14,6 +14,8 @@
 #include "default_mapper.h"
 #include "id.h"
 
+#include "parallelism-kinds.h"
+
 using namespace Realm;
 using namespace Legion;
 using namespace Legion::Mapping;
@@ -99,7 +101,7 @@ private:
   }
 };
 
-void mapper_registration(Machine machine, HighLevelRuntime *runtime, const std::set<Processor> &local_procs)
+void create_mappers(Machine machine, HighLevelRuntime *runtime, const std::set<Processor> &local_procs)
 {
   for (std::set<Processor>::const_iterator it = local_procs.begin();
         it != local_procs.end(); it++)
@@ -122,4 +124,14 @@ Processor ParallelismKindsMapper::default_policy_select_initial_processor(
                                     MapperContext ctx, const Task &task)
 {
   return task_cpu(task, local_proc);
+}
+
+/* return (runtime instance initialization) relative time in microseconds (good enough for our benchmark) */
+long current_time_microseconds() {
+  return Clock::current_time_in_microseconds();
+} /* current_time_microseconds */
+
+void register_mappers()
+{
+  HighLevelRuntime::set_registration_callback(create_mappers);
 }
