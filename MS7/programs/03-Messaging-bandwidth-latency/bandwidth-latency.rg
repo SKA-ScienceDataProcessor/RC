@@ -22,7 +22,7 @@ end
 
 task top_level()
     var size = 1024
-    for i=10, 27 do
+    for i=10, 30 do
         var starttime = support.current_time_microseconds()
         var is = ispace(int1d, size)
         var r = region (is, int)
