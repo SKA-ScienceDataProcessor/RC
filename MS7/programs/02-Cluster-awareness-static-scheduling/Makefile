@@ -4,6 +4,6 @@
 
 EXEC = static-scheduling
 
-SRCS = static-scheduling.rg static-scheduling-map.cc
+SRCS = static-scheduling.rg static-scheduling-support.cc
 
-include ../../../libs/scripts/build-rules.mk
+include ../../libs/scripts/build-rules.mk

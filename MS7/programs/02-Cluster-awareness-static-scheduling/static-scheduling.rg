@@ -6,24 +6,31 @@ import "regent"
 
 local support = terralib.includec("static-scheduling-support.h",{})
 
-task bottom_level(i : int, j : int)
-    support.node_log("Bottom level task %d:%d, SLURM node %d", i, j, support.current_slurm_node());
+task bottom_level(cpu, i : int, j : int)
+    support.node_log("Bottom level task %d/%d/%d, SLURM node %d, SLURM task %d", cpu, i, j, support.current_slurm_node(), support.current_slurm_task());
 end
 
-task second_level(i : int)
-    support.node_log("Second level task %d, SLURM node %d",i, support.current_slurm_node());
+task level_1_task(cpu : int, i : int)
+    support.node_log("Level 1 task %d/%d, SLURM node %d, SLURM task %d", cpu, i, support.current_slurm_node(), support.current_slurm_task());
     __demand(__parallel)
-    for j=0, support.branching_factor() do
-        bottom_level(i, j)
+    for j=0, 5 do
+        level_2_task(cpu, i, j)
     end
 end
 
-task top_level()
-    support.node_log("Root task, SLURM node %d",support.current_slurm_node());
-    support.node_log("           total nodes %d, branching factor %d", support.num_slurm_nodes(), support.branching_factor());
+task level_0_task(cpu : int)
+    support.node_log("Root task %d. SLURM node %d, SLURM task %d", cpu, support.current_slurm_node(), support.current_slurm_task())
+    for i=0, 2 do
+        level_1_task(cpu, i)
+    end
+end
+
+task start_task()
+    support.node_log("starting everything");
+    -- ask runtime to not wait while we are working.
     __demand(__parallel)
-    for i=0, support.branching_factor() do
-        second_level(i)
+    for cpu_index=0, 4 do
+        level_0_task(cpu)
     end
 end
 
@@ -31,3 +38,4 @@ end
 support.register_mappers()
 
 -- start main work.
+regentlib.start(start_task)
