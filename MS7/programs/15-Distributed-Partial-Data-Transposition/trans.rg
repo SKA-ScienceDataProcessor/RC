@@ -22,7 +22,6 @@ where
   writes(o)
 do
   for rc in i.ispace do
-      print_val(rc.x, rc.y, i[rc])
       var co = int2d{x = rc.y, y = rc.x}
       o[co] = i[rc]
   end
