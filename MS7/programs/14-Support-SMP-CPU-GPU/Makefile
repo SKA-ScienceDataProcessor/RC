@@ -4,6 +4,8 @@
 
 EXEC = parallelism-kinds
 
-SRCS = parallelism-kinds.rg parallelizm-kinds-map.cc
+SRCS = parallelism-kinds.rg parallelism-kinds-map.cc
 
-include ../../../libs/scripts/build-rules.mk
+LIBRARY = parallelism-kinds
+
+include ../../libs/scripts/build-rules.mk

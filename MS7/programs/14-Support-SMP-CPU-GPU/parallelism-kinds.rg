@@ -6,8 +6,11 @@
 
 import "regent"
 
-local
-  lib = terralib.
+local support
+do
+    terralib.linklibrary(os.getenv("SDP_SUPPORT_LIBRARY"))
+    support = terralib.includec("parallelism-kinds.h",{"-I."})
+end
 
 task top_level()
 end
