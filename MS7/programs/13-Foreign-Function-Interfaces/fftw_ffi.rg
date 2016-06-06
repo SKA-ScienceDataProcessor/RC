@@ -1,8 +1,8 @@
 import "regent"
 
 local c = terralib.includecstring [[
+#include "legion_c.h"
 #include <stdio.h>
-#include <malloc.h>
 #define _USE_MATH_DEFINES
 #include <math.h>
 
@@ -23,8 +23,31 @@ else
   terralib.linklibrary("libfftw3-3.dll")
 end
 
-terra gen_data(N : int)
-  var data = [&c.fftw_complex](c.malloc(sizeof(c.fftw_complex)*N))
+terra get1dptr(
+    regs : &c.legion_physical_region_t
+  , ctx : c.legion_context_t
+  , runtime : c.legion_runtime_t
+  )
+  var r = c.legion_physical_region_get_logical_region(regs[0])
+  var is = r.index_space
+  var d = c.legion_index_space_get_domain(runtime, ctx, is)
+  var rect = c.legion_domain_get_rect_1d(d)
+  var acc = c.legion_physical_region_get_accessor_generic(regs[0])
+
+  var subrect : c.legion_rect_1d_t
+  var offsets : c.legion_byte_offset_t[1]
+  return [&c.fftw_complex](c.legion_accessor_generic_raw_rect_ptr_1d(
+                         acc, rect, &subrect, &(offsets[0])))
+end
+
+task gen_data(
+   N : int
+ , d: region(ispace(int1d), double)
+ )
+where
+  writes(d)
+do
+  var data = get1dptr(__physical(d), __context(), __runtime())
   var Nd : double = N
   var theta : double
   for n = 0,N do
@@ -33,18 +56,33 @@ terra gen_data(N : int)
     data[n][c.REAL] = c.cos(10.0 * theta) + 0.5 * c.cos(15.0 * theta)
     data[n][c.IMAG] = c.sin(10.0 * theta) + 0.5 * c.sin(15.0 * theta)
   end
-  return data
 end
 
-terra do_fftw(N : int, data : &c.fftw_complex)
-  var result = [&c.fftw_complex](c.malloc(sizeof(c.fftw_complex)*N))
-  var plan = c.fftw_plan_dft_1d(64, data, result, c.__FWD(), c.__EST())
+task do_fftw(
+    N : int
+  , i : region(ispace(int1d), double)
+  , o : region(ispace(int1d), double)
+  )
+where
+  reads(i),
+  writes(o)
+do
+  var data = get1dptr(__physical(i), __context(), __runtime())
+  var result = get1dptr(__physical(o), __context(), __runtime())
+  var plan = c.fftw_plan_dft_1d(N, data, result, c.__FWD(), c.__EST())
   c.fftw_execute(plan)
   c.fftw_destroy_plan(plan)
   return result
 end
 
-terra show_max(N : int, data : &c.fftw_complex)
+task show_max(
+   N : int
+ , d: region(ispace(int1d), double)
+ )
+where
+  reads(d)
+do
+  var data = get1dptr(__physical(d), __context(), __runtime())
   var maxa : double = 0.0
   for n = 0,N do
     var mag : double = c.sqrt(data[n][c.REAL] * data[n][c.REAL] + data[n][c.IMAG] * data[n][c.IMAG])
@@ -54,11 +92,15 @@ terra show_max(N : int, data : &c.fftw_complex)
 end
 
 task toplevel()
-  var data = gen_data(64)
-  var result = do_fftw(64, data)
-  c.free(data)
-  show_max(64, result)
-  c.free(result)
+  var isi = ispace(int1d, 64*2)
+  var iso = ispace(int1d, 64*2)
+
+  var i = region(isi, double)
+  var o = region(iso, double)
+
+  gen_data(64, i)
+  do_fftw(64, i, o)
+  show_max(64, o)
 end
 
 regentlib.start(toplevel)
