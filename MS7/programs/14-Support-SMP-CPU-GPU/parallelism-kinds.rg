@@ -21,39 +21,39 @@ task top_level()
     fill(ra, 1.0)
     fill(rb, 2.0)
     -- baseline: regular loop.
-    var starttime = support.current_time_milliseconds()
+    var starttime = support.current_time_microseconds()
     for i in indices do
-        rc(i) = ra*rb
+        rc[i] = ra[i]*rb[i]
     end
-    var endtime = support.current_time_milliseconds()
-    support.node_log("baseline: %ld milliseconds", endtime-starttime)
+    var endtime = support.current_time_microseconds()
+    support.node_log("baseline: %ld microseconds", endtime-starttime)
 
     -- utilize vectorization.
-    starttime = support.current_time_milliseconds()
+    starttime = support.current_time_microseconds()
     __demand(__vectorize)
     for i in indices do
-      rc(i) = ra*rb
+      rc[i] = ra[i]*rb[i]
     end
-    var endtime = support.current_time_milliseconds()
-    support.node_log("SIMD: %ld milliseconds", endtime-starttime)
+    endtime = support.current_time_microseconds()
+    support.node_log("SIMD: %ld microseconds", endtime-starttime)
 
     -- utilize SMP parallelization.
-    starttime = support.current_time_milliseconds()
-    __demand(__SPMD)
+    starttime = support.current_time_microseconds()
+    __demand(__spmd)
     for i in indices do
-      rc(i) = ra*rb
+      rc[i] = ra[i]*rb[i]
     end
-    endtime = support.current_time_milliseconds()
-    support.node_log("SPMD: %ld milliseconds", endtime-starttime)
+    endtime = support.current_time_microseconds()
+    support.node_log("SPMD: %ld microseconds", endtime-starttime)
 
     -- utilize GPU.
-    starttime = support.current_time_milliseconds()
-    __demand(__gpu)
+    starttime = support.current_time_microseconds()
+    __demand(__cuda(__unroll(10))))
     for i in indices do
-      rc(i) = ra*rb
+      rc[i] = ra[i]*rb[i]
     end
-    endtime = support.current_time_milliseconds()
-    support.node_log("GPU: %ld milliseconds", endtime-starttime)
+    endtime = support.current_time_microseconds()
+    support.node_log("GPU: %ld microseconds", endtime-starttime)
 
 end
 
