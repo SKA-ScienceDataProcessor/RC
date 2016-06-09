@@ -33,6 +33,14 @@ terra printdata()
   end
 end
 
+
+task bw_barrier(r : region(ispace(ptr), sparse), s : rawstring)
+where
+  reads(r) -- artificial dependency to wait for data be ready
+do
+  c.printf("Done with %s!\n", s)
+end
+
 task printres(r : region(ispace(ptr), sparse))
 where
   reads(r) -- artificial dependency to wait for data be ready
@@ -116,6 +124,7 @@ task top_level()
     go(p0[n])
   end
   ---]]
+  bw_barrier(chequered[0], "whites")
   ---[[
   for n = 0, num_of_pieces do
     go(p1[n])
