@@ -105,11 +105,11 @@ export TERRA_DIR=$BUILDDIR/terra/release
 # enable CUDA if we have one.
 # it is better than using special flag.
 
-if [ "$CUDA_INSTALL_PATH" == "" ] ; then
-    cuda_option=
-else
+if [ ${CUDA_INSTALL_PATH+x} == "x" ] ; then
     cuda_option=--cuda
     export CUDA="$CUDA_INSTALL_PATH"
+else
+    cuda_option=
 fi
 
 # We always build with UDP - even cluster development requires some experimentation outside of cluster nodes.
