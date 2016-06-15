@@ -4,9 +4,13 @@
 
 import "regent"
 
-local support = terralib.includec("static-scheduling-support.h",{})
+local support
+do
+    terralib.linklibrary(os.getenv("SDP_SUPPORT_LIBRARY"))
+    support = terralib.includec("static-scheduling-support.h",{"-I."})
+end
 
-task bottom_level(cpu, i : int, j : int)
+task level_2_task(cpu : int, i : int, j : int)
     support.node_log("Bottom level task %d/%d/%d, SLURM node %d, SLURM task %d", cpu, i, j, support.current_slurm_node(), support.current_slurm_task());
 end
 
@@ -29,7 +33,7 @@ task start_task()
     support.node_log("starting everything");
     -- ask runtime to not wait while we are working.
     __demand(__parallel)
-    for cpu_index=0, 4 do
+    for cpu=0, 4 do
         level_0_task(cpu)
     end
 end
