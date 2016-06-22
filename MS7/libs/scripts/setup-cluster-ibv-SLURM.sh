@@ -90,9 +90,6 @@ git clone https://github.com/zdevito/terra.git terra || echo "terra already clon
 
 cd terra
 
-# Known good commit.
-git checkout c501af43915
-
 
 make all || exit 1
 cd ..
@@ -105,8 +102,15 @@ export TERRA_DIR=$BUILDDIR/terra/release
 # Executables/libraries build with IBV conduit may or may not use UDP conduit.
 # So we build two versions separately.
 
-# Enable Legion Spy.
-export CC_FLAGS="-DDEBUG"
+# enable CUDA if we have one.
+# it is better than using special flag.
+
+if [ ${CUDA_INSTALL_PATH+x} == "x" ] ; then
+    cuda_option=--cuda
+    export CUDA="$CUDA_INSTALL_PATH"
+else
+    cuda_option=
+fi
 
 # We always build with UDP - even cluster development requires some experimentation outside of cluster nodes.
 clonepull https://github.com/SKA-ScienceDataProcessor/legion.git Legion-udp
@@ -118,7 +122,7 @@ cd Legion-udp/language
 export GASNET_ROOT="$BUILDDIR/gasnet-udp/release"
 export GASNET="$GASNET_ROOT"
 export GASNET_BIN="$GASNET_ROOT/bin"
-CONDUIT=udp ./install.py --with-terra=$TERRA_DIR --gasnet || exit 1
+CONDUIT=udp ./install.py --with-terra=$TERRA_DIR --gasnet $cuda_option || exit 1
 
 # Up from Regent.
 cd $BUILDDIR
@@ -134,7 +138,7 @@ if [ "$with_ibv" == "1" ] ; then
   cd Legion-ibv/language
 
   # Running the installation, enabling the GASnet.
-  CONDUIT=ibv ./install.py --with-terra=$TERRA_DIR --gasnet || exit 1
+  CONDUIT=ibv ./install.py --with-terra=$TERRA_DIR --gasnet $cuda_option || exit 1
 
   # Up from Regent.
   cd $BUILDDIR

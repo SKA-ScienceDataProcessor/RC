@@ -60,10 +60,12 @@ run: $(EXEC)
 	    ./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) -time=$(TIME) -- $(RUNTIME_ARGS) $(EXEC_ARGS)
 
 clean:
-	rm -f $(EXEC) $(EXEC)-local $(EXEC)-ibv *.o *.a
-	LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime make -f $(SDP_BUILDDIR)/Legion-udp/runtime/runtime.mk clean
+	rm -f $(EXEC) $(EXEC)-local $(EXEC)-ibv *.o *.a *.so
+	rm -f $(SDP_BUILDDIR)/Legion-udp/bindings/terra/*.o $(SDP_BUILDDIR)/Legion-udp/bindings/terra/*.so
+	LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime GASNET=$(SDP_BUILDDIR)/gasnet-udp/release SHARED_LOWLEVEL=0 USE_GASNET=1 CONDUIT=udp CUDA="$(CUDA_INSTALL_PATH)" make -f $(SDP_BUILDDIR)/Legion-udp/runtime/runtime.mk clean
 ifeq ($(SDP_USE_IBV),1)
-	LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime make -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk clean
+	rm -f $(SDP_BUILDDIR)/Legion-ibv/bindings/terra/*.o $(SDP_BUILDDIR)/Legion-ibv/bindings/terra/*.so
+	LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime GASNET=$(SDP_BUILDDIR)/gasnet-ibv/release SHARED_LOWLEVEL=0 USE_GASNET=1 CONDUIT=ibv CUDA="$(CUDA_INSTALL_PATH)" make -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk clean
 endif
 
 EXEC_WITH_CONDUITS = $(EXEC)-local
@@ -125,9 +127,41 @@ $(EXEC): $(EXEC_WITH_CONDUITS)
 	echo "run $(EXEC)" >>$(EXEC)
 	chmod a+x $(EXEC)
 else
-$(EXEC): $(EXEC).rg
-	echo "compiling with Regent is not supported right now"
-	exit 1
+
+LIBRARY_SRCS = $(filter-out $(EXEC).rg, $(SRCS))
+LIBRARIES = $(LIBRARY)-local.so
+
+ifeq ($(USE_CUDA),1)
+CUDA_REGENT_FLAG = --cuda
+endif
+
+ifeq ($(SDP_USE_IBV),1)
+LIBRARIES += $(LIBRARY)-ibv.so
+
+$(SDP_BUILDDIR)/Legion-ibv/bindings/terra/liblegion_terra.so:
+	CONDUIT=ibv GASNET_CONDUIT=ibv GASNET=$(SDP_BUILDDIR)/gasnet-ibv/release OUTPUT_LEVEL=$(OUTPUT_LEVEL) CC_FLAGS="$(CC_FLAGS)" CUDA=$(CUDA_INSTALL_PATH) $(SDP_BUILDDIR)/Legion-ibv/language/install.py --with-terra=$(SDP_BUILDDIR)/terra/release --gasnet $(CUDA_REGENT_FLAG) || exit 1
+
+$(LIBRARY)-ibv.so: $(LIBRARY_SRCS) $(SDP_BUILDDIR)/Legion-ibv/bindings/terra/liblegion_terra.so
+	rm -f *.o liblegion.a librealm.a
+	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS) -fPIC" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
+	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet-ibv/release GEN_SRC="$(LIBRARY_SRCS)" LD_FLAGS="$(LD_FLAGS) -shared" \
+	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime OUTFILE=$(LIBRARY)-ibv.so CUDA=$(CUDA_INSTALL_PATH) \
+	make -j4 -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk
+endif
+
+$(SDP_BUILDDIR)/Legion-udp/bindings/terra/liblegion_terra.so:
+	CONDUIT=udp GASNET_CONDUIT=udp GASNET=$(SDP_BUILDDIR)/gasnet-udp/release OUTPUT_LEVEL=$(OUTPUT_LEVEL) CC_FLAGS="$(CC_FLAGS)" CUDA=$(CUDA_INSTALL_PATH) $(SDP_BUILDDIR)/Legion-udp/language/install.py --with-terra=$(SDP_BUILDDIR)/terra/release --gasnet $(CUDA_REGENT_FLAG) || exit 1
+$(LIBRARY)-local.so: $(LIBRARY_SRCS) $(SDP_BUILDDIR)/Legion-udp/bindings/terra/liblegion_terra.so
+	rm -f *.o liblegion.a librealm.a
+	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS) -fPIC" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
+	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet-udp/release GEN_SRC="$(LIBRARY_SRCS)" LD_FLAGS="$(LD_FLAGS) -shared" \
+	CONDUIT=udp GASNET_CONDUIT=udp LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime OUTFILE=$(LIBRARY)-local.so CUDA=$(CUDA_INSTALL_PATH) \
+	make -j4 -f $(SDP_BUILDDIR)/Legion-udp/runtime/runtime.mk
+
+$(EXEC): $(EXEC).rg $(LIBRARIES)
+	cp $(SDP_SCRIPT_DIR)/runner_script $(EXEC)
+	echo "runregent $(LIBRARY) $(EXEC)" >>$(EXEC)
+	chmod a+x $(EXEC)
 endif
 
 $(EXEC)-local: $(SRCS)

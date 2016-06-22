@@ -2,10 +2,10 @@
 #
 # We use it as a useful test harness for our build script.
 
-EXEC = hdf_attach
+EXEC = bandwidth-latency
 
-SRCS = hdf_attach.cc
+LIBRARY = bandwidth-latency-support
 
-CC_FLAGS += -I/usr/include/hdf5/serial
+SRCS = bandwidth-latency.rg bandwidth-latency-support.cc
 
 include ../../libs/scripts/build-rules.mk

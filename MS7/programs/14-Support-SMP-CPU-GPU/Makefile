@@ -2,10 +2,10 @@
 #
 # We use it as a useful test harness for our build script.
 
-EXEC = hdf_attach
+EXEC = parallelism-kinds
 
-SRCS = hdf_attach.cc
+SRCS = parallelism-kinds.rg parallelism-kinds-map.cc
 
-CC_FLAGS += -I/usr/include/hdf5/serial
+LIBRARY = parallelism-kinds
 
 include ../../libs/scripts/build-rules.mk

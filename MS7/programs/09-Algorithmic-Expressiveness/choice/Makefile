@@ -3,5 +3,7 @@
 # Define the executable name.
 EXEC = choice
 
+SRCS = choice.rg
+
 # Include the script for rules "exec" (default, build the executable" and "clean".
 include ../../../libs/scripts/build-rules.mk

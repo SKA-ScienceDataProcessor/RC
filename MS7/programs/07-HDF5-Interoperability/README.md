@@ -9,4 +9,4 @@ Documentation is [here](https://docs.google.com/document/d/1qK4YqM_avtN62ijsy_3F
 Implementation
 --------------
 
-Depends on Foreign Function Interface.
+Example source code copied from Legion test suite.
