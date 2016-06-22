@@ -56,16 +56,20 @@ private:
     int cpu = -1;
     int i = -1;
     int j = -1;
-    int* args = (int*)task->args;
+
+    int* args = (int*)task->args.base();
+    unsigned arglen = task->args.size();
+
     unsigned node_to_search = -1;
+
     node_log("task name %s, arglen %d", taskname.c_str(), task->arglen);
-    if (task->arglen >= sizeof(int)) {
+    if (arglen >= sizeof(int)) {
         cpu = args[0];
     }
-    if (task -> arglen >= sizeof(int)*2) {
+    if (arglen >= sizeof(int)*2) {
         i = args[1];
     }
-    if (task -> arglen >= sizeof(int)*3) {
+    if (arglen >= sizeof(int)*3) {
         j = args[2];
     }
     if (equal_to(taskname, "level_0_task")) {
