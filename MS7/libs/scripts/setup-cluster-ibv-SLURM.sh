@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -i
 
 # Setting up the environment to build everything - download packages, build them, etc.
 
@@ -6,8 +6,20 @@
 # Errors are: non-zero exit codes, reference to unset vars and something else.
 set -euo pipefail
 
-# Check for gcc version.
-(gcc -v |& egrep "^gcc version 4.9") || (echo "needs gcc 4.9; please execute 'module load gcc/4.9.2' before running"; exit 1)
+if command -v module; then
+    module purge
+    module load cmake/3.4.3
+    module load cuda/7.5
+    ## module load fftw/intel/64/3.3.3
+    module load python/2.7.10
+    module load gcc/5.2.0
+    module load binutils/2.25
+    module load intel/cce/16.0.3.210
+    export LIBRARY_PATH=$LIBRARY_PATH:$LD_LIBRARY_PATH
+    module load intel/impi/5.1.3.181
+    ## module load hdf5/impi/1.8.16
+    ## module load scheduler
+fi
 
 # Check if -no-ibv/--no-ibv flag was passed, disable IBV support then.
 with_ibv=1
@@ -51,6 +63,11 @@ cd $BUILDDIR
 # Download LLVM.
 $SCRIPT_DIR/dl-llvm.sh || exit 1
 
+# Patch LLVM to work with gcc 5+
+cd llvm-3.5.2.src
+patch -p 1 < $SCRIPT_DIR/llvm-3.5-gcc5.patch
+cd ..
+
 # Build LLVM.
 $SCRIPT_DIR/mk-llvm.sh || exit 1
 
@@ -89,8 +106,6 @@ fi
 git clone https://github.com/zdevito/terra.git terra || echo "terra already cloned."
 
 cd terra
-
-
 make all || exit 1
 cd ..
 
@@ -102,27 +117,22 @@ export TERRA_DIR=$BUILDDIR/terra/release
 # Executables/libraries build with IBV conduit may or may not use UDP conduit.
 # So we build two versions separately.
 
-# enable CUDA if we have one.
-# it is better than using special flag.
-
-if [ ${CUDA_INSTALL_PATH+x} == "x" ] ; then
-    cuda_option=--cuda
-    export CUDA="$CUDA_INSTALL_PATH"
-else
-    cuda_option=
-fi
+# Enable Legion Spy.
+export CC_FLAGS="-DDEBUG"
 
 # We always build with UDP - even cluster development requires some experimentation outside of cluster nodes.
-clonepull https://github.com/SKA-ScienceDataProcessor/legion.git Legion-udp
+clonepull https://github.com/StanfordLegion/legion Legion-udp
 
 # Go to Regent place.
-cd Legion-udp/language
+cd Legion-udp
+git checkout master
+cd language
 
 # Running the installation, enabling the GASnet.
 export GASNET_ROOT="$BUILDDIR/gasnet-udp/release"
 export GASNET="$GASNET_ROOT"
 export GASNET_BIN="$GASNET_ROOT/bin"
-CONDUIT=udp ./install.py --with-terra=$TERRA_DIR --gasnet $cuda_option || exit 1
+CONDUIT=udp ./install.py --with-terra=$TERRA_DIR --gasnet || exit 1
 
 # Up from Regent.
 cd $BUILDDIR
@@ -138,7 +148,7 @@ if [ "$with_ibv" == "1" ] ; then
   cd Legion-ibv/language
 
   # Running the installation, enabling the GASnet.
-  CONDUIT=ibv ./install.py --with-terra=$TERRA_DIR --gasnet $cuda_option || exit 1
+  CONDUIT=ibv ./install.py --with-terra=$TERRA_DIR --gasnet || exit 1
 
   # Up from Regent.
   cd $BUILDDIR

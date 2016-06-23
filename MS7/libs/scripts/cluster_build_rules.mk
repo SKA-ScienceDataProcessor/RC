@@ -129,14 +129,18 @@ $(EXEC): $(EXEC_WITH_CONDUITS)
 else
 
 LIBRARY_SRCS = $(filter-out $(EXEC).rg, $(SRCS))
+ifneq ($(LIBRARY),)
 LIBRARIES = $(LIBRARY)-local.so
+endif
 
 ifeq ($(USE_CUDA),1)
 CUDA_REGENT_FLAG = --cuda
 endif
 
 ifeq ($(SDP_USE_IBV),1)
+ifneq ($(LIBRARY),)
 LIBRARIES += $(LIBRARY)-ibv.so
+endif
 
 $(SDP_BUILDDIR)/Legion-ibv/bindings/terra/liblegion_terra.so:
 	CONDUIT=ibv GASNET_CONDUIT=ibv GASNET=$(SDP_BUILDDIR)/gasnet-ibv/release OUTPUT_LEVEL=$(OUTPUT_LEVEL) CC_FLAGS="$(CC_FLAGS)" CUDA=$(CUDA_INSTALL_PATH) $(SDP_BUILDDIR)/Legion-ibv/language/install.py --with-terra=$(SDP_BUILDDIR)/terra/release --gasnet $(CUDA_REGENT_FLAG) || exit 1
