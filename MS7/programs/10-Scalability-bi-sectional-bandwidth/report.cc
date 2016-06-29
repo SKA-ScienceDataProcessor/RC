@@ -31,7 +31,6 @@ struct ReportMapper : public DefaultMapper {
   {
     assert(task.is_index_space);
 
-    // Fixme: move into "write" after slicing is moved into proper locations
     auto cpus = Machine::ProcessorQuery(machine).only_kind(Processor::LOC_PROC);
 
     if(strcmp(task.get_task_name(), "write")==0) {
