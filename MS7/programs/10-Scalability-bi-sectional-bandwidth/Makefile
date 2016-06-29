@@ -2,8 +2,13 @@
 #
 # We use it as a useful test harness for our build script.
 
-EXEC = scalability-bandiwdth
+EXEC = index_tasks
 
-SRCS = scalability-bandiwdth.rg scalability-bandiwdth-map.cc
+SRCS = index_tasks.rg report.cc
 
-include ../../../libs/scripts/build-rules.mk
+LIBRARY = report
+
+CXX_FLAGS += --std=c++11
+CC_FLAGS += --std=c++11
+
+include ../../libs/scripts/build-rules.mk
