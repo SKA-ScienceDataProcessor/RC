@@ -33,7 +33,7 @@ task top_level()
     var rb = region(indices, float)
     var rc = region(indices, float)
 
-    var np = 10 -- number of subregions for data parallelism
+    var np = 100 -- number of subregions for data parallelism
     var colors = ispace(int1d, np)
     var pa = partition(equal, ra, colors)
     var pb = partition(equal, rb, colors)
