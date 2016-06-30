@@ -100,6 +100,7 @@ task main()
     c.legion_coloring_ensure_color(rc, i)
   end
   var p_disjoint = partition(disjoint, r, rc)
+  c.legion_coloring_destroy(rc)
 
   -- FIXME: try it several times and record the times
   -- (we perform random cpus bisection)
