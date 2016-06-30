@@ -71,7 +71,7 @@ end
 local fill_val = 666
 
 task write(output : region(ispace(int1d, 1), int))
-where writes reads(output)
+where writes(output)
 do
   for p in output.ispace do output[p] = fill_val end
 end
