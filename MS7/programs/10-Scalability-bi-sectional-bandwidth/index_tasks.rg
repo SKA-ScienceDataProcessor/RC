@@ -27,6 +27,14 @@ void reg_mappers();
 
 local number_of_tests = 10
 
+local chunk_size = 8*1024*1024;
+
+local fill_val = 1
+
+local struct data {
+  val : int8[chunk_size]
+}
+
 local struct rep {
     datap : &c.legion_processor_t
   , procs : uint64
@@ -68,25 +76,23 @@ terra report()
   return rep{procp, n, procp + off, ncpus}
 end
 
-local fill_val = 666
-
-task write(output : region(ispace(int1d, 1), int))
-where writes(output)
+task write(output : region(ispace(int1d, 1), data))
+where reads writes(output)
 do
-  for p in output.ispace do output[p] = fill_val end
+  for p in output.ispace do output[p].val[0] = fill_val end
 end
 
-task read(input : region(ispace(int1d, 1), int))
+task read(input : region(ispace(int1d, 1), data))
 where reads(input)
 do
   for p in input.ispace do
-    if input[p] ~= fill_val then std.printf("Corrupted: %d!\n", input[p]) end
+    if input[p].val[0] ~= fill_val then std.printf("Corrupted: %d!\n", input[p].val[0]) end
   end
 end
 
 task run_test( num_points : uint64
              , ps : ispace(int1d, num_points)
-             , r : region(ps, int)
+             , r : region(ps, data)
              , p_disjoint : partition(disjoint, r, ps)
              )
 where
@@ -113,7 +119,7 @@ task main()
 
   var num_points = rep.cpus / 2
   var ps = ispace(int1d, num_points)
-  var r = region(ps, int)
+  var r = region(ps, data)
 
   var p_disjoint = partition(equal, r, ps)
 
