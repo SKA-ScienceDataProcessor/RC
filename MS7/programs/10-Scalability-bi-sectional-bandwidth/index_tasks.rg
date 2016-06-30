@@ -94,6 +94,7 @@ task main()
 
   var num_points = rep.cpus / 2
   var r = region(ispace(ptr, num_points), int)
+  new(ptr(int, r), num_points)
   var rc = c.legion_coloring_create()
   for i = 0, num_points do
     c.legion_coloring_ensure_color(rc, i)
