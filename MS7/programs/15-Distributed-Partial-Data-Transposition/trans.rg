@@ -25,10 +25,14 @@ end
 
 -- true - "vertical" partitioning, false - "horizontal" partitioning
 task structured_partition(r : region(ispace(int2d), double), dir : bool, rx : int64, ry : int64, pieces : int64)
-  var qr : c.lldiv_t = c.lldiv(rx, pieces) -- need rsize >= pieces
-  var small_size = qr.quot
+  -- It looks old Wilkes libc doesn't have this and so the whole thingy silently crashes
+  -- var qr : c.lldiv_t = c.lldiv(rx, pieces) -- need rsize >= pieces
+  -- var small_size = qr.quot
+  var small_size = rx / pieces
   var big_size = small_size + 1
-  var big_pieces = qr.rem
+  -- See above
+  -- var big_pieces = qr.rem
+  var big_pieces = rx % pieces
 
   var d0 : int, d1 : int
   if dir
