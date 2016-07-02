@@ -1,10 +1,6 @@
-local c = terralib.includecstring [[ 
-  #include <stdio.h>
-  #include <stdlib.h>
-  #include <legion_c.h>
-]]
-
 import "regent"
+
+local c = regentlib.c
 
 terra print_val(x : int, y : int, v : double)
   c.printf("o[%d][%d]: %10.2f\n", x, y, v)
