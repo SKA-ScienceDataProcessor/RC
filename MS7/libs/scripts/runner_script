@@ -10,12 +10,13 @@ nodes=1
 tasks=1
 net=""
 mem=""
+cpumem=""
 gpu=""
 timebound="00:01:00"
 threads=1
 program=$0
 original_arguments=$*
-usage="usage: $0 [-[-]nodes=nodes to use] [-[-]tasks=tasks to run] [-[-]threads=CPU cores to allocate per task] [-[-]mem=MB per task] [--] [other arguments]"
+usage="usage: $0 [-[-]nodes=nodes to use] [-[-]tasks=tasks to run] [-[-]threads=CPU cores to allocate per task] [-[-]mem=MB per task] [-[-]cpumem=MB per CPU] [--] [other arguments]"
 while (($#)); do
     arg=$1
     case $arg in
@@ -37,6 +38,10 @@ while (($#)); do
             ;;
         -mem=*|--mem=*)
             mem="${arg#*=}"
+            shift
+            ;;
+        -cpumem=*|--cpumem=*)
+            cpumem="${arg#*=}"
             shift
             ;;
         -gpu=*|--gpu=*)
@@ -78,6 +83,10 @@ function run {
     if [ -n "$mem" ] ; then
       echo "setting mem"
       program_args="-ll:gsize $mem $program_args"
+    fi
+    if [ -n "$cpumem" ] ; then
+      echo "setting cpumem"
+      program_args="-ll:csize $cpumem $program_args"
     fi
     export SDP_LAUNCH_ARGUMENTS="$program_args"
     export SDP_MEM_LIMIT="$mem"
@@ -122,6 +131,10 @@ function runregent {
     if [ -n "$mem" ] ; then
       echo "setting mem"
       program_args="-ll:gsize $mem $program_args"
+    fi
+    if [ -n "$cpumem" ] ; then
+      echo "setting cpumem"
+      program_args="-ll:csize $cpumem $program_args"
     fi
     if [ "${2+x}" == "x" ]; then
         export SDP_LAUNCH_ARGUMENTS="$2.rg $program_args"
