@@ -2,9 +2,11 @@ import "regent"
 
 local c = regentlib.c
 
+--[[
 terra print_val(x : int, y : int, v : double)
   c.printf("o[%d][%d]: %10.2f\n", x, y, v)
 end
+--]]
 
 terra puts(s: rawstring)
   c.printf("%s\n", s)
@@ -101,7 +103,7 @@ task test(r: int, c : int, k : int)
     trans(pi[n], po[n])
   end
 
----[[
+--[[
   for n = 0, k do
     puts("Input partitioned")
     for cr in pi[n].ispace do
@@ -115,11 +117,11 @@ task test(r: int, c : int, k : int)
       print_val(cr.x, cr.y, o[cr])
     end
   end
----]]
+--]]
 
 end
 
 task main()
-  test(7, 5, 2)
+  test(8192, 8192, 16)
 end
 regentlib.start(main)
