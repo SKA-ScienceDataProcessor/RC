@@ -99,6 +99,7 @@ task test(r: int, c : int, k : int)
   var pi = structured_partition(i, true,  r, c, k)
   var po = structured_partition(o, false, r, c, k)
 
+  __demand(__parallel)
   for n =0, k do
     trans(pi[n], po[n])
   end
