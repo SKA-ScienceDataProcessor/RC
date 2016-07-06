@@ -129,8 +129,9 @@ $(EXEC): $(EXEC_WITH_CONDUITS)
 else
 
 LIBRARY_SRCS = $(filter-out $(EXEC).rg, $(SRCS))
+LIBRARIES = $(SDP_BUILDDIR)/Legion-udp/bindings/terra/liblegion_terra.so
 ifneq ($(LIBRARY),)
-LIBRARIES = $(LIBRARY)-local.so
+LIBRARIES += $(LIBRARY)-local.so
 endif
 
 ifeq ($(USE_CUDA),1)
@@ -138,6 +139,7 @@ CUDA_REGENT_FLAG = --cuda
 endif
 
 ifeq ($(SDP_USE_IBV),1)
+LIBRARIES += $(SDP_BUILDDIR)/Legion-ibv/bindings/terra/liblegion_terra.so
 ifneq ($(LIBRARY),)
 LIBRARIES += $(LIBRARY)-ibv.so
 endif
@@ -164,7 +166,7 @@ $(LIBRARY)-local.so: $(LIBRARY_SRCS) $(SDP_BUILDDIR)/Legion-udp/bindings/terra/l
 
 $(EXEC): $(EXEC).rg $(LIBRARIES)
 	cp $(SDP_SCRIPT_DIR)/runner_script $(EXEC)
-	echo "runregent $(LIBRARY) $(EXEC)" >>$(EXEC)
+	echo "runregent $(EXEC) $(LIBRARY)" >>$(EXEC)
 	chmod a+x $(EXEC)
 endif
 

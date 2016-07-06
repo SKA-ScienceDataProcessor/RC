@@ -124,7 +124,7 @@ function runregent {
       program_args="-ll:gsize $mem $program_args"
     fi
     if [ "${2+x}" == "x" ]; then
-        export SDP_LAUNCH_ARGUMENTS="$2.rg $program_args"
+        export SDP_LAUNCH_ARGUMENTS="$1.rg $program_args"
     fi
     export SDP_MEM_LIMIT="$mem"
 
@@ -137,7 +137,9 @@ function runregent {
                 echo "selecting GPUs is not supported right now!"
                 exit 1
             fi
-            export SDP_SUPPORT_LIBRARY=./$1-ibv.so
+            if [ "${2+x}" -ne "x" ]; then
+              export SDP_SUPPORT_LIBRARY=./$2-ibv.so
+            fi
             export SDP_LAUNCH_COMMAND="$SDP_BUILDDIR/Legion-ibv/language/regent.py"
 
             sbatch --job-name="SDP Regent run: $1" --nodes=$nodes --ntasks=$tasks --cpus-per-task=$threads --time=$timebound $SDP_SCRIPT_DIR/slurm_submit.wilkes.sdp
@@ -155,7 +157,9 @@ function runregent {
             export CSPAWN_CMD="$SDP_SCRIPT_DIR/custom_spawner %N %C"
 
             # Execute!
-            export SDP_SUPPORT_LIBRARY=./$1-local.so
+            if [ "${2+x}" -ne "x" ]; then
+              export SDP_SUPPORT_LIBRARY=./$2-local.so
+            fi
             $SDP_BUILDDIR/gasnet-udp/release/bin/amudprun -n $tasks -spawn L $SDP_BUILDDIR/Legion-udp/language/regent.py $program.rg $program_args
             ;;
         *)
