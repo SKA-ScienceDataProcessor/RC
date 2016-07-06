@@ -25,6 +25,16 @@ local std = terralib.includecstring [[
 void reg_mappers();
 ]]
 
+local number_of_tests = 10
+
+local chunk_size = 8*1024*1024;
+
+local fill_val = 1
+
+local struct data {
+  val : int8[chunk_size]
+}
+
 local struct rep {
     datap : &c.legion_processor_t
   , procs : uint64
@@ -66,43 +76,28 @@ terra report()
   return rep{procp, n, procp + off, ncpus}
 end
 
-local fill_val = 666
-
-task write(output : region(ispace(ptr, 1), int))
-where writes(output)
+task write(output : region(ispace(int1d, 1), data))
+where reads writes(output)
 do
-  for p in output do @p = fill_val end
+  for p in output.ispace do output[p].val[0] = fill_val end
 end
 
-task read(input : region(ispace(ptr, 1), int))
+task read(input : region(ispace(int1d, 1), data))
 where reads(input)
 do
-  for p in input do
-    if @p ~= fill_val then std.puts("Data are corrupted!") end
+  for p in input.ispace do
+    if input[p].val[0] ~= fill_val then std.printf("Corrupted: %d!\n", input[p].val[0]) end
   end
 end
 
-task main()
-  var rep = report()
-
-  std.printf("We have %lld processors in total, %lld cpus:\n", rep.procs, rep.cpus)
-  for i = 0, rep.cpus do
-    std.printf("\t%llx : %x\n", rep.cpup[i].id, c.legion_processor_kind(rep.cpup[i]))
-  end
-
-  c.free(rep.datap)
-
-  var num_points = rep.cpus / 2
-  var r = region(ispace(ptr, num_points), int)
-  var rc = c.legion_coloring_create()
-  for i = 0, num_points do
-    c.legion_coloring_ensure_color(rc, i)
-  end
-  var p_disjoint = partition(disjoint, r, rc)
-
-  -- FIXME: try it several times and record the times
-  -- (we perform random cpus bisection)
-
+task run_test( num_points : uint64
+             , ps : ispace(int1d, num_points)
+             , r : region(ps, data)
+             , p_disjoint : partition(disjoint, r, ps)
+             )
+where
+  writes reads(r)
+do
   __demand(__parallel)
   for i = 0, num_points do
     write(p_disjoint[i])
@@ -111,6 +106,25 @@ task main()
   __demand(__parallel)
   for i = 0, num_points do
     read(p_disjoint[i])
+  end
+end
+
+task main()
+  var rep = report()
+  std.printf("We have %lld processors in total, %lld cpus:\n", rep.procs, rep.cpus)
+  for i = 0, rep.cpus do
+    std.printf("\t%llx : %x\n", rep.cpup[i].id, c.legion_processor_kind(rep.cpup[i]))
+  end
+  c.free(rep.datap)
+
+  var num_points = rep.cpus / 2
+  var ps = ispace(int1d, num_points)
+  var r = region(ps, data)
+
+  var p_disjoint = partition(equal, r, ps)
+
+  for i=0, number_of_tests do
+    run_test(num_points, ps, r, p_disjoint)
   end
 
   std.puts("SUCCESS!")

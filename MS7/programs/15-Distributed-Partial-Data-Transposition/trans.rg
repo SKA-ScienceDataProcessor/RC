@@ -1,14 +1,24 @@
-local c = terralib.includecstring [[ 
-  #include <stdio.h>
-  #include <stdlib.h>
-  #include <legion_c.h>
-]]
-
 import "regent"
+import "bishop"
 
+local c = regentlib.c
+
+--[[
 terra print_val(x : int, y : int, v : double)
   c.printf("o[%d][%d]: %10.2f\n", x, y, v)
 end
+--]]
+
+mapper
+task task#trans[index=$p] {
+  target : processors[isa=x86][($p[0] + 1) % processors[isa=x86].size];
+}
+
+task task#init[index=$p] {
+  target : processors[isa=x86][($p[0] + 1) % processors[isa=x86].size];
+}
+end
+
 
 terra puts(s: rawstring)
   c.printf("%s\n", s)
@@ -29,10 +39,14 @@ end
 
 -- true - "vertical" partitioning, false - "horizontal" partitioning
 task structured_partition(r : region(ispace(int2d), double), dir : bool, rx : int64, ry : int64, pieces : int64)
-  var qr : c.lldiv_t = c.lldiv(rx, pieces) -- need rsize >= pieces
-  var small_size = qr.quot
+  -- It looks old Wilkes libc doesn't have this and so the whole thingy silently crashes
+  -- var qr : c.lldiv_t = c.lldiv(rx, pieces) -- need rsize >= pieces
+  -- var small_size = qr.quot
+  var small_size = rx / pieces
   var big_size = small_size + 1
-  var big_pieces = qr.rem
+  -- See above
+  -- var big_pieces = qr.rem
+  var big_pieces = rx % pieces
 
   var d0 : int, d1 : int
   if dir
@@ -79,6 +93,14 @@ task structured_partition(r : region(ispace(int2d), double), dir : bool, rx : in
   return p
 end
 
+task init(i: region(ispace(int2d), double))
+where writes(i)
+do
+  for rc in i.ispace do
+    i[rc] = [double](rc.x) * 2.0 + [double](rc.y) * 3.0
+  end
+end
+
 task test(r: int, c : int, k : int)
   var isi = ispace(int2d, { x = r, y = c })
   var iso = ispace(int2d, { x = c, y = r })
@@ -86,22 +108,21 @@ task test(r: int, c : int, k : int)
   var i = region(isi, double)
   var o = region(iso, double)
 
----[[
-  puts("Original:")
-  for rc in isi do
-    i[rc] = [double](rc.x) * 2.0 + [double](rc.y) * 3.0
-    -- print_val(rc.x, rc.y, i[rc])
-  end
----]]
-
   var pi = structured_partition(i, true,  r, c, k)
+
+  __demand(__parallel)
+  for n =0, k do
+    init(pi[n])
+  end
+
   var po = structured_partition(o, false, r, c, k)
 
+  __demand(__parallel)
   for n =0, k do
     trans(pi[n], po[n])
   end
 
----[[
+--[[
   for n = 0, k do
     puts("Input partitioned")
     for cr in pi[n].ispace do
@@ -115,11 +136,11 @@ task test(r: int, c : int, k : int)
       print_val(cr.x, cr.y, o[cr])
     end
   end
----]]
+--]]
 
 end
 
 task main()
-  test(7, 5, 2)
+  test(8192, 8192, 16)
 end
 regentlib.start(main)
