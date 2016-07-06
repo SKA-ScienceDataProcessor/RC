@@ -137,7 +137,7 @@ function runregent {
                 echo "selecting GPUs is not supported right now!"
                 exit 1
             fi
-            if [ "${2+x}" -ne "x" ]; then
+            if [ "${2+x}" == "x" ]; then
               export SDP_SUPPORT_LIBRARY=./$2-ibv.so
             fi
             export SDP_LAUNCH_COMMAND="$SDP_BUILDDIR/Legion-ibv/language/regent.py"
@@ -157,7 +157,7 @@ function runregent {
             export CSPAWN_CMD="$SDP_SCRIPT_DIR/custom_spawner %N %C"
 
             # Execute!
-            if [ "${2+x}" -ne "x" ]; then
+            if [ "${2+x}" == "x" ]; then
               export SDP_SUPPORT_LIBRARY=./$2-local.so
             fi
             $SDP_BUILDDIR/gasnet-udp/release/bin/amudprun -n $tasks -spawn L $SDP_BUILDDIR/Legion-udp/language/regent.py $program.rg $program_args
