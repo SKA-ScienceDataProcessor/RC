@@ -123,7 +123,7 @@ function runregent {
       echo "setting mem"
       program_args="-ll:gsize $mem $program_args"
     fi
-    if [ "${2+x}" == "x" ]; then
+    if [ "${1+x}" == "x" ]; then
         export SDP_LAUNCH_ARGUMENTS="$1.rg $program_args"
     fi
     export SDP_MEM_LIMIT="$mem"
