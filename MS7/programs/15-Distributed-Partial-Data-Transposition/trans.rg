@@ -7,7 +7,6 @@ local c = regentlib.c
 terra print_val(x : int, y : int, v : double)
   c.printf("o[%d][%d]: %10.2f\n", x, y, v)
 end
---]]
 
 mapper
 task task#trans[index=$p] {
@@ -18,6 +17,7 @@ task task#init[index=$p] {
   target : processors[isa=x86][($p[0] + 1) % processors[isa=x86].size];
 }
 end
+--]]
 
 
 terra puts(s: rawstring)
@@ -139,4 +139,6 @@ end
 task main()
   test(8192, 8192, 16)
 end
+
+-- bishoplib.register_bishop_mappers()
 regentlib.start(main)
