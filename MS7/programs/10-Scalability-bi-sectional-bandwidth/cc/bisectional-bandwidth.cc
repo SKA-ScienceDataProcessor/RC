@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <stdint.h>
+#include <stdlib.h>
 #include "legion.h"
 #include "realm.h"
 #include "legion_types.h"
@@ -18,14 +19,13 @@ using namespace LegionRuntime::Accessor;
 
 LegionRuntime::Logger::Category log_logging("logging");
 
+const size_t message_size = 8 * 1024 * 1024;
+
 enum TaskIDs {
   TOP_LEVEL_TASK_ID,
-  SENDER1_TASK_ID,
-  SENDER2_TASK_ID,
-  FILL1_TASK_ID,
-  FILL2_TASK_ID,
-  RECEIVER1_TASK_ID,
-  RECEIVER2_TASK_ID
+  SENDER_TASK_ID,
+  FILL_TASK_ID,
+  RECEIVER_TASK_ID,
 };
 
 enum FieldIDs {
@@ -35,23 +35,16 @@ enum FieldIDs {
 inline
 Processor task_cpu(const Machine & machine, const Task * task, Processor old_proc) {
   Machine::ProcessorQuery all_procs(machine);
-  unsigned node, cpu = 0;
+  unsigned node;
   unsigned max_node = 0;
-  for (Machine::ProcessorQuery::iterator it = all_procs.begin();
-      it != all_procs.end(); it++){
-    Realm::ID cpuid(*it);
-    log_logging.print("Cpu %llx sits on node %u", it->id, cpuid.node());
-    if (cpuid.node() > max_node)
-      max_node = cpuid.node();
-  }
+  unsigned int node_index = 0;
+  unsigned int num_nodes = gasnet_nodes();
+
   switch (task->task_id) {
-    case SENDER1_TASK_ID: node = 0; break;
-    case SENDER2_TASK_ID: node = 1; break;
+    case SENDER_TASK_ID: node = 0; break;
     // cpu is the same for FILL tasks as for SENDER tasks.
-    case FILL1_TASK_ID: node = 0; break;
-    case FILL2_TASK_ID: node = 1; break;
-    case RECEIVER1_TASK_ID: node = 2; break;
-    case RECEIVER2_TASK_ID: node = 2; cpu = 1; break;
+    case FILL_TASK_ID: node = 1; break;
+    case RECEIVER_TASK_ID: node = 2; break;
     default:
       log_logging.print("Unknown task id %x.",task->task_id);
       return old_proc;
@@ -60,20 +53,16 @@ Processor task_cpu(const Machine & machine, const Task * task, Processor old_pro
     log_logging.print("Too high node index %d for task %x.", node, task->task_id);
     node = max_node;
   }
-  log_logging.print("task %x has cpu index %d.",task->task_id, cpu);
   for (Machine::ProcessorQuery::iterator it = all_procs.begin();
       it != all_procs.end(); it++){
       log_logging.print("considering cpu %llx.",it->id);
       Realm::ID cpuid(*it);
-      if (it->kind() == Processor::LOC_PROC && cpuid.node() == node) { // our node - look for CPU.
-        if (cpu == 0) {
-          log_logging.print("assigned cpu %llx.",it->id);
-          return (*it);
-        }
-        cpu--;
+      if (cpuid.is_processor() && cpuid.proc.owner_node == node) { // our node - look for CPU.
+        log_logging.print("assigned cpu %llx.",it->id);
+        return (*it);
       }
   }
-  log_logging.print("no processor for node %d, cpu %d.", node, cpu);
+  log_logging.print("no processor for node %d.", node);
   return old_proc;
 }
 
@@ -272,23 +261,15 @@ void top_level_task(const Task *task,
                     const std::vector<PhysicalRegion> &regions,
                     Context ctx, HighLevelRuntime *runtime)
 {
-    int region_size = 16*1024*1024;
-
     log_logging.print("Top level entered.");
-    const InputArgs &command_args = HighLevelRuntime::get_input_args();
-    for (int i = 0; i < command_args.argc; i++)
-    {
-        if (strcmp("-n",command_args.argv[i]) == 0)
-        {
-            region_size = atoi(command_args.argv[i+1]);
-            break;
-        }
-    }
-    assert(region_size > 0);
 
-    log_logging.print("Top level region size %d.", region_size);
-    runtime->execute_task(ctx, TaskLauncher(SENDER1_TASK_ID, TaskArgument(&region_size, sizeof(region_size))));
-    runtime->execute_task(ctx, TaskLauncher(SENDER2_TASK_ID, TaskArgument(&region_size, sizeof(region_size))));
+    int node_index;
+
+    for (node_index = 0; node_index < gasnet_nodes(); node_index++) {
+        runtime->execute_task(ctx,
+            TaskLauncher(SENDER_TASK_ID,
+                TaskArgument(&node_index, sizeof(node_index))));
+    }
 }
 
 void fill_task(const Task *task,
@@ -346,13 +327,9 @@ void sender_task(const Task *task,
   log_logging.print("sender entered, id %d, region size %d.", task->task_id, region_size);
 
   int start = 1;
-  int receiver_id = RECEIVER1_TASK_ID;
-  int fill_id = FILL1_TASK_ID;
-  if (task->task_id == SENDER2_TASK_ID) {
-    receiver_id = RECEIVER2_TASK_ID;
-    fill_id = FILL2_TASK_ID;
-    start = 2;
-  }
+  int receiver_id = RECEIVER_TASK_ID;
+  int fill_id = FILL_TASK_ID;
+
   log_logging.print("sender, receiver_id %d, fill_id %d.", receiver_id, fill_id);
 
   Rect<1> elem_rect(Point<1>(0),Point<1>(region_size-1));
@@ -422,20 +399,13 @@ int main(int argc, char **argv)
   HighLevelRuntime::set_top_level_task_id(TOP_LEVEL_TASK_ID);
   HighLevelRuntime::register_legion_task<top_level_task>(TOP_LEVEL_TASK_ID,
       Processor::LOC_PROC, true/*single*/, false/*index*/);
-  HighLevelRuntime::register_legion_task<fill_task>(FILL1_TASK_ID,
+  HighLevelRuntime::register_legion_task<fill_task>(FILL_TASK_ID,
       Processor::LOC_PROC, true/*single*/, false/*index*/);
-  HighLevelRuntime::register_legion_task<fill_task>(FILL2_TASK_ID,
+  HighLevelRuntime::register_legion_task<sender_task>(SENDER_TASK_ID,
       Processor::LOC_PROC, true/*single*/, false/*index*/);
-  HighLevelRuntime::register_legion_task<sender_task>(SENDER1_TASK_ID,
-      Processor::LOC_PROC, true/*single*/, false/*index*/);
-  HighLevelRuntime::register_legion_task<sender_task>(SENDER2_TASK_ID,
-      Processor::LOC_PROC, true/*single*/, false/*index*/);
-  HighLevelRuntime::register_legion_task<receiver_task>(RECEIVER1_TASK_ID,
+  HighLevelRuntime::register_legion_task<receiver_task>(RECEIVER_TASK_ID,
       Processor::LOC_PROC, true/*single*/, false/*index*/,
-      AUTO_GENERATE_ID, TaskConfigOptions(true/*leaf*/), "receiver1_task");
-  HighLevelRuntime::register_legion_task<receiver_task>(RECEIVER2_TASK_ID,
-      Processor::LOC_PROC, true/*single*/, false/*index*/,
-      AUTO_GENERATE_ID, TaskConfigOptions(true/*leaf*/), "receiver2_task");
+      AUTO_GENERATE_ID, TaskConfigOptions(true/*leaf*/), "receiver_task");
 
   HighLevelRuntime::set_registration_callback(mapper_registration);
 
