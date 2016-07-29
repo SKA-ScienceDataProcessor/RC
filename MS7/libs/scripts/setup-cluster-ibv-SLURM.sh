@@ -186,6 +186,6 @@ cat $SCRIPT_DIR/cluster_build_rules.mk >>$SCRIPT_DIR/build-rules.mk
 
 # Reporting to user the configuration she need to put into environment:
 echo "Please add the following definitions into your environment:"
-echo "SDP_BUILD_DIR=$BUILDDIR"
+echo "SDP_BUILDDIR=$BUILDDIR"
 echo "SDP_SCRIPT_DIR=$SCRIPT_DIR"
 echo "SDP_USE_IBV=$with_ibv"
