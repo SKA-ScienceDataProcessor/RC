@@ -11,4 +11,4 @@ LIBRARY = static-scheduling-support
 CXX_FLAGS += -I/usr/local/Cluster-Apps/slurm/include
 CC_FLAGS += -I/usr/local/Cluster-Apps/slurm/include
 
-include ../../libs/scripts/build-rules.mk
+include $(SDP_SCRIPT_DIR)/cluster_build_rules.mk

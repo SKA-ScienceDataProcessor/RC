@@ -4,4 +4,4 @@
 EXEC = dot
 
 # Include the script for rules "exec" (default, build the executable" and "clean".
-include ../../../libs/scripts/build-rules.mk
+include $(SDP_SCRIPT_DIR)/cluster_build_rules.mk

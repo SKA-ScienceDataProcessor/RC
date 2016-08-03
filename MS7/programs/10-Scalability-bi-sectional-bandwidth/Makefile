@@ -11,4 +11,4 @@ LIBRARY = report
 CXX_FLAGS += --std=c++11
 CC_FLAGS += --std=c++11
 
-include ../../libs/scripts/build-rules.mk
+include $(SDP_SCRIPT_DIR)/cluster_build_rules.mk

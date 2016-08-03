@@ -6,4 +6,4 @@ EXEC = resource-management
 
 SRCS = resource-management.cc
 
-include ../../../libs/scripts/build-rules.mk
+include $(SDP_SCRIPT_DIR)/cluster_build_rules.mk
