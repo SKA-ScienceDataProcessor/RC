@@ -57,7 +57,7 @@ help:
 
 run: $(EXEC)
 	SDP_SCRIPT_DIR="$(SDP_SCRIPT_DIR)" SDP_BUILDDIR=$(SDP_BUILDDIR) \
-	    ./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) -time=$(TIME) -- $(RUNTIME_ARGS) $(EXEC_ARGS)
+	    ./${word 1, $(EXEC)} -nodes=$(NODES) -tasks=$(TASKS) -threads=$(THREADS) -mem=$(TASKMB) -gpu=$(GPU) -net=$(NET) -time=$(TIME) --prof=$(PROFILING) -- $(RUNTIME_ARGS) $(EXEC_ARGS)
 
 clean:
 	rm -f $(EXEC) $(EXEC)-local $(EXEC)-ibv *.o *.a *.so
@@ -99,7 +99,9 @@ ifeq ($(DEBUG),1)
 CC_FLAGS += -DDEBUG=1
 endif
 
+PROF_SUFFIX = noprof
 ifeq ($(PROFILING),1)
+PROF_SUFFIX = prof
 CC_FLAGS += -DLEGION_PROF_MESSAGES=1 -DLEGION_PROFILE=1
 endif
 
@@ -119,19 +121,18 @@ PROF_OPTIONS += -o profile_$(PROF_JOB_ID)
 endif
 
 process-profile:
-	$(SDP_BUILDDIR)/Legion-udp/tools/legion_prof.py $(PROF_OPTIONS) $(PROF_FILES)
+	$(SDP_BUILDDIR)/Legion-udp-prof/tools/legion_prof.py $(PROF_OPTIONS) $(PROF_FILES)
 
 ifeq ($(REGENT_BUILD),0)
-$(EXEC): $(EXEC_WITH_CONDUITS)
+$(EXEC): $(EXEC_WITH_CONDUITS) $(SDP_SCRIPT_DIR)/runner_script
 	cp $(SDP_SCRIPT_DIR)/runner_script $(EXEC)
 	echo "run $(EXEC)" >>$(EXEC)
 	chmod a+x $(EXEC)
 else
 
 LIBRARY_SRCS = $(filter-out $(EXEC).rg, $(SRCS))
-LIBRARIES = $(SDP_BUILDDIR)/Legion-udp/bindings/terra/liblegion_terra.so
 ifneq ($(LIBRARY),)
-LIBRARIES += $(LIBRARY)-local.so
+LIBRARIES += $(LIBRARY)-local-$(PROF_SUFFIX).so
 endif
 
 ifeq ($(USE_CUDA),1)
@@ -139,32 +140,26 @@ CUDA_REGENT_FLAG = --cuda
 endif
 
 ifeq ($(SDP_USE_IBV),1)
-LIBRARIES += $(SDP_BUILDDIR)/Legion-ibv/bindings/terra/liblegion_terra.so
 ifneq ($(LIBRARY),)
-LIBRARIES += $(LIBRARY)-ibv.so
+LIBRARIES += $(LIBRARY)-ibv-$(PROF_SUFFIX).so
 endif
 
-$(SDP_BUILDDIR)/Legion-ibv/bindings/terra/liblegion_terra.so:
-	CONDUIT=ibv GASNET_CONDUIT=ibv GASNET=$(SDP_BUILDDIR)/gasnet-ibv/release OUTPUT_LEVEL=$(OUTPUT_LEVEL) CC_FLAGS="$(CC_FLAGS)" CUDA=$(CUDA_INSTALL_PATH) $(SDP_BUILDDIR)/Legion-ibv/language/install.py --with-terra=$(SDP_BUILDDIR)/terra/release --gasnet $(CUDA_REGENT_FLAG) || exit 1
-
-$(LIBRARY)-ibv.so: $(LIBRARY_SRCS) $(SDP_BUILDDIR)/Legion-ibv/bindings/terra/liblegion_terra.so
+$(LIBRARY)-ibv-$(PROF_SUFFIX).so: $(LIBRARY_SRCS)
 	rm -f *.o liblegion.a librealm.a
 	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS) -fPIC" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
 	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet-ibv/release GEN_SRC="$(LIBRARY_SRCS)" LD_FLAGS="$(LD_FLAGS) -shared" \
-	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime OUTFILE=$(LIBRARY)-ibv.so CUDA=$(CUDA_INSTALL_PATH) \
-	make -j4 -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk
+	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv-$(PROF_SUFFIX)/runtime OUTFILE=$(LIBRARY)-ibv.so CUDA=$(CUDA_INSTALL_PATH) \
+	make -j4 -f $(SDP_BUILDDIR)/Legion-ibv-$(PROF_SUFFIX)/runtime/runtime.mk
 endif
 
-$(SDP_BUILDDIR)/Legion-udp/bindings/terra/liblegion_terra.so:
-	CONDUIT=udp GASNET_CONDUIT=udp GASNET=$(SDP_BUILDDIR)/gasnet-udp/release OUTPUT_LEVEL=$(OUTPUT_LEVEL) CC_FLAGS="$(CC_FLAGS)" CUDA=$(CUDA_INSTALL_PATH) $(SDP_BUILDDIR)/Legion-udp/language/install.py --with-terra=$(SDP_BUILDDIR)/terra/release --gasnet $(CUDA_REGENT_FLAG) || exit 1
-$(LIBRARY)-local.so: $(LIBRARY_SRCS) $(SDP_BUILDDIR)/Legion-udp/bindings/terra/liblegion_terra.so
+$(LIBRARY)-local-$(PROF_SUFFIX).so: $(LIBRARY_SRCS)
 	rm -f *.o liblegion.a librealm.a
 	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS) -fPIC" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
 	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet-udp/release GEN_SRC="$(LIBRARY_SRCS)" LD_FLAGS="$(LD_FLAGS) -shared" \
-	CONDUIT=udp GASNET_CONDUIT=udp LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime OUTFILE=$(LIBRARY)-local.so CUDA=$(CUDA_INSTALL_PATH) \
-	make -j4 -f $(SDP_BUILDDIR)/Legion-udp/runtime/runtime.mk
+	CONDUIT=udp GASNET_CONDUIT=udp LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp-$(PROF_SUFFIX)/runtime OUTFILE=$(LIBRARY)-local.so CUDA=$(CUDA_INSTALL_PATH) \
+	make -j4 -f $(SDP_BUILDDIR)/Legion-udp-$(PROF_SUFFIX)/runtime/runtime.mk
 
-$(EXEC): $(EXEC).rg $(LIBRARIES)
+$(EXEC): $(EXEC).rg $(LIBRARIES) $(SDP_SCRIPT_DIR)/runner_script
 	cp $(SDP_SCRIPT_DIR)/runner_script $(EXEC)
 	echo "runregent $(EXEC) $(LIBRARY)" >>$(EXEC)
 	chmod a+x $(EXEC)
@@ -174,14 +169,14 @@ $(EXEC)-local: $(SRCS)
 	rm -f *.o liblegion.a librealm.a
 	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS)" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
 	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet-udp/release GEN_SRC=$(SRCS) LD_FLAGS="$(LD_FLAGS)" \
-	CONDUIT=udp GASNET_CONDUIT=udp LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp/runtime OUTFILE=$(EXEC)-local \
-	make -j4 -f $(SDP_BUILDDIR)/Legion-udp/runtime/runtime.mk
+	CONDUIT=udp GASNET_CONDUIT=udp LG_RT_DIR=$(SDP_BUILDDIR)/Legion-udp-$(PROF_SUFFIX)/runtime OUTFILE=$(EXEC)-local \
+	make -j4 -f $(SDP_BUILDDIR)/Legion-udp-$(PROF_SUFFIX)/runtime/runtime.mk
 
 ifeq ($(SDP_USE_IBV),1)
 $(EXEC)-ibv: $(SRCS)
 	rm -f *.o liblegion.a librealm.a
 	DEBUG=$(DEBUG) OUTPUT_LEVEL=$(OUTPUT_LEVEL) USE_GASNET=1 CC_FLAGS="$(CC_FLAGS)" USE_CUDA=$(USE_CUDA) USE_HDF=$(USE_HDF) \
 	SHARED_LOWLEVEL=$(SHARED_LOWLEVEL) GASNET=$(SDP_BUILDDIR)/gasnet-ibv/release GEN_SRC=$(SRCS) LD_FLAGS="$(LD_FLAGS)" \
-	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv/runtime OUTFILE=$(EXEC)-ibv \
-	make -j4 -f $(SDP_BUILDDIR)/Legion-ibv/runtime/runtime.mk
+	CONDUIT=ibv GASNET_CONDUIT=ibv LG_RT_DIR=$(SDP_BUILDDIR)/Legion-ibv-$(PROF_SUFFIX)/runtime OUTFILE=$(EXEC)-ibv \
+	make -j4 -f $(SDP_BUILDDIR)/Legion-ibv-$(PROF_SUFFIX)/runtime/runtime.mk
 endif

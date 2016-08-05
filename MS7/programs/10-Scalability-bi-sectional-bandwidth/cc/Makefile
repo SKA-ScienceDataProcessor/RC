@@ -2,13 +2,8 @@
 #
 # We use it as a useful test harness for our build script.
 
-EXEC = index_tasks
+EXEC = bisectional-bandwidth
 
-SRCS = index_tasks.rg report.cc
-
-LIBRARY = report
-
-CXX_FLAGS += --std=c++11
-CC_FLAGS += --std=c++11
+SRCS = bisectional-bandwidth.cc
 
 include $(SDP_SCRIPT_DIR)/cluster_build_rules.mk

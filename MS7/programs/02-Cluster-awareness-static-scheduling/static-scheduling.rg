@@ -10,22 +10,22 @@ do
     support = terralib.includec("static-scheduling-support.h",{"-I."})
 end
 
-task level_2_task(cpu : int, i : int, j : int)
-    support.node_log("Bottom level task %d/%d/%d, SLURM node %d, SLURM task %d", cpu, i, j, support.current_slurm_node(), support.current_slurm_task());
+task level_2_task(cpu : int, level_1_index : int, level_2_index : int)
+    support.node_log("Bottom level task %d/%d/%d, SLURM node %d, SLURM task %d", cpu, level_1_index, level_2_index, support.current_slurm_node(), support.current_slurm_task());
 end
 
-task level_1_task(cpu : int, i : int)
-    support.node_log("Level 1 task %d/%d, SLURM node %d, SLURM task %d", cpu, i, support.current_slurm_node(), support.current_slurm_task());
+task level_1_task(cpu : int, level_1_index : int)
+    support.node_log("Level 1 task %d/%d, SLURM node %d, SLURM task %d", cpu, level_1_index, support.current_slurm_node(), support.current_slurm_task());
     __demand(__parallel)
-    for j=0, 5 do
-        level_2_task(cpu, i, j)
+    for level_2_index=0, 5 do
+        level_2_task(cpu, level_1_index, level_2_index)
     end
 end
 
 task level_0_task(cpu : int)
     support.node_log("Root task %d. SLURM node %d, SLURM task %d", cpu, support.current_slurm_node(), support.current_slurm_task())
-    for i=0, 2 do
-        level_1_task(cpu, i)
+    for level_1_index=0, 2 do
+        level_1_task(cpu, level_1_index)
     end
 end
 

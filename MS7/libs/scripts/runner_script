@@ -6,6 +6,7 @@ set -euo pipefail
 
 # Parse command line.
 # Parsing command line args.
+profiling=0
 nodes=1
 tasks=1
 net=""
@@ -45,6 +46,10 @@ while (($#)); do
             ;;
         -time=*|--time=*)
             timebound="${arg#*=}"
+            shift
+            ;;
+        -prof=*|--prof=*)
+            profiling="${arg#*=}"
             shift
             ;;
         -h|--help)
@@ -129,6 +134,11 @@ function runregent {
     export SDP_MEM_LIMIT="$mem"
 
     cmdline="$program $program_args"
+    if [ "$profiling" == "0" ] ; then
+      prof_suffix=noprof
+    else
+      prof_suffix=prof
+    fi
     # Select between srun/amudprun.
     case "$net" in
         ibv)
@@ -138,9 +148,9 @@ function runregent {
                 exit 1
             fi
             if [ "${2+x}" == "x" ]; then
-              export SDP_SUPPORT_LIBRARY=./$2-ibv.so
+              export SDP_SUPPORT_LIBRARY=./$2-ibv-$prof_suffix.so
             fi
-            export SDP_LAUNCH_COMMAND="$SDP_BUILDDIR/Legion-ibv/language/regent.py"
+            export SDP_LAUNCH_COMMAND="$SDP_BUILDDIR/Legion-ibv-$prof_suffix/language/regent.py"
 
             sbatch --job-name="SDP Regent run: $1" --nodes=$nodes --ntasks=$tasks --cpus-per-task=$threads --time=$timebound $SDP_SCRIPT_DIR/slurm_submit.wilkes.sdp
             ;;
@@ -158,9 +168,9 @@ function runregent {
 
             # Execute!
             if [ "${2+x}" == "x" ]; then
-              export SDP_SUPPORT_LIBRARY=./$2-local.so
+              export SDP_SUPPORT_LIBRARY=./$2-local-$prof_suffix.so
             fi
-            $SDP_BUILDDIR/gasnet-udp/release/bin/amudprun -n $tasks -spawn L $SDP_BUILDDIR/Legion-udp/language/regent.py $program.rg $program_args
+            $SDP_BUILDDIR/gasnet-udp/release/bin/amudprun -n $tasks -spawn L $SDP_BUILDDIR/Legion-udp-$prof_suffix/language/regent.py $program.rg $program_args
             ;;
         *)
             echo "invalid net '$net'"

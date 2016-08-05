@@ -54,8 +54,8 @@ private:
     machine.get_all_processors(all_procs);
     std::string taskname(task->get_task_name());
     int cpu = -1;
-    int i = -1;
-    int j = -1;
+    int level_1_index = -1;
+    int level_2_index = -1;
 
     int* args = (int*)task->args.base();
     unsigned arglen = task->args.size();
@@ -67,25 +67,25 @@ private:
         cpu = args[0];
     }
     if (arglen >= sizeof(int)*2) {
-        i = args[1];
+        level_1_index = args[1];
     }
     if (arglen >= sizeof(int)*3) {
-        j = args[2];
+        level_2_index = args[2];
     }
     if (equal_to(taskname, "level_0_task")) {
         assert(cpu >= 0 && cpu < 4);
         node_to_search = cpu;
     }
     else if (equal_to(taskname, "level_1_task")) {
-        assert(i >= 0 && i < 2);
+        assert(level_1_index >= 0 && level_1_index < 2);
         assert(cpu >= 0 && cpu < 4);
-        node_to_search = 4+cpu+i*4;
+        node_to_search = 4+cpu+level_1_index*4;
     }
     else if (equal_to(taskname, "level_2_task")) {
-        assert(i >= 0 && i < 2);
+        assert(level_1_index >= 0 && level_1_index < 2);
         assert(cpu >= 0 && cpu < 4);
-        assert(j >= 0 && j < 5);
-        node_to_search = 12+cpu+j*4;
+        assert(level_1_index >= 0 && level_2_index < 5);
+        node_to_search = 12+cpu+level_2_index*4;
     }
     for (std::set<Processor>::const_iterator it = all_procs.begin();
             it != all_procs.end(); it++) {

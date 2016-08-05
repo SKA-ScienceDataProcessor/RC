@@ -8,4 +8,4 @@ LIBRARY = bandwidth-latency-support
 
 SRCS = bandwidth-latency.rg bandwidth-latency-support.cc
 
-include ../../libs/scripts/build-rules.mk
+include $(SDP_SCRIPT_DIR)/cluster_build_rules.mk

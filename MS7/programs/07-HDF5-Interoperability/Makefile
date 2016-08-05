@@ -8,4 +8,4 @@ SRCS = hdf_attach.cc
 
 CC_FLAGS += -I/usr/include/hdf5/serial
 
-include ../../libs/scripts/build-rules.mk
+include $(SDP_SCRIPT_DIR)/cluster_build_rules.mk
