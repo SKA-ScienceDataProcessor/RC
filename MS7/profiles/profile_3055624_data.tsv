@@ -1,0 +1,575 @@
+level	start	end	color	opacity	title
+4	43459	44239	#006fff	1.0	Scheduler initiated by="Operation <0>" total=780 us start=43459 us stop=44239 us
+4	44261	44263	#003fff	1.0	State Analaysis initiated by="main <1>" total=2 us start=44261 us stop=44263 us
+4	44298	44345	#FFC0CB	1.0	ProfTask total=47 us start=44298 us stop=44345 us
+4	44352	46094	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="main <1>" total=1742 us start=44352 us stop=46094 us
+3	44793	45155	#ff7700	1.0	Mapper Call map_task for main <1> total=362 us start=44793 us stop=45155 us
+3	45301	45469	#00ff51	1.0	Mapper Call configure_context total=168 us start=45301 us stop=45469 us
+4	46102	46103	#FFC0CB	1.0	ProfTask <1> total=1 us start=46102 us stop=46103 us
+4	46104	46105	#FFC0CB	1.0	ProfTask <1> total=1 us start=46104 us stop=46105 us
+4	46160	46197	#ff00e3	1.0	Decrement Pending Task initiated by="main <1>" total=37 us start=46160 us stop=46197 us
+4	46206	46207	#FFC0CB	1.0	ProfTask <1> total=1 us start=46206 us stop=46207 us
+4	46509	47106	#0093ff	1.0	Logical Dependence Analysis initiated by="test <3>" total=597 us start=46509 us stop=47106 us
+4	47113	47692	#006600	1.0	Post initiated by="main <1>" total=579 us start=47113 us stop=47692 us
+4	47699	47727	#006fff	1.0	Scheduler initiated by="Operation <0>" total=28 us start=47699 us stop=47727 us
+4	47731	47736	#FFC0CB	1.0	ProfTask <1> total=5 us start=47731 us stop=47736 us
+4	47737	47738	#FFC0CB	1.0	ProfTask <3> total=1 us start=47737 us stop=47738 us
+4	47739	47740	#FFC0CB	1.0	ProfTask <1> total=1 us start=47739 us stop=47740 us
+4	47741	47935	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="test <3>" total=194 us start=47741 us stop=47935 us
+4	47942	47960	#006fff	1.0	Scheduler initiated by="Operation <0>" total=18 us start=47942 us stop=47960 us
+4	47964	47965	#FFC0CB	1.0	ProfTask total=1 us start=47964 us stop=47965 us
+4	47966	47966	#FFC0CB	1.0	ProfTask <3> total=0 us start=47966 us stop=47966 us
+4	47967	48020	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="test <3>" total=53 us start=47967 us stop=48020 us
+4	48035	48036	#FFC0CB	1.0	ProfTask total=1 us start=48035 us stop=48036 us
+4	48039	48039	#FFC0CB	1.0	ProfTask <3> total=0 us start=48039 us stop=48039 us
+4	48069	48071	#ff00e3	1.0	Decrement Pending Task initiated by="test <3>" total=2 us start=48069 us stop=48071 us
+4	48079	48080	#FFC0CB	1.0	ProfTask <3> total=1 us start=48079 us stop=48080 us
+4	53587	53691	#0093ff	1.0	Logical Dependence Analysis initiated by="structured_partition <4>" total=104 us start=53587 us stop=53691 us
+4	53702	53725	#006fff	1.0	Scheduler initiated by="Operation <0>" total=23 us start=53702 us stop=53725 us
+4	53729	53730	#FFC0CB	1.0	ProfTask <4> total=1 us start=53729 us stop=53730 us
+4	53732	53745	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="structured_partition <4>" total=13 us start=53732 us stop=53745 us
+4	53750	53765	#006fff	1.0	Scheduler initiated by="Operation <0>" total=15 us start=53750 us stop=53765 us
+4	53768	53772	#FFC0CB	1.0	ProfTask total=4 us start=53768 us stop=53772 us
+4	53773	53773	#FFC0CB	1.0	ProfTask <4> total=0 us start=53773 us stop=53773 us
+4	53774	54116	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="structured_partition <4>" total=342 us start=53774 us stop=54116 us
+3	53835	54038	#ff7700	1.0	Mapper Call map_task for structured_partition <4> total=203 us start=53835 us stop=54038 us
+4	54132	54134	#FFC0CB	1.0	ProfTask total=2 us start=54132 us stop=54134 us
+4	54136	54137	#FFC0CB	1.0	ProfTask <4> total=1 us start=54136 us stop=54137 us
+4	54144	54145	#ff00e3	1.0	Decrement Pending Task initiated by="structured_partition <4>" total=1 us start=54144 us stop=54145 us
+4	54151	54152	#FFC0CB	1.0	ProfTask <4> total=1 us start=54151 us stop=54152 us
+4	55629	56523	#006600	1.0	Post initiated by="structured_partition <4>" total=894 us start=55629 us stop=56523 us
+4	56534	56536	#FFC0CB	1.0	ProfTask <4> total=2 us start=56534 us stop=56536 us
+4	56537	56538	#FFC0CB	1.0	ProfTask <4> total=1 us start=56537 us stop=56538 us
+4	56618	61608	#0093ff	1.0	Logical Dependence Analysis initiated by="init <5>" total=4990 us start=56618 us stop=61608 us
+4	61618	61636	#006fff	1.0	Scheduler initiated by="Operation <0>" total=18 us start=61618 us stop=61636 us
+4	61641	61655	#0093ff	1.0	Logical Dependence Analysis initiated by="structured_partition <6>" total=14 us start=61641 us stop=61655 us
+4	61660	61681	#006fff	1.0	Scheduler initiated by="Operation <0>" total=21 us start=61660 us stop=61681 us
+4	61686	61688	#FFC0CB	1.0	ProfTask <5> total=2 us start=61686 us stop=61688 us
+4	61689	62933	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <5>" total=21978 us start=61689 us stop=83667 us (wait for 20697 us)
+4	62933	83266	#2b00ff	0.15	Task Physical Dependence Analysis initiated by="init <5>" total=21978 us start=61689 us stop=83667 us (wait for 20697 us)
+4	83266	83630	#2b00ff	0.45	Task Physical Dependence Analysis initiated by="init <5>" total=21978 us start=61689 us stop=83667 us (wait for 20697 us)
+4	83630	83667	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <5>" total=21978 us start=61689 us stop=83667 us (wait for 20697 us)
+3	61696	62400	#fff500	1.0	Mapper Call slice_task total=704 us start=61696 us stop=62400 us
+3	62957	62999	#ff0077	1.0	Deferred Slice initiated by="init <7> (<-init <5>)" total=42 us start=62957 us stop=62999 us
+3	63006	63011	#ff0077	1.0	Deferred Slice initiated by="init <8> (<-init <5>)" total=5 us start=63006 us stop=63011 us
+3	63015	81235	#ff0077	1.0	Deferred Slice initiated by="init <9> (<-init <5>)" total=19368 us start=63015 us stop=82383 us (wait for 348 us)
+3	81235	81572	#ff0077	0.15	Deferred Slice initiated by="init <9> (<-init <5>)" total=19368 us start=63015 us stop=82383 us (wait for 348 us)
+3	81572	81583	#ff0077	0.45	Deferred Slice initiated by="init <9> (<-init <5>)" total=19368 us start=63015 us stop=82383 us (wait for 348 us)
+3	81583	82383	#ff0077	1.0	Deferred Slice initiated by="init <9> (<-init <5>)" total=19368 us start=63015 us stop=82383 us (wait for 348 us)
+2	63853	78402	#ff7700	1.0	Mapper Call map_task for init <15> (<-init <9> (<-init <5>)) total=14549 us start=63853 us stop=78402 us
+2	80852	81043	#ff7700	1.0	Mapper Call map_task for init <16> (<-init <9> (<-init <5>)) total=191 us start=80852 us stop=81043 us
+2	81569	81574	#ff00e3	1.0	Decrement Pending Task initiated by="init <15> (<-init <9> (<-init <5>))" total=5 us start=81569 us stop=81574 us
+3	82393	82397	#ff0077	1.0	Deferred Slice initiated by="init <10> (<-init <5>)" total=834 us start=82393 us stop=83227 us (wait for 823 us)
+3	82397	82799	#ff0077	0.15	Deferred Slice initiated by="init <10> (<-init <5>)" total=834 us start=82393 us stop=83227 us (wait for 823 us)
+3	82799	83220	#ff0077	0.45	Deferred Slice initiated by="init <10> (<-init <5>)" total=834 us start=82393 us stop=83227 us (wait for 823 us)
+3	83220	83227	#ff0077	1.0	Deferred Slice initiated by="init <10> (<-init <5>)" total=834 us start=82393 us stop=83227 us (wait for 823 us)
+2	82399	82400	#ff0077	1.0	Deferred Slice initiated by="init <11> (<-init <5>)" total=838 us start=82399 us stop=83237 us (wait for 832 us)
+2	82400	83210	#ff0077	0.15	Deferred Slice initiated by="init <11> (<-init <5>)" total=838 us start=82399 us stop=83237 us (wait for 832 us)
+2	83210	83232	#ff0077	0.45	Deferred Slice initiated by="init <11> (<-init <5>)" total=838 us start=82399 us stop=83237 us (wait for 832 us)
+2	83232	83237	#ff0077	1.0	Deferred Slice initiated by="init <11> (<-init <5>)" total=838 us start=82399 us stop=83237 us (wait for 832 us)
+1	82797	83212	#ff00e3	1.0	Decrement Pending Task initiated by="init <16> (<-init <9> (<-init <5>))" total=415 us start=82797 us stop=83212 us
+3	83242	83246	#ff0077	1.0	Deferred Slice initiated by="init <12> (<-init <5>)" total=4 us start=83242 us stop=83246 us
+3	83250	83254	#ff0077	1.0	Deferred Slice initiated by="init <13> (<-init <5>)" total=4 us start=83250 us stop=83254 us
+3	83258	83262	#ff0077	1.0	Deferred Slice initiated by="init <14> (<-init <5>)" total=4 us start=83258 us stop=83262 us
+4	83676	83692	#006fff	1.0	Scheduler initiated by="Operation <0>" total=16 us start=83676 us stop=83692 us
+4	83696	83707	#006fff	1.0	Scheduler initiated by="Operation <0>" total=11 us start=83696 us stop=83707 us
+4	83711	83720	#006fff	1.0	Scheduler initiated by="Operation <0>" total=9 us start=83711 us stop=83720 us
+4	83724	83734	#006fff	1.0	Scheduler initiated by="Operation <0>" total=10 us start=83724 us stop=83734 us
+4	83738	83747	#006fff	1.0	Scheduler initiated by="Operation <0>" total=9 us start=83738 us stop=83747 us
+4	83751	83761	#006fff	1.0	Scheduler initiated by="Operation <0>" total=10 us start=83751 us stop=83761 us
+4	83765	83779	#006fff	1.0	Scheduler initiated by="Operation <0>" total=14 us start=83765 us stop=83779 us
+4	83783	84056	#FFC0CB	1.0	ProfTask total=273 us start=83783 us stop=84056 us
+4	84059	84060	#FFC0CB	1.0	ProfTask <6> total=1 us start=84059 us stop=84060 us
+4	84061	84074	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="structured_partition <6>" total=13 us start=84061 us stop=84074 us
+4	84079	84094	#006fff	1.0	Scheduler initiated by="Operation <0>" total=15 us start=84079 us stop=84094 us
+4	84097	84098	#FFC0CB	1.0	ProfTask total=1 us start=84097 us stop=84098 us
+4	84099	84100	#FFC0CB	1.0	ProfTask <7> total=1 us start=84099 us stop=84100 us
+4	84101	84101	#FFC0CB	1.0	ProfTask <8> total=0 us start=84101 us stop=84101 us
+4	84102	84104	#FFC0CB	1.0	ProfTask <15> total=2 us start=84102 us stop=84104 us
+4	84105	84106	#FFC0CB	1.0	ProfTask <16> total=1 us start=84105 us stop=84106 us
+4	84107	84107	#FFC0CB	1.0	ProfTask <15> total=0 us start=84107 us stop=84107 us
+4	84108	84109	#FFC0CB	1.0	ProfTask <9> total=1 us start=84108 us stop=84109 us
+4	84110	84111	#FFC0CB	1.0	ProfTask <16> total=1 us start=84110 us stop=84111 us
+4	84112	84486	#FFC0CB	1.0	ProfTask <10> total=374 us start=84112 us stop=84486 us
+4	84490	84490	#FFC0CB	1.0	ProfTask <11> total=0 us start=84490 us stop=84490 us
+4	84491	84492	#FFC0CB	1.0	ProfTask <12> total=1 us start=84491 us stop=84492 us
+4	84493	84494	#FFC0CB	1.0	ProfTask <13> total=1 us start=84493 us stop=84494 us
+4	84495	84495	#FFC0CB	1.0	ProfTask <14> total=0 us start=84495 us stop=84495 us
+4	84496	84496	#FFC0CB	1.0	ProfTask <5> total=0 us start=84496 us stop=84496 us
+4	84498	86705	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <7> (<-init <5>)" total=3005 us start=84498 us stop=87503 us (wait for 350 us)
+4	86705	86710	#2b00ff	0.15	Task Physical Dependence Analysis initiated by="init <7> (<-init <5>)" total=3005 us start=84498 us stop=87503 us (wait for 350 us)
+4	86710	87055	#2b00ff	0.45	Task Physical Dependence Analysis initiated by="init <7> (<-init <5>)" total=3005 us start=84498 us stop=87503 us (wait for 350 us)
+4	87055	87503	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <7> (<-init <5>)" total=3005 us start=84498 us stop=87503 us (wait for 350 us)
+3	86709	87047	#ff00e3	1.0	Decrement Pending Task initiated by="init <17> (<-init <7> (<-init <5>))" total=338 us start=86709 us stop=87047 us
+4	87509	87510	#FFC0CB	1.0	ProfTask total=1 us start=87509 us stop=87510 us
+4	87512	89226	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <8> (<-init <5>)" total=3477 us start=87512 us stop=90989 us (wait for 36 us)
+4	89226	89237	#2b00ff	0.15	Task Physical Dependence Analysis initiated by="init <8> (<-init <5>)" total=3477 us start=87512 us stop=90989 us (wait for 36 us)
+4	89237	89248	#2b00ff	0.45	Task Physical Dependence Analysis initiated by="init <8> (<-init <5>)" total=3477 us start=87512 us stop=90989 us (wait for 36 us)
+4	89248	90146	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <8> (<-init <5>)" total=3477 us start=87512 us stop=90989 us (wait for 36 us)
+4	90146	90152	#2b00ff	0.15	Task Physical Dependence Analysis initiated by="init <8> (<-init <5>)" total=3477 us start=87512 us stop=90989 us (wait for 36 us)
+4	90152	90160	#2b00ff	0.45	Task Physical Dependence Analysis initiated by="init <8> (<-init <5>)" total=3477 us start=87512 us stop=90989 us (wait for 36 us)
+4	90160	90989	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <8> (<-init <5>)" total=3477 us start=87512 us stop=90989 us (wait for 36 us)
+3	88772	89210	#ff7700	1.0	Mapper Call map_task for init <19> (<-init <8> (<-init <5>)) total=438 us start=88772 us stop=89210 us
+3	89233	89240	#ff00e3	1.0	Decrement Pending Task initiated by="init <18> (<-init <7> (<-init <5>))" total=7 us start=89233 us stop=89240 us
+3	89671	90135	#ff7700	1.0	Mapper Call map_task for init <20> (<-init <8> (<-init <5>)) total=464 us start=89671 us stop=90135 us
+3	90150	90154	#ff00e3	1.0	Decrement Pending Task initiated by="init <19> (<-init <8> (<-init <5>))" total=4 us start=90150 us stop=90154 us
+4	91004	91008	#FFC0CB	1.0	ProfTask total=4 us start=91004 us stop=91008 us
+4	91010	92776	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <10> (<-init <5>)" total=3233 us start=91010 us stop=94243 us (wait for 61 us)
+4	92776	92793	#2b00ff	0.15	Task Physical Dependence Analysis initiated by="init <10> (<-init <5>)" total=3233 us start=91010 us stop=94243 us (wait for 61 us)
+4	92793	92810	#2b00ff	0.45	Task Physical Dependence Analysis initiated by="init <10> (<-init <5>)" total=3233 us start=91010 us stop=94243 us (wait for 61 us)
+4	92810	93742	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <10> (<-init <5>)" total=3233 us start=91010 us stop=94243 us (wait for 61 us)
+4	93742	93754	#2b00ff	0.15	Task Physical Dependence Analysis initiated by="init <10> (<-init <5>)" total=3233 us start=91010 us stop=94243 us (wait for 61 us)
+4	93754	93769	#2b00ff	0.45	Task Physical Dependence Analysis initiated by="init <10> (<-init <5>)" total=3233 us start=91010 us stop=94243 us (wait for 61 us)
+4	93769	94243	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <10> (<-init <5>)" total=3233 us start=91010 us stop=94243 us (wait for 61 us)
+3	92326	92510	#ff7700	1.0	Mapper Call map_task for init <21> (<-init <10> (<-init <5>)) total=184 us start=92326 us stop=92510 us
+3	92788	92798	#ff00e3	1.0	Decrement Pending Task initiated by="init <20> (<-init <8> (<-init <5>))" total=10 us start=92788 us stop=92798 us
+3	93230	93720	#ff7700	1.0	Mapper Call map_task for init <22> (<-init <10> (<-init <5>)) total=490 us start=93230 us stop=93720 us
+3	93750	93757	#ff00e3	1.0	Decrement Pending Task initiated by="init <21> (<-init <10> (<-init <5>))" total=7 us start=93750 us stop=93757 us
+4	94256	94616	#FFC0CB	1.0	ProfTask total=360 us start=94256 us stop=94616 us
+4	94629	94632	#ff00e3	1.0	Decrement Pending Task initiated by="init <22> (<-init <10> (<-init <5>))" total=3 us start=94629 us stop=94632 us
+4	94640	98870	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <11> (<-init <5>)" total=4230 us start=94640 us stop=98870 us
+3	96303	96916	#ff7700	1.0	Mapper Call map_task for init <23> (<-init <11> (<-init <5>)) total=613 us start=96303 us stop=96916 us
+3	97469	98209	#ff7700	1.0	Mapper Call map_task for init <24> (<-init <11> (<-init <5>)) total=740 us start=97469 us stop=98209 us
+4	98894	98899	#FFC0CB	1.0	ProfTask total=5 us start=98894 us stop=98899 us
+4	98906	103328	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <12> (<-init <5>)" total=4422 us start=98906 us stop=103328 us
+3	100716	101947	#ff7700	1.0	Mapper Call map_task for init <25> (<-init <12> (<-init <5>)) total=1231 us start=100716 us stop=101947 us
+3	102420	102879	#ff7700	1.0	Mapper Call map_task for init <26> (<-init <12> (<-init <5>)) total=459 us start=102420 us stop=102879 us
+4	103340	103343	#FFC0CB	1.0	ProfTask total=3 us start=103340 us stop=103343 us
+4	103346	104160	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <13> (<-init <5>)" total=814 us start=103346 us stop=104160 us
+3	103782	103913	#ff7700	1.0	Mapper Call map_task for init <27> (<-init <13> (<-init <5>)) total=131 us start=103782 us stop=103913 us
+3	103991	104094	#ff7700	1.0	Mapper Call map_task for init <28> (<-init <13> (<-init <5>)) total=103 us start=103991 us stop=104094 us
+4	104183	104186	#FFC0CB	1.0	ProfTask total=3 us start=104183 us stop=104186 us
+4	104195	104647	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="init <14> (<-init <5>)" total=452 us start=104195 us stop=104647 us
+3	104270	104399	#ff7700	1.0	Mapper Call map_task for init <29> (<-init <14> (<-init <5>)) total=129 us start=104270 us stop=104399 us
+4	104659	104671	#FFC0CB	1.0	ProfTask total=12 us start=104659 us stop=104671 us
+4	104675	104676	#FFC0CB	1.0	ProfTask <6> total=1 us start=104675 us stop=104676 us
+4	104679	104742	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="structured_partition <6>" total=63 us start=104679 us stop=104742 us
+4	104750	104751	#FFC0CB	1.0	ProfTask total=1 us start=104750 us stop=104751 us
+4	104754	104755	#FFC0CB	1.0	ProfTask <17> total=1 us start=104754 us stop=104755 us
+4	104758	104758	#FFC0CB	1.0	ProfTask <18> total=0 us start=104758 us stop=104758 us
+4	104761	104761	#FFC0CB	1.0	ProfTask <17> total=0 us start=104761 us stop=104761 us
+4	104763	104764	#FFC0CB	1.0	ProfTask <7> total=1 us start=104763 us stop=104764 us
+4	104766	104766	#FFC0CB	1.0	ProfTask <19> total=0 us start=104766 us stop=104766 us
+4	104768	104769	#FFC0CB	1.0	ProfTask <18> total=1 us start=104768 us stop=104769 us
+4	104772	104772	#FFC0CB	1.0	ProfTask <20> total=0 us start=104772 us stop=104772 us
+4	104774	104777	#FFC0CB	1.0	ProfTask <19> total=3 us start=104774 us stop=104777 us
+4	104779	104780	#FFC0CB	1.0	ProfTask <8> total=1 us start=104779 us stop=104780 us
+4	104782	104782	#FFC0CB	1.0	ProfTask <21> total=0 us start=104782 us stop=104782 us
+4	104784	104784	#FFC0CB	1.0	ProfTask <20> total=0 us start=104784 us stop=104784 us
+4	104786	104786	#FFC0CB	1.0	ProfTask <22> total=0 us start=104786 us stop=104786 us
+4	104788	104789	#FFC0CB	1.0	ProfTask <21> total=1 us start=104788 us stop=104789 us
+4	104791	104792	#FFC0CB	1.0	ProfTask <10> total=1 us start=104791 us stop=104792 us
+4	104794	104795	#FFC0CB	1.0	ProfTask <22> total=1 us start=104794 us stop=104795 us
+4	104797	104797	#FFC0CB	1.0	ProfTask <23> total=0 us start=104797 us stop=104797 us
+4	104799	104799	#FFC0CB	1.0	ProfTask <24> total=0 us start=104799 us stop=104799 us
+4	104801	104802	#FFC0CB	1.0	ProfTask <11> total=1 us start=104801 us stop=104802 us
+4	104804	104804	#FFC0CB	1.0	ProfTask <25> total=0 us start=104804 us stop=104804 us
+4	104805	104805	#FFC0CB	1.0	ProfTask <26> total=0 us start=104805 us stop=104805 us
+4	104806	104807	#FFC0CB	1.0	ProfTask <12> total=1 us start=104806 us stop=104807 us
+4	104808	104808	#FFC0CB	1.0	ProfTask <27> total=0 us start=104808 us stop=104808 us
+4	104809	104810	#FFC0CB	1.0	ProfTask <28> total=1 us start=104809 us stop=104810 us
+3	104810	104811	#FFC0CB	1.0	ProfTask <13> total=1 us start=104810 us stop=104811 us
+4	104812	104812	#FFC0CB	1.0	ProfTask <29> total=0 us start=104812 us stop=104812 us
+4	104813	104814	#FFC0CB	1.0	ProfTask <30> total=1 us start=104813 us stop=104814 us
+4	104815	104815	#FFC0CB	1.0	ProfTask <14> total=0 us start=104815 us stop=104815 us
+4	104817	104817	#FFC0CB	1.0	ProfTask <6> total=0 us start=104817 us stop=104817 us
+4	191653	191948	#006600	1.0	Post initiated by="init <17> (<-init <7> (<-init <5>))" total=295 us start=191653 us stop=191948 us
+4	191963	191967	#ff00e3	1.0	Decrement Pending Task initiated by="init <23> (<-init <11> (<-init <5>))" total=4 us start=191963 us stop=191967 us
+4	191975	191981	#FFC0CB	1.0	ProfTask <17> total=6 us start=191975 us stop=191981 us
+4	191984	191988	#FFC0CB	1.0	ProfTask <17> total=4 us start=191984 us stop=191988 us
+4	191989	191991	#FFC0CB	1.0	ProfTask <23> total=2 us start=191989 us stop=191991 us
+4	195597	195931	#006600	1.0	Post initiated by="init <18> (<-init <7> (<-init <5>))" total=334 us start=195597 us stop=195931 us
+4	195946	195948	#ff00e3	1.0	Decrement Pending Task initiated by="init <24> (<-init <11> (<-init <5>))" total=2 us start=195946 us stop=195948 us
+4	195953	195958	#FFC0CB	1.0	ProfTask <18> total=5 us start=195953 us stop=195958 us
+4	195960	195964	#FFC0CB	1.0	ProfTask <18> total=4 us start=195960 us stop=195964 us
+4	195965	195966	#FFC0CB	1.0	ProfTask <24> total=1 us start=195965 us stop=195966 us
+4	203665	203748	#006600	1.0	Post initiated by="init <15> (<-init <9> (<-init <5>))" total=83 us start=203665 us stop=203748 us
+4	203783	203787	#ff00e3	1.0	Decrement Pending Task initiated by="init <25> (<-init <12> (<-init <5>))" total=4 us start=203783 us stop=203787 us
+4	203796	203801	#FFC0CB	1.0	ProfTask <15> total=5 us start=203796 us stop=203801 us
+4	203804	203807	#FFC0CB	1.0	ProfTask <15> total=3 us start=203804 us stop=203807 us
+4	203808	204234	#FFC0CB	1.0	ProfTask <25> total=426 us start=203808 us stop=204234 us
+4	204292	204373	#006600	1.0	Post initiated by="init <16> (<-init <9> (<-init <5>))" total=81 us start=204292 us stop=204373 us
+4	204389	204391	#ff00e3	1.0	Decrement Pending Task initiated by="init <26> (<-init <12> (<-init <5>))" total=2 us start=204389 us stop=204391 us
+4	204397	204401	#FFC0CB	1.0	ProfTask <16> total=4 us start=204397 us stop=204401 us
+4	204402	204404	#FFC0CB	1.0	ProfTask <16> total=2 us start=204402 us stop=204404 us
+4	204405	204406	#FFC0CB	1.0	ProfTask <26> total=1 us start=204405 us stop=204406 us
+4	205221	205241	#006600	1.0	Post initiated by="init <19> (<-init <8> (<-init <5>))" total=20 us start=205221 us stop=205241 us
+4	205253	205254	#ff00e3	1.0	Decrement Pending Task initiated by="init <27> (<-init <13> (<-init <5>))" total=1 us start=205253 us stop=205254 us
+4	205259	205260	#FFC0CB	1.0	ProfTask <19> total=1 us start=205259 us stop=205260 us
+4	205261	205263	#FFC0CB	1.0	ProfTask <19> total=2 us start=205261 us stop=205263 us
+4	205265	205265	#FFC0CB	1.0	ProfTask <27> total=0 us start=205265 us stop=205265 us
+4	205515	205534	#006600	1.0	Post initiated by="init <21> (<-init <10> (<-init <5>))" total=19 us start=205515 us stop=205534 us
+4	205804	205806	#ff00e3	1.0	Decrement Pending Task initiated by="init <28> (<-init <13> (<-init <5>))" total=2 us start=205804 us stop=205806 us
+4	205814	205815	#FFC0CB	1.0	ProfTask <21> total=1 us start=205814 us stop=205815 us
+4	205816	205818	#FFC0CB	1.0	ProfTask <21> total=2 us start=205816 us stop=205818 us
+4	205820	205821	#FFC0CB	1.0	ProfTask <28> total=1 us start=205820 us stop=205821 us
+4	209693	209814	#006600	1.0	Post initiated by="init <20> (<-init <8> (<-init <5>))" total=121 us start=209693 us stop=209814 us
+4	209849	209851	#ff00e3	1.0	Decrement Pending Task initiated by="init <29> (<-init <14> (<-init <5>))" total=2 us start=209849 us stop=209851 us
+4	209858	209863	#FFC0CB	1.0	ProfTask <20> total=5 us start=209858 us stop=209863 us
+4	209866	209869	#FFC0CB	1.0	ProfTask <20> total=3 us start=209866 us stop=209869 us
+4	209870	209871	#FFC0CB	1.0	ProfTask <29> total=1 us start=209870 us stop=209871 us
+4	213823	213951	#006600	1.0	Post initiated by="init <22> (<-init <10> (<-init <5>))" total=128 us start=213823 us stop=213951 us
+4	213989	213992	#ff00e3	1.0	Decrement Pending Task initiated by="init <30> (<-init <14> (<-init <5>))" total=3 us start=213989 us stop=213992 us
+4	213999	214005	#FFC0CB	1.0	ProfTask <22> total=6 us start=213999 us stop=214005 us
+4	214008	214011	#FFC0CB	1.0	ProfTask <22> total=3 us start=214008 us stop=214011 us
+4	214013	214016	#FFC0CB	1.0	ProfTask <30> total=3 us start=214013 us stop=214016 us
+4	310736	310838	#006600	1.0	Post initiated by="init <25> (<-init <12> (<-init <5>))" total=102 us start=310736 us stop=310838 us
+4	310918	310922	#ff00e3	1.0	Decrement Pending Task initiated by="structured_partition <6>" total=4 us start=310918 us stop=310922 us
+4	310931	310939	#FFC0CB	1.0	ProfTask <25> total=8 us start=310931 us stop=310939 us
+4	310943	310946	#FFC0CB	1.0	ProfTask <25> total=3 us start=310943 us stop=310946 us
+4	310948	310950	#FFC0CB	1.0	ProfTask <6> total=2 us start=310948 us stop=310950 us
+4	310991	311158	#006600	1.0	Post initiated by="structured_partition <6>" total=167 us start=310991 us stop=311158 us
+4	311180	311182	#FFC0CB	1.0	ProfTask <6> total=2 us start=311180 us stop=311182 us
+4	311202	311204	#FFC0CB	1.0	ProfTask <6> total=2 us start=311202 us stop=311204 us
+4	314223	314256	#006600	1.0	Post initiated by="init <23> (<-init <11> (<-init <5>))" total=33 us start=314223 us stop=314256 us
+4	314266	314313	#006600	1.0	Post initiated by="init <26> (<-init <12> (<-init <5>))" total=47 us start=314266 us stop=314313 us
+4	314320	314322	#FFC0CB	1.0	ProfTask <23> total=2 us start=314320 us stop=314322 us
+4	314323	314324	#FFC0CB	1.0	ProfTask <26> total=1 us start=314323 us stop=314324 us
+4	314326	314327	#FFC0CB	1.0	ProfTask <23> total=1 us start=314326 us stop=314327 us
+4	314329	314330	#FFC0CB	1.0	ProfTask <26> total=1 us start=314329 us stop=314330 us
+4	320176	320211	#006600	1.0	Post initiated by="init <29> (<-init <14> (<-init <5>))" total=35 us start=320176 us stop=320211 us
+4	320222	320226	#FFC0CB	1.0	ProfTask <29> total=4 us start=320222 us stop=320226 us
+4	320229	320242	#FFC0CB	1.0	ProfTask <29> total=13 us start=320229 us stop=320242 us
+4	320478	320540	#006600	1.0	Post initiated by="init <30> (<-init <14> (<-init <5>))" total=62 us start=320478 us stop=320540 us
+4	320564	320567	#FFC0CB	1.0	ProfTask <30> total=3 us start=320564 us stop=320567 us
+4	320582	320583	#FFC0CB	1.0	ProfTask <30> total=1 us start=320582 us stop=320583 us
+4	320733	321900	#0093ff	1.0	Logical Dependence Analysis initiated by="trans <31>" total=1167 us start=320733 us stop=321900 us
+4	321910	322836	#006600	1.0	Post initiated by="test <3>" total=926 us start=321910 us stop=322836 us
+4	322854	322892	#006fff	1.0	Scheduler initiated by="Operation <0>" total=38 us start=322854 us stop=322892 us
+4	322897	322951	#FFC0CB	1.0	ProfTask <3> total=54 us start=322897 us stop=322951 us
+4	322956	322957	#FFC0CB	1.0	ProfTask <31> total=1 us start=322956 us stop=322957 us
+4	322959	322970	#FFC0CB	1.0	ProfTask <3> total=11 us start=322959 us stop=322970 us
+4	322973	323358	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <31>" total=2512 us start=322973 us stop=325485 us (wait for 2123 us)
+4	323358	325477	#2b00ff	0.15	Task Physical Dependence Analysis initiated by="trans <31>" total=2512 us start=322973 us stop=325485 us (wait for 2123 us)
+4	325477	325481	#2b00ff	0.45	Task Physical Dependence Analysis initiated by="trans <31>" total=2512 us start=322973 us stop=325485 us (wait for 2123 us)
+4	325481	325485	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <31>" total=2512 us start=322973 us stop=325485 us (wait for 2123 us)
+3	323393	323417	#ff0077	1.0	Deferred Slice initiated by="trans <32> (<-trans <31>)" total=24 us start=323393 us stop=323417 us
+3	323424	323430	#ff0077	1.0	Deferred Slice initiated by="trans <33> (<-trans <31>)" total=6 us start=323424 us stop=323430 us
+3	323434	324535	#ff0077	1.0	Deferred Slice initiated by="trans <34> (<-trans <31>)" total=1567 us start=323434 us stop=325001 us (wait for 358 us)
+3	324535	324880	#ff0077	0.15	Deferred Slice initiated by="trans <34> (<-trans <31>)" total=1567 us start=323434 us stop=325001 us (wait for 358 us)
+3	324880	324893	#ff0077	0.45	Deferred Slice initiated by="trans <34> (<-trans <31>)" total=1567 us start=323434 us stop=325001 us (wait for 358 us)
+3	324893	325001	#ff0077	1.0	Deferred Slice initiated by="trans <34> (<-trans <31>)" total=1567 us start=323434 us stop=325001 us (wait for 358 us)
+2	323628	323950	#ff7700	1.0	Mapper Call map_task for trans <40> (<-trans <34> (<-trans <31>)) total=322 us start=323628 us stop=323950 us
+2	324877	324883	#ff00e3	1.0	Decrement Pending Task initiated by="trans <40> (<-trans <34> (<-trans <31>))" total=6 us start=324877 us stop=324883 us
+3	325010	325014	#ff0077	1.0	Deferred Slice initiated by="trans <35> (<-trans <31>)" total=43 us start=325010 us stop=325053 us (wait for 32 us)
+3	325014	325036	#ff0077	0.15	Deferred Slice initiated by="trans <35> (<-trans <31>)" total=43 us start=325010 us stop=325053 us (wait for 32 us)
+3	325036	325046	#ff0077	0.45	Deferred Slice initiated by="trans <35> (<-trans <31>)" total=43 us start=325010 us stop=325053 us (wait for 32 us)
+3	325046	325053	#ff0077	1.0	Deferred Slice initiated by="trans <35> (<-trans <31>)" total=43 us start=325010 us stop=325053 us (wait for 32 us)
+2	325017	325018	#ff0077	1.0	Deferred Slice initiated by="trans <36> (<-trans <31>)" total=46 us start=325017 us stop=325063 us (wait for 40 us)
+2	325018	325038	#ff0077	0.15	Deferred Slice initiated by="trans <36> (<-trans <31>)" total=46 us start=325017 us stop=325063 us (wait for 40 us)
+2	325038	325058	#ff0077	0.45	Deferred Slice initiated by="trans <36> (<-trans <31>)" total=46 us start=325017 us stop=325063 us (wait for 40 us)
+2	325058	325063	#ff0077	1.0	Deferred Slice initiated by="trans <36> (<-trans <31>)" total=46 us start=325017 us stop=325063 us (wait for 40 us)
+1	325035	325039	#ff00e3	1.0	Decrement Pending Task initiated by="trans <41> (<-trans <34> (<-trans <31>))" total=4 us start=325035 us stop=325039 us
+3	325068	325072	#ff0077	1.0	Deferred Slice initiated by="trans <37> (<-trans <31>)" total=4 us start=325068 us stop=325072 us
+3	325077	325081	#ff0077	1.0	Deferred Slice initiated by="trans <38> (<-trans <31>)" total=4 us start=325077 us stop=325081 us
+3	325085	325470	#ff0077	1.0	Deferred Slice initiated by="trans <39> (<-trans <31>)" total=385 us start=325085 us stop=325470 us
+4	325489	325508	#006fff	1.0	Scheduler initiated by="Operation <0>" total=19 us start=325489 us stop=325508 us
+4	325512	325524	#006fff	1.0	Scheduler initiated by="Operation <0>" total=12 us start=325512 us stop=325524 us
+4	325528	325566	#006600	1.0	Post initiated by="init <24> (<-init <11> (<-init <5>))" total=38 us start=325528 us stop=325566 us
+4	325573	325586	#006fff	1.0	Scheduler initiated by="Operation <0>" total=13 us start=325573 us stop=325586 us
+4	325590	325601	#006fff	1.0	Scheduler initiated by="Operation <0>" total=11 us start=325590 us stop=325601 us
+4	325605	325617	#006fff	1.0	Scheduler initiated by="Operation <0>" total=12 us start=325605 us stop=325617 us
+4	325622	325634	#006fff	1.0	Scheduler initiated by="Operation <0>" total=12 us start=325622 us stop=325634 us
+4	325638	325654	#006fff	1.0	Scheduler initiated by="Operation <0>" total=16 us start=325638 us stop=325654 us
+4	325658	325660	#FFC0CB	1.0	ProfTask total=2 us start=325658 us stop=325660 us
+4	325662	325662	#FFC0CB	1.0	ProfTask <32> total=0 us start=325662 us stop=325662 us
+4	325664	325664	#FFC0CB	1.0	ProfTask <33> total=0 us start=325664 us stop=325664 us
+4	325665	325666	#FFC0CB	1.0	ProfTask <40> total=1 us start=325665 us stop=325666 us
+4	325667	325668	#FFC0CB	1.0	ProfTask <24> total=1 us start=325667 us stop=325668 us
+4	325670	325670	#FFC0CB	1.0	ProfTask <41> total=0 us start=325670 us stop=325670 us
+4	325671	325686	#FFC0CB	1.0	ProfTask <40> total=15 us start=325671 us stop=325686 us
+4	325689	325690	#FFC0CB	1.0	ProfTask <34> total=1 us start=325689 us stop=325690 us
+4	325691	325692	#FFC0CB	1.0	ProfTask <41> total=1 us start=325691 us stop=325692 us
+3	325692	325693	#FFC0CB	1.0	ProfTask <35> total=1 us start=325692 us stop=325693 us
+4	325694	325695	#FFC0CB	1.0	ProfTask <36> total=1 us start=325694 us stop=325695 us
+3	325695	325696	#FFC0CB	1.0	ProfTask <37> total=1 us start=325695 us stop=325696 us
+4	325697	325698	#FFC0CB	1.0	ProfTask <38> total=1 us start=325697 us stop=325698 us
+3	325698	325699	#FFC0CB	1.0	ProfTask <39> total=1 us start=325698 us stop=325699 us
+4	325700	325701	#FFC0CB	1.0	ProfTask <31> total=1 us start=325700 us stop=325701 us
+4	325702	326476	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <32> (<-trans <31>)" total=881 us start=325702 us stop=326583 us (wait for 17 us)
+4	326476	326484	#2b00ff	0.15	Task Physical Dependence Analysis initiated by="trans <32> (<-trans <31>)" total=881 us start=325702 us stop=326583 us (wait for 17 us)
+4	326484	326493	#2b00ff	0.45	Task Physical Dependence Analysis initiated by="trans <32> (<-trans <31>)" total=881 us start=325702 us stop=326583 us (wait for 17 us)
+4	326493	326583	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <32> (<-trans <31>)" total=881 us start=325702 us stop=326583 us (wait for 17 us)
+3	325758	325879	#ff7700	1.0	Mapper Call map_task for trans <42> (<-trans <32> (<-trans <31>)) total=121 us start=325758 us stop=325879 us
+3	325994	326459	#ff7700	1.0	Mapper Call map_task for trans <43> (<-trans <32> (<-trans <31>)) total=465 us start=325994 us stop=326459 us
+3	326482	326486	#ff00e3	1.0	Decrement Pending Task initiated by="trans <42> (<-trans <32> (<-trans <31>))" total=4 us start=326482 us stop=326486 us
+4	326590	326592	#FFC0CB	1.0	ProfTask total=2 us start=326590 us stop=326592 us
+4	326593	326785	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <33> (<-trans <31>)" total=1443 us start=326593 us stop=328036 us (wait for 631 us)
+4	326785	326791	#2b00ff	0.15	Task Physical Dependence Analysis initiated by="trans <33> (<-trans <31>)" total=1443 us start=326593 us stop=328036 us (wait for 631 us)
+4	326791	327053	#2b00ff	0.45	Task Physical Dependence Analysis initiated by="trans <33> (<-trans <31>)" total=1443 us start=326593 us stop=328036 us (wait for 631 us)
+4	327053	327245	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <33> (<-trans <31>)" total=1443 us start=326593 us stop=328036 us (wait for 631 us)
+4	327245	327251	#2b00ff	0.15	Task Physical Dependence Analysis initiated by="trans <33> (<-trans <31>)" total=1443 us start=326593 us stop=328036 us (wait for 631 us)
+4	327251	327608	#2b00ff	0.45	Task Physical Dependence Analysis initiated by="trans <33> (<-trans <31>)" total=1443 us start=326593 us stop=328036 us (wait for 631 us)
+4	327608	328036	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <33> (<-trans <31>)" total=1443 us start=326593 us stop=328036 us (wait for 631 us)
+3	326655	326772	#ff7700	1.0	Mapper Call map_task for trans <44> (<-trans <33> (<-trans <31>)) total=117 us start=326655 us stop=326772 us
+3	326790	327041	#ff00e3	1.0	Decrement Pending Task initiated by="trans <43> (<-trans <32> (<-trans <31>))" total=251 us start=326790 us stop=327041 us
+3	327249	327599	#ff00e3	1.0	Decrement Pending Task initiated by="trans <44> (<-trans <33> (<-trans <31>))" total=350 us start=327249 us stop=327599 us
+4	328043	328059	#006600	1.0	Post initiated by="init <27> (<-init <13> (<-init <5>))" total=16 us start=328043 us stop=328059 us
+4	328065	328066	#ff00e3	1.0	Decrement Pending Task initiated by="trans <45> (<-trans <33> (<-trans <31>))" total=1 us start=328065 us stop=328066 us
+4	328070	328716	#006600	1.0	Post initiated by="init <28> (<-init <13> (<-init <5>))" total=646 us start=328070 us stop=328716 us
+4	328726	328728	#FFC0CB	1.0	ProfTask total=2 us start=328726 us stop=328728 us
+4	328729	328730	#FFC0CB	1.0	ProfTask <24> total=1 us start=328729 us stop=328730 us
+4	328731	329086	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <35> (<-trans <31>)" total=432 us start=328731 us stop=329163 us (wait for 14 us)
+4	329086	329091	#2b00ff	0.15	Task Physical Dependence Analysis initiated by="trans <35> (<-trans <31>)" total=432 us start=328731 us stop=329163 us (wait for 14 us)
+4	329091	329100	#2b00ff	0.45	Task Physical Dependence Analysis initiated by="trans <35> (<-trans <31>)" total=432 us start=328731 us stop=329163 us (wait for 14 us)
+4	329100	329163	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <35> (<-trans <31>)" total=432 us start=328731 us stop=329163 us (wait for 14 us)
+3	328778	328896	#ff7700	1.0	Mapper Call map_task for trans <46> (<-trans <35> (<-trans <31>)) total=118 us start=328778 us stop=328896 us
+3	329090	329093	#ff00e3	1.0	Decrement Pending Task initiated by="trans <46> (<-trans <35> (<-trans <31>))" total=3 us start=329090 us stop=329093 us
+4	329171	329172	#FFC0CB	1.0	ProfTask total=1 us start=329171 us stop=329172 us
+4	329174	329362	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <36> (<-trans <31>)" total=441 us start=329174 us stop=329615 us (wait for 13 us)
+4	329362	329367	#2b00ff	0.15	Task Physical Dependence Analysis initiated by="trans <36> (<-trans <31>)" total=441 us start=329174 us stop=329615 us (wait for 13 us)
+4	329367	329375	#2b00ff	0.45	Task Physical Dependence Analysis initiated by="trans <36> (<-trans <31>)" total=441 us start=329174 us stop=329615 us (wait for 13 us)
+4	329375	329615	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <36> (<-trans <31>)" total=441 us start=329174 us stop=329615 us (wait for 13 us)
+3	329225	329346	#ff7700	1.0	Mapper Call map_task for trans <48> (<-trans <36> (<-trans <31>)) total=121 us start=329225 us stop=329346 us
+3	329365	329369	#ff00e3	1.0	Decrement Pending Task initiated by="trans <47> (<-trans <35> (<-trans <31>))" total=4 us start=329365 us stop=329369 us
+4	329623	329625	#FFC0CB	1.0	ProfTask total=2 us start=329623 us stop=329625 us
+4	329626	330090	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <37> (<-trans <31>)" total=464 us start=329626 us stop=330090 us
+3	329688	329806	#ff7700	1.0	Mapper Call map_task for trans <50> (<-trans <37> (<-trans <31>)) total=118 us start=329688 us stop=329806 us
+4	330098	330100	#FFC0CB	1.0	ProfTask total=2 us start=330098 us stop=330100 us
+4	330102	330871	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <38> (<-trans <31>)" total=769 us start=330102 us stop=330871 us
+3	330149	330295	#ff7700	1.0	Mapper Call map_task for trans <52> (<-trans <38> (<-trans <31>)) total=146 us start=330149 us stop=330295 us
+3	330381	330481	#ff7700	1.0	Mapper Call map_task for trans <53> (<-trans <38> (<-trans <31>)) total=100 us start=330381 us stop=330481 us
+4	330880	330881	#FFC0CB	1.0	ProfTask total=1 us start=330880 us stop=330881 us
+4	330883	332805	#2b00ff	1.0	Task Physical Dependence Analysis initiated by="trans <39> (<-trans <31>)" total=1922 us start=330883 us stop=332805 us
+3	330932	331386	#ff7700	1.0	Mapper Call map_task for trans <54> (<-trans <39> (<-trans <31>)) total=454 us start=330932 us stop=331386 us
+3	331885	332314	#ff7700	1.0	Mapper Call map_task for trans <55> (<-trans <39> (<-trans <31>)) total=429 us start=331885 us stop=332314 us
+4	332815	332826	#b500ff	1.0	Trigger Complete initiated by="main <1>" total=11 us start=332815 us stop=332826 us
+4	332834	332835	#b500ff	1.0	Trigger Complete initiated by="test <3>" total=1 us start=332834 us stop=332835 us
+4	332840	332841	#FFC0CB	1.0	ProfTask total=1 us start=332840 us stop=332841 us
+4	332844	332844	#FFC0CB	1.0	ProfTask <42> total=0 us start=332844 us stop=332844 us
+4	332846	332846	#FFC0CB	1.0	ProfTask <43> total=0 us start=332846 us stop=332846 us
+4	332848	332849	#FFC0CB	1.0	ProfTask <42> total=1 us start=332848 us stop=332849 us
+4	332850	332851	#FFC0CB	1.0	ProfTask <32> total=1 us start=332850 us stop=332851 us
+4	332853	332854	#FFC0CB	1.0	ProfTask <27> total=1 us start=332853 us stop=332854 us
+4	332856	332856	#FFC0CB	1.0	ProfTask <44> total=0 us start=332856 us stop=332856 us
+4	332858	332858	#FFC0CB	1.0	ProfTask <43> total=0 us start=332858 us stop=332858 us
+4	332860	332860	#FFC0CB	1.0	ProfTask <45> total=0 us start=332860 us stop=332860 us
+4	332861	332862	#FFC0CB	1.0	ProfTask <44> total=1 us start=332861 us stop=332862 us
+4	332863	332864	#FFC0CB	1.0	ProfTask <33> total=1 us start=332863 us stop=332864 us
+4	332865	332866	#FFC0CB	1.0	ProfTask <28> total=1 us start=332865 us stop=332866 us
+4	332867	332870	#FFC0CB	1.0	ProfTask <27> total=3 us start=332867 us stop=332870 us
+4	332871	332872	#FFC0CB	1.0	ProfTask <45> total=1 us start=332871 us stop=332872 us
+4	332873	332874	#FFC0CB	1.0	ProfTask <28> total=1 us start=332873 us stop=332874 us
+4	332875	332875	#FFC0CB	1.0	ProfTask <46> total=0 us start=332875 us stop=332875 us
+4	332877	332877	#FFC0CB	1.0	ProfTask <47> total=0 us start=332877 us stop=332877 us
+4	332878	332879	#FFC0CB	1.0	ProfTask <46> total=1 us start=332878 us stop=332879 us
+4	332880	332881	#FFC0CB	1.0	ProfTask <35> total=1 us start=332880 us stop=332881 us
+4	332882	332883	#FFC0CB	1.0	ProfTask <48> total=1 us start=332882 us stop=332883 us
+4	332884	332892	#FFC0CB	1.0	ProfTask <47> total=8 us start=332884 us stop=332892 us
+4	332895	332895	#FFC0CB	1.0	ProfTask <49> total=0 us start=332895 us stop=332895 us
+4	332897	332898	#FFC0CB	1.0	ProfTask <36> total=1 us start=332897 us stop=332898 us
+4	332899	332899	#FFC0CB	1.0	ProfTask <50> total=0 us start=332899 us stop=332899 us
+4	332900	332901	#FFC0CB	1.0	ProfTask <51> total=1 us start=332900 us stop=332901 us
+4	332902	332902	#FFC0CB	1.0	ProfTask <37> total=0 us start=332902 us stop=332902 us
+4	332903	332904	#FFC0CB	1.0	ProfTask <52> total=1 us start=332903 us stop=332904 us
+4	332905	332905	#FFC0CB	1.0	ProfTask <53> total=0 us start=332905 us stop=332905 us
+4	332906	332907	#FFC0CB	1.0	ProfTask <38> total=1 us start=332906 us stop=332907 us
+4	332908	332908	#FFC0CB	1.0	ProfTask <54> total=0 us start=332908 us stop=332908 us
+4	332910	332910	#FFC0CB	1.0	ProfTask <55> total=0 us start=332910 us stop=332910 us
+4	332911	332912	#FFC0CB	1.0	ProfTask <39> total=1 us start=332911 us stop=332912 us
+4	332913	332913	#FFC0CB	1.0	ProfTask <1> total=0 us start=332913 us stop=332913 us
+4	332915	332915	#FFC0CB	1.0	ProfTask <3> total=0 us start=332915 us stop=332915 us
+4	391708	391793	#006600	1.0	Post initiated by="trans <41> (<-trans <34> (<-trans <31>))" total=85 us start=391708 us stop=391793 us
+4	391823	391864	#ff00e3	1.0	Decrement Pending Task initiated by="trans <48> (<-trans <36> (<-trans <31>))" total=41 us start=391823 us stop=391864 us
+4	391873	391874	#ff00e3	1.0	Decrement Pending Task initiated by="trans <49> (<-trans <36> (<-trans <31>))" total=1 us start=391873 us stop=391874 us
+4	391880	391945	#006600	1.0	Post initiated by="trans <40> (<-trans <34> (<-trans <31>))" total=65 us start=391880 us stop=391945 us
+4	391953	391957	#FFC0CB	1.0	ProfTask <40> total=4 us start=391953 us stop=391957 us
+4	391959	391960	#FFC0CB	1.0	ProfTask <41> total=1 us start=391959 us stop=391960 us
+4	391962	391965	#FFC0CB	1.0	ProfTask <41> total=3 us start=391962 us stop=391965 us
+4	391966	391967	#FFC0CB	1.0	ProfTask <48> total=1 us start=391966 us stop=391967 us
+4	391968	391969	#FFC0CB	1.0	ProfTask <49> total=1 us start=391968 us stop=391969 us
+4	391970	391971	#FFC0CB	1.0	ProfTask <40> total=1 us start=391970 us stop=391971 us
+4	394996	395022	#006600	1.0	Post initiated by="trans <44> (<-trans <33> (<-trans <31>))" total=26 us start=394996 us stop=395022 us
+4	395030	395034	#ff00e3	1.0	Decrement Pending Task initiated by="trans <50> (<-trans <37> (<-trans <31>))" total=4 us start=395030 us stop=395034 us
+4	395039	395040	#ff00e3	1.0	Decrement Pending Task initiated by="trans <51> (<-trans <37> (<-trans <31>))" total=1 us start=395039 us stop=395040 us
+4	395045	395061	#006600	1.0	Post initiated by="trans <46> (<-trans <35> (<-trans <31>))" total=16 us start=395045 us stop=395061 us
+4	395067	395069	#FFC0CB	1.0	ProfTask <44> total=2 us start=395067 us stop=395069 us
+4	395071	395072	#FFC0CB	1.0	ProfTask <46> total=1 us start=395071 us stop=395072 us
+4	395073	395074	#FFC0CB	1.0	ProfTask <44> total=1 us start=395073 us stop=395074 us
+4	395076	395078	#FFC0CB	1.0	ProfTask <50> total=2 us start=395076 us stop=395078 us
+4	395079	395080	#FFC0CB	1.0	ProfTask <51> total=1 us start=395079 us stop=395080 us
+4	395081	395082	#FFC0CB	1.0	ProfTask <46> total=1 us start=395081 us stop=395082 us
+4	408344	408420	#006600	1.0	Post initiated by="trans <45> (<-trans <33> (<-trans <31>))" total=76 us start=408344 us stop=408420 us
+4	408429	408431	#ff00e3	1.0	Decrement Pending Task initiated by="trans <52> (<-trans <38> (<-trans <31>))" total=2 us start=408429 us stop=408431 us
+4	408435	408439	#FFC0CB	1.0	ProfTask <45> total=4 us start=408435 us stop=408439 us
+4	408440	408443	#FFC0CB	1.0	ProfTask <45> total=3 us start=408440 us stop=408443 us
+4	408444	408444	#FFC0CB	1.0	ProfTask <52> total=0 us start=408444 us stop=408444 us
+4	411046	411093	#006600	1.0	Post initiated by="trans <47> (<-trans <35> (<-trans <31>))" total=47 us start=411046 us stop=411093 us
+4	411101	411102	#ff00e3	1.0	Decrement Pending Task initiated by="trans <53> (<-trans <38> (<-trans <31>))" total=1 us start=411101 us stop=411102 us
+4	411106	411108	#FFC0CB	1.0	ProfTask <47> total=2 us start=411106 us stop=411108 us
+4	411109	411111	#FFC0CB	1.0	ProfTask <47> total=2 us start=411109 us stop=411111 us
+4	411112	411113	#FFC0CB	1.0	ProfTask <53> total=1 us start=411112 us stop=411113 us
+4	418276	418337	#006600	1.0	Post initiated by="trans <42> (<-trans <32> (<-trans <31>))" total=61 us start=418276 us stop=418337 us
+4	418362	418373	#ff00e3	1.0	Decrement Pending Task initiated by="trans <54> (<-trans <39> (<-trans <31>))" total=11 us start=418362 us stop=418373 us
+4	418378	418379	#ff00e3	1.0	Decrement Pending Task initiated by="trans <55> (<-trans <39> (<-trans <31>))" total=1 us start=418378 us stop=418379 us
+4	418386	418434	#006600	1.0	Post initiated by="trans <43> (<-trans <32> (<-trans <31>))" total=48 us start=418386 us stop=418434 us
+4	418442	418445	#FFC0CB	1.0	ProfTask <43> total=3 us start=418442 us stop=418445 us
+4	418447	418448	#FFC0CB	1.0	ProfTask <42> total=1 us start=418447 us stop=418448 us
+4	418449	418451	#FFC0CB	1.0	ProfTask <42> total=2 us start=418449 us stop=418451 us
+4	418452	418453	#FFC0CB	1.0	ProfTask <54> total=1 us start=418452 us stop=418453 us
+4	418456	418457	#FFC0CB	1.0	ProfTask <55> total=1 us start=418456 us stop=418457 us
+4	418458	418458	#FFC0CB	1.0	ProfTask <43> total=0 us start=418458 us stop=418458 us
+4	479276	479316	#006600	1.0	Post initiated by="trans <53> (<-trans <38> (<-trans <31>))" total=40 us start=479276 us stop=479316 us
+4	479323	479369	#006600	1.0	Post initiated by="trans <52> (<-trans <38> (<-trans <31>))" total=46 us start=479323 us stop=479369 us
+4	479376	479380	#FFC0CB	1.0	ProfTask <53> total=4 us start=479376 us stop=479380 us
+4	479382	479383	#FFC0CB	1.0	ProfTask <52> total=1 us start=479382 us stop=479383 us
+4	479384	479387	#FFC0CB	1.0	ProfTask <53> total=3 us start=479384 us stop=479387 us
+4	479390	479390	#FFC0CB	1.0	ProfTask <52> total=0 us start=479390 us stop=479390 us
+4	480922	480945	#006600	1.0	Post initiated by="trans <48> (<-trans <36> (<-trans <31>))" total=23 us start=480922 us stop=480945 us
+4	480958	480992	#006600	1.0	Post initiated by="trans <49> (<-trans <36> (<-trans <31>))" total=34 us start=480958 us stop=480992 us
+4	480998	480999	#FFC0CB	1.0	ProfTask <48> total=1 us start=480998 us stop=480999 us
+4	481001	481002	#FFC0CB	1.0	ProfTask <49> total=1 us start=481001 us stop=481002 us
+4	481003	481004	#FFC0CB	1.0	ProfTask <48> total=1 us start=481003 us stop=481004 us
+4	481006	481007	#FFC0CB	1.0	ProfTask <49> total=1 us start=481006 us stop=481007 us
+4	485339	485359	#006600	1.0	Post initiated by="trans <51> (<-trans <37> (<-trans <31>))" total=20 us start=485339 us stop=485359 us
+4	485364	485366	#FFC0CB	1.0	ProfTask <51> total=2 us start=485364 us stop=485366 us
+4	485368	485369	#FFC0CB	1.0	ProfTask <51> total=1 us start=485368 us stop=485369 us
+4	485384	485420	#006600	1.0	Post initiated by="trans <50> (<-trans <37> (<-trans <31>))" total=36 us start=485384 us stop=485420 us
+4	485425	485426	#FFC0CB	1.0	ProfTask <50> total=1 us start=485425 us stop=485426 us
+4	485428	485428	#FFC0CB	1.0	ProfTask <50> total=0 us start=485428 us stop=485428 us
+4	489126	489150	#006600	1.0	Post initiated by="trans <55> (<-trans <39> (<-trans <31>))" total=24 us start=489126 us stop=489150 us
+4	489168	490337	#006600	1.0	Post initiated by="trans <54> (<-trans <39> (<-trans <31>))" total=1169 us start=489168 us stop=490337 us
+4	490346	490348	#FFC0CB	1.0	ProfTask <55> total=2 us start=490346 us stop=490348 us
+4	490349	490350	#FFC0CB	1.0	ProfTask <55> total=1 us start=490349 us stop=490350 us
+4	490351	490353	#FFC0CB	1.0	ProfTask <54> total=2 us start=490351 us stop=490353 us
+4	490512	490513	#FFC0CB	1.0	ProfTask <54> total=1 us start=490512 us stop=490513 us
+4	490516	490532	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=16 us start=490516 us stop=490532 us
+4	490538	490545	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=7 us start=490538 us stop=490545 us
+4	490549	490555	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490549 us stop=490555 us
+4	490558	490565	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=7 us start=490558 us stop=490565 us
+4	490568	490574	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490568 us stop=490574 us
+4	490578	490584	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490578 us stop=490584 us
+4	490588	490594	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490588 us stop=490594 us
+4	490597	490603	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490597 us stop=490603 us
+4	490607	490613	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490607 us stop=490613 us
+4	490616	490622	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490616 us stop=490622 us
+4	490625	490631	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490625 us stop=490631 us
+4	490635	490641	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490635 us stop=490641 us
+4	490644	490650	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490644 us stop=490650 us
+4	490654	490660	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490654 us stop=490660 us
+4	490663	490669	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490663 us stop=490669 us
+4	490673	490679	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490673 us stop=490679 us
+4	490682	490688	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490682 us stop=490688 us
+4	490691	490697	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490691 us stop=490697 us
+4	490701	490706	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=5 us start=490701 us stop=490706 us
+4	490710	490716	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490710 us stop=490716 us
+4	490719	490725	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490719 us stop=490725 us
+4	490728	490734	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490728 us stop=490734 us
+4	490738	490744	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490738 us stop=490744 us
+4	490748	490754	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490748 us stop=490754 us
+4	490758	490764	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490758 us stop=490764 us
+4	490768	490774	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490768 us stop=490774 us
+4	490777	490783	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490777 us stop=490783 us
+4	490787	490794	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=7 us start=490787 us stop=490794 us
+4	490797	490803	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490797 us stop=490803 us
+4	490807	490812	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=5 us start=490807 us stop=490812 us
+4	490816	490822	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=6 us start=490816 us stop=490822 us
+4	490826	490845	#ffd700	1.0	Garbage Collection initiated by="Operation <0>" total=19 us start=490826 us stop=490845 us
+4	490871	490872	#FFC0CB	1.0	ProfTask total=1 us start=490871 us stop=490872 us
+4	490873	490873	#FFC0CB	1.0	ProfTask total=0 us start=490873 us stop=490873 us
+4	490874	490875	#FFC0CB	1.0	ProfTask total=1 us start=490874 us stop=490875 us
+4	490876	490876	#FFC0CB	1.0	ProfTask total=0 us start=490876 us stop=490876 us
+4	490877	490877	#FFC0CB	1.0	ProfTask total=0 us start=490877 us stop=490877 us
+4	490878	490879	#FFC0CB	1.0	ProfTask total=1 us start=490878 us stop=490879 us
+3	490879	490880	#FFC0CB	1.0	ProfTask total=1 us start=490879 us stop=490880 us
+4	490881	490881	#FFC0CB	1.0	ProfTask total=0 us start=490881 us stop=490881 us
+4	490882	490883	#FFC0CB	1.0	ProfTask total=1 us start=490882 us stop=490883 us
+3	490883	490884	#FFC0CB	1.0	ProfTask total=1 us start=490883 us stop=490884 us
+4	490885	490885	#FFC0CB	1.0	ProfTask total=0 us start=490885 us stop=490885 us
+4	490886	490886	#FFC0CB	1.0	ProfTask total=0 us start=490886 us stop=490886 us
+4	490887	490888	#FFC0CB	1.0	ProfTask total=1 us start=490887 us stop=490888 us
+3	490888	490889	#FFC0CB	1.0	ProfTask total=1 us start=490888 us stop=490889 us
+4	490890	490891	#FFC0CB	1.0	ProfTask total=1 us start=490890 us stop=490891 us
+3	490891	490892	#FFC0CB	1.0	ProfTask total=1 us start=490891 us stop=490892 us
+4	490893	490914	#FFC0CB	1.0	ProfTask total=21 us start=490893 us stop=490914 us
+4	490915	490919	#FFC0CB	1.0	ProfTask total=4 us start=490915 us stop=490919 us
+3	490919	490921	#FFC0CB	1.0	ProfTask total=2 us start=490919 us stop=490921 us
+4	490922	490922	#FFC0CB	1.0	ProfTask total=0 us start=490922 us stop=490922 us
+4	490923	490924	#FFC0CB	1.0	ProfTask total=1 us start=490923 us stop=490924 us
+3	490924	490925	#FFC0CB	1.0	ProfTask total=1 us start=490924 us stop=490925 us
+4	490926	490926	#FFC0CB	1.0	ProfTask total=0 us start=490926 us stop=490926 us
+4	490927	490927	#FFC0CB	1.0	ProfTask total=0 us start=490927 us stop=490927 us
+4	490928	490929	#FFC0CB	1.0	ProfTask total=1 us start=490928 us stop=490929 us
+4	490930	490930	#FFC0CB	1.0	ProfTask total=0 us start=490930 us stop=490930 us
+4	490931	490932	#FFC0CB	1.0	ProfTask total=1 us start=490931 us stop=490932 us
+3	490932	490933	#FFC0CB	1.0	ProfTask total=1 us start=490932 us stop=490933 us
+4	490934	490934	#FFC0CB	1.0	ProfTask total=0 us start=490934 us stop=490934 us
+4	490935	490935	#FFC0CB	1.0	ProfTask total=0 us start=490935 us stop=490935 us
+4	490936	490937	#FFC0CB	1.0	ProfTask total=1 us start=490936 us stop=490937 us
+3	490937	490938	#FFC0CB	1.0	ProfTask total=1 us start=490937 us stop=490938 us
+6	40423	41994	#0015ff	1.0	Mapper Call select_task_options total=1571 us start=40423 us stop=41994 us
+6	93211	205510	#7f00ff	1.0	init <21> (<-init <10> (<-init <5>)) total=112299 us start=93211 us stop=205510 us
+6	205528	328037	#7f00ff	1.0	init <28> (<-init <13> (<-init <5>)) total=122509 us start=205528 us stop=328037 us
+6	328966	394999	#ff1100	1.0	trans <46> (<-trans <35> (<-trans <31>)) total=66033 us start=328966 us stop=394999 us
+6	395012	485335	#ff1100	1.0	trans <51> (<-trans <37> (<-trans <31>)) total=90323 us start=395012 us stop=485335 us
+8	89666	205216	#7f00ff	1.0	init <19> (<-init <8> (<-init <5>)) total=115550 us start=89666 us stop=205216 us
+8	205238	326704	#7f00ff	1.0	init <27> (<-init <13> (<-init <5>)) total=121466 us start=205238 us stop=326704 us
+8	328038	408327	#ff1100	1.0	trans <45> (<-trans <33> (<-trans <31>)) total=80289 us start=328038 us stop=408327 us
+8	408347	479265	#ff1100	1.0	trans <52> (<-trans <38> (<-trans <31>)) total=70918 us start=408347 us stop=479265 us
+11	48033	53594	#00ff3f	1.0	test <3> total=272704 us start=48033 us stop=320737 us (wait for 266173 us)
+11	53594	55716	#00ff3f	0.15	test <3> total=272704 us start=48033 us stop=320737 us (wait for 266173 us)
+11	55716	55918	#00ff3f	0.45	test <3> total=272704 us start=48033 us stop=320737 us (wait for 266173 us)
+11	55918	56646	#00ff3f	1.0	test <3> total=272704 us start=48033 us stop=320737 us (wait for 266173 us)
+11	56646	311016	#00ff3f	0.15	test <3> total=272704 us start=48033 us stop=320737 us (wait for 266173 us)
+11	311016	320495	#00ff3f	0.45	test <3> total=272704 us start=48033 us stop=320737 us (wait for 266173 us)
+11	320495	320737	#00ff3f	1.0	test <3> total=272704 us start=48033 us stop=320737 us (wait for 266173 us)
+10	53360	53558	#0015ff	1.0	Mapper Call select_task_options total=198 us start=53360 us stop=53558 us
+10	54127	55623	#00f9ff	1.0	structured_partition <4> total=1496 us start=54127 us stop=55623 us
+10	94255	213781	#7f00ff	1.0	init <22> (<-init <10> (<-init <5>)) total=119526 us start=94255 us stop=213781 us
+10	213832	320468	#7f00ff	1.0	init <30> (<-init <14> (<-init <5>)) total=106636 us start=213832 us stop=320468 us
+11	325973	418253	#ff1100	1.0	trans <42> (<-trans <32> (<-trans <31>)) total=92280 us start=325973 us stop=418253 us
+11	418286	489123	#ff1100	1.0	trans <55> (<-trans <39> (<-trans <31>)) total=70837 us start=418286 us stop=489123 us
+13	46097	46543	#dfff00	1.0	main <1> total=446 us start=46097 us stop=46543 us
+13	87509	195581	#7f00ff	1.0	init <18> (<-init <7> (<-init <5>)) total=108072 us start=87509 us stop=195581 us
+13	195610	324170	#7f00ff	1.0	init <24> (<-init <11> (<-init <5>)) total=128560 us start=195610 us stop=324170 us
+13	329170	411042	#ff1100	1.0	trans <47> (<-trans <35> (<-trans <31>)) total=81872 us start=329170 us stop=411042 us
+13	411056	479265	#ff1100	1.0	trans <53> (<-trans <38> (<-trans <31>)) total=68209 us start=411056 us stop=479265 us
+15	80843	203635	#7f00ff	1.0	init <15> (<-init <9> (<-init <5>)) total=122792 us start=80843 us stop=203635 us
+15	203682	310682	#7f00ff	1.0	init <25> (<-init <12> (<-init <5>)) total=107000 us start=203682 us stop=310682 us
+15	310728	310980	#00f9ff	1.0	structured_partition <6> total=252 us start=310728 us stop=310980 us
+15	324405	391680	#ff1100	1.0	trans <40> (<-trans <34> (<-trans <31>)) total=67275 us start=324405 us stop=391680 us
+15	391721	480918	#ff1100	1.0	trans <48> (<-trans <36> (<-trans <31>)) total=89197 us start=391721 us stop=480918 us
+17	82391	204273	#7f00ff	1.0	init <16> (<-init <9> (<-init <5>)) total=121882 us start=82391 us stop=204273 us
+17	204314	314228	#7f00ff	1.0	init <26> (<-init <12> (<-init <5>)) total=109914 us start=204314 us stop=314228 us
+17	325009	391679	#ff1100	1.0	trans <41> (<-trans <34> (<-trans <31>)) total=66670 us start=325009 us stop=391679 us
+17	391721	480938	#ff1100	1.0	trans <49> (<-trans <36> (<-trans <31>)) total=89217 us start=391721 us stop=480938 us
+19	86631	191642	#7f00ff	1.0	init <17> (<-init <7> (<-init <5>)) total=105011 us start=86631 us stop=191642 us
+19	191676	314218	#7f00ff	1.0	init <23> (<-init <11> (<-init <5>)) total=122542 us start=191676 us stop=314218 us
+19	327123	394994	#ff1100	1.0	trans <44> (<-trans <33> (<-trans <31>)) total=67871 us start=327123 us stop=394994 us
+19	395011	485379	#ff1100	1.0	trans <50> (<-trans <37> (<-trans <31>)) total=90368 us start=395011 us stop=485379 us
+21	91010	209648	#7f00ff	1.0	init <20> (<-init <8> (<-init <5>)) total=118638 us start=91010 us stop=209648 us
+21	209722	320162	#7f00ff	1.0	init <29> (<-init <14> (<-init <5>)) total=110440 us start=209722 us stop=320162 us
+21	326587	418256	#ff1100	1.0	trans <43> (<-trans <32> (<-trans <31>)) total=91669 us start=326587 us stop=418256 us
+21	418285	489150	#ff1100	1.0	trans <54> (<-trans <39> (<-trans <31>)) total=70865 us start=418285 us stop=489150 us
+47	93282	490845	#7f00ff	1.0	Instance 0x6000000000000007 Size=32MB Created by='init <22> (<-init <10> (<-init <5>))' total=397563 us created=93282 us destroyed=490845 us
+46	96525	490845	#7f00ff	1.0	Instance 0x6000000000000008 Size=32MB Created by='init <23> (<-init <11> (<-init <5>))' total=394320 us created=96525 us destroyed=490845 us
+45	98182	490845	#7f00ff	1.0	Instance 0x6000000000000009 Size=32MB Created by='init <24> (<-init <11> (<-init <5>))' total=392663 us created=98182 us destroyed=490845 us
+44	101294	490845	#7f00ff	1.0	Instance 0x600000000000000a Size=32MB Created by='init <25> (<-init <12> (<-init <5>))' total=389551 us created=101294 us destroyed=490845 us
+43	102483	490845	#7f00ff	1.0	Instance 0x600000000000000b Size=32MB Created by='init <26> (<-init <12> (<-init <5>))' total=388362 us created=102483 us destroyed=490845 us
+42	103886	490845	#7f00ff	1.0	Instance 0x600000000000000c Size=32MB Created by='init <27> (<-init <13> (<-init <5>))' total=386959 us created=103886 us destroyed=490845 us
+41	104062	490845	#7f00ff	1.0	Instance 0x600000000000000d Size=32MB Created by='init <28> (<-init <13> (<-init <5>))' total=386783 us created=104062 us destroyed=490845 us
+40	104374	490845	#7f00ff	1.0	Instance 0x600000000000000e Size=32MB Created by='init <29> (<-init <14> (<-init <5>))' total=386471 us created=104374 us destroyed=490845 us
+39	104546	490845	#7f00ff	1.0	Instance 0x600000000000000f Size=32MB Created by='init <30> (<-init <14> (<-init <5>))' total=386299 us created=104546 us destroyed=490845 us
+38	323910	490845	#ff1100	1.0	Instance 0x6000000000000010 Size=32MB Created by='trans <40> (<-trans <34> (<-trans <31>))' total=166935 us created=323910 us destroyed=490845 us
+37	324498	490845	#ff1100	1.0	Instance 0x6000000000000011 Size=32MB Created by='trans <41> (<-trans <34> (<-trans <31>))' total=166347 us created=324498 us destroyed=490845 us
+36	325859	490845	#ff1100	1.0	Instance 0x6000000000000012 Size=32MB Created by='trans <42> (<-trans <32> (<-trans <31>))' total=164986 us created=325859 us destroyed=490845 us
+35	326434	490845	#ff1100	1.0	Instance 0x6000000000000013 Size=32MB Created by='trans <43> (<-trans <32> (<-trans <31>))' total=164411 us created=326434 us destroyed=490845 us
+34	326753	490845	#ff1100	1.0	Instance 0x6000000000000014 Size=32MB Created by='trans <44> (<-trans <33> (<-trans <31>))' total=164092 us created=326753 us destroyed=490845 us
+33	327213	490845	#ff1100	1.0	Instance 0x6000000000000015 Size=32MB Created by='trans <45> (<-trans <33> (<-trans <31>))' total=163632 us created=327213 us destroyed=490845 us
+32	328877	490845	#ff1100	1.0	Instance 0x6000000000000016 Size=32MB Created by='trans <46> (<-trans <35> (<-trans <31>))' total=161968 us created=328877 us destroyed=490845 us
+31	329052	490845	#ff1100	1.0	Instance 0x6000000000000017 Size=32MB Created by='trans <47> (<-trans <35> (<-trans <31>))' total=161793 us created=329052 us destroyed=490845 us
+30	329325	490845	#ff1100	1.0	Instance 0x6000000000000018 Size=32MB Created by='trans <48> (<-trans <36> (<-trans <31>))' total=161520 us created=329325 us destroyed=490845 us
+29	329522	490845	#ff1100	1.0	Instance 0x6000000000000019 Size=32MB Created by='trans <49> (<-trans <36> (<-trans <31>))' total=161323 us created=329522 us destroyed=490845 us
+28	329787	490845	#ff1100	1.0	Instance 0x600000000000001a Size=32MB Created by='trans <50> (<-trans <37> (<-trans <31>))' total=161058 us created=329787 us destroyed=490845 us
+27	329978	490845	#ff1100	1.0	Instance 0x600000000000001b Size=32MB Created by='trans <51> (<-trans <37> (<-trans <31>))' total=160867 us created=329978 us destroyed=490845 us
+26	330273	490845	#ff1100	1.0	Instance 0x600000000000001c Size=32MB Created by='trans <52> (<-trans <38> (<-trans <31>))' total=160572 us created=330273 us destroyed=490845 us
+25	330462	490845	#ff1100	1.0	Instance 0x600000000000001d Size=32MB Created by='trans <53> (<-trans <38> (<-trans <31>))' total=160383 us created=330462 us destroyed=490845 us
+24	331357	490845	#ff1100	1.0	Instance 0x600000000000001e Size=32MB Created by='trans <54> (<-trans <39> (<-trans <31>))' total=159488 us created=331357 us destroyed=490845 us
+23	332291	490845	#ff1100	1.0	Instance 0x600000000000001f Size=32MB Created by='trans <55> (<-trans <39> (<-trans <31>))' total=158554 us created=332291 us destroyed=490845 us
+54	77790	490845	#7f00ff	1.0	Instance 0x6000000000000000 Size=32MB Created by='init <15> (<-init <9> (<-init <5>))' total=413055 us created=77790 us destroyed=490845 us
+53	80948	490845	#7f00ff	1.0	Instance 0x6000000000000001 Size=32MB Created by='init <16> (<-init <9> (<-init <5>))' total=409897 us created=80948 us destroyed=490845 us
+52	85849	490845	#7f00ff	1.0	Instance 0x6000000000000002 Size=32MB Created by='init <17> (<-init <7> (<-init <5>))' total=404996 us created=85849 us destroyed=490845 us
+51	86679	490845	#7f00ff	1.0	Instance 0x6000000000000003 Size=32MB Created by='init <18> (<-init <7> (<-init <5>))' total=404166 us created=86679 us destroyed=490845 us
+50	88855	490845	#7f00ff	1.0	Instance 0x6000000000000004 Size=32MB Created by='init <19> (<-init <8> (<-init <5>))' total=401990 us created=88855 us destroyed=490845 us
+49	89716	490845	#7f00ff	1.0	Instance 0x6000000000000005 Size=32MB Created by='init <20> (<-init <8> (<-init <5>))' total=401129 us created=89716 us destroyed=490845 us
+48	92472	490845	#7f00ff	1.0	Instance 0x6000000000000006 Size=32MB Created by='init <21> (<-init <10> (<-init <5>))' total=398373 us created=92472 us destroyed=490845 us
