@@ -53,7 +53,7 @@ private:
             it != all_procs.end(); it++) {
         log_logging.print("considering cpu %llx.\n",it->id);
         Realm::ID cpuid(*it);
-        if (it->kind() == Processor::LOC_PROC && cpuid.node() == 1) { // selecting second node.
+        if (cpuid.is_processor() && cpuid.proc.owner_node == 1) { // selecting second node.
             return (*it);
         }
       }
