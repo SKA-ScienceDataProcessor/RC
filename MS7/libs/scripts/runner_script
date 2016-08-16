@@ -50,6 +50,9 @@ while (($#)); do
             ;;
         -prof=*|--prof=*)
             profiling="${arg#*=}"
+            if [ "$profiling" -eq "" ] ; then
+                profiling=0
+            fi
             shift
             ;;
         -h|--help)
